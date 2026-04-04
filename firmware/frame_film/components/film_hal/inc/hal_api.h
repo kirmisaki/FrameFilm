@@ -10,6 +10,7 @@
 #include "hal_bat.h"
 #include "hal_led.h"
 #include "hal_sd.h"
+#include "hal_pwr.h"
 
 /*********************************************************************
  * CPPMIX

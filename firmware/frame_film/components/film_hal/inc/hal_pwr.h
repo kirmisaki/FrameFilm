@@ -23,24 +23,29 @@
  * SOFTWARE.
  *
  *
- * FileName : /film_hal/src/hal_init.c
- * Author: Kiritro  Version: v0.1  Date: 2025/4/1
- * Description: Function introduction
+ * FileName : /film_hal/inc/hal_pwr.h
+ * Author: Kiritro  Version: v0.1  Date: 2025/4/4
+ * Description: Power management HAL layer interface
  * ChangeLog: Change Notes
  *
 ***********************************************************/
 
+#ifndef __HAL_PWR_H__
+#define __HAL_PWR_H__
+
+
 /*********************************************************************
  * INCLUDES
  */
-#include "hal_sd.h"
-#include "hal_bat.h"
-#include "hal_led.h"
-#include "hal_pwr.h"
-#include "hal_encoder.h"
-#include "hal_init.h"
+#include <stdbool.h>
 
-#include "sys_log.h"
+
+/*********************************************************************
+ * CPPMIX
+ */
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*********************************************************************
  * MACROS
@@ -75,19 +80,35 @@
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
+/**
+ * @brief 初始化电源管理模块
+ * 
+ * 该函数用于初始化电源管理模块，配置唤醒源和相关参数。
+ * 通常在系统启动时调用此函数。
+ */
+extern void hal_pwr_init(void);
+
+/**
+ * @brief 进入深度睡眠模式
+ * 
+ * 该函数使设备进入深度睡眠模式以节省电量。
+ * 在深度睡眠模式下，大部分外设将被关闭，仅保留RTC和唤醒源。
+ * 设备可通过配置的唤醒源（如按键）唤醒。
+ */
+extern void hal_pwr_enter_sleep(void);
+
+/**
+ * @brief 检查唤醒原因
+ * 
+ * 该函数用于检查设备是否从深度睡眠中唤醒，并返回唤醒原因。
+ * 
+ * @return bool true-从深度睡眠唤醒，false-正常启动
+ */
+extern bool hal_pwr_check_wakeup(void);
 
 
-void hal_init(void)
-{
-    // 初始化电源
-    hal_pwr_init();
-    // 初始化电池
-    hal_bat_init();
-    // 初始化RGB LED
-    hal_led_init();
-    // 初始化SD卡
-    hal_sd_init();
-    // 初始化旋转编码器
-    hal_encoder_init();
+#ifdef __cplusplus
 }
+#endif
 
+#endif /* __HAL_PWR_H__ */
