@@ -1,4 +1,5 @@
 set(srcs "src/service_init.c"
+         "src/service_ble.c"
          )
 
 set(public_include "inc")

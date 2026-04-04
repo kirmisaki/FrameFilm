@@ -37,6 +37,7 @@
 #include "hal_bat.h"
 #include "hal_led.h"
 #include "hal_pwr.h"
+#include "hal_ble.h"
 #include "hal_encoder.h"
 #include "hal_init.h"
 

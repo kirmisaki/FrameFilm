@@ -11,6 +11,7 @@
 #include "hal_led.h"
 #include "hal_sd.h"
 #include "hal_pwr.h"
+#include "hal_ble.h"
 
 /*********************************************************************
  * CPPMIX
