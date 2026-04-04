@@ -5,6 +5,7 @@ set(srcs "src/hal_init.c"
          "src/hal_sd.c"
          "src/hal_pwr.c"
          "src/hal_ble.c"
+         "src/hal_epd.c"
          )
 
 set(public_include "inc")
