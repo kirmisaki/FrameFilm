@@ -34,6 +34,7 @@
  * INCLUDES
  */
 #include "service_init.h"
+#include "service_ble.h"
 
 
 /*********************************************************************
@@ -74,6 +75,7 @@
 
 void service_init(void)
 {
-
+    // 初始化ble服务
+    service_ble_init();
 }
 

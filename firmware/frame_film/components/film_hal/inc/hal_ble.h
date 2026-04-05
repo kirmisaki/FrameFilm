@@ -108,7 +108,6 @@ enum
     MSG_BLE_CH2_OUT_DATA,
     MSG_BLE_CH3_OUT_DATA,
     MSG_BLE_GAP_DISCONNECT,
-    MSG_BLE_EVENT_UPDATE,     //蓝牙上报事件参数
 };
 
 
