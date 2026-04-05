@@ -322,6 +322,8 @@ static const esp_gatts_attr_db_t dev_info_gatt_db[DEV_IDX_NB] =
  */
 static uint16_t m_service_handle_table[DEV_M_IDX_NB];
 
+static hal_ble_gatts_cmd_cb_t m_gatts_cmd_cb = NULL;
+
 static esp_ble_conn_update_params_t conn_params = {0};
 
 static uint8_t adv_config_done = 0;
@@ -518,6 +520,11 @@ void hal_ble_send_notify_data(uint8_t ch, uint8_t *buf, uint16_t len)
     }
 }
 
+void hal_ble_gatts_cmd_register_cb(hal_ble_gatts_cmd_cb_t cb)
+{
+    m_gatts_cmd_cb = cb;
+}
+
 static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param)
 {
     switch (event)
@@ -618,10 +625,11 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
             }
             else if(param->write.handle == m_service_handle_table[IDX_M_CHAR_VAL_1])
             {
-                //发送msg
-                // todo
-                // ble_msg_gatts_cmd_send(param->write.value, param->write.len);
-                // sys_logi(GATTS_TAG, "ch1 value");
+                if(m_gatts_cmd_cb != NULL)
+                {
+                    m_gatts_cmd_cb(param->write.value, param->write.len);
+                    // sys_logi(GATTS_TAG, "ch1 value: %02x", param->write.value[0]);
+                }
             }
             else
             {

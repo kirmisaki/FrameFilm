@@ -97,6 +97,8 @@ static void ble_task_handle(void *pvParameters);
  */
 void service_ble_init(void)
 {
+    hal_ble_gatts_cmd_register_cb(service_ble_msg_gatts_cmd_send);
+
     if(m_ble_task_hdl == NULL)
     {
         if ( pdPASS != xTaskCreate( ble_task_handle, SYS_OS_NAME_BLE_TASK, SYS_OS_SIZE_BLE_TASK, NULL, SYS_OS_PRI_BLE_TASK, &m_ble_task_hdl ))

@@ -38,6 +38,8 @@ extern "C"{
 /*********************************************************************
 * TYPEDEFS
 */
+typedef void (*hal_ble_gatts_cmd_cb_t)(uint8_t const *p_data, uint16_t len);
+
 enum
 {
     BLE_GATT_MODE_S = 0,       //GATT SERVER
@@ -139,6 +141,7 @@ extern void hal_ble_gatt_server_uninit(void);
 extern void hal_ble_gatt_server_reinit(void);
 extern void hal_ble_gatts_dev_disconnect(void);
 extern void hal_ble_send_notify_data(uint8_t ch, uint8_t *buf, uint16_t len);
+extern void hal_ble_gatts_cmd_register_cb(hal_ble_gatts_cmd_cb_t cb);
 
 
 #ifdef __cplusplus
