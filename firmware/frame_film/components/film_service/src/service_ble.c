@@ -97,9 +97,6 @@ static void ble_task_handle(void *pvParameters);
  */
 void service_ble_init(void)
 {
-    // 初始化蓝牙GATT服务
-    hal_ble_gatt_server_init();
-
     if(m_ble_task_hdl == NULL)
     {
         if ( pdPASS != xTaskCreate( ble_task_handle, SYS_OS_NAME_BLE_TASK, SYS_OS_SIZE_BLE_TASK, NULL, SYS_OS_PRI_BLE_TASK, &m_ble_task_hdl ))
