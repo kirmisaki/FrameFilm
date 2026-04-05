@@ -10,7 +10,7 @@ set(srcs "src/hal_init.c"
 
 set(public_include "inc")
 
-set(requires film_sys led_strip driver fatfs esp_adc button)
+set(requires film_sys led_strip driver fatfs esp_adc button bt nvs_flash)
 
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS ${public_include}

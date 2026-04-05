@@ -93,5 +93,7 @@ void hal_init(void)
     hal_encoder_init();
     // 初始化EPD
     hal_epd_init();
+    // 初始化蓝牙GATT服务
+    hal_ble_gatt_server_init();
 }
 
