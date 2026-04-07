@@ -35,6 +35,7 @@
  */
 #include "service_init.h"
 #include "service_ble.h"
+#include "service_param.h"
 
 
 /*********************************************************************
@@ -75,6 +76,8 @@
 
 void service_init(void)
 {
+    // 初始化服务参数
+    service_param_init();
     // 初始化ble服务
     service_ble_init();
 }

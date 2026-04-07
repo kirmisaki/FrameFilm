@@ -45,7 +45,7 @@
 
 #include "sys_log.h"
 
-#include "hal_ble.h"
+#include "service_ble_gatts.h"
 #include "service_ble.h"
 
 
@@ -97,7 +97,9 @@ static void ble_task_handle(void *pvParameters);
  */
 void service_ble_init(void)
 {
-    hal_ble_gatts_cmd_register_cb(service_ble_msg_gatts_cmd_send);
+    // 初始化ble服务
+    service_ble_gatt_server_init();
+    service_ble_gatts_cmd_register_cb(service_ble_msg_gatts_cmd_send);
 
     if(m_ble_task_hdl == NULL)
     {
@@ -251,7 +253,7 @@ static void ble_task_handle(void *pvParameters)
         {
             if( msg.len )
             {
-                hal_ble_send_notify_data(BLE_NOTIFY_SEND_CH1, msg.pdata, msg.len);
+                service_ble_send_notify_data(BLE_NOTIFY_SEND_CH1, msg.pdata, msg.len);
                 vPortFree(msg.pdata);
             }
             break;
@@ -260,7 +262,7 @@ static void ble_task_handle(void *pvParameters)
         {
             if( msg.len )
             {
-                hal_ble_send_notify_data(BLE_NOTIFY_SEND_CH2, msg.pdata, msg.len);
+                service_ble_send_notify_data(BLE_NOTIFY_SEND_CH2, msg.pdata, msg.len);
                 vPortFree(msg.pdata);
             }
             break;
@@ -269,13 +271,13 @@ static void ble_task_handle(void *pvParameters)
         {
             if( msg.len )
             {
-                hal_ble_send_notify_data(BLE_NOTIFY_SEND_CH3, msg.pdata, msg.len);
+                service_ble_send_notify_data(BLE_NOTIFY_SEND_CH3, msg.pdata, msg.len);
                 vPortFree(msg.pdata);
             }
             break;
         }
         case MSG_BLE_GAP_DISCONNECT:
-            hal_ble_gatts_dev_disconnect();
+            service_ble_gatts_dev_disconnect();
             break;
         default :
         {

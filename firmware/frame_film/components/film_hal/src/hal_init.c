@@ -38,7 +38,6 @@
 #include "hal_led.h"
 #include "hal_pwr.h"
 #include "hal_epd.h"
-#include "hal_ble.h"
 #include "hal_encoder.h"
 #include "hal_init.h"
 
@@ -93,7 +92,5 @@ void hal_init(void)
     hal_encoder_init();
     // 初始化EPD
     hal_epd_init();
-    // 初始化蓝牙GATT服务
-    hal_ble_gatt_server_init();
 }
 

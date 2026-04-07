@@ -1,5 +1,5 @@
-#ifndef __SERVICE_PARA_H__
-#define __SERVICE_PARA_H__
+#ifndef __SERVICE_PARAM_H__
+#define __SERVICE_PARAM_H__
 
 
 /*********************************************************************
@@ -22,7 +22,12 @@ extern "C" {
 /*********************************************************************
 * TYPEDEFS
 */
-
+#pragma pack(4)
+typedef struct
+{
+    uint8_t factory_flag;
+} ServiceParam_Def_t; /*服务参数*/
+#pragma pack()
 
 /*********************************************************************
  * CONSTANTS
@@ -37,7 +42,7 @@ extern "C" {
 /*********************************************************************
  * GLOBAL VARIABLES
  */
-
+extern ServiceParam_Def_t g_service_param;
 
 /*********************************************************************
  * LOCAL FUNCTIONS
@@ -47,11 +52,12 @@ extern "C" {
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
-
+extern void service_param_init(void);
+extern void service_param_save(void);
 
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __SERVICE_PARA_H__ */
+#endif /* __SERVICE_PARAM_H__ */

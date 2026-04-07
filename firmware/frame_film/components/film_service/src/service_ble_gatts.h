@@ -1,5 +1,5 @@
-#ifndef __HAL_BLE_H__
-#define __HAL_BLE_H__
+#ifndef __service_ble_gatts_H__
+#define __service_ble_gatts_H__
 
 #ifdef __cplusplus
 extern "C"{
@@ -38,7 +38,7 @@ extern "C"{
 /*********************************************************************
 * TYPEDEFS
 */
-typedef void (*hal_ble_gatts_cmd_cb_t)(uint8_t const *p_data, uint16_t len);
+typedef void (*service_ble_gatts_cmd_cb_t)(uint8_t const *p_data, uint16_t len);
 
 enum
 {
@@ -136,16 +136,16 @@ enum
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
-extern void hal_ble_gatt_server_init(void);
-extern void hal_ble_gatt_server_uninit(void);
-extern void hal_ble_gatt_server_reinit(void);
-extern void hal_ble_gatts_dev_disconnect(void);
-extern void hal_ble_send_notify_data(uint8_t ch, uint8_t *buf, uint16_t len);
-extern void hal_ble_gatts_cmd_register_cb(hal_ble_gatts_cmd_cb_t cb);
+extern void service_ble_gatt_server_init(void);
+extern void service_ble_gatt_server_uninit(void);
+extern void service_ble_gatt_server_reinit(void);
+extern void service_ble_gatts_dev_disconnect(void);
+extern void service_ble_send_notify_data(uint8_t ch, uint8_t *buf, uint16_t len);
+extern void service_ble_gatts_cmd_register_cb(service_ble_gatts_cmd_cb_t cb);
 
 
 #ifdef __cplusplus
 extern "C"}
 #endif
 
-#endif /* __HAL_BLE_H__ */
+#endif /* __service_ble_gatts_H__ */

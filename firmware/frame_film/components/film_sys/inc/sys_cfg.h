@@ -25,7 +25,7 @@ extern "C" {
 #define SYS_BLE_DEFAULT_KEY            "FRAMEFILM_KEY"
 
 #define SYS_M_NVS_NAMESPACE            "FRAMEFILM_NVS"
-#define SYS_M_NVS_KEY_NAME             "FRAMEFILM_NVS_KEY"
+#define SYS_M_NVS_KEY_NAME             "FILMKEY"
 
 // spiffs
 #define BACE_PATH                      "/spiffs"

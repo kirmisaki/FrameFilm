@@ -1,12 +1,14 @@
 set(srcs "src/service_init.c"
          "src/service_ble.c"
+         "src/service_ble_gatts.c"
          "src/service_ota.c"
          "src/service_image.c"
+         "src/service_param.c"
          )
 
 set(public_include "inc")
 
-set(requires film_hal film_sys)
+set(requires film_hal film_sys  bt nvs_flash)
 
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS ${public_include}

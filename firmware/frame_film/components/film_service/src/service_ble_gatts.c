@@ -23,9 +23,9 @@
  * SOFTWARE.
  *
  *
- * FileName : /film_hal/src/hal_ble.c
+ * FileName : /film_service/src/service_ble_gatts.c
  * Author: Kiritro  Version: v0.1  Date: 2026/4/5
- * Description: ble gatt服务
+ * Description: ble gatt server服务
  * ChangeLog: Change Notes
  *
 ***********************************************************/
@@ -54,7 +54,7 @@
 #include "sdkconfig.h"
 
 #include "sys_log.h"
-#include "hal_ble.h"
+#include "service_ble_gatts.h"
 
 /*********************************************************************
  * MACROS
@@ -322,7 +322,7 @@ static const esp_gatts_attr_db_t dev_info_gatt_db[DEV_IDX_NB] =
  */
 static uint16_t m_service_handle_table[DEV_M_IDX_NB];
 
-static hal_ble_gatts_cmd_cb_t m_gatts_cmd_cb = NULL;
+static service_ble_gatts_cmd_cb_t m_gatts_cmd_cb = NULL;
 
 static esp_ble_conn_update_params_t conn_params = {0};
 
@@ -488,7 +488,7 @@ static void gatts_notift_bit_set(uint16_t ret, uint8_t ch_bit)
 }
 
 
-void hal_ble_send_notify_data(uint8_t ch, uint8_t *buf, uint16_t len)
+void service_ble_send_notify_data(uint8_t ch, uint8_t *buf, uint16_t len)
 {
     if((ch == BLE_NOTIFY_SEND_CH1 || ch == BLE_NOTIFY_SEND_CH2 || ch == BLE_NOTIFY_SEND_CH3) && len > 0)
     {
@@ -520,7 +520,7 @@ void hal_ble_send_notify_data(uint8_t ch, uint8_t *buf, uint16_t len)
     }
 }
 
-void hal_ble_gatts_cmd_register_cb(hal_ble_gatts_cmd_cb_t cb)
+void service_ble_gatts_cmd_register_cb(service_ble_gatts_cmd_cb_t cb)
 {
     m_gatts_cmd_cb = cb;
 }
@@ -883,7 +883,7 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
     while (0);
 }
 
-void hal_ble_gatt_server_init(void)
+void service_ble_gatt_server_init(void)
 {
     esp_err_t ret;
     esp_err_t p_ret = 0;
@@ -978,7 +978,7 @@ void hal_ble_gatt_server_init(void)
 }
 
 
-void hal_ble_gatt_server_uninit(void)
+void service_ble_gatt_server_uninit(void)
 {
     esp_err_t ret;
 
@@ -1049,7 +1049,7 @@ void hal_ble_gatt_server_uninit(void)
 }
 
 
-void hal_ble_gatt_server_reinit(void)
+void service_ble_gatt_server_reinit(void)
 {
     esp_err_t ret;
     esp_err_t p_ret = 0;
@@ -1107,7 +1107,7 @@ void hal_ble_gatt_server_reinit(void)
     }
 }
 
-void hal_ble_gatts_dev_disconnect(void)
+void service_ble_gatts_dev_disconnect(void)
 {
     sys_logi(GATTS_TAG, "Invalid device disconnect now!");
 
