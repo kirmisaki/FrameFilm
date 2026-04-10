@@ -1,4 +1,22 @@
 dependencies:
+  esp-idf-lib/encoder:
+    component_hash: 0ac3bb66deff664544512216b30b38f05c6c45f42329afb8f089d196a6c6d30c
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    targets:
+    - esp32
+    - esp32c2
+    - esp32c3
+    - esp32c5
+    - esp32c6
+    - esp32c61
+    - esp32h2
+    - esp32p4
+    - esp32s2
+    - esp32s3
+    version: 3.0.2
   espressif/button:
     component_hash: 30a3f495c3862d505ce6e41adbbd218b2750e9723ab2151feff00e9fe685b326
     dependencies:
@@ -38,9 +56,10 @@ dependencies:
       type: idf
     version: 5.5.2
 direct_dependencies:
+- esp-idf-lib/encoder
 - espressif/button
 - espressif/led_strip
 - idf
-manifest_hash: d4bbff80b6c546e92c12ec7a940b96e66bf1eae63387cb0032ee3cd624461f76
+manifest_hash: c9ae9e07f6a12b67aa00ee75dc73b281bf8d8e291aab5c5aa88eae942144b1f7
 target: esp32s3
 version: 2.0.0
