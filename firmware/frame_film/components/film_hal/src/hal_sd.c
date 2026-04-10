@@ -59,7 +59,7 @@
 #define PIN_NUM_D1              (38)
 #define PIN_NUM_D2              (2)
 #define PIN_NUM_D3              (42)
-#define PIN_NUM_DET             (6)
+#define PIN_NUM_DET             (45)
 #define GPIO_INPUT_PIN_SEL      (1ULL << PIN_NUM_DET)
 
 
