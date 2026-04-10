@@ -119,14 +119,12 @@ void hal_pwr_enter_sleep(void)
     
     sys_logi(PWR_TAG, "Enabling GPIO wakeup on GPIO %d", WAKEUP_GPIO_NUM);
     
-    esp_err_t ret = esp_sleep_enable_gpio_wakeup();
+    esp_err_t ret = esp_sleep_enable_ext0_wakeup(WAKEUP_GPIO_NUM, 0);
     if (ret != ESP_OK)
     {
         sys_loge(PWR_TAG, "Failed to enable GPIO wakeup: %s", esp_err_to_name(ret));
         return;
     }
-    
-    gpio_wakeup_enable(WAKEUP_GPIO_NUM, WAKEUP_GPIO_LEVEL ? GPIO_INTR_HIGH_LEVEL : GPIO_INTR_LOW_LEVEL);
     
     sys_logi(PWR_TAG, "Configured wakeup source: GPIO %d, level %d", WAKEUP_GPIO_NUM, WAKEUP_GPIO_LEVEL);
     
