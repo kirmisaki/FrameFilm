@@ -87,9 +87,9 @@ static void monitor_task_handle(void *pvParameters);
 static void monitor_msg_send(void *p_msg, bool in_isr);
 static void monitor_timer_callback(TimerHandle_t xTimer);
 
-static void monitor_led_manage_event(uint8_t subID);
-static void monitor_battery_manage_event(uint8_t subID);
-static void monitor_auto_sleep_manage_event(uint8_t subID);
+static void monitor_led_manage_event(void);
+static void monitor_battery_manage_event(void);
+static void monitor_auto_sleep_manage_event(void);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
@@ -127,13 +127,13 @@ static void monitor_task_handle(void *pvParameters)
         switch(msg.ID)
         {
         case MSG_LED_MANAGER :
-            monitor_led_manage_event(msg.subID);
+            monitor_led_manage_event();
             break;
         case MSG_BATTERY_MANAGER :
-            monitor_battery_manage_event(msg.subID);
+            monitor_battery_manage_event();
             break;
         case MSG_AUTO_SLEEP_MANAGER :
-            monitor_auto_sleep_manage_event(msg.subID);
+            monitor_auto_sleep_manage_event();
             break;
         default :
             break;
@@ -159,19 +159,19 @@ static void monitor_msg_send(void *p_msg, bool in_isr)
     }
 }
 
-static void monitor_led_manage_event(uint8_t subID)
+static void monitor_led_manage_event(void)
 {
-    sys_logi(MONITOR_TAG, "led manage event, subID: %d", subID);
+    sys_logi(MONITOR_TAG, "led manage event");
 }
 
-static void monitor_battery_manage_event(uint8_t subID)
+static void monitor_battery_manage_event(void)
 {
-    sys_logi(MONITOR_TAG, "battery manage event, subID: %d", subID);
+    sys_logi(MONITOR_TAG, "battery manage event");
 }
 
-static void monitor_auto_sleep_manage_event(uint8_t subID)
+static void monitor_auto_sleep_manage_event(void)
 {
-    sys_logi(MONITOR_TAG, "auto sleep manage event, subID: %d", subID);
+    sys_logi(MONITOR_TAG, "auto sleep manage event");
 }
 
 static void monitor_timer_callback(TimerHandle_t xTimer)

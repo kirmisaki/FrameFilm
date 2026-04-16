@@ -32,7 +32,6 @@ enum
 typedef struct
 {
     uint8_t ID;
-    uint8_t subID;
 } monitor_msg_t;
 
 /*********************************************************************
