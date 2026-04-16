@@ -196,8 +196,6 @@ void hal_epd_init(void)
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
     
-    EPD_W21_PWR_ON;
-    
     // Initialize SPI bus
     spi_init();
     
@@ -206,6 +204,8 @@ void hal_epd_init(void)
 
 void hal_epd_display_init(void)
 {
+    EPD_W21_PWR_ON;
+
     reset();
     lcd_chkstatus();
     vTaskDelay(30 / portTICK_PERIOD_MS);
@@ -524,4 +524,14 @@ void hal_epd_sleep(void)
     EPD_W21_WriteDATA(0xA5);
     
     sys_logi(EPD_TAG, "EPD entered sleep mode");
+}
+
+void hal_epd_pwroff(void)
+{
+    hal_epd_sleep();
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+
+    EPD_W21_PWR_OFF;
+    
+    sys_logi(EPD_TAG, "EPD power off");
 }

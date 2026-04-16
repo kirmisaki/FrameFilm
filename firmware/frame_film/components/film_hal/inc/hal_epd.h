@@ -165,6 +165,13 @@ void hal_epd_display_pic(const unsigned char* picData);
  */
 void hal_epd_sleep(void);
 
+/**
+ * @brief 电子纸关闭电源
+ *
+ * 此函数用于将电子纸电源关闭，以节省电量。
+ */
+void hal_epd_pwroff(void);
+
 #ifdef __cplusplus
 }
 #endif
