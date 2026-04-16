@@ -142,6 +142,7 @@ extern void service_ble_gatt_server_reinit(void);
 extern void service_ble_gatts_dev_disconnect(void);
 extern void service_ble_send_notify_data(uint8_t ch, uint8_t *buf, uint16_t len);
 extern void service_ble_gatts_cmd_register_cb(service_ble_gatts_cmd_cb_t cb);
+extern uint8_t service_ble_gatts_get_connect(void);
 
 
 #ifdef __cplusplus

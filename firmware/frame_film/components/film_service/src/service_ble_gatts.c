@@ -1118,6 +1118,11 @@ void service_ble_gatts_dev_disconnect(void)
     }
 }
 
+uint8_t service_ble_gatts_get_connect(void)
+{
+    return ble_gatts_connect;
+}
+
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     switch (event)
