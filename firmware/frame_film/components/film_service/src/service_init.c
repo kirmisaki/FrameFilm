@@ -36,6 +36,7 @@
 #include "service_init.h"
 #include "service_ble.h"
 #include "service_param.h"
+#include "service_monitor.h"
 
 
 /*********************************************************************
@@ -80,5 +81,7 @@ void service_init(void)
     service_param_init();
     // 初始化ble服务
     service_ble_init();
+    // 初始化监控服务
+    service_monitor_init();
 }
 

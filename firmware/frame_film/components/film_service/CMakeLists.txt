@@ -4,6 +4,7 @@ set(srcs "src/service_init.c"
          "src/service_ota.c"
          "src/service_image.c"
          "src/service_param.c"
+         "src/service_monitor.c"
          )
 
 set(public_include "inc")
