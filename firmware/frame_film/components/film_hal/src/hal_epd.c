@@ -43,6 +43,8 @@
 /*********************************************************************
  * MACROS
  */
+#define EPD_WIDTH                         (600)
+#define EPD_HEIGHT                        (400)
 
 /*********************************************************************
 * TYPEDEFS
@@ -478,13 +480,13 @@ void hal_epd_display_pic(const unsigned char* picData)
     unsigned char data_H,data_L,data;
     
     EPD_W21_WriteCMD(0x10);        
-    for(i=0;i<400;i++)
+    for(i=0;i<EPD_HEIGHT;i++)
     {
         k=0;
-        for(j=0;j<600/2;j++)
+        for(j=0;j<EPD_WIDTH/2;j++)
         {
-            temp1=picData[i*600+k++]; 
-            temp2=picData[i*600+k++];
+            temp1=picData[i*EPD_WIDTH+k++]; 
+            temp2=picData[i*EPD_WIDTH+k++];
             data_H=color_get(temp1)<<4;
             data_L=color_get(temp2);
             data=data_H|data_L;
