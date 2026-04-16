@@ -42,6 +42,13 @@
 
 #include "sys_log.h"
 
+#include "hal_api.h"
+#include "hal_led.h"
+#include "hal_bat.h"
+#include "hal_encoder.h"
+#include "hal_epd.h"
+#include "hal_pwr.h"
+#include "service_ble_gatts.h"
 #include "service_monitor.h"
 
 /*********************************************************************
@@ -56,12 +63,24 @@
 #define SYS_OS_SIZE_MONITOR_TASK       (4096)
 #define SYS_OS_NAME_MONITOR_TASK       "monitor_task"
 
-#define MONITOR_TIMER_TICKS            pdMS_TO_TICKS(100)   //100ms
+#define MONITOR_TIMER_BASE_INTERVAL_MS (100)
+
+#define MONITOR_LED_TICK_COUNT         (MONITOR_LED_UPDATE_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
+#define MONITOR_BAT_TICK_COUNT         (MONITOR_BAT_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
+#define MONITOR_SLEEP_TICK_COUNT       (MONITOR_SLEEP_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
 
 /*********************************************************************
 * TYPEDEFS
 */
-
+typedef struct
+{
+    uint8_t ble_connected;
+    uint8_t bat_level;
+    uint8_t led_state;
+    uint32_t sleep_counter;
+    uint8_t last_encoder_state;
+    uint32_t tick_counter;
+} monitor_state_t;
 
 /*********************************************************************
  * CONSTANTS
@@ -74,6 +93,7 @@
 static TaskHandle_t m_monitor_task_hdl = NULL;
 static QueueHandle_t m_monitor_msg_hdl = NULL;
 static TimerHandle_t m_monitor_timer = NULL;
+static monitor_state_t m_monitor_state;
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -90,6 +110,7 @@ static void monitor_timer_callback(TimerHandle_t xTimer);
 static void monitor_led_manage_event(void);
 static void monitor_battery_manage_event(void);
 static void monitor_auto_sleep_manage_event(void);
+static void monitor_enter_low_power(void);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
@@ -98,6 +119,11 @@ static void monitor_auto_sleep_manage_event(void);
 
 void service_monitor_init(void)
 {
+    memset(&m_monitor_state, 0, sizeof(monitor_state_t));
+    m_monitor_state.bat_level = 100;
+    m_monitor_state.led_state = 0;
+    m_monitor_state.tick_counter = 0;
+
     if(m_monitor_task_hdl == NULL)
     {
         if ( pdPASS != xTaskCreate( monitor_task_handle, SYS_OS_NAME_MONITOR_TASK, SYS_OS_SIZE_MONITOR_TASK, NULL, SYS_OS_PRI_MONITOR_TASK, NULL ))
@@ -108,7 +134,7 @@ void service_monitor_init(void)
 
     if(m_monitor_timer == NULL)
     {
-        m_monitor_timer = xTimerCreate( "monitor_timer", MONITOR_TIMER_TICKS, pdTRUE, NULL, monitor_timer_callback );
+        m_monitor_timer = xTimerCreate( "monitor_timer", pdMS_TO_TICKS(MONITOR_TIMER_BASE_INTERVAL_MS), pdTRUE, NULL, monitor_timer_callback );
         SYS_ERROR_CHECK(m_monitor_timer == NULL);
     }
     xTimerStart(m_monitor_timer, 0);
@@ -149,7 +175,7 @@ static void monitor_msg_send(void *p_msg, bool in_isr)
         {
             SYS_ERROR_CHECK((xQueueSend(m_monitor_msg_hdl, p_msg, portMAX_DELAY) != pdPASS));
         }
-        else /* Is In interrupt.*/
+        else
         {
             BaseType_t xHigherPriorityTaskWoken;
             xHigherPriorityTaskWoken = pdFALSE;
@@ -159,22 +185,86 @@ static void monitor_msg_send(void *p_msg, bool in_isr)
     }
 }
 
+static void monitor_timer_callback(TimerHandle_t xTimer)
+{
+    monitor_msg_t msg;
+    
+    m_monitor_state.tick_counter++;
+
+    if((m_monitor_state.tick_counter % MONITOR_LED_TICK_COUNT) == 0)
+    {
+        msg.ID = MSG_LED_MANAGER;
+        monitor_msg_send(&msg, 0);
+    }
+
+    if((m_monitor_state.tick_counter % MONITOR_BAT_TICK_COUNT) == 0)
+    {
+        msg.ID = MSG_BATTERY_MANAGER;
+        monitor_msg_send(&msg, 0);
+    }
+
+    if((m_monitor_state.tick_counter % MONITOR_SLEEP_TICK_COUNT) == 0)
+    {
+        msg.ID = MSG_AUTO_SLEEP_MANAGER;
+        monitor_msg_send(&msg, 0);
+    }
+}
+
 static void monitor_led_manage_event(void)
 {
-    sys_logi(MONITOR_TAG, "led manage event");
+    m_monitor_state.ble_connected = service_ble_gatts_get_connect();
+
+    if(m_monitor_state.bat_level < MONITOR_BAT_LOW_THRESHOLD)
+    {
+        hal_led_set_color(LED_COLOR_RED);
+    }
+    else if(m_monitor_state.ble_connected)
+    {
+        hal_led_set_color(LED_COLOR_GREEN);
+    }
+    else
+    {
+        hal_led_set_color(LED_COLOR_BLUE);
+    }
 }
 
 static void monitor_battery_manage_event(void)
 {
-    sys_logi(MONITOR_TAG, "battery manage event");
+    m_monitor_state.bat_level = (uint8_t)hal_bat_get_level();
+    sys_logi(MONITOR_TAG, "battery level: %d%%", m_monitor_state.bat_level);
+
+    if(m_monitor_state.bat_level < MONITOR_BAT_CRITICAL_THRESHOLD)
+    {
+        sys_logi(MONITOR_TAG, "battery critical low, entering low power mode");
+        monitor_enter_low_power();
+    }
 }
 
 static void monitor_auto_sleep_manage_event(void)
 {
-    sys_logi(MONITOR_TAG, "auto sleep manage event");
+    encoder_press_type_t encoder_state = hal_encoder_get_press();
+    m_monitor_state.ble_connected = service_ble_gatts_get_connect();
+
+    if(encoder_state != ENCODER_PRESS_NONE)
+    {
+        m_monitor_state.sleep_counter = 0;
+    }
+    else
+    {
+        m_monitor_state.sleep_counter++;
+    }
+
+    if(!m_monitor_state.ble_connected && 
+       m_monitor_state.sleep_counter >= MONITOR_AUTO_SLEEP_TIMEOUT_SEC)
+    {
+        sys_logi(MONITOR_TAG, "auto sleep timeout, entering low power mode");
+        monitor_enter_low_power();
+    }
 }
 
-static void monitor_timer_callback(TimerHandle_t xTimer)
+static void monitor_enter_low_power(void)
 {
-    
+    hal_led_set_color(LED_COLOR_BLACK);
+    hal_epd_pwroff();
+    hal_pwr_enter_sleep();
 }

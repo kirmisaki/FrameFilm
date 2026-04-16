@@ -17,6 +17,17 @@ extern "C" {
 /*********************************************************************
  * MACROS
  */
+// LED管理参数
+#define MONITOR_LED_UPDATE_INTERVAL_MS      (500)    // LED状态更新间隔 500ms
+
+// 电池管理参数
+#define MONITOR_BAT_CHECK_INTERVAL_MS       (30000)  // 电池检测间隔 30s
+#define MONITOR_BAT_LOW_THRESHOLD           (10)     // 低电量阈值 10%
+#define MONITOR_BAT_CRITICAL_THRESHOLD      (5)      // 极低电量阈值 5%
+
+// 自动休眠管理参数
+#define MONITOR_SLEEP_CHECK_INTERVAL_MS     (200)    // 休眠检测间隔 200ms
+#define MONITOR_AUTO_SLEEP_TIMEOUT_SEC      (300)    // 自动休眠超时时间 5min (300s)
 
 
 /*********************************************************************
