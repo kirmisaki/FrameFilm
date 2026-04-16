@@ -75,8 +75,8 @@ typedef struct
 static led_strip_handle_t m_rgb;
 static led_t m_led =
 {
-    .brightness = 0,
-    .color = 0xffffff
+    .brightness = 20,
+    .color = LED_COLOR_LIGHT_BLUE
 };
 
 /*********************************************************************

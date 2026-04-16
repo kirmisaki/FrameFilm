@@ -23,22 +23,19 @@ extern "C" {
 /*********************************************************************
 * TYPEDEFS
 */
-// 定义LED颜色结构体
-typedef struct
-{
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-} led_color_t;
+// 定义常用颜色
+#define LED_COLOR_RED           (0xFF0000)    // 红色
+#define LED_COLOR_GREEN         (0x00FF00)    // 绿色
+#define LED_COLOR_BLUE          (0x0000FF)    // 蓝色
+#define LED_COLOR_WHITE         (0xFFFFFF)    // 白色
+#define LED_COLOR_BLACK         (0x000000)    // 黑色
+#define LED_COLOR_LIGHT_BLUE    (0x87CEEB)    // 浅蓝色
+#define LED_COLOR_LIGHT_RED     (0xFFB6C1)    // 浅红色
+#define LED_COLOR_EMERALD       (0x00FF7F)    // 翠绿色
+#define LED_COLOR_YELLOW        (0xFFFF00)    // 黄色
+#define LED_COLOR_PURPLE        (0x800080)    // 紫色
+#define LED_COLOR_ORANGE        (0xFFA500)    // 橙色
 
-// 定义LED对象结构体
-typedef struct
-{
-    led_color_t current_color;
-    uint8_t brightness;
-    led_strip_config_t strip_config;
-    led_strip_handle_t strip_handle;
-} led_object_t;
 
 /*********************************************************************
  * CONSTANTS
