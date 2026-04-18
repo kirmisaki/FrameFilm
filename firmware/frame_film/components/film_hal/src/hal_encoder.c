@@ -33,10 +33,6 @@
 /*********************************************************************
  * INCLUDES
  */
-#include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
-
-#include "encoder.h"
 #include "iot_button.h"
 
 #include "sys_log.h"
@@ -52,7 +48,13 @@
 #define ENCODER_PIN_DIFFB                 (10)
 #define ENCODER_PIN_PUSH                  (9)
 
-#define ENCODER_EV_QUEUE_LEN              (5)
+#define ENCODER_BTN_PUSH                  (0)
+#define ENCODER_BTN_UP                    (1)
+#define ENCODER_BTN_DOWN                  (2)
+#define ENCODER_BUTTON_NUM                (3)
+
+#define ENCODER_MIN_TICKS                 (20)
+#define ENCODER_MAX_TICKS                 (100)
 
 #define ENCODER_BUTTON_ACTIVE_LEVEL       (0)
 
@@ -61,10 +63,9 @@
 */
 typedef struct
 {
-    button_handle_t btn;
-    QueueHandle_t event_queue;
-    rotary_encoder_handle_t re;
+    button_handle_t btn[ENCODER_BUTTON_NUM];
     encoder_press_type_t status;
+    encoder_press_type_t statustmp;
 } encoder_t;
 
 /*********************************************************************
@@ -89,20 +90,21 @@ static encoder_t m_encoder;
 static void button_press_pressed_cb(void *arg, void *data);
 static void button_press_short_cb(void *arg, void *data);
 static void button_press_long_cb(void *arg, void *data);
-
-static void encoder_event_handler(const rotary_encoder_event_t *event, void *ctx);
-static void encoder_task(void *arg);
+static void button_press_up_cb(void *arg, void *data);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
 
 
+
 void hal_encoder_init(void)
 {
     m_encoder.status = ENCODER_PRESS_NONE;
+    m_encoder.statustmp = ENCODER_PRESS_NONE;
 
-    button_config_t cfg = {
+    button_config_t cfg =
+    {
         .type = BUTTON_TYPE_GPIO,
         .long_press_time = CONFIG_BUTTON_LONG_PRESS_TIME_MS,
         .short_press_time = CONFIG_BUTTON_SHORT_PRESS_TIME_MS,
@@ -111,32 +113,17 @@ void hal_encoder_init(void)
             .active_level = ENCODER_BUTTON_ACTIVE_LEVEL,
         },
     };
-    m_encoder.btn = iot_button_create(&cfg);
-    iot_button_register_cb(m_encoder.btn, BUTTON_PRESS_DOWN, button_press_pressed_cb, NULL);
-    iot_button_register_cb(m_encoder.btn, BUTTON_PRESS_UP, button_press_pressed_cb, NULL);
-    iot_button_register_cb(m_encoder.btn, BUTTON_SINGLE_CLICK, button_press_short_cb, NULL);
-    iot_button_register_cb(m_encoder.btn, BUTTON_LONG_PRESS_START, button_press_long_cb, NULL);
-
-    // Create queue for rotary encoder events
-    m_encoder.event_queue = xQueueCreate(ENCODER_EV_QUEUE_LEN, sizeof(rotary_encoder_event_t));
-
-    // Create an encoder
-    rotary_encoder_config_t config = ROTARY_ENCODER_DEFAULT_CONFIG();
-    config.pin_a = ENCODER_PIN_DIFFA;
-    config.pin_b = ENCODER_PIN_DIFFB;
-    config.pin_btn = ENCODER_PIN_PUSH;
-    config.callback = encoder_event_handler;
-    config.callback_ctx = m_encoder.event_queue;
-    config.acceleration_threshold_ms = 100;
-    config.acceleration_cap_ms = 1;
-    esp_err_t ret = rotary_encoder_create(&config, &m_encoder.re);
-
-    if (ret != ESP_OK)
-    {
-        sys_loge(ENCODER_TAG, "Failed to create encoder: %d", ret);
-        return;
-    }
-    xTaskCreate(encoder_task, "encoder_task", 4096, NULL, 5, NULL);
+    m_encoder.btn[ENCODER_BTN_PUSH] = iot_button_create(&cfg);
+    cfg.gpio_button_config.gpio_num = ENCODER_PIN_DIFFA;
+    m_encoder.btn[ENCODER_BTN_UP] = iot_button_create(&cfg);
+    cfg.gpio_button_config.gpio_num = ENCODER_PIN_DIFFB;
+    m_encoder.btn[ENCODER_BTN_DOWN] = iot_button_create(&cfg);
+    iot_button_register_cb(m_encoder.btn[ENCODER_BTN_PUSH], BUTTON_PRESS_DOWN, button_press_pressed_cb, NULL);
+    iot_button_register_cb(m_encoder.btn[ENCODER_BTN_PUSH], BUTTON_PRESS_UP, button_press_pressed_cb, NULL);
+    iot_button_register_cb(m_encoder.btn[ENCODER_BTN_PUSH], BUTTON_SINGLE_CLICK, button_press_short_cb, NULL);
+    iot_button_register_cb(m_encoder.btn[ENCODER_BTN_PUSH], BUTTON_LONG_PRESS_START, button_press_long_cb, NULL);
+    iot_button_register_cb(m_encoder.btn[ENCODER_BTN_UP], BUTTON_PRESS_DOWN, button_press_up_cb, NULL);
+    iot_button_register_cb(m_encoder.btn[ENCODER_BTN_UP], BUTTON_PRESS_UP, button_press_up_cb, NULL);
 }
 
 encoder_press_type_t hal_encoder_get_press(void)
@@ -150,45 +137,11 @@ encoder_press_type_t hal_encoder_get_press(void)
 }
 
 
-static void encoder_event_handler(const rotary_encoder_event_t *event, void *ctx)
-{
-    QueueHandle_t queue = (QueueHandle_t)ctx;
-    xQueueSendToBack(queue, event, 0);
-}
-
-static void encoder_task(void *arg)
-{
-    rotary_encoder_event_t e;
-
-    while (1)
-    {
-        xQueueReceive(m_encoder.event_queue, &e, portMAX_DELAY);
-
-        switch (e.type)
-        {
-        case RE_ET_CHANGED:
-            if (e.diff > 0)
-            {
-                m_encoder.status = ENCODER_PRESS_UP;
-                sys_logi(ENCODER_TAG, "ENCODER DIFF+");
-            }
-            else if (e.diff < 0)
-            {
-                m_encoder.status = ENCODER_PRESS_DOWN;
-                sys_logi(ENCODER_TAG, "ENCODER DIFF-");
-            }
-            break;
-        default:
-            break;
-        }
-    }
-}
-
 static void button_press_pressed_cb(void *arg, void *data)
 {
     if(iot_button_get_event(arg) == BUTTON_PRESS_DOWN)
     {
-        // m_encoder.status = ENCODER_PRESS_PRESSED;
+        m_encoder.status = ENCODER_PRESS_PRESSED;
     }
     else if(iot_button_get_event(arg) == BUTTON_PRESS_UP)
     {
@@ -206,4 +159,42 @@ static void button_press_long_cb(void *arg, void *data)
 {
     m_encoder.status = ENCODER_PRESS_LONG;
     sys_logi(ENCODER_TAG, "ENCODER LONG PUSH");
+}
+
+static void button_press_up_cb(void *arg, void *data)
+{
+    if(!iot_button_get_key_level(m_encoder.btn[ENCODER_BTN_PUSH]))
+    {
+        if(iot_button_get_event(arg) == BUTTON_PRESS_DOWN)
+        {
+            if(iot_button_get_key_level(m_encoder.btn[ENCODER_BTN_DOWN]))
+            {
+                m_encoder.statustmp = ENCODER_PRESS_DOWN;
+            }
+            else
+            {
+                m_encoder.statustmp = ENCODER_PRESS_UP;
+            }
+        }
+        else if(iot_button_get_event(arg) == BUTTON_PRESS_UP)
+        {
+            uint32_t ticks = iot_button_get_ticks_time(m_encoder.btn[ENCODER_BTN_UP]);
+            if(ticks > ENCODER_MIN_TICKS && ticks < ENCODER_MAX_TICKS)
+            {
+                m_encoder.status = m_encoder.statustmp;
+                if(m_encoder.status == ENCODER_PRESS_UP)
+                {
+                    sys_logi(ENCODER_TAG, "ENCODER DIFF+");
+                }
+                else if(m_encoder.status == ENCODER_PRESS_DOWN)
+                {
+                    sys_logi(ENCODER_TAG, "ENCODER DIFF-");
+                }
+            }
+            else
+            {
+                m_encoder.statustmp = ENCODER_PRESS_NONE;
+            }
+        }
+    }
 }

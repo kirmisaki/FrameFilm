@@ -68,14 +68,6 @@ extern void hal_encoder_init(void);
  */
 extern encoder_press_type_t hal_encoder_get_press(void);
 
-/**
- * @brief 设置编码器的提示音启用状态
- * 该函数用于控制编码器的提示音是否启用。
- * @param enable 一个无符号8位整数，当值非零时表示启用提示音，值为零时表示禁用提示音。
- */
-extern void hal_encoder_set_tone(uint8_t enable);
-
-
 #ifdef __cplusplus
 }
 #endif
