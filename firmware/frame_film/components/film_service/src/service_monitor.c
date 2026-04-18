@@ -68,6 +68,7 @@
 #define MONITOR_LED_TICK_COUNT         (MONITOR_LED_UPDATE_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
 #define MONITOR_BAT_TICK_COUNT         (MONITOR_BAT_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
 #define MONITOR_SLEEP_TICK_COUNT       (MONITOR_SLEEP_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
+#define MONITOR_AUTO_SLEEP_TICK_COUNT  (MONITOR_AUTO_SLEEP_TIMEOUT_SEC * 1000 / MONITOR_SLEEP_CHECK_INTERVAL_MS)
 
 /*********************************************************************
 * TYPEDEFS
@@ -144,7 +145,7 @@ static void monitor_task_handle(void *pvParameters)
 {
     m_monitor_msg_hdl = xQueueCreate( MONITOR_MSG_QUEUE_LENGTH, MONITOR_MSG_QUEUE_ITEM_SIZE );
     SYS_ERROR_CHECK(m_monitor_msg_hdl == NULL);
-  
+
     for(;;)
     {
         monitor_msg_t msg;
@@ -188,7 +189,7 @@ static void monitor_msg_send(void *p_msg, bool in_isr)
 static void monitor_timer_callback(TimerHandle_t xTimer)
 {
     monitor_msg_t msg;
-    
+
     m_monitor_state.tick_counter++;
 
     if((m_monitor_state.tick_counter % MONITOR_LED_TICK_COUNT) == 0)
@@ -254,8 +255,8 @@ static void monitor_auto_sleep_manage_event(void)
         m_monitor_state.sleep_counter++;
     }
 
-    if(!m_monitor_state.ble_connected && 
-       m_monitor_state.sleep_counter >= MONITOR_AUTO_SLEEP_TIMEOUT_SEC)
+    if(!m_monitor_state.ble_connected &&
+            m_monitor_state.sleep_counter >= MONITOR_AUTO_SLEEP_TICK_COUNT)
     {
         sys_logi(MONITOR_TAG, "auto sleep timeout, entering low power mode");
         monitor_enter_low_power();

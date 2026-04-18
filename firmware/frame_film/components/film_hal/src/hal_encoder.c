@@ -185,7 +185,8 @@ static void rotary_encoder_init(void)
     m_rotary.direction = ENCODER_PRESS_NONE;
     m_rotary.debouncing = false;
 
-    gpio_config_t io_conf = {
+    gpio_config_t io_conf =
+    {
         .intr_type = GPIO_INTR_ANYEDGE,
         .mode = GPIO_MODE_INPUT,
         .pin_bit_mask = DIFFA_PIN_SEL | DIFFB_PIN_SEL,
@@ -194,16 +195,16 @@ static void rotary_encoder_init(void)
     };
     gpio_config(&io_conf);
 
-    esp_timer_create_args_t timer_args = {
+    esp_timer_create_args_t timer_args =
+    {
         .callback = &rotary_encoder_debounce,
         .arg = NULL,
         .name = "rotary_debounce"
     };
     esp_timer_create(&timer_args, &m_debounce_timer);
 
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(ENCODER_PIN_DIFFA, diff_isr_handler, (void*)ENCODER_PIN_DIFFA);
-    gpio_isr_handler_add(ENCODER_PIN_DIFFB, diff_isr_handler, (void*)ENCODER_PIN_DIFFB);
+    gpio_isr_handler_add(ENCODER_PIN_DIFFA, diff_isr_handler, (void *)ENCODER_PIN_DIFFA);
+    gpio_isr_handler_add(ENCODER_PIN_DIFFB, diff_isr_handler, (void *)ENCODER_PIN_DIFFB);
 
     m_rotary.last_state = (gpio_get_level(ENCODER_PIN_DIFFA) << 1) | gpio_get_level(ENCODER_PIN_DIFFB);
 }
@@ -214,7 +215,7 @@ static void diff_isr_handler(void *arg)
     {
         return;
     }
-    
+
     esp_timer_start_once(m_debounce_timer, ENCODER_DEBOUNCE_TIME_US);
     m_rotary.debouncing = true;
 }
