@@ -1,5 +1,5 @@
-#ifndef __SERVICE_PERI_H__
-#define __SERVICE_PERI_H__
+#ifndef __SERVICE_FILM_H__
+#define __SERVICE_FILM_H__
 
 
 /*********************************************************************
@@ -54,4 +54,4 @@ extern "C" {
 }
 #endif
 
-#endif /* __SERVICE_PERI_H__ */
+#endif /* __SERVICE_FILM_H__ */
