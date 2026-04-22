@@ -259,12 +259,25 @@ static void file_list_refresh_event(void)
     }
     m_file_state.file_count = 0;
 
-    // 扫描目录
+    // 检查目录是否存在，不存在则创建
     DIR* dir = opendir(FILM_DIR);
     if(dir == NULL)
     {
-        sys_logw(FILE_TAG, "Open film directory failed");
-        return;
+        sys_logi(FILE_TAG, "Film directory not found, creating...");
+        // 创建目录
+        if(mkdir(FILM_DIR, 0777) != 0)
+        {
+            sys_loge(FILE_TAG, "Create film directory failed");
+            return;
+        }
+        sys_logi(FILE_TAG, "Film directory created successfully");
+        // 重新打开目录
+        dir = opendir(FILM_DIR);
+        if(dir == NULL)
+        {
+            sys_logw(FILE_TAG, "Open film directory failed");
+            return;
+        }
     }
 
     // 先统计文件数量
@@ -273,6 +286,7 @@ static void file_list_refresh_event(void)
     {
         if(entry->d_type == DT_REG)
         {
+            sys_logi(FILE_TAG, "Found file: %s", entry->d_name);
             char* ext = strrchr(entry->d_name, '.');
             if(ext && strcmp(ext, FILM_FILE_EXT) == 0)
             {
