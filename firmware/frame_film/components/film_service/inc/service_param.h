@@ -22,10 +22,16 @@ extern "C" {
 /*********************************************************************
 * TYPEDEFS
 */
+typedef struct
+{
+
+} ServiceFilm_Def_t;
+
 #pragma pack(4)
 typedef struct
 {
     uint8_t factory_flag;
+    ServiceFilm_Def_t film;
 } ServiceParam_Def_t; /*服务参数*/
 #pragma pack()
 
