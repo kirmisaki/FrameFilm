@@ -266,7 +266,7 @@ static void film_display_event(uint32_t file_id)
     // 更新状态
     g_service_param.film.current_file_id = file_id;
     g_service_param.film.load_complete = 0;
-    service_param_save();
+    // service_param_save();
 }
 
 static void film_refresh_task(void *pvParameters)
