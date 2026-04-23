@@ -167,6 +167,8 @@ static void film_msg_send(void *p_msg, bool in_isr)
 
 static void film_init_event(void)
 {
+    sys_logi(FILM_TAG, "Film init event complete %d play mode %d", g_service_param.film.load_complete, g_service_param.film.play_mode);
+
     // 检查服务参数
     if(g_service_param.film.load_complete)
     {
@@ -251,7 +253,9 @@ static void film_refresh_task(void *pvParameters)
     uint8_t* buffer = (uint8_t*)pvParameters;
     
     // 调用EPD显示接口
+    hal_epd_display_init();
     hal_epd_display_pic(buffer);
+    hal_epd_pwroff();
 
     // 更新状态
     g_service_param.film.load_complete = 1;
