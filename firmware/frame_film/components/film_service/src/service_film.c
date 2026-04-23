@@ -209,11 +209,18 @@ static void film_display_event(uint32_t file_id)
     // 加载文件
     service_file_load(file_id);
 
-    // 获取文件数据
-    uint8_t* buffer = service_file_get_buffer();
+    // 等待文件加载完成（最多等待3秒）
+    uint32_t wait_count = 0;
+    uint8_t* buffer = NULL;
+    while((buffer = service_file_get_buffer()) == NULL && wait_count < 300)
+    {
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+        wait_count++;
+    }
+    
     if(buffer == NULL)
     {
-        sys_loge(FILM_TAG, "Failed to get file buffer");
+        sys_loge(FILM_TAG, "Failed to get file buffer after timeout");
         return;
     }
 
