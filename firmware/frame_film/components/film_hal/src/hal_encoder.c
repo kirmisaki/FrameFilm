@@ -57,6 +57,7 @@
 #define ENCODER_MAX_TICKS                 (50)
 
 #define ENCODER_BUTTON_ACTIVE_LEVEL       (0)
+#define ENCODER_MAX_CALLBACKS             (5)
 
 /*********************************************************************
 * TYPEDEFS
@@ -66,6 +67,8 @@ typedef struct
     button_handle_t btn[ENCODER_BUTTON_NUM];
     encoder_press_type_t status;
     encoder_press_type_t statustmp;
+    encoder_callback_t cbs[ENCODER_PRESS_MAX][ENCODER_MAX_CALLBACKS];
+    int cb_counts[ENCODER_PRESS_MAX];
 } encoder_t;
 
 /*********************************************************************
@@ -102,6 +105,15 @@ void hal_encoder_init(void)
 {
     m_encoder.status = ENCODER_PRESS_NONE;
     m_encoder.statustmp = ENCODER_PRESS_NONE;
+
+    for(int i = 0; i < ENCODER_PRESS_MAX; i++)
+    {
+        m_encoder.cb_counts[i] = 0;
+        for(int j = 0; j < ENCODER_MAX_CALLBACKS; j++)
+        {
+            m_encoder.cbs[i][j] = NULL;
+        }
+    }
 
     button_config_t cfg =
     {
@@ -154,12 +166,26 @@ static void button_press_short_cb(void *arg, void *data)
 {
     m_encoder.status = ENCODER_PRESS_SHORT;
     sys_logi(ENCODER_TAG, "ENCODER SHORT PUSH");
+    for(int i = 0; i < m_encoder.cb_counts[ENCODER_PRESS_SHORT]; i++)
+    {
+        if(m_encoder.cbs[ENCODER_PRESS_SHORT][i])
+        {
+            m_encoder.cbs[ENCODER_PRESS_SHORT][i]();
+        }
+    }
 }
 
 static void button_press_long_cb(void *arg, void *data)
 {
     m_encoder.status = ENCODER_PRESS_LONG;
     sys_logi(ENCODER_TAG, "ENCODER LONG PUSH");
+    for(int i = 0; i < m_encoder.cb_counts[ENCODER_PRESS_LONG]; i++)
+    {
+        if(m_encoder.cbs[ENCODER_PRESS_LONG][i])
+        {
+            m_encoder.cbs[ENCODER_PRESS_LONG][i]();
+        }
+    }
 }
 
 static void button_press_up_cb(void *arg, void *data)
@@ -198,4 +224,48 @@ static void button_press_up_cb(void *arg, void *data)
             }
         }
     }
+}
+
+int hal_encoder_register_cb(encoder_press_type_t type, encoder_callback_t cb)
+{
+    if(!cb)
+    {
+        return -1;
+    }
+    if(type < 0 || type >= ENCODER_PRESS_MAX)
+    {
+        return -4;
+    }
+    if(m_encoder.cb_counts[type] >= ENCODER_MAX_CALLBACKS)
+    {
+        return -2;
+    }
+    m_encoder.cbs[type][m_encoder.cb_counts[type]++] = cb;
+    return 0;
+}
+
+int hal_encoder_unregister_cb(encoder_press_type_t type, encoder_callback_t cb)
+{
+    if(!cb)
+    {
+        return -1;
+    }
+    if(type < 0 || type >= ENCODER_PRESS_MAX)
+    {
+        return -4;
+    }
+    for(int i = 0; i < m_encoder.cb_counts[type]; i++)
+    {
+        if(m_encoder.cbs[type][i] == cb)
+        {
+            for(int j = i; j < m_encoder.cb_counts[type] - 1; j++)
+            {
+                m_encoder.cbs[type][j] = m_encoder.cbs[type][j + 1];
+            }
+            m_encoder.cbs[type][m_encoder.cb_counts[type] - 1] = NULL;
+            m_encoder.cb_counts[type]--;
+            return 0;
+        }
+    }
+    return -3;
 }
