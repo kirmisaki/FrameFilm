@@ -189,7 +189,6 @@ static void film_init_event(void)
 static void film_display_event(uint32_t file_id)
 {
     sys_logi(FILM_TAG, "Displaying file: %d", file_id);
-    sys_logi(FILM_TAG, "File name: %s", service_file_get_name(file_id));
 
     // 检查文件ID是否有效
     uint32_t file_count = service_file_get_count();
@@ -207,7 +206,15 @@ static void film_display_event(uint32_t file_id)
     }
 
     // 加载文件
-    service_file_load(file_id);
+    if(service_file_load(file_id) != 0)
+    {
+        sys_loge(FILM_TAG, "Failed to load file: %d", file_id);
+        return;
+    }
+    else
+    {
+        sys_logi(FILM_TAG, "File name: %s", service_file_get_name(file_id));
+    }
 
     // 等待文件加载完成（最多等待3秒）
     uint32_t wait_count = 0;
@@ -237,8 +244,6 @@ static void film_display_event(uint32_t file_id)
     g_service_param.film.current_file_id = file_id;
     g_service_param.film.load_complete = 0;
     service_param_save();
-
-    sys_logi(FILM_TAG, "Displaying file: %s", service_file_get_name(file_id));
 }
 
 static void film_refresh_task(void *pvParameters)

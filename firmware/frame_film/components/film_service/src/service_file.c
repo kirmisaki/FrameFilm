@@ -482,12 +482,19 @@ void service_file_refresh_list(void)
     file_msg_send(&msg, 0);
 }
 
-void service_file_load(uint32_t file_id)
+int service_file_load(uint32_t file_id)
 {
+    if(file_id >= m_file_state.file_count)
+    {
+        sys_logw(FILE_TAG, "Invalid file ID: %d, total files: %d", file_id, m_file_state.file_count);
+        return -1;
+    }
+    
     file_msg_t msg;
     msg.ID = MSG_FILE_LOAD;
     msg.file_id = file_id;
     file_msg_send(&msg, 0);
+    return 0;
 }
 
 void service_file_load_next(void)

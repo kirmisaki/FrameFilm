@@ -82,8 +82,9 @@ extern void service_file_refresh_list(void);
  * 此函数用于加载指定ID的文件到PSRAM。
  *
  * @param file_id 文件ID
+ * @return int 0:成功, -1:失败
  */
-extern void service_file_load(uint32_t file_id);
+extern int service_file_load(uint32_t file_id);
 
 /**
  * @brief 加载下一个文件
