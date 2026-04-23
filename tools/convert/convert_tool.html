@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>头文件转Film工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 10px 15px;
+            background-color: #2196F3;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .download-link:hover {
+            background-color: #0b7dda;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        .info {
+            color: #666;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>头文件转Film工具</h1>
+        <form id="convertForm">
+            <div class="form-group">
+                <label for="headerFile">选择头文件</label>
+                <input type="file" id="headerFile" accept=".h">
+                <div class="info">支持解析包含unsigned char数组的头文件，如image.h</div>
+            </div>
+            <button type="button" onclick="convertFile()">转换并下载</button>
+        </form>
+        <div class="result" id="result">
+            <!-- 结果将显示在这里 -->
+        </div>
+    </div>
+
+    <script>
+        function convertFile() {
+            const fileInput = document.getElementById('headerFile');
+            const resultDiv = document.getElementById('result');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                resultDiv.innerHTML = '<div class="error">请选择一个头文件</div>';
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const content = e.target.result;
+                    const binaryData = parseHeaderFile(content);
+                    
+                    if (binaryData.length === 0) {
+                        resultDiv.innerHTML = '<div class="error">无法从文件中提取数据</div>';
+                        return;
+                    }
+                    
+                    const fileName = file.name.replace('.h', '.film');
+                    const fileSize = binaryData.length;
+                    downloadFile(binaryData, fileName);
+                    
+                    resultDiv.innerHTML = `
+                        <h3>转换成功！</h3>
+                        <p>文件已转换为: ${fileName}</p>
+                        <p>文件大小: ${fileSize} 字节</p>
+                        <p class="info">建议保存到 bin 目录</p>
+                        <a href="#" class="download-link" onclick="event.preventDefault(); downloadFile(binaryData, '${fileName}');">重新下载</a>
+                    `;
+                } catch (error) {
+                    resultDiv.innerHTML = `<div class="error">转换失败: ${error.message}</div>`;
+                }
+            };
+            
+            reader.onerror = function() {
+                resultDiv.innerHTML = '<div class="error">读取文件失败</div>';
+            };
+            
+            reader.readAsText(file);
+        }
+        
+        function parseHeaderFile(content) {
+            // 提取数组内容，支持 unsigned char 和 uint8_t 类型
+            const arrayMatch = content.match(/(unsigned char|uint8_t)\s+\w+\s*\[\s*\d*\s*\]\s*(PROGMEM)?\s*=\s*\{([\s\S]*?)\};/);
+            if (!arrayMatch) {
+                throw new Error('未找到数组定义');
+            }
+            
+            const arrayContent = arrayMatch[3];
+            // 提取所有十六进制值，支持大小写
+            const hexValues = arrayContent.match(/0[Xx][0-9A-Fa-f]{2}/g);
+            
+            if (!hexValues) {
+                throw new Error('未找到十六进制值');
+            }
+            
+            // 转换为二进制数据
+            const binaryData = new Uint8Array(hexValues.length);
+            for (let i = 0; i < hexValues.length; i++) {
+                binaryData[i] = parseInt(hexValues[i], 16);
+            }
+            
+            return binaryData;
+        }
+        
+        function downloadFile(data, fileName) {
+            const blob = new Blob([data], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
