@@ -63,6 +63,10 @@
 #define FILE_SD_CHECK_INTERVAL_MS   (5000)
 #define FILE_SD_CHECK_TICK_COUNT    (FILE_SD_CHECK_INTERVAL_MS / FILE_TIMER_BASE_INTERVAL_MS)
 
+#define FILE_EPD_IMGAGE_WIDTH       (600)
+#define FILE_EPD_IMGAGE_HEIGHT      (400)
+#define FILE_EPD_IMGAGE_SIZE        (FILE_EPD_IMGAGE_WIDTH * FILE_EPD_IMGAGE_HEIGHT)
+
 /*********************************************************************
 * TYPEDEFS
 */
@@ -291,9 +295,25 @@ static void file_list_refresh_event(void)
             
             if(ext && strcmp(ext, FILM_FILE_EXT) == 0)
             {
-                // todo 检查文件大小是否符合要求是否为合法文件
-                
-                m_file_state.file_count++;
+                // 检查文件大小是否符合要求
+                char filepath[512];
+                snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, entry->d_name);
+                struct stat st;
+                if(stat(filepath, &st) == 0)
+                {
+                    if(st.st_size == FILE_EPD_IMGAGE_SIZE)
+                    {
+                        m_file_state.file_count++;
+                    }
+                    else
+                    {
+                        sys_logw(FILE_TAG, "File size not match: %s, expected: %d, actual: %d", entry->d_name, FILE_EPD_IMGAGE_SIZE, st.st_size);
+                    }
+                }
+                else
+                {
+                    sys_logw(FILE_TAG, "Get file size failed: %s", entry->d_name);
+                }
             }
         }
     }
@@ -329,23 +349,28 @@ static void file_list_refresh_event(void)
                 char* ext = strrchr(entry->d_name, '.');
                 if(ext && strcmp(ext, FILM_FILE_EXT) == 0)
                 {
-                    strncpy(m_file_state.file_list[index].filename, entry->d_name, sizeof(m_file_state.file_list[index].filename) - 1);
-                    m_file_state.file_list[index].filename[sizeof(m_file_state.file_list[index].filename) - 1] = '\0';
-
-                    // 获取文件大小
+                    // 检查文件大小
                     char filepath[512];
                     snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, entry->d_name);
                     struct stat st;
                     if(stat(filepath, &st) == 0)
                     {
-                        m_file_state.file_list[index].file_size = st.st_size;
+                        if(st.st_size == FILE_EPD_IMGAGE_SIZE)
+                        {
+                            strncpy(m_file_state.file_list[index].filename, entry->d_name, sizeof(m_file_state.file_list[index].filename) - 1);
+                            m_file_state.file_list[index].filename[sizeof(m_file_state.file_list[index].filename) - 1] = '\0';
+                            m_file_state.file_list[index].file_size = st.st_size;
+                            index++;
+                        }
+                        else
+                        {
+                            sys_logw(FILE_TAG, "Skip file size not match: %s, expected: %d, actual: %d", entry->d_name, FILE_EPD_IMGAGE_SIZE, st.st_size);
+                        }
                     }
                     else
                     {
-                        m_file_state.file_list[index].file_size = 0;
+                        sys_logw(FILE_TAG, "Skip file size get failed: %s", entry->d_name);
                     }
-
-                    index++;
                 }
             }
         }
