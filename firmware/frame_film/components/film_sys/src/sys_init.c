@@ -81,6 +81,4 @@ void sys_init(void)
     hal_init();
     // 服务层初始化
     service_init();
-    // // app初始化
-    // app_init();
 }
