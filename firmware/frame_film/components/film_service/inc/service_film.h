@@ -30,6 +30,7 @@ typedef enum {
     MSG_FILM_NEXT,             // 显示下一张图片
     MSG_FILM_INIT,             // 初始化播放
     MSG_FILM_AUTO_PLAY,        // 自动播放
+    MSG_FILM_CLEAR,            // EPD维护显示为白色用于长期保存
 } film_msg_type_t;
 
 typedef struct {

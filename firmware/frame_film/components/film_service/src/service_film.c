@@ -86,6 +86,7 @@ static void film_msg_send(void *p_msg, bool in_isr);
 static void film_display_event(uint32_t file_id);
 static void film_next_event(void);
 static void film_init_event(void);
+static void film_clear_event(void);
 static void film_refresh_task(void *pvParameters);
 
 /*********************************************************************
@@ -137,6 +138,9 @@ static void film_task_handle(void *pvParameters)
             case MSG_FILM_INIT:
                 film_init_event();
                 break;
+            case MSG_FILM_CLEAR:
+                film_clear_event();
+                break;
             default:
                 break;
             }
@@ -186,6 +190,16 @@ static void film_init_event(void)
         sys_logi(FILM_TAG, "Load not complete, refreshing image");
         film_display_event(g_service_param.film.current_file_id);
     }
+}
+
+static void film_clear_event(void)
+{
+    g_service_param.film.load_complete = 0;
+    service_param_save();
+
+    hal_epd_display_init();
+    hal_epd_display_white();
+    hal_epd_pwroff();
 }
 
 static void film_display_event(uint32_t file_id)
