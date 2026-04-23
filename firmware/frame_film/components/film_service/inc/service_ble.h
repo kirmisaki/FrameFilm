@@ -14,7 +14,7 @@ extern "C"{
 /*********************************************************************
  * MACROS
  */
-#define SYS_OS_PRI_BLE_TASK            (5)
+#define SYS_OS_PRI_BLE_TASK            (8)
 #define SYS_OS_SIZE_BLE_TASK           (4096)
 #define SYS_OS_NAME_BLE_TASK           "ble_task"
 

@@ -55,7 +55,7 @@
 #define FILE_MSG_QUEUE_LENGTH       30
 #define FILE_MSG_QUEUE_ITEM_SIZE    sizeof( file_msg_t )
 
-#define SYS_OS_PRI_FILE_TASK        (10)
+#define SYS_OS_PRI_FILE_TASK        (6)
 #define SYS_OS_SIZE_FILE_TASK       (4096)
 #define SYS_OS_NAME_FILE_TASK       "file_task"
 
@@ -288,8 +288,11 @@ static void file_list_refresh_event(void)
         {
             sys_logi(FILE_TAG, "Found file: %s", entry->d_name);
             char* ext = strrchr(entry->d_name, '.');
+            
             if(ext && strcmp(ext, FILM_FILE_EXT) == 0)
             {
+                // todo 检查文件大小是否符合要求是否为合法文件
+                
                 m_file_state.file_count++;
             }
         }

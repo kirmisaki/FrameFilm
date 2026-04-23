@@ -59,7 +59,7 @@
 #define MONITOR_MSG_QUEUE_LENGTH       30
 #define MONITOR_MSG_QUEUE_ITEM_SIZE    sizeof( monitor_msg_t )
 
-#define SYS_OS_PRI_MONITOR_TASK        (10)
+#define SYS_OS_PRI_MONITOR_TASK        (7)
 #define SYS_OS_SIZE_MONITOR_TASK       (4096)
 #define SYS_OS_NAME_MONITOR_TASK       "monitor_task"
 

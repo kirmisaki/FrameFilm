@@ -38,6 +38,7 @@
 #include "service_param.h"
 #include "service_monitor.h"
 #include "service_file.h"
+#include "service_film.h"
 
 
 /*********************************************************************
@@ -86,5 +87,7 @@ void service_init(void)
     service_monitor_init();
     // 初始化文件服务
     service_file_init();
+    // 初始化照片服务
+    service_film_init();
 }
 

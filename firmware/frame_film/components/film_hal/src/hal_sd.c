@@ -161,7 +161,7 @@ static void sd_det_init(void)
     gpio_config(&io_conf);
 
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-    xTaskCreate(sd_check_task, "sd_check_task", 4096, NULL, 10, NULL);
+    xTaskCreate(sd_check_task, "sd_check_task", 4096, NULL, 2, NULL);
 
     gpio_install_isr_service(0);
     gpio_isr_handler_add(PIN_NUM_DET, gpio_isr_handler, (void *) PIN_NUM_DET);
