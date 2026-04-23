@@ -106,6 +106,9 @@ static void service_param_set_default(void)
     g_service_param.factory_flag = SERVICE_FACTORY_DEFAULT_FLAG;
 
     // 参数还原
+    g_service_param.film.load_complete = 0;
+    g_service_param.film.play_mode = 0;
+    g_service_param.film.current_file_id = 0;
 }
 
 /**
