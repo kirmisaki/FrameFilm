@@ -202,6 +202,8 @@ static void film_clear_event(void)
     sys_logi(FILM_TAG, "Film clear event");
     
     g_service_param.film.load_complete = 0;
+    g_service_param.film.current_file_id = 0;
+    g_service_param.film.play_mode = 0;
     service_param_save();
 
     hal_epd_display_init();
