@@ -27,7 +27,7 @@ extern "C" {
 
 // 自动休眠管理参数
 #define MONITOR_SLEEP_CHECK_INTERVAL_MS     (200)    // 休眠检测间隔 200ms
-#define MONITOR_AUTO_SLEEP_TIMEOUT_SEC      (300)    // 自动休眠超时时间 5min (300s)
+#define MONITOR_AUTO_SLEEP_TIMEOUT_SEC      (180)    // 自动休眠超时时间 3min (180s)
 
 
 /*********************************************************************
