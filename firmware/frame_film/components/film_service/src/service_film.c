@@ -44,6 +44,7 @@
 
 #include "sys_log.h"
 #include "hal_epd.h"
+#include "hal_encoder.h"
 #include "service_file.h"
 #include "service_param.h"
 #include "service_film.h"
@@ -122,6 +123,10 @@ static void film_task_handle(void *pvParameters)
     msg.ID = MSG_FILM_INIT;
     film_msg_send(&msg, 0);
 
+    // 注册编码器回调
+    hal_encoder_register_cb(ENCODER_PRESS_SHORT, service_film_next);
+    hal_encoder_register_cb(ENCODER_PRESS_LONG, service_film_clear);
+
     for(;;)
     {
         film_msg_t msg;
@@ -194,6 +199,8 @@ static void film_init_event(void)
 
 static void film_clear_event(void)
 {
+    sys_logi(FILM_TAG, "Film clear event");
+    
     g_service_param.film.load_complete = 0;
     service_param_save();
 
@@ -321,6 +328,13 @@ void service_film_next(void)
 {
     film_msg_t msg;
     msg.ID = MSG_FILM_NEXT;
+    film_msg_send(&msg, 0);
+}
+
+void service_film_clear(void)
+{
+    film_msg_t msg;
+    msg.ID = MSG_FILM_CLEAR;
     film_msg_send(&msg, 0);
 }
 

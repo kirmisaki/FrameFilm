@@ -86,6 +86,13 @@ extern void service_film_display(uint32_t file_id);
 extern void service_film_next(void);
 
 /**
+ * @brief 清除显示
+ *
+ * 此函数用于清除当前显示的图片，维护EPD显示为白色。
+ */
+extern void service_film_clear(void);
+
+/**
  * @brief 设置播放模式
  *
  * 此函数用于设置播放模式。
