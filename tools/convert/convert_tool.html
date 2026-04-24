@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>头文件转Film工具</title>
+    <title>Film转换工具</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -36,6 +36,16 @@
             border: 1px solid #ddd;
             border-radius: 4px;
         }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin: 10px 0;
+        }
         button {
             background-color: #4CAF50;
             color: white;
@@ -46,6 +56,9 @@
             font-size: 16px;
         }
         button:hover {
+            background-color: #45a049;
+        }
+        button.active {
             background-color: #45a049;
         }
         .result {
@@ -75,28 +88,166 @@
             margin-top: 10px;
             font-size: 14px;
         }
+        /* 标签页样式 */
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            background-color: #f1f1f1;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background-color: white;
+            font-weight: bold;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        /* 画布样式 */
+        #canvas {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 15px auto;
+            display: block;
+        }
+        /* 按钮组样式 */
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        /* 滑块容器样式 */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .slider-container label {
+            flex: 0 0 120px;
+            margin: 0;
+        }
+        /* 选择框样式 */
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>头文件转Film工具</h1>
-        <form id="convertForm">
-            <div class="form-group">
-                <label for="headerFile">选择头文件</label>
-                <input type="file" id="headerFile" accept=".h">
-                <div class="info">支持解析包含unsigned char数组的头文件，如image.h</div>
+        <h1>Film转换工具</h1>
+        
+        <!-- 标签页 -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('header')">头文件转换</div>
+            <div class="tab" onclick="switchTab('image')">图片转换</div>
+        </div>
+        
+        <!-- 头文件转换内容 -->
+        <div id="header" class="tab-content active">
+            <form id="headerForm">
+                <div class="form-group">
+                    <label for="headerFile">选择头文件</label>
+                    <input type="file" id="headerFile" accept=".h">
+                    <div class="info">支持解析包含unsigned char数组的头文件，如image.h</div>
+                </div>
+                <button type="button" onclick="convertHeaderFile()">转换并下载</button>
+            </form>
+            <div class="result" id="headerResult">
+                <!-- 结果将显示在这里 -->
             </div>
-            <button type="button" onclick="convertFile()">转换并下载</button>
-        </form>
-        <div class="result" id="result">
-            <!-- 结果将显示在这里 -->
+        </div>
+        
+        <!-- 图片转换内容 -->
+        <div id="image" class="tab-content">
+            <div class="form-group">
+                <label for="imageFile">上传图像</label>
+                <input type="file" id="imageFile" accept="image/*">
+                <div class="info">支持各种常见图片格式</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="ditherType">抖动算法：</label>
+                <select id="ditherType">
+                    <option value="floydSteinberg">Floyd-Steinberg</option>
+                    <option value="atkinson">Atkinson</option>
+                    <option value="stucki">Stucki</option>
+                    <option value="jarvis">Jarvis-Judice-Ninke</option>
+                </select>
+            </div>
+            
+            <div class="slider-container">
+                <label for="ditherStrength">抖动强度：</label>
+                <input type="range" id="ditherStrength" min="0" max="5" step="0.1" value="1.0">
+                <span id="ditherStrengthValue">1.0</span>
+            </div>
+            
+            <div class="slider-container">
+                <label for="contrast">对比度：</label>
+                <input type="range" id="contrast" min="0.5" max="2" step="0.1" value="1.2">
+                <span id="contrastValue">1.2</span>
+            </div>
+            
+            <div class="button-group">
+                <button id="toggleDither" onclick="toggleDither()">启用抖动</button>
+                <button onclick="rotateCanvas()">旋转90度</button>
+                <button onclick="resetImage()">重置</button>
+            </div>
+            
+            <div class="form-group">
+                <p class="info">提示：在画布上使用鼠标滚轮可以缩放图片，拖动图片可以调整位置</p>
+            </div>
+            
+            <canvas id="canvas" width="600" height="400"></canvas>
+            
+            <div class="form-group">
+                <label for="fileName">文件名：</label>
+                <input type="text" id="fileName" value="output.film">
+            </div>
+            
+            <button type="button" onclick="convertImageToFilm()">转换并下载</button>
+            
+            <div class="result" id="imageResult">
+                <!-- 结果将显示在这里 -->
+            </div>
         </div>
     </div>
 
     <script>
-        function convertFile() {
+        // 标签页切换功能
+        function switchTab(tabId) {
+            // 隐藏所有内容
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            // 移除所有标签的活跃状态
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            // 显示选中的内容和标签
+            document.getElementById(tabId).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+        
+        // 头文件转换功能
+        function convertHeaderFile() {
             const fileInput = document.getElementById('headerFile');
-            const resultDiv = document.getElementById('result');
+            const resultDiv = document.getElementById('headerResult');
             
             if (!fileInput.files || fileInput.files.length === 0) {
                 resultDiv.innerHTML = '<div class="error">请选择一个头文件</div>';
@@ -141,7 +292,7 @@
         
         function parseHeaderFile(content) {
             // 提取数组内容，支持 unsigned char 和 uint8_t 类型
-            const arrayMatch = content.match(/(unsigned char|uint8_t)\s+\w+\s*\[\s*\d*\s*\]\s*(PROGMEM)?\s*=\s*\{([\s\S]*?)\};/);
+            const arrayMatch = content.match(/(unsigned char|uint8_t)\s+\w+\s*\[\s*\d*\s*\]\s*(PROGMEM)?\s*=\s*\{([\s\S]*?)\};\s*/);
             if (!arrayMatch) {
                 throw new Error('未找到数组定义');
             }
@@ -173,6 +324,730 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+        
+        // 图片转换功能
+        let currentImageData = null;
+        let isDitheringEnabled = false;
+        let canvasRotation = 0; // 0: 原始, 1: 旋转90度
+        let scale = 1.0;
+        let offsetX = 0;
+        let offsetY = 0;
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+        let startOffsetX = 0;
+        let startOffsetY = 0;
+        let originalImage = null;
+        
+        // 固定的六色调色板
+        const rgbPalette = [
+            { name: "黄色", r: 255, g: 255, b: 0, value: 0xfc },
+            { name: "绿色", r: 41, g: 204, b: 20, value: 0x1c },
+            { name: "蓝色", r: 0, g: 0, b: 255, value: 0x03 },
+            { name: "红色", r: 255, g: 0, b: 0, value: 0xe0 },
+            { name: "黑色", r: 0, g: 0, b: 0, value: 0x00 },
+            { name: "白色", r: 255, g: 255, b: 255, value: 0xff }
+        ];
+        
+        // 事件监听器
+        document.getElementById('imageFile').addEventListener('change', handleFileUpload);
+        document.getElementById('ditherStrength').addEventListener('input', function() {
+            document.getElementById('ditherStrengthValue').textContent = this.value;
+            updateImage();
+        });
+        document.getElementById('contrast').addEventListener('input', function() {
+            document.getElementById('contrastValue').textContent = this.value;
+            updateImage();
+        });
+        document.getElementById('ditherType').addEventListener('change', updateImage);
+        
+        // 鼠标滚轮缩放功能
+        const canvas = document.getElementById('canvas');
+        canvas.addEventListener('wheel', function(e) {
+            if (!isDitheringEnabled) {
+                e.preventDefault();
+                const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                const newScale = Math.max(0.1, Math.min(3, scale * scaleFactor));
+                
+                // 计算鼠标在画布上的位置
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                // 调整偏移量，使缩放以鼠标位置为中心
+                const relativeX = mouseX / canvas.width;
+                const relativeY = mouseY / canvas.height;
+                
+                const oldWidth = originalImage.width * scale;
+                const oldHeight = originalImage.height * scale;
+                const newWidth = originalImage.width * newScale;
+                const newHeight = originalImage.height * newScale;
+                
+                offsetX = relativeX * (newWidth - oldWidth) + offsetX;
+                offsetY = relativeY * (newHeight - oldHeight) + offsetY;
+                
+                scale = newScale;
+                updateImage();
+            }
+        });
+        
+        // 鼠标拖动功能
+        canvas.addEventListener('mousedown', function(e) {
+            if (!isDitheringEnabled) {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startOffsetX = offsetX;
+                startOffsetY = offsetY;
+            }
+        });
+        
+        canvas.addEventListener('mousemove', function(e) {
+            if (isDragging && !isDitheringEnabled) {
+                // 计算鼠标移动距离
+                const deltaX = e.clientX - startX;
+                const deltaY = e.clientY - startY;
+                
+                // 根据旋转状态调整偏移量
+                if (canvasRotation === 1) {
+                    // 旋转状态下，X和Y方向互换并调整符号，使鼠标移动与图片视觉移动一致
+                    offsetX = startOffsetX - deltaY;
+                    offsetY = startOffsetY + deltaX;
+                } else {
+                    // 非旋转状态下，正常处理
+                    offsetX = startOffsetX + deltaX;
+                    offsetY = startOffsetY + deltaY;
+                }
+                
+                updateImage();
+            }
+        });
+        
+        canvas.addEventListener('mouseup', function() {
+            isDragging = false;
+        });
+        
+        canvas.addEventListener('mouseleave', function() {
+            isDragging = false;
+        });
+        
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            event.target.value = '';
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                const img = new Image();
+                img.onload = function () {
+                    originalImage = img;
+                    canvasRotation = 0;
+                    scale = 1.0;
+                    offsetX = 0;
+                    offsetY = 0;
+                    updateImage();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function toggleDither() {
+            isDitheringEnabled = !isDitheringEnabled;
+            const toggleButton = document.getElementById('toggleDither');
+            toggleButton.textContent = isDitheringEnabled ? '禁用抖动' : '启用抖动';
+            toggleButton.classList.toggle('active', isDitheringEnabled);
+            updateImage();
+        }
+        
+        function resetImage() {
+            currentImageData = null;
+            originalImage = null;
+            canvasRotation = 0;
+            scale = 1.0;
+            offsetX = 0;
+            offsetY = 0;
+            isDragging = false;
+            startX = 0;
+            startY = 0;
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('imageResult').innerHTML = '';
+        }
+        
+        function rotateCanvas() {
+            canvasRotation = (canvasRotation + 1) % 2; // 0和1之间切换
+            updateImage();
+        }
+        
+        function updateImage() {
+            if (!originalImage) return;
+
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const canvasWidth = 600;
+            const canvasHeight = 400;
+
+            // 清除画布
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+            // 保存当前状态
+            ctx.save();
+
+            let effectiveWidth = canvasWidth;
+            let effectiveHeight = canvasHeight;
+
+            // 处理旋转
+            if (canvasRotation === 1) {
+                // 旋转-90度（向左旋转）
+                ctx.translate(0, canvasHeight);
+                ctx.rotate(-Math.PI / 2);
+                // 交换宽高
+                effectiveWidth = canvasHeight;
+                effectiveHeight = canvasWidth;
+            }
+
+            // 计算缩放后的图像尺寸
+            const imgWidth = originalImage.width * scale;
+            const imgHeight = originalImage.height * scale;
+
+            // 计算绘制位置（考虑偏移量）
+            let drawX = (effectiveWidth - imgWidth) / 2 + offsetX;
+            let drawY = (effectiveHeight - imgHeight) / 2 + offsetY;
+
+            // 绘制图像
+            ctx.drawImage(
+                originalImage,
+                0, 0,
+                originalImage.width, originalImage.height,
+                drawX, drawY,
+                imgWidth, imgHeight
+            );
+
+            // 恢复状态
+            ctx.restore();
+
+            // 获取绘制后的图像数据
+            currentImageData = ctx.getImageData(0, 0, 600, 400);
+
+            // 应用对比度调整
+            const contrastFactor = parseFloat(document.getElementById('contrast').value);
+            const imageData = new ImageData(
+                new Uint8ClampedArray(currentImageData.data),
+                currentImageData.width,
+                currentImageData.height
+            );
+            adjustContrast(imageData, contrastFactor);
+
+            // 根据状态应用抖动或显示原始图像
+            if (isDitheringEnabled) {
+                const processedImageData = ditherImage(imageData);
+                const processedData = processImageData(processedImageData);
+                const finalImageData = decodeProcessedData(processedData, 600, 400);
+                ctx.putImageData(finalImageData, 0, 0);
+            } else {
+                ctx.putImageData(imageData, 0, 0); // 显示原始图像（调整对比度后）
+            }
+        }
+        
+        function adjustContrast(imageData, factor) {
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.min(255, Math.max(0, (data[i] - 128) * factor + 128));
+                data[i + 1] = Math.min(255, Math.max(0, (data[i + 1] - 128) * factor + 128));
+                data[i + 2] = Math.min(255, Math.max(0, (data[i + 2] - 128) * factor + 128));
+            }
+            return imageData;
+        }
+        
+        function rgbToLab(r, g, b) {
+            r = r / 255;
+            g = g / 255;
+            b = b / 255;
+
+            r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
+            g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
+            b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
+
+            r *= 100;
+            g *= 100;
+            b *= 100;
+
+            let x = r * 0.4124 + g * 0.3576 + b * 0.1805;
+            let y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+            let z = r * 0.0193 + g * 0.1192 + b * 0.9505;
+
+            x /= 95.047;
+            y /= 100.0;
+            z /= 108.883;
+
+            x = x > 0.008856 ? Math.pow(x, 1/3) : (7.787 * x) + (16 / 116);
+            y = y > 0.008856 ? Math.pow(y, 1/3) : (7.787 * y) + (16 / 116);
+            z = z > 0.008856 ? Math.pow(z, 1/3) : (7.787 * z) + (16 / 116);
+
+            const l = (116 * y) - 16;
+            const a = 500 * (x - y);
+            const bLab = 200 * (y - z);
+
+            return { l, a, b: bLab };
+        }
+        
+        function labDistance(lab1, lab2) {
+            const dl = lab1.l - lab2.l;
+            const da = lab1.a - lab2.a;
+            const db = lab1.b - lab2.b;
+            return Math.sqrt(0.2 * dl * dl + 3 * da * da + 3 * db * db);
+        }
+        
+        function findClosestColor(r, g, b) {
+            // 蓝色特殊情况
+            if (r < 50 && g < 150 && b > 100) {
+                return rgbPalette[2]; // 蓝色
+            }
+
+            const inputLab = rgbToLab(r, g, b);
+            let minDistance = Infinity;
+            let closestColor = rgbPalette[0];
+
+            for (const color of rgbPalette) {
+                const colorLab = rgbToLab(color.r, color.g, color.b);
+                const distance = labDistance(inputLab, colorLab);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestColor = color;
+                }
+            }
+
+            return closestColor;
+        }
+        
+        function floydSteinbergDither(imageData, strength) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const tempData = new Uint8ClampedArray(data);
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const r = tempData[idx];
+                    const g = tempData[idx + 1];
+                    const b = tempData[idx + 2];
+
+                    const closest = findClosestColor(r, g, b);
+
+                    const errR = (r - closest.r) * strength;
+                    const errG = (g - closest.g) * strength;
+                    const errB = (b - closest.b) * strength;
+
+                    if (x + 1 < width) {
+                        const idxRight = idx + 4;
+                        tempData[idxRight] = Math.min(255, Math.max(0, tempData[idxRight] + errR * 7 / 16));
+                        tempData[idxRight + 1] = Math.min(255, Math.max(0, tempData[idxRight + 1] + errG * 7 / 16));
+                        tempData[idxRight + 2] = Math.min(255, Math.max(0, tempData[idxRight + 2] + errB * 7 / 16));
+                    }
+                    if (y + 1 < height) {
+                        if (x > 0) {
+                            const idxDownLeft = idx + width * 4 - 4;
+                            tempData[idxDownLeft] = Math.min(255, Math.max(0, tempData[idxDownLeft] + errR * 3 / 16));
+                            tempData[idxDownLeft + 1] = Math.min(255, Math.max(0, tempData[idxDownLeft + 1] + errG * 3 / 16));
+                            tempData[idxDownLeft + 2] = Math.min(255, Math.max(0, tempData[idxDownLeft + 2] + errB * 3 / 16));
+                        }
+                        const idxDown = idx + width * 4;
+                        tempData[idxDown] = Math.min(255, Math.max(0, tempData[idxDown] + errR * 5 / 16));
+                        tempData[idxDown + 1] = Math.min(255, Math.max(0, tempData[idxDown + 1] + errG * 5 / 16));
+                        tempData[idxDown + 2] = Math.min(255, Math.max(0, tempData[idxDown + 2] + errB * 5 / 16));
+                        if (x + 1 < width) {
+                            const idxDownRight = idx + width * 4 + 4;
+                            tempData[idxDownRight] = Math.min(255, Math.max(0, tempData[idxDownRight] + errR * 1 / 16));
+                            tempData[idxDownRight + 1] = Math.min(255, Math.max(0, tempData[idxDownRight + 1] + errG * 1 / 16));
+                            tempData[idxDownRight + 2] = Math.min(255, Math.max(0, tempData[idxDownRight + 2] + errB * 1 / 16));
+                        }
+                    }
+                }
+            }
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const r = tempData[idx];
+                    const g = tempData[idx + 1];
+                    const b = tempData[idx + 2];
+
+                    const closest = findClosestColor(r, g, b);
+                    data[idx] = closest.r;
+                    data[idx + 1] = closest.g;
+                    data[idx + 2] = closest.b;
+                }
+            }
+
+            return imageData;
+        }
+        
+        function atkinsonDither(imageData, strength) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const tempData = new Uint8ClampedArray(data);
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const r = tempData[idx];
+                    const g = tempData[idx + 1];
+                    const b = tempData[idx + 2];
+
+                    const closest = findClosestColor(r, g, b);
+
+                    data[idx] = closest.r;
+                    data[idx + 1] = closest.g;
+                    data[idx + 2] = closest.b;
+
+                    const errR = (r - closest.r) * strength;
+                    const errG = (g - closest.g) * strength;
+                    const errB = (b - closest.b) * strength;
+
+                    const fraction = 1 / 8;
+
+                    if (x + 1 < width) {
+                        const idxRight = idx + 4;
+                        tempData[idxRight] = Math.min(255, Math.max(0, tempData[idxRight] + errR * fraction));
+                        tempData[idxRight + 1] = Math.min(255, Math.max(0, tempData[idxRight + 1] + errG * fraction));
+                        tempData[idxRight + 2] = Math.min(255, Math.max(0, tempData[idxRight + 2] + errB * fraction));
+                    }
+                    if (x + 2 < width) {
+                        const idxRight2 = idx + 8;
+                        tempData[idxRight2] = Math.min(255, Math.max(0, tempData[idxRight2] + errR * fraction));
+                        tempData[idxRight2 + 1] = Math.min(255, Math.max(0, tempData[idxRight2 + 1] + errG * fraction));
+                        tempData[idxRight2 + 2] = Math.min(255, Math.max(0, tempData[idxRight2 + 2] + errB * fraction));
+                    }
+                    if (y + 1 < height) {
+                        if (x > 0) {
+                            const idxDownLeft = idx + width * 4 - 4;
+                            tempData[idxDownLeft] = Math.min(255, Math.max(0, tempData[idxDownLeft] + errR * fraction));
+                            tempData[idxDownLeft + 1] = Math.min(255, Math.max(0, tempData[idxDownLeft + 1] + errG * fraction));
+                            tempData[idxDownLeft + 2] = Math.min(255, Math.max(0, tempData[idxDownLeft + 2] + errB * fraction));
+                        }
+                        const idxDown = idx + width * 4;
+                        tempData[idxDown] = Math.min(255, Math.max(0, tempData[idxDown] + errR * fraction));
+                        tempData[idxDown + 1] = Math.min(255, Math.max(0, tempData[idxDown + 1] + errG * fraction));
+                        tempData[idxDown + 2] = Math.min(255, Math.max(0, tempData[idxDown + 2] + errB * fraction));
+                        if (x + 1 < width) {
+                            const idxDownRight = idx + width * 4 + 4;
+                            tempData[idxDownRight] = Math.min(255, Math.max(0, tempData[idxDownRight] + errR * fraction));
+                            tempData[idxDownRight + 1] = Math.min(255, Math.max(0, tempData[idxDownRight + 1] + errG * fraction));
+                            tempData[idxDownRight + 2] = Math.min(255, Math.max(0, tempData[idxDownRight + 2] + errB * fraction));
+                        }
+                    }
+                    if (y + 2 < height) {
+                        const idxDown2 = idx + width * 8;
+                        tempData[idxDown2] = Math.min(255, Math.max(0, tempData[idxDown2] + errR * fraction));
+                        tempData[idxDown2 + 1] = Math.min(255, Math.max(0, tempData[idxDown2 + 1] + errG * fraction));
+                        tempData[idxDown2 + 2] = Math.min(255, Math.max(0, tempData[idxDown2 + 2] + errB * fraction));
+                    }
+                }
+            }
+
+            return imageData;
+        }
+        
+        function stuckiDither(imageData, strength) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const tempData = new Uint8ClampedArray(data);
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const r = tempData[idx];
+                    const g = tempData[idx + 1];
+                    const b = tempData[idx + 2];
+
+                    const closest = findClosestColor(r, g, b);
+
+                    const errR = (r - closest.r) * strength;
+                    const errG = (g - closest.g) * strength;
+                    const errB = (b - closest.b) * strength;
+
+                    const divisor = 42;
+
+                    if (x + 1 < width) {
+                        const idxRight = idx + 4;
+                        tempData[idxRight] = Math.min(255, Math.max(0, tempData[idxRight] + errR * 8 / divisor));
+                        tempData[idxRight + 1] = Math.min(255, Math.max(0, tempData[idxRight + 1] + errG * 8 / divisor));
+                        tempData[idxRight + 2] = Math.min(255, Math.max(0, tempData[idxRight + 2] + errB * 8 / divisor));
+                    }
+                    if (x + 2 < width) {
+                        const idxRight2 = idx + 8;
+                        tempData[idxRight2] = Math.min(255, Math.max(0, tempData[idxRight2] + errR * 4 / divisor));
+                        tempData[idxRight2 + 1] = Math.min(255, Math.max(0, tempData[idxRight2 + 1] + errG * 4 / divisor));
+                        tempData[idxRight2 + 2] = Math.min(255, Math.max(0, tempData[idxRight2 + 2] + errB * 4 / divisor));
+                    }
+                    if (y + 1 < height) {
+                        if (x > 1) {
+                            const idxDownLeft2 = idx + width * 4 - 8;
+                            tempData[idxDownLeft2] = Math.min(255, Math.max(0, tempData[idxDownLeft2] + errR * 2 / divisor));
+                            tempData[idxDownLeft2 + 1] = Math.min(255, Math.max(0, tempData[idxDownLeft2 + 1] + errG * 2 / divisor));
+                            tempData[idxDownLeft2 + 2] = Math.min(255, Math.max(0, tempData[idxDownLeft2 + 2] + errB * 2 / divisor));
+                        }
+                        if (x > 0) {
+                            const idxDownLeft = idx + width * 4 - 4;
+                            tempData[idxDownLeft] = Math.min(255, Math.max(0, tempData[idxDownLeft] + errR * 4 / divisor));
+                            tempData[idxDownLeft + 1] = Math.min(255, Math.max(0, tempData[idxDownLeft + 1] + errG * 4 / divisor));
+                            tempData[idxDownLeft + 2] = Math.min(255, Math.max(0, tempData[idxDownLeft + 2] + errB * 4 / divisor));
+                        }
+                        const idxDown = idx + width * 4;
+                        tempData[idxDown] = Math.min(255, Math.max(0, tempData[idxDown] + errR * 8 / divisor));
+                        tempData[idxDown + 1] = Math.min(255, Math.max(0, tempData[idxDown + 1] + errG * 8 / divisor));
+                        tempData[idxDown + 2] = Math.min(255, Math.max(0, tempData[idxDown + 2] + errB * 8 / divisor));
+                        if (x + 1 < width) {
+                            const idxDownRight1 = idx + width * 4 + 4;
+                            tempData[idxDownRight1] = Math.min(255, Math.max(0, tempData[idxDownRight1] + errR * 4 / divisor));
+                            tempData[idxDownRight1 + 1] = Math.min(255, Math.max(0, tempData[idxDownRight1 + 1] + errG * 4 / divisor));
+                            tempData[idxDownRight1 + 2] = Math.min(255, Math.max(0, tempData[idxDownRight1 + 2] + errB * 4 / divisor));
+                        }
+                        if (x + 2 < width) {
+                            const idxDownRight2 = idx + width * 4 + 8;
+                            tempData[idxDownRight2] = Math.min(255, Math.max(0, tempData[idxDownRight2] + errR * 2 / divisor));
+                            tempData[idxDownRight2 + 1] = Math.min(255, Math.max(0, tempData[idxDownRight2 + 1] + errG * 2 / divisor));
+                            tempData[idxDownRight2 + 2] = Math.min(255, Math.max(0, tempData[idxDownRight2 + 2] + errB * 2 / divisor));
+                        }
+                    }
+                    if (y + 2 < height) {
+                        if (x > 1) {
+                            const idxDown2Left2 = idx + width * 8 - 8;
+                            tempData[idxDown2Left2] = Math.min(255, Math.max(0, tempData[idxDown2Left2] + errR * 1 / divisor));
+                            tempData[idxDown2Left2 + 1] = Math.min(255, Math.max(0, tempData[idxDown2Left2 + 1] + errG * 1 / divisor));
+                            tempData[idxDown2Left2 + 2] = Math.min(255, Math.max(0, tempData[idxDown2Left2 + 2] + errB * 1 / divisor));
+                        }
+                        if (x > 0) {
+                            const idxDown2Left = idx + width * 8 - 4;
+                            tempData[idxDown2Left] = Math.min(255, Math.max(0, tempData[idxDown2Left] + errR * 2 / divisor));
+                            tempData[idxDown2Left + 1] = Math.min(255, Math.max(0, tempData[idxDown2Left + 1] + errG * 2 / divisor));
+                            tempData[idxDown2Left + 2] = Math.min(255, Math.max(0, tempData[idxDown2Left + 2] + errB * 2 / divisor));
+                        }
+                        const idxDown2 = idx + width * 8;
+                        tempData[idxDown2] = Math.min(255, Math.max(0, tempData[idxDown2] + errR * 4 / divisor));
+                        tempData[idxDown2 + 1] = Math.min(255, Math.max(0, tempData[idxDown2 + 1] + errG * 4 / divisor));
+                        tempData[idxDown2 + 2] = Math.min(255, Math.max(0, tempData[idxDown2 + 2] + errB * 4 / divisor));
+                        if (x + 1 < width) {
+                            const idxDown2Right = idx + width * 8 + 4;
+                            tempData[idxDown2Right] = Math.min(255, Math.max(0, tempData[idxDown2Right] + errR * 2 / divisor));
+                            tempData[idxDown2Right + 1] = Math.min(255, Math.max(0, tempData[idxDown2Right + 1] + errG * 2 / divisor));
+                            tempData[idxDown2Right + 2] = Math.min(255, Math.max(0, tempData[idxDown2Right + 2] + errB * 2 / divisor));
+                        }
+                        if (x + 2 < width) {
+                            const idxDown2Right2 = idx + width * 8 + 8;
+                            tempData[idxDown2Right2] = Math.min(255, Math.max(0, tempData[idxDown2Right2] + errR * 1 / divisor));
+                            tempData[idxDown2Right2 + 1] = Math.min(255, Math.max(0, tempData[idxDown2Right2 + 1] + errG * 1 / divisor));
+                            tempData[idxDown2Right2 + 2] = Math.min(255, Math.max(0, tempData[idxDown2Right2 + 2] + errB * 1 / divisor));
+                        }
+                    }
+                }
+            }
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const r = tempData[idx];
+                    const g = tempData[idx + 1];
+                    const b = tempData[idx + 2];
+
+                    const closest = findClosestColor(r, g, b);
+                    data[idx] = closest.r;
+                    data[idx + 1] = closest.g;
+                    data[idx + 2] = closest.b;
+                }
+            }
+
+            return imageData;
+        }
+        
+        function jarvisDither(imageData, strength) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const tempData = new Uint8ClampedArray(data);
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const r = tempData[idx];
+                    const g = tempData[idx + 1];
+                    const b = tempData[idx + 2];
+
+                    const closest = findClosestColor(r, g, b);
+
+                    data[idx] = closest.r;
+                    data[idx + 1] = closest.g;
+                    data[idx + 2] = closest.b;
+
+                    const errR = (r - closest.r) * strength;
+                    const errG = (g - closest.g) * strength;
+                    const errB = (b - closest.b) * strength;
+
+                    const divisor = 48;
+
+                    if (x + 1 < width) {
+                        const idxRight = idx + 4;
+                        tempData[idxRight] = Math.min(255, Math.max(0, tempData[idxRight] + errR * 7 / divisor));
+                        tempData[idxRight + 1] = Math.min(255, Math.max(0, tempData[idxRight + 1] + errG * 7 / divisor));
+                        tempData[idxRight + 2] = Math.min(255, Math.max(0, tempData[idxRight + 2] + errB * 7 / divisor));
+                    }
+                    if (x + 2 < width) {
+                        const idxRight2 = idx + 8;
+                        tempData[idxRight2] = Math.min(255, Math.max(0, tempData[idxRight2] + errR * 5 / divisor));
+                        tempData[idxRight2 + 1] = Math.min(255, Math.max(0, tempData[idxRight2 + 1] + errG * 5 / divisor));
+                        tempData[idxRight2 + 2] = Math.min(255, Math.max(0, tempData[idxRight2 + 2] + errB * 5 / divisor));
+                    }
+                    if (y + 1 < height) {
+                        if (x > 1) {
+                            const idxDownLeft2 = idx + width * 4 - 8;
+                            tempData[idxDownLeft2] = Math.min(255, Math.max(0, tempData[idxDownLeft2] + errR * 3 / divisor));
+                            tempData[idxDownLeft2 + 1] = Math.min(255, Math.max(0, tempData[idxDownLeft2 + 1] + errG * 3 / divisor));
+                            tempData[idxDownLeft2 + 2] = Math.min(255, Math.max(0, tempData[idxDownLeft2 + 2] + errB * 3 / divisor));
+                        }
+                        if (x > 0) {
+                            const idxDownLeft = idx + width * 4 - 4;
+                            tempData[idxDownLeft] = Math.min(255, Math.max(0, tempData[idxDownLeft] + errR * 5 / divisor));
+                            tempData[idxDownLeft + 1] = Math.min(255, Math.max(0, tempData[idxDownLeft + 1] + errG * 5 / divisor));
+                            tempData[idxDownLeft + 2] = Math.min(255, Math.max(0, tempData[idxDownLeft + 2] + errB * 5 / divisor));
+                        }
+                        const idxDown = idx + width * 4;
+                        tempData[idxDown] = Math.min(255, Math.max(0, tempData[idxDown] + errR * 7 / divisor));
+                        tempData[idxDown + 1] = Math.min(255, Math.max(0, tempData[idxDown + 1] + errG * 7 / divisor));
+                        tempData[idxDown + 2] = Math.min(255, Math.max(0, tempData[idxDown + 2] + errB * 7 / divisor));
+                        if (x + 1 < width) {
+                            const idxDownRight = idx + width * 4 + 4;
+                            tempData[idxDownRight] = Math.min(255, Math.max(0, tempData[idxDownRight] + errR * 5 / divisor));
+                            tempData[idxDownRight + 1] = Math.min(255, Math.max(0, tempData[idxDownRight + 1] + errG * 5 / divisor));
+                            tempData[idxDownRight + 2] = Math.min(255, Math.max(0, tempData[idxDownRight + 2] + errB * 5 / divisor));
+                        }
+                        if (x + 2 < width) {
+                            const idxDownRight2 = idx + width * 4 + 8;
+                            tempData[idxDownRight2] = Math.min(255, Math.max(0, tempData[idxDownRight2] + errR * 3 / divisor));
+                            tempData[idxDownRight2 + 1] = Math.min(255, Math.max(0, tempData[idxDownRight2 + 1] + errG * 3 / divisor));
+                            tempData[idxDownRight2 + 2] = Math.min(255, Math.max(0, tempData[idxDownRight2 + 2] + errB * 3 / divisor));
+                        }
+                    }
+                    if (y + 2 < height) {
+                        if (x > 1) {
+                            const idxDown2Left2 = idx + width * 8 - 8;
+                            tempData[idxDown2Left2] = Math.min(255, Math.max(0, tempData[idxDown2Left2] + errR * 1 / divisor));
+                            tempData[idxDown2Left2 + 1] = Math.min(255, Math.max(0, tempData[idxDown2Left2 + 1] + errG * 1 / divisor));
+                            tempData[idxDown2Left2 + 2] = Math.min(255, Math.max(0, tempData[idxDown2Left2 + 2] + errB * 1 / divisor));
+                        }
+                        if (x > 0) {
+                            const idxDown2Left = idx + width * 8 - 4;
+                            tempData[idxDown2Left] = Math.min(255, Math.max(0, tempData[idxDown2Left] + errR * 3 / divisor));
+                            tempData[idxDown2Left + 1] = Math.min(255, Math.max(0, tempData[idxDown2Left + 1] + errG * 3 / divisor));
+                            tempData[idxDown2Left + 2] = Math.min(255, Math.max(0, tempData[idxDown2Left + 2] + errB * 3 / divisor));
+                        }
+                        const idxDown2 = idx + width * 8;
+                        tempData[idxDown2] = Math.min(255, Math.max(0, tempData[idxDown2] + errR * 5 / divisor));
+                        tempData[idxDown2 + 1] = Math.min(255, Math.max(0, tempData[idxDown2 + 1] + errG * 5 / divisor));
+                        tempData[idxDown2 + 2] = Math.min(255, Math.max(0, tempData[idxDown2 + 2] + errB * 5 / divisor));
+                        if (x + 1 < width) {
+                            const idxDown2Right = idx + width * 8 + 4;
+                            tempData[idxDown2Right] = Math.min(255, Math.max(0, tempData[idxDown2Right] + errR * 3 / divisor));
+                            tempData[idxDown2Right + 1] = Math.min(255, Math.max(0, tempData[idxDown2Right + 1] + errG * 3 / divisor));
+                            tempData[idxDown2Right + 2] = Math.min(255, Math.max(0, tempData[idxDown2Right + 2] + errB * 3 / divisor));
+                        }
+                        if (x + 2 < width) {
+                            const idxDown2Right2 = idx + width * 8 + 8;
+                            tempData[idxDown2Right2] = Math.min(255, Math.max(0, tempData[idxDown2Right2] + errR * 1 / divisor));
+                            tempData[idxDown2Right2 + 1] = Math.min(255, Math.max(0, tempData[idxDown2Right2 + 1] + errG * 1 / divisor));
+                            tempData[idxDown2Right2 + 2] = Math.min(255, Math.max(0, tempData[idxDown2Right2 + 2] + errB * 1 / divisor));
+                        }
+                    }
+                }
+            }
+
+            return imageData;
+        }
+        
+        function ditherImage(imageData) {
+            const ditherType = document.getElementById('ditherType').value;
+            const ditherStrength = parseFloat(document.getElementById('ditherStrength').value);
+
+            switch (ditherType) {
+                case 'floydSteinberg':
+                    return floydSteinbergDither(imageData, ditherStrength);
+                case 'atkinson':
+                    return atkinsonDither(imageData, ditherStrength);
+                case 'stucki':
+                    return stuckiDither(imageData, ditherStrength);
+                case 'jarvis':
+                    return jarvisDither(imageData, ditherStrength);
+                default:
+                    return imageData;
+            }
+        }
+        
+        function decodeProcessedData(processedData, width, height) {
+            const imageData = new ImageData(width, height);
+            const data = imageData.data;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const newIndex = (x * height) + (height - 1 - y);
+                    const value = processedData[newIndex];
+                    const color = rgbPalette.find(c => c.value === value) || rgbPalette[5]; // 默认白色
+                    const index = (y * width + x) * 4;
+                    data[index] = color.r;
+                    data[index + 1] = color.g;
+                    data[index + 2] = color.b;
+                    data[index + 3] = 255; // Alpha 透明度
+                }
+            }
+
+            return imageData;
+        }
+        
+        function processImageData(imageData) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+
+            const processedData = new Uint8Array(width * height);
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const index = (y * width + x) * 4;
+                    const r = data[index];
+                    const g = data[index + 1];
+                    const b = data[index + 2];
+
+                    const closest = findClosestColor(r, g, b);
+                    const newIndex = (x * height) + (height - 1 - y); 
+                    processedData[newIndex] = closest.value;
+                }
+            }
+
+            return processedData;
+        }
+        
+        function convertImageToFilm() {
+            if (!currentImageData) {
+                document.getElementById('imageResult').innerHTML = '<div class="error">请先上传图像</div>';
+                return;
+            }
+
+            const canvas = document.getElementById('canvas');
+            const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+            const processedData = processImageData(imageData);
+            const fileName = document.getElementById('fileName').value || 'output.film';
+            
+            downloadFile(processedData, fileName);
+            
+            document.getElementById('imageResult').innerHTML = `
+                <h3>转换成功！</h3>
+                <p>文件已转换为: ${fileName}</p>
+                <p>文件大小: ${processedData.length} 字节</p>
+                <p class="info">建议保存到 bin 目录</p>
+                <a href="#" class="download-link" onclick="event.preventDefault(); downloadFile(processedData, '${fileName}');">重新下载</a>
+            `;
         }
     </script>
 </body>
