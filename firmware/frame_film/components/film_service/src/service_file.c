@@ -75,6 +75,7 @@ typedef struct {
     uint32_t file_count;     // 文件数量
     uint32_t current_file_id; // 当前加载的文件ID
     uint8_t* psram_buffer;   // PSRAM缓冲区
+    uint8_t load_complete;   // 文件加载完成状态
     uint32_t buffer_size;    // 缓冲区大小
     uint8_t sd_mounted;      // SD卡挂载状态
 } file_service_state_t;
@@ -121,6 +122,7 @@ void service_file_init(void)
     m_file_state.psram_buffer = NULL;
     m_file_state.buffer_size = 0;
     m_file_state.sd_mounted = 0;
+    m_file_state.load_complete = FILE_LOAD_STATE_NONE;
 
     if(m_file_task_hdl == NULL)
     {
@@ -409,9 +411,13 @@ static void file_load_event(uint32_t file_id)
         return;
     }
 
+    // 进入加载状态
+    m_file_state.load_complete = FILE_LOAD_STATE_LOADING;
+
     if(file_id >= m_file_state.file_count)
     {
         sys_logw(FILE_TAG, "Invalid file ID: %d", file_id);
+        m_file_state.load_complete = FILE_LOAD_STATE_NONE;
         return;
     }
 
@@ -427,6 +433,7 @@ static void file_load_event(uint32_t file_id)
     if(file == NULL)
     {
         sys_loge(FILE_TAG, "Open file failed: %s", filepath);
+        m_file_state.load_complete = FILE_LOAD_STATE_NONE;
         return;
     }
 
@@ -441,6 +448,7 @@ static void file_load_event(uint32_t file_id)
     {
         sys_loge(FILE_TAG, "Allocate PSRAM buffer failed");
         fclose(file);
+        m_file_state.load_complete = FILE_LOAD_STATE_NONE;
         return;
     }
 
@@ -451,6 +459,7 @@ static void file_load_event(uint32_t file_id)
         sys_loge(FILE_TAG, "Read file failed");
         file_free_buffer();
         fclose(file);
+        m_file_state.load_complete = FILE_LOAD_STATE_NONE;
         return;
     }
 
@@ -460,6 +469,9 @@ static void file_load_event(uint32_t file_id)
     m_file_state.current_file_id = file_id;
 
     sys_logi(FILE_TAG, "Loaded file: %s, size: %d bytes", m_file_state.file_list[file_id].filename, file_size);
+
+    // 加载完成
+    m_file_state.load_complete = FILE_LOAD_STATE_DONE;
 }
 
 static void file_load_next_event(void)
@@ -490,6 +502,9 @@ int service_file_load(uint32_t file_id)
         return -1;
     }
     
+    // 清空加载状态
+    m_file_state.load_complete = FILE_LOAD_STATE_NONE;
+
     file_msg_t msg;
     msg.ID = MSG_FILE_LOAD;
     msg.file_id = file_id;
@@ -499,6 +514,9 @@ int service_file_load(uint32_t file_id)
 
 void service_file_load_next(void)
 {
+    // 清空加载状态
+    m_file_state.load_complete = FILE_LOAD_STATE_NONE;
+
     file_msg_t msg;
     msg.ID = MSG_FILE_LOAD_NEXT;
     file_msg_send(&msg, 0);
@@ -531,4 +549,9 @@ uint32_t service_file_get_buffer_size(void)
 uint32_t service_file_get_current_id(void)
 {
     return m_file_state.current_file_id;
+}
+
+uint8_t service_file_get_load_complete(void)
+{
+    return m_file_state.load_complete;
 }

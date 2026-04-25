@@ -21,6 +21,10 @@ extern "C" {
 #define FILM_DIR                    "/sdcard/film"
 #define FILM_FILE_EXT               ".film"
 
+#define FILE_LOAD_STATE_NONE        (0)
+#define FILE_LOAD_STATE_LOADING     (1)
+#define FILE_LOAD_STATE_DONE        (2)
+
 /*********************************************************************
 * TYPEDEFS
 */
@@ -138,6 +142,15 @@ extern uint32_t service_file_get_buffer_size(void);
  * @return uint32_t 当前文件ID
  */
 extern uint32_t service_file_get_current_id(void);
+
+/**
+ * @brief 获取文件加载状态
+ *
+ * 此函数用于获取当前文件加载状态。
+ *
+ * @return uint8_t 文件加载状态
+ */
+extern uint8_t service_file_get_load_complete(void);
 
 
 #ifdef __cplusplus
