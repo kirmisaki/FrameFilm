@@ -122,14 +122,22 @@ static void film_task_handle(void *pvParameters)
     msg.ID = MSG_FILM_INIT;
     film_msg_send(&msg, 0);
 
-    // 注册编码器回调
-    hal_encoder_register_cb(ENCODER_PRESS_SHORT, service_film_next);
-    hal_encoder_register_cb(ENCODER_PRESS_LONG, service_film_clear);
-
     for(;;)
     {
+        // 轮询编码器状态
+        encoder_press_type_t encoder_status = hal_encoder_get_press();
+        if(encoder_status == ENCODER_PRESS_SHORT)
+        {
+            film_next_event();
+        }
+        else if(encoder_status == ENCODER_PRESS_LONG)
+        {
+            film_clear_event();
+        }
+        
+        // 处理消息队列
         film_msg_t msg;
-        if(xQueueReceive( m_film_msg_hdl, (void *const)&msg, portMAX_DELAY ) == pdPASS)
+        if(xQueueReceive( m_film_msg_hdl, (void *const)&msg, 10 / portTICK_PERIOD_MS ) == pdPASS)
         {
             switch(msg.ID)
             {
