@@ -202,6 +202,9 @@ void hal_epd_init(void)
     // Initialize SPI bus
     spi_init();
 
+    // 提前打开电源进行电路充电防止电流过大导致重启
+    EPD_W21_PWR_ON;
+
     sys_logi(EPD_TAG, "EPD hardware initialized");
 }
 

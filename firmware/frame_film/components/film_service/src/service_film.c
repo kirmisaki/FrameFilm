@@ -122,22 +122,14 @@ static void film_task_handle(void *pvParameters)
     msg.ID = MSG_FILM_INIT;
     film_msg_send(&msg, 0);
 
+    // 注册编码器回调
+    hal_encoder_register_cb(ENCODER_PRESS_SHORT, service_film_next);
+    hal_encoder_register_cb(ENCODER_PRESS_LONG, service_film_clear);
+
     for(;;)
     {
-        // 轮询编码器状态
-        encoder_press_type_t encoder_status = hal_encoder_get_press();
-        if(encoder_status == ENCODER_PRESS_SHORT)
-        {
-            film_next_event();
-        }
-        else if(encoder_status == ENCODER_PRESS_LONG)
-        {
-            film_clear_event();
-        }
-        
-        // 处理消息队列
         film_msg_t msg;
-        if(xQueueReceive( m_film_msg_hdl, (void *const)&msg, 10 / portTICK_PERIOD_MS ) == pdPASS)
+        if(xQueueReceive( m_film_msg_hdl, (void *const)&msg, portMAX_DELAY ) == pdPASS)
         {
             switch(msg.ID)
             {
@@ -308,7 +300,6 @@ static void film_next_event(void)
 }
 
 
-
 void service_film_display(uint32_t file_id)
 {
     film_msg_t msg;
@@ -319,16 +310,32 @@ void service_film_display(uint32_t file_id)
 
 void service_film_next(void)
 {
-    film_msg_t msg;
-    msg.ID = MSG_FILM_NEXT;
-    film_msg_send(&msg, 0);
+    if(g_service_param.film.load_complete)
+    {
+        // 加载完成，显示下一张图片
+        film_msg_t msg;
+        msg.ID = MSG_FILM_NEXT;
+        film_msg_send(&msg, 0);
+    }
+    else
+    {
+        sys_logi(FILM_TAG, "Load not complete, next event invalid");
+    }
 }
 
 void service_film_clear(void)
 {
-    film_msg_t msg;
-    msg.ID = MSG_FILM_CLEAR;
-    film_msg_send(&msg, 0);
+    if(g_service_param.film.load_complete)
+    {
+        // 加载完成，清除显示
+        film_msg_t msg;
+        msg.ID = MSG_FILM_CLEAR;
+        film_msg_send(&msg, 0);
+    }
+    else
+    {
+        sys_logi(FILM_TAG, "Load not complete, clear event invalid");
+    }
 }
 
 void service_film_set_play_mode(uint8_t mode)
