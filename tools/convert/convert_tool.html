@@ -205,6 +205,7 @@
             
             <div class="button-group">
                 <button id="toggleDither" onclick="toggleDither()">启用抖动</button>
+                <button onclick="autoConfigureDither()">自动配置</button>
                 <button onclick="rotateCanvas()">旋转90度</button>
                 <button onclick="resetImage()">重置</button>
             </div>
@@ -457,6 +458,14 @@
             const toggleButton = document.getElementById('toggleDither');
             toggleButton.textContent = isDitheringEnabled ? '禁用抖动' : '启用抖动';
             toggleButton.classList.toggle('active', isDitheringEnabled);
+            
+            if (isDitheringEnabled && currentImageData) {
+                // Automatically configure dithering parameters when enabled
+                const imageAnalysis = analyzeImage(currentImageData);
+                const optimalParams = getOptimalDitherParameters(imageAnalysis);
+                applyDitherParameters(optimalParams);
+            }
+            
             updateImage();
         }
         
@@ -1028,6 +1037,141 @@
             return processedData;
         }
         
+        function analyzeImage(imageData) {
+            const data = imageData.data;
+            let totalBrightness = 0;
+            let totalContrast = 0;
+            let rSum = 0, gSum = 0, bSum = 0;
+            let rVariance = 0, gVariance = 0, bVariance = 0;
+            let pixelCount = data.length / 4;
+
+            // Calculate average brightness and color values
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                
+                const brightness = (r + g + b) / 3;
+                totalBrightness += brightness;
+                rSum += r;
+                gSum += g;
+                bSum += b;
+            }
+
+            const avgBrightness = totalBrightness / pixelCount;
+            const avgR = rSum / pixelCount;
+            const avgG = gSum / pixelCount;
+            const avgB = bSum / pixelCount;
+
+            // Calculate contrast and color variance
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                
+                const brightness = (r + g + b) / 3;
+                totalContrast += Math.abs(brightness - avgBrightness);
+                rVariance += Math.pow(r - avgR, 2);
+                gVariance += Math.pow(g - avgG, 2);
+                bVariance += Math.pow(b - avgB, 2);
+            }
+
+            const contrast = totalContrast / pixelCount;
+            const colorVariance = (rVariance + gVariance + bVariance) / (3 * pixelCount);
+            const colorSaturation = Math.sqrt(colorVariance) / 255;
+
+            return {
+                brightness: avgBrightness / 255, // Normalized 0-1
+                contrast: contrast / 127, // Normalized 0-2, but typically 0-1
+                colorSaturation: Math.min(1, colorSaturation) // Normalized 0-1
+            };
+        }
+
+        function getOptimalDitherParameters(imageAnalysis) {
+            const { brightness, contrast, colorSaturation } = imageAnalysis;
+            
+            // Select dither type based on image characteristics
+            let ditherType = 'floydSteinberg'; // Default
+            
+            if (colorSaturation > 0.6) {
+                // High color saturation - use more aggressive dithering
+                ditherType = 'stucki';
+            } else if (contrast < 0.3) {
+                // Low contrast - use more subtle dithering
+                ditherType = 'atkinson';
+            } else if (brightness < 0.3 || brightness > 0.7) {
+                // Extreme brightness - use more robust dithering
+                ditherType = 'jarvis';
+            }
+            
+            // Adjust dither strength based on contrast and color saturation
+            let ditherStrength = 1.0;
+            
+            if (contrast < 0.4) {
+                // Low contrast - increase dither strength
+                ditherStrength = 1.5 + (0.4 - contrast) * 2;
+            } else if (contrast > 0.7) {
+                // High contrast - decrease dither strength
+                ditherStrength = 0.8 - (contrast - 0.7) * 2;
+            }
+            
+            if (colorSaturation > 0.5) {
+                // High color saturation - slightly increase dither strength
+                ditherStrength *= 1.1;
+            }
+            
+            // Clamp dither strength to valid range
+            ditherStrength = Math.max(0.5, Math.min(3.0, ditherStrength));
+            
+            // Adjust contrast based on image brightness
+            let contrastAdjustment = 1.2; // Default
+            
+            if (brightness < 0.4) {
+                // Dark image - increase contrast
+                contrastAdjustment = 1.4 + (0.4 - brightness) * 0.8;
+            } else if (brightness > 0.7) {
+                // Bright image - decrease contrast
+                contrastAdjustment = 1.0 - (brightness - 0.7) * 0.5;
+            }
+            
+            // Clamp contrast adjustment to valid range
+            contrastAdjustment = Math.max(0.8, Math.min(2.0, contrastAdjustment));
+            
+            return {
+                ditherType,
+                ditherStrength: parseFloat(ditherStrength.toFixed(1)),
+                contrast: parseFloat(contrastAdjustment.toFixed(1))
+            };
+        }
+
+        function applyDitherParameters(params) {
+            document.getElementById('ditherType').value = params.ditherType;
+            document.getElementById('ditherStrength').value = params.ditherStrength;
+            document.getElementById('ditherStrengthValue').textContent = params.ditherStrength;
+            document.getElementById('contrast').value = params.contrast;
+            document.getElementById('contrastValue').textContent = params.contrast;
+        }
+
+        function autoConfigureDither() {
+            if (!currentImageData) {
+                document.getElementById('imageResult').innerHTML = '<div class="error">请先上传图像</div>';
+                return;
+            }
+            
+            const imageAnalysis = analyzeImage(currentImageData);
+            const optimalParams = getOptimalDitherParameters(imageAnalysis);
+            applyDitherParameters(optimalParams);
+            
+            if (!isDitheringEnabled) {
+                toggleDither();
+            } else {
+                updateImage();
+            }
+            
+            // Show success message
+            document.getElementById('imageResult').innerHTML = '<div class="info">已自动配置抖动参数</div>';
+        }
+
         function convertImageToFilm() {
             if (!currentImageData) {
                 document.getElementById('imageResult').innerHTML = '<div class="error">请先上传图像</div>';
