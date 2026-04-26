@@ -13,6 +13,7 @@ let startY = 0;
 let startOffsetX = 0;
 let startOffsetY = 0;
 let originalImage = null;
+let uploadedFileName = 'output';
 
 // 固定的六色调色板
 const rgbPalette = [
@@ -206,6 +207,10 @@ function downloadFile(data, fileName) {
 function handleFileUpload(event) {
     const file = event.target.files[0];
     event.target.value = '';
+
+    const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+    uploadedFileName = fileNameWithoutExt || 'output';
+
     const reader = new FileReader();
 
     reader.onload = function (e) {
@@ -213,9 +218,24 @@ function handleFileUpload(event) {
         img.onload = function () {
             originalImage = img;
             canvasRotation = 0;
-            scale = 1.0;
-            offsetX = 0;
-            offsetY = 0;
+
+            const canvas = document.getElementById('canvas');
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+
+            const imgWidth = img.width;
+            const imgHeight = img.height;
+
+            const scaleX = canvasWidth / imgWidth;
+            const scaleY = canvasHeight / imgHeight;
+            scale = Math.min(scaleX, scaleY);
+
+            const scaledWidth = imgWidth * scale;
+            const scaledHeight = imgHeight * scale;
+            offsetX = (canvasWidth - scaledWidth) / 2;
+            offsetY = (canvasHeight - scaledHeight) / 2;
+
+            document.getElementById('fileName').value = uploadedFileName + '.film';
             updateImage();
         };
         img.src = e.target.result;
@@ -242,6 +262,7 @@ function toggleDither() {
 function resetImage() {
     currentImageData = null;
     originalImage = null;
+    uploadedFileName = 'output';
     canvasRotation = 0;
     scale = 1.0;
     offsetX = 0;
@@ -253,10 +274,39 @@ function resetImage() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     document.getElementById('imageResult').innerHTML = '';
+    document.getElementById('fileName').value = 'output.film';
 }
 
 function rotateCanvas() {
-    canvasRotation = (canvasRotation + 1) % 2; // 0和1之间切换
+    canvasRotation = (canvasRotation + 1) % 2;
+
+    const canvas = document.getElementById('canvas');
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+
+    let effectiveWidth, effectiveHeight;
+    if (canvasRotation === 0) {
+        effectiveWidth = canvasWidth;
+        effectiveHeight = canvasHeight;
+    } else {
+        effectiveWidth = canvasHeight;
+        effectiveHeight = canvasWidth;
+    }
+
+    const imgWidth = originalImage.width * scale;
+    const imgHeight = originalImage.height * scale;
+
+    const scaleX = effectiveWidth / originalImage.width;
+    const scaleY = effectiveHeight / originalImage.height;
+    const newScale = Math.min(scaleX, scaleY, 1);
+
+    scale = newScale;
+
+    const scaledWidth = originalImage.width * scale;
+    const scaledHeight = originalImage.height * scale;
+    offsetX = (effectiveWidth - scaledWidth) / 2;
+    offsetY = (effectiveHeight - scaledHeight) / 2;
+
     updateImage();
 }
 
@@ -859,50 +909,54 @@ function analyzeImage(imageData) {
 
 function getOptimalDitherParameters(imageAnalysis) {
     const { brightness, contrast, colorSaturation } = imageAnalysis;
-    
-    // Select dither type based on image characteristics
-    let ditherType = 'floydSteinberg'; // Default
-    
+
+    let ditherType = 'floydSteinberg';
+
     if (colorSaturation > 0.6) {
-        // High color saturation - use more aggressive dithering
         ditherType = 'stucki';
     } else if (contrast < 0.3) {
-        // Low contrast - use more subtle dithering
         ditherType = 'atkinson';
     } else if (brightness < 0.3 || brightness > 0.7) {
-        // Extreme brightness - use more robust dithering
         ditherType = 'jarvis';
     }
-    
-    // Adjust dither strength based on contrast and color saturation
+
     let ditherStrength = 1.0;
-    
+
     if (contrast < 0.4) {
-        // Low contrast - increase dither strength
         ditherStrength = 1.5 + (0.4 - contrast) * 2;
     } else if (contrast > 0.7) {
-        // High contrast - decrease dither strength
         ditherStrength = 0.8 - (contrast - 0.7) * 2;
     }
-    
+
     if (colorSaturation > 0.5) {
-        // High color saturation - slightly increase dither strength
         ditherStrength *= 1.1;
     }
-    
-    // Clamp dither strength to valid range
+
     ditherStrength = Math.max(0.5, Math.min(3.0, ditherStrength));
-    
+
+    let contrastAdjustment = 1.2;
+
+    if (brightness < 0.4) {
+        contrastAdjustment = 1.4 + (0.4 - brightness) * 0.8;
+    } else if (brightness > 0.7) {
+        contrastAdjustment = 1.0 - (brightness - 0.7) * 0.5;
+    }
+
+    contrastAdjustment = Math.max(0.8, Math.min(2.0, contrastAdjustment));
+
     return {
         ditherType,
-        ditherStrength
+        ditherStrength: parseFloat(ditherStrength.toFixed(1)),
+        contrast: parseFloat(contrastAdjustment.toFixed(1))
     };
 }
 
 function applyDitherParameters(params) {
     document.getElementById('ditherType').value = params.ditherType;
     document.getElementById('ditherStrength').value = params.ditherStrength;
-    document.getElementById('ditherStrengthValue').textContent = params.ditherStrength.toFixed(1);
+    document.getElementById('ditherStrengthValue').textContent = params.ditherStrength;
+    document.getElementById('contrast').value = params.contrast;
+    document.getElementById('contrastValue').textContent = params.contrast;
 }
 
 function autoConfigureDither() {
@@ -914,8 +968,14 @@ function autoConfigureDither() {
     const imageAnalysis = analyzeImage(currentImageData);
     const optimalParams = getOptimalDitherParameters(imageAnalysis);
     applyDitherParameters(optimalParams);
-    updateImage();
-    alert('已自动配置最佳抖动参数');
+
+    if (!isDitheringEnabled) {
+        toggleDither();
+    } else {
+        updateImage();
+    }
+
+    document.getElementById('imageResult').innerHTML = '<div class="info">已自动配置抖动参数</div>';
 }
 
 function convertImageToFilm() {
