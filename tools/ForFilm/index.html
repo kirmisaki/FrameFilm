@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ForFilm Web工具</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+</head>
+<body>
+    <div class="container">
+        <!-- 页面内容 -->
+        <div id="page-content">
+            <!-- 蓝牙连接页面 -->
+            <div id="bluetooth-page" class="page active">
+                <h1>蓝牙连接</h1>
+                <div class="bluetooth-container">
+                    <div id="connection-status" class="status">未连接</div>
+                    <button id="scan-button" class="primary-button">扫描设备</button>
+                    <div id="device-list" class="device-list"></div>
+                    <div id="bluetooth-info" class="info">
+                        <p>点击扫描按钮开始搜索ForFilm设备</p>
+                        <p>注意：Web蓝牙功能仅在HTTPS或localhost环境下可用</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OTA升级页面 -->
+            <div id="ota-page" class="page">
+                <h1>OTA升级</h1>
+                <div class="placeholder-content">
+                    <div class="icon">
+                        <i class="material-icons">system_update</i>
+                    </div>
+                    <h2>功能开发中</h2>
+                    <p>OTA升级功能正在开发中，敬请期待</p>
+                </div>
+            </div>
+
+            <!-- 设备配置页面 -->
+            <div id="config-page" class="page">
+                <h1>设备配置</h1>
+                <div class="placeholder-content">
+                    <div class="icon">
+                        <i class="material-icons">settings</i>
+                    </div>
+                    <h2>功能开发中</h2>
+                    <p>设备配置功能正在开发中，敬请期待</p>
+                </div>
+            </div>
+
+            <!-- 照片转换页面 -->
+            <div id="convert-page" class="page">
+                <h1>照片转换</h1>
+                <div class="convert-container">
+                    <!-- 图片转换内容 -->
+                    <div id="image" class="tab-content active">
+                        <div class="form-group">
+                            <label for="imageFile">上传图像</label>
+                            <input type="file" id="imageFile" accept="image/*">
+                            <div class="info">支持各种常见图片格式</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="ditherType">抖动算法：</label>
+                            <select id="ditherType">
+                                <option value="floydSteinberg">Floyd-Steinberg</option>
+                                <option value="atkinson">Atkinson</option>
+                                <option value="stucki">Stucki</option>
+                                <option value="jarvis">Jarvis-Judice-Ninke</option>
+                            </select>
+                        </div>
+
+                        <div class="slider-container">
+                            <label for="ditherStrength">抖动强度：</label>
+                            <input type="range" id="ditherStrength" min="0" max="5" step="0.1" value="1.0">
+                            <span id="ditherStrengthValue">1.0</span>
+                        </div>
+
+                        <div class="slider-container">
+                            <label for="contrast">对比度：</label>
+                            <input type="range" id="contrast" min="0.5" max="2" step="0.1" value="1.2">
+                            <span id="contrastValue">1.2</span>
+                        </div>
+
+                        <div class="button-group">
+                            <button id="toggleDither" class="secondary-button" onclick="toggleDither()">启用抖动</button>
+                            <button class="secondary-button" onclick="autoConfigureDither()">自动配置</button>
+                            <button class="secondary-button" onclick="rotateCanvas()">旋转90度</button>
+                            <button class="secondary-button" onclick="resetImage()">重置</button>
+                        </div>
+
+                        <div class="form-group">
+                            <p class="info">提示：在画布上使用双指缩放可以调整图片大小，拖动图片可以调整位置</p>
+                        </div>
+
+                        <canvas id="canvas" width="300" height="200"></canvas>
+
+                        <div class="form-group">
+                            <label for="fileName">文件名：</label>
+                            <input type="text" id="fileName" value="output.film">
+                        </div>
+
+                        <button type="button" class="primary-button" onclick="convertImageToFilm()">转换并下载</button>
+                        <button type="button" class="secondary-button" onclick="uploadToDevice()">蓝牙上传</button>
+
+                        <div class="result" id="imageResult"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部导航栏 -->
+        <nav class="bottom-nav">
+            <a href="#" class="nav-item active" data-page="bluetooth-page">
+                <i class="material-icons">bluetooth</i>
+                <span>蓝牙</span>
+            </a>
+            <a href="#" class="nav-item" data-page="ota-page">
+                <i class="material-icons">system_update</i>
+                <span>OTA</span>
+            </a>
+            <a href="#" class="nav-item" data-page="config-page">
+                <i class="material-icons">settings</i>
+                <span>配置</span>
+            </a>
+            <a href="#" class="nav-item" data-page="convert-page">
+                <i class="material-icons">image</i>
+                <span>Film</span>
+            </a>
+        </nav>
+    </div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/bluetooth.js"></script>
+    <script src="js/convert.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
