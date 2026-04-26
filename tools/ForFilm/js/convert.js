@@ -14,6 +14,7 @@ let startOffsetX = 0;
 let startOffsetY = 0;
 let originalImage = null;
 let uploadedFileName = 'output';
+let processedDataForDownload = null;
 
 // 固定的六色调色板
 const rgbPalette = [
@@ -115,27 +116,29 @@ function initConvertTool() {
     let isPinching = false;
 
     canvas.addEventListener('touchstart', function(e) {
-        if (e.touches.length === 1) {
-            // 单指触摸 - 拖动
-            isDragging = true;
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-            startOffsetX = offsetX;
-            startOffsetY = offsetY;
-        } else if (e.touches.length === 2) {
-            // 双指触摸 - 缩放
-            isPinching = true;
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            touchStartDistance = Math.sqrt(
-                Math.pow(touch2.clientX - touch1.clientX, 2) +
-                Math.pow(touch2.clientY - touch1.clientY, 2)
-            );
+        if (!isDitheringEnabled) {
+            if (e.touches.length === 1) {
+                isDragging = true;
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+                startOffsetX = offsetX;
+                startOffsetY = offsetY;
+            } else if (e.touches.length === 2) {
+                isPinching = true;
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                touchStartDistance = Math.sqrt(
+                    Math.pow(touch2.clientX - touch1.clientX, 2) +
+                    Math.pow(touch2.clientY - touch1.clientY, 2)
+                );
+            }
+            e.preventDefault();
         }
-        e.preventDefault();
     });
 
     canvas.addEventListener('touchmove', function(e) {
+        if (isDitheringEnabled) return;
+        
         if (e.touches.length === 1 && isDragging) {
             // 单指拖动
             const deltaX = e.touches[0].clientX - startX;
@@ -978,7 +981,7 @@ function autoConfigureDither() {
     document.getElementById('imageResult').innerHTML = '<div class="info">已自动配置抖动参数</div>';
 }
 
-function convertImageToFilm() {
+function convertImage() {
     if (!originalImage) {
         document.getElementById('imageResult').innerHTML = '<div class="error">请先上传图片</div>';
         return;
@@ -989,28 +992,27 @@ function convertImageToFilm() {
         const canvasWidth = canvas.width;
         const canvasHeight = canvas.height;
 
-        // 获取当前画布数据
         const ctx = canvas.getContext('2d');
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
 
-        // 处理图像数据
-        const processedData = processImageData(imageData);
-        
-        // 获取文件名
-        const fileName = document.getElementById('fileName').value || 'output.film';
-        
-        // 下载文件
-        downloadFile(processedData, fileName);
-        
-        // 显示结果
+        processedDataForDownload = processImageData(imageData);
+
         document.getElementById('imageResult').innerHTML = `
-            <div class="success">转换成功！</div>
-            <p>文件已转换为: ${fileName}</p>
-            <p>文件大小: ${processedData.length} 字节</p>
-            <p class="info">建议保存到 bin 目录</p>
-            <button class="secondary-button" onclick="downloadFile(processedData, '${fileName}')">重新下载</button>
+            <div class="success">转换完成！</div>
+            <p>文件大小: ${processedDataForDownload.length} 字节</div>
+            <p class="info">点击下载按钮保存文件</p>
         `;
     } catch (error) {
         document.getElementById('imageResult').innerHTML = `<div class="error">转换失败: ${error.message}</div>`;
     }
+}
+
+function downloadFilmFile() {
+    if (!processedDataForDownload) {
+        document.getElementById('imageResult').innerHTML = '<div class="error">请先点击转换按钮</div>';
+        return;
+    }
+
+    const fileName = document.getElementById('fileName').value || 'output.film';
+    downloadFile(processedDataForDownload, fileName);
 }
