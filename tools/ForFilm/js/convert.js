@@ -44,7 +44,7 @@ function initConvertTool() {
         if (!isDitheringEnabled) {
             e.preventDefault();
             const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
-            const newScale = Math.max(0.1, Math.min(3, scale * scaleFactor));
+            const newScale = Math.max(0.05, Math.min(10, scale * scaleFactor));
             
             // 计算鼠标在画布上的位置
             const rect = canvas.getBoundingClientRect();
@@ -160,7 +160,7 @@ function initConvertTool() {
             );
             
             const scaleFactor = currentDistance / touchStartDistance;
-            const newScale = Math.max(0.1, Math.min(3, scale * scaleFactor));
+            const newScale = Math.max(0.05, Math.min(10, scale * scaleFactor));
             
             // 计算触摸中心点
             const centerX = (touch1.clientX + touch2.clientX) / 2;
