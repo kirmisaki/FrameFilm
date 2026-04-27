@@ -148,10 +148,10 @@ FrameFilm/
 
 使用 Web 工具将照片转换为 FrameFilm 格式：
 
-```bash
-# 直接在浏览器打开
-open tools/convert/convert_tool.html
-```
+**在线工具（GitHub Pages）：**
+👉 [FrameFilm Web 工具](https://kirmisaki.github.io/FrameFilm/tools/ForFilm/)
+
+支持蓝牙连接设备、照片转换、固件 OTA 升级等功能。
 
 支持的滤镜效果和转换参数可在工具界面中实时调整。
 
