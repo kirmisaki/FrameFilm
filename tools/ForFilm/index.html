@@ -163,7 +163,7 @@
                         deviceList.innerHTML = '<div class="scanning-indicator"><span class="pulse"></span>扫描中...</div>';
 
                         device = await navigator.bluetooth.requestDevice({
-                            acceptAllDevices: true,
+                            filters: [{ namePrefix: 'FRAMEFILM' }],
                             optionalServices: ['00002000-0000-1000-8000-00805f9b34fb']
                         });
 
