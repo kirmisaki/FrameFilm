@@ -255,11 +255,17 @@ static void monitor_auto_sleep_manage_event(void)
         m_monitor_state.sleep_counter++;
     }
 
-    if(!m_monitor_state.ble_connected &&
-            m_monitor_state.sleep_counter >= MONITOR_AUTO_SLEEP_TICK_COUNT)
+    if(!m_monitor_state.ble_connected) // ble disconnected
     {
-        sys_logi(MONITOR_TAG, "auto sleep timeout, entering low power mode");
-        monitor_enter_low_power();
+        if(m_monitor_state.sleep_counter >= MONITOR_AUTO_SLEEP_TICK_COUNT)
+        {
+            sys_logi(MONITOR_TAG, "auto sleep timeout, entering low power mode");
+            monitor_enter_low_power();
+        }
+    }
+    else // ble connected
+    {
+        m_monitor_state.sleep_counter = 0;
     }
 }
 
