@@ -140,8 +140,8 @@
         let service = null;
         let characteristic = null;
 
-        const BLE_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
-        const BLE_CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+        const BLE_SERVICE_UUID = '00002000-0000-1000-8000-00805f9b34fb';
+        const BLE_CHARACTERISTIC_UUID = '00002001-0000-1000-8000-00805f9b34fb';
 
         document.addEventListener('DOMContentLoaded', function() {
             const scanButton = document.getElementById('scan-button');
@@ -159,11 +159,12 @@
                             return;
                         }
 
-                        status.textContent = '正在连接...';
-                        deviceList.innerHTML = '<div class="scanning-indicator"><span class="pulse"></span>连接中...</div>';
+                        status.textContent = '正在扫描所有设备...';
+                        deviceList.innerHTML = '<div class="scanning-indicator"><span class="pulse"></span>扫描中...</div>';
 
                         device = await navigator.bluetooth.requestDevice({
-                            filters: [{ services: [BLE_SERVICE_UUID] }]
+                            acceptAllDevices: true,
+                            optionalServices: ['00002000-0000-1000-8000-00805f9b34fb']
                         });
 
                         if (device.gatt.connected) {
