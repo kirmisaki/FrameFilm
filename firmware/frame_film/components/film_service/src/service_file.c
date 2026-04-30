@@ -48,6 +48,7 @@
 #include "sys_log.h"
 #include "hal_sd.h"
 #include "service_file.h"
+#include "service_film.h"
 
 /*********************************************************************
  * MACROS
@@ -242,9 +243,28 @@ static void file_task_handle(void *pvParameters)
                     {
                         sys_loge(FILE_TAG, "File size mismatch: written=%d, expected=%d", m_file_state.save_written, m_file_state.save_file_size);
                     }
+                    else
+                    {
+                        sys_logi(FILE_TAG, "Refreshing file list and loading new photo...");
+                        // 刷新文件列表
+                        file_list_refresh_event();
+                        
+                        // 查找新文件并加载
+                        for(uint32_t i = 0; i < m_file_state.file_count; i++)
+                        {
+                            if(strcmp(m_file_state.file_list[i].filename, m_file_state.save_filename) == 0)
+                            {
+                                sys_logi(FILE_TAG, "Found new file at index %d, loading...", i);
+                                m_file_state.current_file_id = i;
+                                service_film_display(i);
+                                break;
+                            }
+                        }
+                    }
                 }
                 m_file_state.save_file_size = 0;
                 m_file_state.save_written = 0;
+                memset(m_file_state.save_filename, 0, sizeof(m_file_state.save_filename));
                 break;
             default:
                 break;
