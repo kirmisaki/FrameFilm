@@ -14,7 +14,7 @@ let startOffsetX = 0;
 let startOffsetY = 0;
 let originalImage = null;
 let uploadedFileName = 'output';
-let processedDataForDownload = null;
+window.processedDataForDownload = null;
 
 // 固定的六色调色板
 const rgbPalette = [
@@ -995,11 +995,11 @@ function convertImage() {
         const ctx = canvas.getContext('2d');
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
 
-        processedDataForDownload = processImageData(imageData);
+        window.processedDataForDownload = processImageData(imageData);
 
         document.getElementById('imageResult').innerHTML = `
             <div class="success">转换完成！</div>
-            <p>文件大小: ${processedDataForDownload.length} 字节</div>
+            <p>文件大小: ${window.processedDataForDownload.length} 字节</div>
             <p class="info">点击下载按钮保存文件</p>
         `;
     } catch (error) {
@@ -1008,11 +1008,11 @@ function convertImage() {
 }
 
 function downloadFilmFile() {
-    if (!processedDataForDownload) {
+    if (!window.processedDataForDownload) {
         document.getElementById('imageResult').innerHTML = '<div class="error">请先点击转换按钮</div>';
         return;
     }
 
     const fileName = document.getElementById('fileName').value || 'output.film';
-    downloadFile(processedDataForDownload, fileName);
+    downloadFile(window.processedDataForDownload, fileName);
 }

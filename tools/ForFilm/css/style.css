@@ -378,3 +378,43 @@ h1 {
     margin-top: 10px;
     font-size: 14px;
 }
+
+/* 传输进度样式 */
+.transfer-container {
+    margin: 15px 0;
+    padding: 15px;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+}
+
+.transfer-status {
+    text-align: center;
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background-color: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50, #45a049);
+    transition: width 0.3s ease;
+}
+
+.transfer-progress {
+    text-align: center;
+    font-size: 14px;
+    color: #666;
+    margin-top: 8px;
+    font-weight: 600;
+}

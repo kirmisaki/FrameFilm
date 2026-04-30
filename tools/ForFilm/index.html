@@ -102,7 +102,15 @@
 
                         <button type="button" class="primary-button" onclick="convertImage()">转换</button>
                         <button type="button" class="primary-button" onclick="downloadFilmFile()">下载</button>
-                        <button type="button" class="primary-button" onclick="uploadToDevice()">蓝牙上传</button>
+                        <button type="button" class="primary-button" id="upload-btn" onclick="uploadToDevice()">蓝牙上传</button>
+
+                        <div id="transfer-container" class="transfer-container" style="display: none;">
+                            <div id="transfer-status" class="transfer-status">准备传输...</div>
+                            <div class="progress-bar">
+                                <div id="transfer-progress-bar" class="progress-fill"></div>
+                            </div>
+                            <div id="transfer-progress" class="transfer-progress">0%</div>
+                        </div>
 
                         <div class="result" id="imageResult"></div>
                     </div>
