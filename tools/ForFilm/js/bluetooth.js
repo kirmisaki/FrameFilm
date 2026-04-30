@@ -22,7 +22,9 @@ const BLE_FILM_TRANS_STATE_RECV_LEN = 3;
 const BLE_FILM_TRANS_STATE_RECV_DATA = 4;
 const BLE_FILM_TRANS_STATE_STOPPED = 5;
 
-const BLE_CHUNK_SIZE = 192;  // MTU 200 - 协议开销(4字节头+1字节校验) = 195, 使用192更安全
+const BLE_CHUNK_SIZE = 192;
+const BLE_CTRL_DELAY = 10;
+const BLE_DATA_DELAY = 5;
 
 let filmTransState = BLE_FILM_TRANS_STATE_IDLE;
 let filmTransFileName = '';
@@ -174,7 +176,7 @@ async function uploadFilmFileViaBle(fileName, fileData) {
             const progress = Math.round((sentBytes / fileData.length) * 100);
             updateTransferStatus(`传输中: ${sentBytes}/${fileData.length} 字节`, progress);
 
-            await delay(15);
+            await delay(BLE_DATA_DELAY);
         }
 
         await sendBleFileStop();
@@ -208,7 +210,7 @@ async function sendBleFileStart() {
 
     await characteristic.writeValue(packet);
     console.log('发送 FILE_START');
-    await delay(20);
+    await delay(BLE_CTRL_DELAY);
 }
 
 async function sendBleFileName(fileName) {
@@ -222,7 +224,7 @@ async function sendBleFileName(fileName) {
 
     await characteristic.writeValue(packet);
     console.log('发送 FILE_NAME:', fileName);
-    await delay(20);
+    await delay(BLE_CTRL_DELAY);
 }
 
 async function sendBleFileLen(fileSize) {
@@ -238,7 +240,7 @@ async function sendBleFileLen(fileSize) {
 
     await characteristic.writeValue(packet);
     console.log('发送 FILE_LEN:', fileSize);
-    await delay(20);
+    await delay(BLE_CTRL_DELAY);
 }
 
 async function sendBleFileData(data) {
@@ -250,7 +252,7 @@ async function sendBleFileData(data) {
     packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
 
     await characteristic.writeValue(packet);
-    await delay(10);
+    await delay(BLE_DATA_DELAY);
 }
 
 async function sendBleFileStop() {
@@ -262,7 +264,7 @@ async function sendBleFileStop() {
 
     await characteristic.writeValue(packet);
     console.log('发送 FILE_STOP');
-    await delay(20);
+    await delay(BLE_CTRL_DELAY);
 }
 
 function updateTransferStatus(message, progress) {
