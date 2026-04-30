@@ -225,7 +225,7 @@ static void file_task_handle(void *pvParameters)
                 {
                     size_t written = fwrite(msg.pdata, 1, msg.data_len, m_file_state.save_file_handle);
                     m_file_state.save_written += written;
-                    sys_logi(FILE_TAG, "Written %d bytes, total: %d/%d", written, m_file_state.save_written, m_file_state.save_file_size);
+                    // sys_logi(FILE_TAG, "Written %d bytes, total: %d/%d", written, m_file_state.save_written, m_file_state.save_file_size);
                 }
                 if(msg.pdata)
                 {

@@ -235,7 +235,7 @@ static void ble_task_handle(void *pvParameters)
                 if(msg.pdata[0] ==  BLE_CMD_HEAD)
                 {
                     uint8_t sum = ble_checksum(msg.pdata, msg.len - 1);
-                    sys_logi(BEL_SERVICE_TAG, "sum:0x%02x", sum);
+                    // sys_logi(BEL_SERVICE_TAG, "sum:0x%02x", sum);
 
                     if(sum == msg.pdata[msg.len - 1])
                     {
