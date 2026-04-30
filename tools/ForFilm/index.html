@@ -27,12 +27,36 @@
             <!-- OTA升级页面 -->
             <div id="ota-page" class="page">
                 <h1>OTA升级</h1>
-                <div class="placeholder-content">
-                    <div class="icon">
-                        <i class="material-icons">system_update</i>
+                <div class="ota-container">
+                    <div class="ota-info">
+                        <p>选择OTA升级文件(.bin)并传输到设备</p>
                     </div>
-                    <h2>功能开发中</h2>
-                    <p>OTA升级功能正在开发中，敬请期待</p>
+
+                    <input type="file" id="ota-file-input" accept=".bin" style="display: none;" onchange="handleOtaFileSelect(event)">
+
+                    <div class="ota-file-section">
+                        <button class="primary-button" onclick="selectOtaFile()">选择升级文件</button>
+                        <div id="ota-file-size" class="ota-file-size">未选择文件</div>
+                    </div>
+
+                    <button id="ota-upgrade-btn" class="primary-button" onclick="startOtaUpgrade()">开始升级</button>
+
+                    <div id="ota-transfer-container" class="transfer-container" style="display: none;">
+                        <div id="ota-transfer-status" class="transfer-status">准备传输...</div>
+                        <div class="progress-bar">
+                            <div id="ota-transfer-progress-bar" class="progress-fill"></div>
+                        </div>
+                        <div id="ota-transfer-progress" class="transfer-progress">0%</div>
+                    </div>
+
+                    <div class="ota-tips">
+                        <h3>升级提示：</h3>
+                        <ul>
+                            <li>请确保设备电量充足</li>
+                            <li>升级过程中请勿断开连接</li>
+                            <li>升级完成后设备将自动重启</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
