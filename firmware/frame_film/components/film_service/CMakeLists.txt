@@ -10,7 +10,7 @@ set(srcs "src/service_init.c"
 
 set(public_include "inc")
 
-set(requires film_hal film_sys  bt nvs_flash)
+set(requires film_hal film_sys  bt nvs_flash app_update)
 
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS ${public_include}

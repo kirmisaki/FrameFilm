@@ -48,6 +48,7 @@
 #include "service_ble_gatts.h"
 #include "service_ble.h"
 #include "service_file.h"
+#include "service_ota.h"
 
 
 /*********************************************************************
@@ -70,6 +71,12 @@
 #define BLE_FILM_TRANS_RECV_DATA  4
 #define BLE_FILM_TRANS_STOPPED    5
 
+#define BLE_OTA_TRANS_IDLE        0
+#define BLE_OTA_TRANS_STARTED     1
+#define BLE_OTA_TRANS_RECV_LEN    2
+#define BLE_OTA_TRANS_RECV_DATA   3
+#define BLE_OTA_TRANS_STOPPED     4
+
 
 /*********************************************************************
  * CONSTANTS
@@ -85,6 +92,9 @@ static uint8_t m_film_trans_state = BLE_FILM_TRANS_IDLE;
 static uint8_t m_film_trans_filename[256];
 static uint32_t m_film_trans_file_size = 0;
 static uint32_t m_film_trans_received = 0;
+static uint8_t m_ota_trans_state = BLE_OTA_TRANS_IDLE;
+static uint32_t m_ota_trans_file_size = 0;
+static uint32_t m_ota_trans_received = 0;
 
 
 /*********************************************************************
@@ -403,18 +413,62 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_OTA_LEN :
         {
+            if(m_ota_trans_state == BLE_OTA_TRANS_IDLE && cmd->len == 4)
+            {
+                m_ota_trans_file_size = (cmd->pdata[0] << 24) | (cmd->pdata[1] << 16) | (cmd->pdata[2] << 8) | cmd->pdata[3];
+                m_ota_trans_received = 0;
+                m_ota_trans_state = BLE_OTA_TRANS_RECV_LEN;
+                sys_logi(BEL_SERVICE_TAG, "OTA file size: %d bytes", m_ota_trans_file_size);
+                service_ota_start();
+                service_set_length(m_ota_trans_file_size);
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "Invalid state or length for OTA_LEN: state=%d, len=%d", m_ota_trans_state, cmd->len);
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_OTA_DATA :
         {
+            if((m_ota_trans_state == BLE_OTA_TRANS_RECV_LEN || m_ota_trans_state == BLE_OTA_TRANS_RECV_DATA) && cmd->len > 0)
+            {
+                service_ota_write(cmd->pdata, cmd->len);
+                m_ota_trans_received += cmd->len;
+                m_ota_trans_state = BLE_OTA_TRANS_RECV_DATA;
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "Invalid state or length for OTA_DATA: state=%d, len=%d", m_ota_trans_state, cmd->len);
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_OTA_START :
         {
+            if(m_ota_trans_state == BLE_OTA_TRANS_IDLE)
+            {
+                m_ota_trans_state = BLE_OTA_TRANS_STARTED;
+                m_ota_trans_received = 0;
+                service_ota_start();
+                sys_logi(BEL_SERVICE_TAG, "OTA started (without length)");
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "Invalid state for OTA_START: %d", m_ota_trans_state);
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_OTA_STOP :
         {
+            if(m_ota_trans_state == BLE_OTA_TRANS_RECV_DATA || m_ota_trans_state == BLE_OTA_TRANS_RECV_LEN)
+            {
+                service_ota_stop();
+                sys_logi(BEL_SERVICE_TAG, "OTA stopped, received: %d/%d bytes", m_ota_trans_received, m_ota_trans_file_size);
+                m_ota_trans_state = BLE_OTA_TRANS_STOPPED;
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "Invalid state for OTA_STOP: %d", m_ota_trans_state);
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_MODE :
