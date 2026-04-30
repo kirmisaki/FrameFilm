@@ -1,4 +1,5 @@
 set(srcs "src/sys_init.c"
+         "src/sys_com.c"
          )
 
 set(public_include "inc")

@@ -40,6 +40,7 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_CTRL_MODE     (0x20)
 #define BLE_FILM_TRANS_CH_CTRL_RESET    (0x21)
 #define BLE_FILM_TRANS_CH_CTRL_PWRREAD  (0x22)
+#define BLE_FILM_TRANS_CH_CTRL_REBOOT   (0x23)
 
 /*********************************************************************
 * TYPEDEFS

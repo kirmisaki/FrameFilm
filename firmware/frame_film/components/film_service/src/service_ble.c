@@ -429,6 +429,11 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         {
             break;
         }
+        case BLE_FILM_TRANS_CH_CTRL_REBOOT :
+        {
+            sys_reboot();
+            break;
+        }
         default :
         {
             break;

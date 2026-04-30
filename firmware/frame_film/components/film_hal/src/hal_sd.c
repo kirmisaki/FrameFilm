@@ -88,7 +88,7 @@ static sdmmc_card_t *card;
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
-static void IRAM_ATTR gpio_isr_handler(void *arg);
+static void gpio_isr_handler(void *arg);
 static void sd_check_task(void *arg);
 static void sd_det_init(void);
 static void sd_mount(void);

@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "sys_err.h"
 #include "sys_cfg.h"
+#include "sys_com.h"
 #include "sys_build.h"
 
 /*********************************************************************
