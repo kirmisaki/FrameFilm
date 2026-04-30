@@ -47,6 +47,7 @@
 
 #include "service_ble_gatts.h"
 #include "service_ble.h"
+#include "service_file.h"
 
 
 /*********************************************************************
@@ -62,6 +63,13 @@
 #define BLE_MSG_QUEUE_LENGTH       50
 #define BLE_MSG_QUEUE_ITEM_SIZE    sizeof( ble_msg_t )
 
+#define BLE_FILM_TRANS_IDLE       0
+#define BLE_FILM_TRANS_STARTED    1
+#define BLE_FILM_TRANS_RECV_NAME  2
+#define BLE_FILM_TRANS_RECV_LEN   3
+#define BLE_FILM_TRANS_RECV_DATA  4
+#define BLE_FILM_TRANS_STOPPED    5
+
 
 /*********************************************************************
  * CONSTANTS
@@ -73,6 +81,10 @@
  */
 static TaskHandle_t m_ble_task_hdl = NULL;
 static QueueHandle_t m_ble_msg_hdl = NULL;
+static uint8_t m_film_trans_state = BLE_FILM_TRANS_IDLE;
+static uint8_t m_film_trans_filename[256];
+static uint32_t m_film_trans_file_size = 0;
+static uint32_t m_film_trans_received = 0;
 
 
 /*********************************************************************
@@ -297,24 +309,84 @@ static void ble_cmd_process(ble_cmd_t *cmd)
 
     switch(cmd->ch)
     {
+        case BLE_FILM_TRANS_CH_FILE_START :
+        {
+            if(m_film_trans_state == BLE_FILM_TRANS_IDLE || m_film_trans_state == BLE_FILM_TRANS_STOPPED)
+            {
+                m_film_trans_state = BLE_FILM_TRANS_STARTED;
+                m_film_trans_received = 0;
+                memset(m_film_trans_filename, 0, sizeof(m_film_trans_filename));
+                m_film_trans_file_size = 0;
+                sys_logi(BEL_SERVICE_TAG, "Film transfer started");
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "Invalid state for FILE_START: %d", m_film_trans_state);
+            }
+            break;
+        }
         case BLE_FILM_TRANS_CH_FILE_NAME :
         {
+            if(m_film_trans_state == BLE_FILM_TRANS_STARTED && cmd->len > 0)
+            {
+                memcpy(m_film_trans_filename, cmd->pdata, cmd->len);
+                m_film_trans_filename[cmd->len] = '\0';
+                m_film_trans_state = BLE_FILM_TRANS_RECV_NAME;
+                sys_logi(BEL_SERVICE_TAG, "Received filename: %s", m_film_trans_filename);
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "Invalid state or length for FILE_NAME: state=%d, len=%d", m_film_trans_state, cmd->len);
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_FILE_LEN :
         {
+            if(m_film_trans_state == BLE_FILM_TRANS_RECV_NAME && cmd->len == 4)
+            {
+                m_film_trans_file_size = (cmd->pdata[0] << 24) | (cmd->pdata[1] << 16) | (cmd->pdata[2] << 8) | cmd->pdata[3];
+                m_film_trans_state = BLE_FILM_TRANS_RECV_LEN;
+                sys_logi(BEL_SERVICE_TAG, "Received file size: %d", m_film_trans_file_size);
+
+                service_file_save_start((const char*)m_film_trans_filename, m_film_trans_file_size);
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "Invalid state or length for FILE_LEN: state=%d, len=%d", m_film_trans_state, cmd->len);
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_FILE_DATA :
         {
-            break;
-        }
-        case BLE_FILM_TRANS_CH_FILE_START :
-        {
+            if((m_film_trans_state == BLE_FILM_TRANS_RECV_LEN || m_film_trans_state == BLE_FILM_TRANS_RECV_DATA) && cmd->len > 0)
+            {
+                uint8_t *pdata_copy = (uint8_t*)pvPortMalloc(cmd->len);
+                if(pdata_copy)
+                {
+                    memcpy(pdata_copy, cmd->pdata, cmd->len);
+                    service_file_save_data((const char*)m_film_trans_filename, m_film_trans_file_size, pdata_copy, cmd->len);
+                    m_film_trans_received += cmd->len;
+                    m_film_trans_state = BLE_FILM_TRANS_RECV_DATA;
+                }
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "Invalid state or length for FILE_DATA: state=%d, len=%d", m_film_trans_state, cmd->len);
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_FILE_STOP :
         {
+            if(m_film_trans_state == BLE_FILM_TRANS_RECV_DATA)
+            {
+                service_file_save_stop();
+                sys_logi(BEL_SERVICE_TAG, "Film transfer stopped, received: %d/%d bytes", m_film_trans_received, m_film_trans_file_size);
+                m_film_trans_state = BLE_FILM_TRANS_STOPPED;
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "Invalid state for FILE_STOP: %d", m_film_trans_state);
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_FILE_DELETE :

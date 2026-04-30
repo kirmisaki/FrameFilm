@@ -78,6 +78,10 @@ typedef struct {
     uint8_t load_complete;   // 文件加载完成状态
     uint32_t buffer_size;    // 缓冲区大小
     uint8_t sd_mounted;      // SD卡挂载状态
+    FILE* save_file_handle;  // 文件保存句柄
+    uint32_t save_file_size; // 要保存的文件大小
+    uint32_t save_written;   // 已写入的字节数
+    char save_filename[256]; // 当前保存的文件名
 } file_service_state_t;
 
 /*********************************************************************
@@ -123,6 +127,9 @@ void service_file_init(void)
     m_file_state.buffer_size = 0;
     m_file_state.sd_mounted = 0;
     m_file_state.load_complete = FILE_LOAD_STATE_NONE;
+    m_file_state.save_file_handle = NULL;
+    m_file_state.save_file_size = 0;
+    m_file_state.save_written = 0;
 
     if(m_file_task_hdl == NULL)
     {
@@ -184,6 +191,60 @@ static void file_task_handle(void *pvParameters)
                 }
                 m_file_state.file_count = 0;
                 m_file_state.current_file_id = 0;
+                break;
+            case MSG_FILE_SAVE_START:
+                if(msg.file_size == FILE_EPD_IMGAGE_SIZE)
+                {
+                    snprintf(m_file_state.save_filename, sizeof(m_file_state.save_filename), "%s", msg.pdata);
+                    char filepath[512];
+                    snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, m_file_state.save_filename);
+
+                    m_file_state.save_file_handle = fopen(filepath, "wb");
+                    if(m_file_state.save_file_handle == NULL)
+                    {
+                        sys_loge(FILE_TAG, "Open file for save failed: %s", filepath);
+                    }
+                    else
+                    {
+                        m_file_state.save_file_size = msg.file_size;
+                        m_file_state.save_written = 0;
+                        sys_logi(FILE_TAG, "Start save file: %s, size: %d", filepath, msg.file_size);
+                    }
+                }
+                else
+                {
+                    sys_loge(FILE_TAG, "Invalid file size: %d, expected: %d", msg.file_size, FILE_EPD_IMGAGE_SIZE);
+                }
+                if(msg.pdata)
+                {
+                    free(msg.pdata);
+                }
+                break;
+            case MSG_FILE_SAVE_DATA:
+                if(m_file_state.save_file_handle && msg.pdata)
+                {
+                    size_t written = fwrite(msg.pdata, 1, msg.data_len, m_file_state.save_file_handle);
+                    m_file_state.save_written += written;
+                    sys_logi(FILE_TAG, "Written %d bytes, total: %d/%d", written, m_file_state.save_written, m_file_state.save_file_size);
+                }
+                if(msg.pdata)
+                {
+                    free(msg.pdata);
+                }
+                break;
+            case MSG_FILE_SAVE_STOP:
+                if(m_file_state.save_file_handle)
+                {
+                    fclose(m_file_state.save_file_handle);
+                    m_file_state.save_file_handle = NULL;
+                    sys_logi(FILE_TAG, "Save file complete: %s, written: %d", m_file_state.save_filename, m_file_state.save_written);
+                    if(m_file_state.save_written != m_file_state.save_file_size)
+                    {
+                        sys_loge(FILE_TAG, "File size mismatch: written=%d, expected=%d", m_file_state.save_written, m_file_state.save_file_size);
+                    }
+                }
+                m_file_state.save_file_size = 0;
+                m_file_state.save_written = 0;
                 break;
             default:
                 break;
@@ -519,6 +580,56 @@ void service_file_load_next(void)
 
     file_msg_t msg;
     msg.ID = MSG_FILE_LOAD_NEXT;
+    file_msg_send(&msg, 0);
+}
+
+int service_file_save_data(const char *pfilename, uint32_t file_size, uint8_t *pdata, uint32_t data_len)
+{
+    if(!m_file_state.sd_mounted)
+    {
+        sys_logw(FILE_TAG, "SD card not mounted");
+        return -1;
+    }
+
+    file_msg_t msg = {0};
+    msg.ID = MSG_FILE_SAVE_DATA;
+    msg.file_size = file_size;
+    msg.pdata = pdata;
+    msg.data_len = data_len;
+    file_msg_send(&msg, 0);
+    return 0;
+}
+
+int service_file_save_start(const char *pfilename, uint32_t file_size)
+{
+    if(!m_file_state.sd_mounted)
+    {
+        sys_logw(FILE_TAG, "SD card not mounted");
+        return -1;
+    }
+
+    if(file_size != FILE_EPD_IMGAGE_SIZE)
+    {
+        sys_logw(FILE_TAG, "Invalid file size: %d, expected: %d", file_size, FILE_EPD_IMGAGE_SIZE);
+        return -1;
+    }
+
+    file_msg_t msg = {0};
+    msg.ID = MSG_FILE_SAVE_START;
+    msg.file_size = file_size;
+    msg.pdata = (uint8_t*)pvPortMalloc(strlen(pfilename) + 1);
+    if(msg.pdata)
+    {
+        memcpy(msg.pdata, pfilename, strlen(pfilename) + 1);
+    }
+    file_msg_send(&msg, 0);
+    return 0;
+}
+
+void service_file_save_stop(void)
+{
+    file_msg_t msg = {0};
+    msg.ID = MSG_FILE_SAVE_STOP;
     file_msg_send(&msg, 0);
 }
 

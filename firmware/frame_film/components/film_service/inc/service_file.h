@@ -39,11 +39,17 @@ typedef enum {
     MSG_FILE_LOAD_NEXT,       // 加载下一个文件
     MSG_SD_MOUNTED,           // SD卡挂载
     MSG_SD_UNMOUNTED,         // SD卡卸载
+    MSG_FILE_SAVE_START,      // 开始保存文件
+    MSG_FILE_SAVE_DATA,       // 保存文件数据
+    MSG_FILE_SAVE_STOP,       // 停止保存文件
 } file_msg_type_t;
 
 typedef struct {
     file_msg_type_t ID;
-    uint32_t file_id;  // 用于MSG_FILE_LOAD
+    uint32_t file_id;
+    uint32_t file_size;
+    uint32_t data_len;
+    uint8_t *pdata;
 } file_msg_t;
 
 /*********************************************************************
@@ -79,6 +85,37 @@ extern void service_file_init(void);
  * 此函数用于刷新文件列表，扫描SD卡中的.film文件。
  */
 extern void service_file_refresh_list(void);
+
+/**
+ * @brief 保存文件数据
+ *
+ * 此函数用于通过BLE接收文件数据并保存到SD卡。
+ *
+ * @param pfilename 文件名
+ * @param file_size 文件大小
+ * @param pdata 数据指针
+ * @param data_len 数据长度
+ * @return int 0:成功, -1:失败
+ */
+extern int service_file_save_data(const char *pfilename, uint32_t file_size, uint8_t *pdata, uint32_t data_len);
+
+/**
+ * @brief 开始保存文件
+ *
+ * 此函数用于开始BLE文件传输，初始化文件保存。
+ *
+ * @param pfilename 文件名
+ * @param file_size 文件大小
+ * @return int 0:成功, -1:失败
+ */
+extern int service_file_save_start(const char *pfilename, uint32_t file_size);
+
+/**
+ * @brief 停止保存文件
+ *
+ * 此函数用于完成BLE文件传输，关闭文件句柄。
+ */
+extern void service_file_save_stop(void);
 
 /**
  * @brief 加载指定文件

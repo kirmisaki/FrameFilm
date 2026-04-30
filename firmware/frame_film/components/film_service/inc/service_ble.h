@@ -21,7 +21,7 @@ extern "C"{
 #define BLE_CMD_HEAD                   (0x55)
 
 // 通道定义
-// FILM文件传输
+// FILM文件传输 传输逻辑 START->FILENAME->FILELEN->FILEDATA-> STOP->END
 #define BLE_FILM_TRANS_CH_FILE_NAME     (0x00)
 #define BLE_FILM_TRANS_CH_FILE_LEN      (0x01)
 #define BLE_FILM_TRANS_CH_FILE_DATA     (0x02)
