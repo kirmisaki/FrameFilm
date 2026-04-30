@@ -84,7 +84,8 @@ static QueueHandle_t m_ble_msg_hdl = NULL;
  * LOCAL FUNCTIONS
  */
 static void ble_task_handle(void *pvParameters);
-
+static uint8_t ble_checksum(uint8_t arr[], int len);
+static void ble_cmd_process(ble_cmd_t *cmd);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
@@ -217,36 +218,31 @@ static void ble_task_handle(void *pvParameters)
         {
         case MSG_BLE_CH1_IN_CMD :
         {
-            // if( msg.len )
-            // {
-            //     if(msg.pdata[0] ==  CMD_HEAD)
-            //     {
-            //         uint8_t sum = sys_checksum(msg.pdata, msg.len - 1);
-            //         // sys_logi("sum:0x%02x", sum);
+            if( msg.len )
+            {
+                if(msg.pdata[0] ==  BLE_CMD_HEAD)
+                {
+                    uint8_t sum = ble_checksum(msg.pdata, msg.len - 1);
+                    sys_logi(BEL_SERVICE_TAG, "sum:0x%02x", sum);
 
-            //         if(sum == msg.pdata[msg.len - 1])
-            //         {
-            //             sys_db_msg_t msg_db = {0};
+                    if(sum == msg.pdata[msg.len - 1])
+                    {
+                        ble_cmd_t cmd = {0};
 
-            //             msg_db.ID = MSG_SYS_DB_DATA_PROCESS;
-            //             msg_db.subID = MSG_SYS_DATA_BLE;
-            //             msg_db.packageID = MSG_SYS_PACKAGE_CMD;
-            //             msg_db.isresp = (msg.pdata[1] & 0x01);
-            //             msg_db.ch = msg.pdata[2];
-            //             msg_db.plen = msg.len - 4;
-            //             if(msg_db.plen)
-            //             {
-            //                 msg_db.pdata = pvPortMalloc(msg_db.plen);
-            //                 if(msg_db.pdata)
-            //                 {
-            //                     memcpy(msg_db.pdata, msg.pdata + 3, msg_db.plen);
-            //                     sys_task_msg_send(&msg_db, 1);
-            //                 }
-            //             }
-            //         }
-            //     }
-            //     vPortFree(msg.pdata);
-            // }
+                        cmd.ch = msg.pdata[1];
+                        cmd.len = msg.pdata[2];
+                        if(cmd.len == msg.len - 4)
+                        {
+                            cmd.pdata = msg.pdata + 3;
+                            if(cmd.pdata)
+                            {
+                                ble_cmd_process(&cmd);
+                            }
+                        }
+                    }
+                }
+                vPortFree(msg.pdata);
+            }
             break;
         }
         case MSG_BLE_CH1_OUT_DATA :
@@ -289,4 +285,97 @@ static void ble_task_handle(void *pvParameters)
         }
         }
     }
+}
+
+static void ble_cmd_process(ble_cmd_t *cmd)
+{
+    if(cmd == NULL)
+    {
+        sys_logw(BEL_SERVICE_TAG, "cmd is NULL");
+        return;
+    }
+
+    switch(cmd->ch)
+    {
+        case BLE_FILM_TRANS_CH_FILE_NAME :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_LEN :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_DATA :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_START :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_STOP :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_DELETE :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_LIST :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_DISPLAY :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_OTA_LEN :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_OTA_DATA :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_OTA_START :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_OTA_STOP :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_MODE :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_RESET :
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_PWRREAD :
+        {
+            break;
+        }
+        default :
+        {
+            break;
+        }
+    }
+}
+
+/**
+ * [ble_checksum 和校验]
+ * @param  arr [校验函数]
+ * @param  len [校验长度]
+ * @return     [校验值]
+ */
+static uint8_t ble_checksum(uint8_t arr[], int len)
+{
+    uint8_t sum = 0;
+    for (int i = 0; i < len; i++)
+    {
+        sum += arr[i];
+    }
+    return sum;
 }

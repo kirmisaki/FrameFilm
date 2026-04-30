@@ -18,6 +18,29 @@ extern "C"{
 #define SYS_OS_SIZE_BLE_TASK           (4096)
 #define SYS_OS_NAME_BLE_TASK           "ble_task"
 
+#define BLE_CMD_HEAD                   (0x55)
+
+// 通道定义
+// FILM文件传输
+#define BLE_FILM_TRANS_CH_FILE_NAME     (0x00)
+#define BLE_FILM_TRANS_CH_FILE_LEN      (0x01)
+#define BLE_FILM_TRANS_CH_FILE_DATA     (0x02)
+#define BLE_FILM_TRANS_CH_FILE_START    (0x03)
+#define BLE_FILM_TRANS_CH_FILE_STOP     (0x04)
+// FILM文件管理
+#define BLE_FILM_TRANS_CH_FILE_DELETE   (0x05)
+#define BLE_FILM_TRANS_CH_FILE_LIST     (0x06)
+#define BLE_FILM_TRANS_CH_FILE_DISPLAY  (0x07)
+// OTA
+#define BLE_FILM_TRANS_CH_OTA_LEN       (0x10)
+#define BLE_FILM_TRANS_CH_OTA_DATA      (0x11)
+#define BLE_FILM_TRANS_CH_OTA_START     (0x12)
+#define BLE_FILM_TRANS_CH_OTA_STOP      (0x13)
+// FILM控制
+#define BLE_FILM_TRANS_CH_CTRL_MODE     (0x20)
+#define BLE_FILM_TRANS_CH_CTRL_RESET    (0x21)
+#define BLE_FILM_TRANS_CH_CTRL_PWRREAD  (0x22)
+
 /*********************************************************************
 * TYPEDEFS
 */
@@ -28,6 +51,14 @@ typedef struct
     uint8_t len;
     uint8_t *pdata;
 } ble_msg_t;
+
+// 数据包构成 1byte 头 1byte 通道 1byte 数据长度 nbyte 数据(数据长度) 1byte 校验和(和校验)
+typedef struct
+{
+    uint8_t ch;          //通道
+    uint8_t len;         //数据长度
+    uint8_t *pdata;
+} ble_cmd_t;
 
 /*********************************************************************
  * CONSTANTS
