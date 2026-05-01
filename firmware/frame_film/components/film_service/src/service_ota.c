@@ -221,12 +221,14 @@ void service_ota_stop(void)
     if(m_ota_init == 0)
     {
         sys_loge(OTA_TAG, "OTA service not initialized");
+        sys_reboot();
         return;
     }
 
     if(m_ota_state.state != OTA_STATE_RECEIVING)
     {
         sys_loge(OTA_TAG, "OTA not in receiving state, state: %d", m_ota_state.state);
+        sys_reboot();
         return;
     }
 
