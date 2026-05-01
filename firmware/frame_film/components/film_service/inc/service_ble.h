@@ -22,25 +22,28 @@ extern "C"{
 
 // 通道定义
 // FILM文件传输 传输逻辑 START->FILENAME->FILELEN->FILEDATA-> STOP->END
-#define BLE_FILM_TRANS_CH_FILE_NAME     (0x00)
-#define BLE_FILM_TRANS_CH_FILE_LEN      (0x01)
-#define BLE_FILM_TRANS_CH_FILE_DATA     (0x02)
-#define BLE_FILM_TRANS_CH_FILE_START    (0x03)
-#define BLE_FILM_TRANS_CH_FILE_STOP     (0x04)
-// FILM文件管理
-#define BLE_FILM_TRANS_CH_FILE_DELETE   (0x05)
-#define BLE_FILM_TRANS_CH_FILE_LIST     (0x06)
-#define BLE_FILM_TRANS_CH_FILE_DISPLAY  (0x07)
-// OTA
-#define BLE_FILM_TRANS_CH_OTA_LEN       (0x10)
-#define BLE_FILM_TRANS_CH_OTA_DATA      (0x11)
-#define BLE_FILM_TRANS_CH_OTA_START     (0x12)
-#define BLE_FILM_TRANS_CH_OTA_STOP      (0x13)
-// FILM控制
-#define BLE_FILM_TRANS_CH_CTRL_MODE     (0x20)
-#define BLE_FILM_TRANS_CH_CTRL_RESET    (0x21)
-#define BLE_FILM_TRANS_CH_CTRL_PWRREAD  (0x22)
-#define BLE_FILM_TRANS_CH_CTRL_REBOOT   (0x23)
+#define BLE_FILM_TRANS_CH_FILE_NAME                    (0x00)
+#define BLE_FILM_TRANS_CH_FILE_LEN                     (0x01)
+#define BLE_FILM_TRANS_CH_FILE_DATA                    (0x02)
+#define BLE_FILM_TRANS_CH_FILE_START                   (0x03)
+#define BLE_FILM_TRANS_CH_FILE_STOP                    (0x04)
+// FILM文件管理               
+#define BLE_FILM_TRANS_CH_FILE_DELETE                  (0x05) // 删除id对应的文件
+#define BLE_FILM_TRANS_CH_FILE_LIST                    (0x06) // 查询文件列表
+#define BLE_FILM_TRANS_CH_FILE_DISPLAY                 (0x07) // 显示id对应的文件
+// OTA               
+#define BLE_FILM_TRANS_CH_OTA_LEN                      (0x10)
+#define BLE_FILM_TRANS_CH_OTA_DATA                     (0x11)
+#define BLE_FILM_TRANS_CH_OTA_START                    (0x12)
+#define BLE_FILM_TRANS_CH_OTA_STOP                     (0x13)
+// FILM控制               
+#define BLE_FILM_TRANS_CH_CTRL_MODE                    (0x20) // Film模式切换 手动/自动
+#define BLE_FILM_TRANS_CH_CTRL_RESET                   (0x21) // 重置设备到出厂
+#define BLE_FILM_TRANS_CH_CTRL_PWRREAD                 (0x22) // 获取电量
+#define BLE_FILM_TRANS_CH_CTRL_REBOOT                  (0x23) // 重启设备
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF              (0x24) // 休眠模式开关
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE               (0x25) // 休眠模式 定时唤醒开关
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME          (0x26) // 定时唤醒开关时间（单位分钟）
 
 /*********************************************************************
 * TYPEDEFS
