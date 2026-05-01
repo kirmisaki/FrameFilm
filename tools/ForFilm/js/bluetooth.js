@@ -456,6 +456,8 @@ function handleOtaFileSelect(event) {
         }
 
         window.selectedOtaData = uint8Array;
+
+        event.target.value = '';
     };
     reader.readAsArrayBuffer(file);
 }
