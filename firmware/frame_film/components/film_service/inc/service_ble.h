@@ -38,12 +38,16 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_OTA_STOP                     (0x13)
 // FILM控制               
 #define BLE_FILM_TRANS_CH_CTRL_MODE                    (0x20) // Film模式切换 手动/自动
-#define BLE_FILM_TRANS_CH_CTRL_RESET                   (0x21) // 重置设备到出厂
-#define BLE_FILM_TRANS_CH_CTRL_PWRREAD                 (0x22) // 获取电量
-#define BLE_FILM_TRANS_CH_CTRL_REBOOT                  (0x23) // 重启设备
-#define BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF              (0x24) // 休眠模式开关
-#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE               (0x25) // 休眠模式 定时唤醒开关
-#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME          (0x26) // 定时唤醒开关时间（单位分钟）
+#define BLE_FILM_TRANS_CH_CTRL_MODE_GET                (0x21) // Film模式查询 手动/自动
+#define BLE_FILM_TRANS_CH_CTRL_RESET                   (0x22) // 重置设备到出厂
+#define BLE_FILM_TRANS_CH_CTRL_PWRREAD                 (0x23) // 获取电量
+#define BLE_FILM_TRANS_CH_CTRL_REBOOT                  (0x24) // 重启设备
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF              (0x25) // 休眠模式开关
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET          (0x26) // 休眠模式开关查询
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE               (0x27) // 休眠模式 定时唤醒开关
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET           (0x28) // 休眠模式 定时唤醒开关查询
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME          (0x29) // 定时唤醒开关时间（单位分钟）
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET      (0x2A) // 定时唤醒开关时间（单位分钟）
 
 /*********************************************************************
 * TYPEDEFS
