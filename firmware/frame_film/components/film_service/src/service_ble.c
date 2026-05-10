@@ -49,7 +49,9 @@
 #include "service_ble.h"
 #include "service_file.h"
 #include "service_ota.h"
+#include "service_param.h"
 
+#include "hal_bat.h"
 
 /*********************************************************************
  * MACROS
@@ -485,10 +487,26 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_CTRL_RESET : // 重置
         {
+            service_param_reset();
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            sys_reboot();
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_PWRREAD : // 读取电池电压
         {
+            uint8_t *cmd = NULL;
+            cmd = pvPortMalloc(BLE_CMD_LEN_MIN + 1);
+            if(cmd)
+            {
+                cmd[0] = BLE_CMD_HEAD;
+                cmd[1] = BLE_FILM_TRANS_CH_CTRL_PWRREAD;
+                cmd[2] = 1;
+                cmd[3] = hal_bat_get_percent();
+                cmd[4] = ble_checksum(cmd, BLE_CMD_LEN_MIN);
+                service_ble_msg_gatts_cmd_send(cmd, sizeof(cmd));
+                vPortFree(cmd);
+                cmd = NULL;
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_REBOOT : // 重启

@@ -136,6 +136,10 @@ int hal_bat_get_level(void)
     return m_bat.level;
 }
 
+int hal_bat_get_percent(void)
+{
+    return m_bat.level;
+}
 
 static int hal_bat_voltage_to_level(int voltage)
 {

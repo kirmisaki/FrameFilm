@@ -70,6 +70,7 @@ extern ServiceParam_Def_t g_service_param;
  */
 extern void service_param_init(void);
 extern void service_param_save(void);
+extern void service_param_reset(void);
 
 
 #ifdef __cplusplus

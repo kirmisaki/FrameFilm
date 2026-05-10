@@ -19,6 +19,7 @@ extern "C"{
 #define SYS_OS_NAME_BLE_TASK           "ble_task"
 
 #define BLE_CMD_HEAD                   (0x55)
+#define BLE_CMD_LEN_MIN                (4)
 
 // 通道定义
 // FILM文件传输 传输逻辑 START->FILENAME->FILELEN->FILEDATA-> STOP->END
@@ -66,6 +67,7 @@ typedef struct
 {
     uint8_t ch;          //通道
     uint8_t len;         //数据长度
+    uint8_t sum;         //校验和
     uint8_t *pdata;
 } ble_cmd_t;
 

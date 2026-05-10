@@ -96,6 +96,15 @@ void service_param_save(void)
     nvs_param_save();
 }
 
+/**
+ * [service_param_reset 重置服务参数]
+ */
+void service_param_reset(void)
+{
+    service_param_set_default();
+    nvs_param_save();
+}
+
 
 /**
  * [service_param_set_default 设置服务参数默认值]

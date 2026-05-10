@@ -65,6 +65,16 @@ extern void hal_bat_init(void);
  */
 extern int hal_bat_get_level(void);
 
+/**
+ * @brief 获取电池电量百分比
+ * 
+ * 该函数用于获取当前电池的电量百分比。
+ * 返回值表示电池的电量百分比，具体含义由实现决定。
+ * 
+ * @return int 电池电量百分比
+ */
+extern int hal_bat_get_percent(void);
+
 
 #ifdef __cplusplus
 }
