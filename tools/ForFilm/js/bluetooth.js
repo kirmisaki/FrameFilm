@@ -4,6 +4,25 @@ let server = null;
 let service = null;
 let characteristic = null;
 
+function debugLog(message, type = 'info') {
+    console.log(message);
+    const debugEl = document.getElementById('debug-log');
+    if (debugEl) {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry ' + type;
+        entry.textContent = new Date().toLocaleTimeString() + ' ' + message;
+        debugEl.appendChild(entry);
+        debugEl.scrollTop = debugEl.scrollHeight;
+    }
+}
+
+function toggleDebugLog() {
+    const debugEl = document.getElementById('debug-log');
+    if (debugEl) {
+        debugEl.classList.toggle('show');
+    }
+}
+
 const BLE_SERVICE_UUID = '00002000-0000-1000-8000-00805f9b34fb';
 const BLE_CHARACTERISTIC_UUID = '00002001-0000-1000-8000-00805f9b34fb';
 
@@ -52,8 +71,8 @@ const BLE_OTA_TRANS_STATE_RECV_DATA = 3;
 const BLE_OTA_TRANS_STATE_STOPPED = 4;
 
 const BLE_CHUNK_SIZE = 192;
-const BLE_CTRL_DELAY = 10;
-const BLE_DATA_DELAY = 5;
+const BLE_CTRL_DELAY = 50;
+const BLE_DATA_DELAY = 10;
 
 let filmTransState = BLE_FILM_TRANS_STATE_IDLE;
 let filmTransFileName = '';
@@ -508,6 +527,8 @@ async function sendBleCmd(cmdType, data = null) {
         throw new Error('请先连接设备');
     }
 
+    debugLog('sendBleCmd: cmd=' + cmdType.toString(16) + ', data=' + data);
+
     let packet;
     if (data === null) {
         packet = new Uint8Array(4);
@@ -524,7 +545,16 @@ async function sendBleCmd(cmdType, data = null) {
         packet[4] = calculateChecksum(packet, 4);
     }
 
-    await characteristic.writeValue(packet);
+    debugLog('发送数据包: ' + Array.from(packet).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+    try {
+        await characteristic.writeValue(packet);
+        debugLog('BLE写入成功', 'success');
+    } catch (err) {
+        debugLog('BLE写入失败: ' + err.message, 'error');
+        throw err;
+    }
+
     console.log('发送命令:', cmdType.toString(16), data !== null ? '数据:' + data : '');
     await delay(BLE_CTRL_DELAY);
 }
@@ -553,13 +583,17 @@ async function sendBleReset() {
 async function sendBlePwrRead() {
     if (!device || !server || !characteristic) {
         showMessage('请先连接设备', 'error');
+        debugLog('电量读取失败: 未连接设备', 'error');
         return null;
     }
     try {
+        debugLog('发送电量读取命令...');
         await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_PWRREAD);
+        debugLog('电量读取命令已发送', 'success');
         return true;
     } catch (error) {
         showMessage('发送电量读取命令失败', 'error');
+        debugLog('电量读取失败: ' + error.message, 'error');
         return null;
     }
 }

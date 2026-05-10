@@ -846,6 +846,41 @@ h1 {
     white-space: nowrap;
 }
 
+.debug-log {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 11px;
+    max-height: 150px;
+    overflow-y: auto;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    display: none;
+}
+
+.debug-log.show {
+    display: block;
+}
+
+.debug-log .log-entry {
+    margin: 2px 0;
+    padding: 2px 0;
+    border-bottom: 1px solid #333;
+}
+
+.debug-log .log-entry.error {
+    color: #f48771;
+}
+
+.debug-log .log-entry.success {
+    color: #89d185;
+}
+
+.debug-log .log-entry.info {
+    color: #75beff;
+}
+
 .setting-hint {
     display: block;
     font-size: 12px;
