@@ -686,3 +686,45 @@ uint8_t service_file_get_load_complete(void)
 {
     return m_file_state.load_complete;
 }
+
+uint32_t service_file_get_size(uint32_t file_id)
+{
+    if(file_id >= m_file_state.file_count)
+    {
+        return 0;
+    }
+    return m_file_state.file_list[file_id].file_size;
+}
+
+const char* service_file_get_filename(uint32_t file_id)
+{
+    if(file_id >= m_file_state.file_count)
+    {
+        return NULL;
+    }
+    return m_file_state.file_list[file_id].filename;
+}
+
+int service_file_delete(uint32_t file_id)
+{
+    if(file_id >= m_file_state.file_count)
+    {
+        sys_logw(FILE_TAG, "Invalid file id: %d", file_id);
+        return -1;
+    }
+
+    char filepath[512];
+    snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, m_file_state.file_list[file_id].filename);
+
+    if(remove(filepath) == 0)
+    {
+        sys_logi(FILE_TAG, "Deleted file: %s", filepath);
+        service_file_refresh_list();
+        return 0;
+    }
+    else
+    {
+        sys_logw(FILE_TAG, "Failed to delete file: %s", filepath);
+        return -1;
+    }
+}

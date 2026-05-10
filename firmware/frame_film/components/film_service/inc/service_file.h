@@ -189,6 +189,36 @@ extern uint32_t service_file_get_current_id(void);
  */
 extern uint8_t service_file_get_load_complete(void);
 
+/**
+ * @brief 获取文件大小
+ *
+ * 此函数用于获取指定ID的文件大小。
+ *
+ * @param file_id 文件ID
+ * @return uint32_t 文件大小
+ */
+extern uint32_t service_file_get_size(uint32_t file_id);
+
+/**
+ * @brief 获取文件名
+ *
+ * 此函数用于获取指定ID的文件名。
+ *
+ * @param file_id 文件ID
+ * @return const char* 文件名
+ */
+extern const char* service_file_get_filename(uint32_t file_id);
+
+/**
+ * @brief 删除文件
+ *
+ * 此函数用于删除指定ID的文件。
+ *
+ * @param file_id 文件ID
+ * @return int 0:成功, -1:失败
+ */
+extern int service_file_delete(uint32_t file_id);
+
 
 #ifdef __cplusplus
 }
