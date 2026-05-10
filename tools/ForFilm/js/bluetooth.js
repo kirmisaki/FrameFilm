@@ -146,10 +146,12 @@ function initBluetooth() {
             window.fileListBuffer = [];
             bleCmdQueue = [];
 
-            sendBlePwrRead();
-            sendBleFileList();
             setTimeout(() => {
-                sendBleFileDisplayGet();
+                sendBlePwrRead();
+                sendBleFileList();
+                setTimeout(() => {
+                    sendBleFileDisplayGet();
+                }, 1000);
             }, 1000);
 
         } catch (error) {
