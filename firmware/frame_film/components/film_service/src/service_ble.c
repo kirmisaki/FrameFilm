@@ -487,6 +487,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_CTRL_RESET : // 重置
         {
+            sys_logi(BEL_SERVICE_TAG, "Resetting parameters...");
             service_param_reset();
             vTaskDelay(100 / portTICK_PERIOD_MS);
             sys_reboot();
@@ -503,14 +504,16 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                 cmd[2] = 1;
                 cmd[3] = hal_bat_get_percent();
                 cmd[4] = ble_checksum(cmd, BLE_CMD_LEN_MIN);
-                service_ble_msg_gatts_cmd_send(cmd, sizeof(cmd));
+                service_ble_msg_gatts_data_send(cmd, BLE_CMD_LEN_MIN + 1, MSG_BLE_CH1_OUT_DATA);
                 vPortFree(cmd);
                 cmd = NULL;
+                sys_logi(BEL_SERVICE_TAG, "Battery level: %d%%", hal_bat_get_percent());
             }
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_REBOOT : // 重启
         {
+            sys_logi(BEL_SERVICE_TAG, "Rebooting...");
             sys_reboot();
             break;
         }
