@@ -500,11 +500,36 @@ function startOtaUpgrade() {
     uploadOtaFileViaBle(window.selectedOtaData);
 }
 
+window.bleCmdQueue = [];
+window.bleCmdProcessing = false;
+
+async function processBleCmdQueue() {
+    if (window.bleCmdProcessing || window.bleCmdQueue.length === 0) return;
+
+    window.bleCmdProcessing = true;
+    while (window.bleCmdQueue.length > 0) {
+        const cmd = window.bleCmdQueue.shift();
+        if (cmd.isData) {
+            await characteristic.writeValue(cmd.packet);
+            console.log('发送数据命令:', cmd.cmdType.toString(16), '数据:', cmd.value);
+        } else {
+            await sendBleCmdImmediate(cmd.cmdType, cmd.data);
+        }
+        await delay(BLE_CTRL_DELAY);
+    }
+    window.bleCmdProcessing = false;
+}
+
 async function sendBleCmd(cmdType, data = null) {
     if (!device || !server || !characteristic) {
         throw new Error('请先连接设备');
     }
 
+    window.bleCmdQueue.push({ cmdType, data, isData: false });
+    processBleCmdQueue();
+}
+
+async function sendBleCmdImmediate(cmdType, data = null) {
     let packet;
     if (data === null) {
         packet = new Uint8Array(4);
@@ -662,8 +687,8 @@ function setupBluetoothListener() {
                 updateFileListDisplay(window.fileListBuffer);
             }
         }
-        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_DISPLAY_GET && cmdLen === 4) {
-            const currentId = (data[3] << 24) | (data[4] << 16) | (data[5] << 8) | data[6];
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_DISPLAY_GET && cmdLen === 1) {
+            const currentId = data[3];
             updateCurrentDisplayId(currentId);
         }
     });
@@ -753,7 +778,7 @@ function sendBleFileDelete(fileId) {
         showMessage('请先连接设备', 'error');
         return;
     }
-    sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DELETE, fileId);
+    sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DELETE, fileId, 1);
 }
 
 function sendBleFileDisplay(fileId) {
@@ -761,7 +786,7 @@ function sendBleFileDisplay(fileId) {
         showMessage('请先连接设备', 'error');
         return;
     }
-    sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DISPLAY, fileId);
+    sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DISPLAY, fileId, 1);
 }
 
 function sendBleFileDisplayGet() {
@@ -772,24 +797,29 @@ function sendBleFileDisplayGet() {
     sendBleCmd(BLE_FILM_TRANS_CH_FILE_DISPLAY_GET);
 }
 
-async function sendBleCmdWithData(cmdType, value) {
+async function sendBleCmdWithData(cmdType, value, dataLen = 4) {
     if (!device || !server || !characteristic) {
         throw new Error('请先连接设备');
     }
 
-    const packet = new Uint8Array(8);
+    const packet = new Uint8Array(4 + dataLen);
     packet[0] = BLE_CMD_HEAD;
     packet[1] = cmdType;
-    packet[2] = 4;
-    packet[3] = (value >> 24) & 0xFF;
-    packet[4] = (value >> 16) & 0xFF;
-    packet[5] = (value >> 8) & 0xFF;
-    packet[6] = value & 0xFF;
-    packet[7] = calculateChecksum(packet, 7);
+    packet[2] = dataLen;
 
-    await characteristic.writeValue(packet);
-    console.log('发送命令:', cmdType.toString(16), '数据:' + value);
-    await delay(BLE_CTRL_DELAY);
+    if (dataLen === 1) {
+        packet[3] = value & 0xFF;
+    } else {
+        packet[3] = (value >> 24) & 0xFF;
+        packet[4] = (value >> 16) & 0xFF;
+        packet[5] = (value >> 8) & 0xFF;
+        packet[6] = value & 0xFF;
+    }
+
+    packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+
+    window.bleCmdQueue.push({ packet, cmdType, value, isData: true });
+    processBleCmdQueue();
 }
 
 function updateFileListDisplay(fileList) {
@@ -847,6 +877,7 @@ function refreshFileList() {
         fileListEl.innerHTML = '<div class="empty-state">正在加载...</div>';
     }
     sendBleFileList();
+    sendBleFileDisplayGet();
 }
 
 function deleteSelectedFile() {
@@ -860,7 +891,7 @@ function deleteSelectedFile() {
     sendBleFileDelete(window.selectedFileId);
     showMessage('删除命令已发送', 'success');
     setTimeout(() => {
-        sendBleFileList();
+        refreshFileList();
     }, 500);
 }
 
@@ -869,6 +900,10 @@ function selectDisplayFile() {
         showMessage('请先选择要显示的文件', 'error');
         return;
     }
+    console.log('selectDisplayFile: fileId=' + window.selectedFileId);
     sendBleFileDisplay(window.selectedFileId);
     showMessage('显示命令已发送', 'success');
+    setTimeout(() => {
+        sendBleFileDisplayGet();
+    }, 500);
 }
