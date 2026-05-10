@@ -660,6 +660,11 @@ h1 {
     background-color: #e8f5e8;
 }
 
+.file-item.displaying {
+    background-color: #e3f2fd;
+    border-left: 3px solid #2196F3;
+}
+
 .file-item input[type="checkbox"] {
     margin-right: 10px;
     width: 18px;
@@ -667,8 +672,16 @@ h1 {
     cursor: pointer;
 }
 
+.file-item .file-id {
+    min-width: 30px;
+    font-weight: 600;
+    color: #2196F3;
+    margin-right: 10px;
+}
+
 .file-item .file-name {
     flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

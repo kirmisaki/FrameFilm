@@ -14,6 +14,10 @@ const BLE_FILM_TRANS_CH_FILE_NAME = 0x00;
 const BLE_FILM_TRANS_CH_FILE_LEN = 0x01;
 const BLE_FILM_TRANS_CH_FILE_DATA = 0x02;
 const BLE_FILM_TRANS_CH_FILE_STOP = 0x04;
+const BLE_FILM_TRANS_CH_FILE_DELETE = 0x05;
+const BLE_FILM_TRANS_CH_FILE_LIST = 0x06;
+const BLE_FILM_TRANS_CH_FILE_DISPLAY = 0x07;
+const BLE_FILM_TRANS_CH_FILE_DISPLAY_GET = 0x08;
 
 const BLE_FILM_TRANS_CH_OTA_LEN = 0x10;
 const BLE_FILM_TRANS_CH_OTA_DATA = 0x11;
@@ -99,7 +103,10 @@ function initBluetooth() {
             console.log('设备已连接:', device.name);
 
             setupBluetoothListener();
+            window.fileListBuffer = [];
             sendBlePwrRead();
+            sendBleFileList();
+            sendBleFileDisplayGet();
 
         } catch (error) {
             console.error('连接错误:', error);
@@ -630,9 +637,34 @@ function setupBluetoothListener() {
         const data = new Uint8Array(value.buffer);
         console.log('收到蓝牙数据:', Array.from(data).map(b => b.toString(16)).join(' '));
 
-        if (data[0] === BLE_CMD_HEAD && data[1] === BLE_FILM_TRANS_CH_CTRL_PWRREAD && data[2] === 1) {
+        const cmdType = data[1];
+        const cmdLen = data[2];
+
+        if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_PWRREAD && cmdLen === 1) {
             const batteryLevel = data[3];
             updateBatteryDisplay(batteryLevel);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_LIST && cmdLen >= 2) {
+            const fileId = data[3];
+            const nameLen = data[4];
+
+            if (nameLen > 0 && nameLen < 64 && 5 + nameLen <= data.length) {
+                const filenameBytes = data.slice(5, 5 + nameLen);
+                const filename = String.fromCharCode.apply(null, filenameBytes).replace(/\0.*$/, '');
+
+                console.log('FILE_LIST: id=' + fileId + ', name="' + filename + '"');
+
+                if (window.fileListBuffer === undefined) {
+                    window.fileListBuffer = [];
+                }
+                window.fileListBuffer.push({ id: fileId, filename: filename });
+
+                updateFileListDisplay(window.fileListBuffer);
+            }
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_DISPLAY_GET && cmdLen === 4) {
+            const currentId = (data[3] << 24) | (data[4] << 16) | (data[5] << 8) | data[6];
+            updateCurrentDisplayId(currentId);
         }
     });
 
@@ -706,4 +738,137 @@ function setPhotoMode(mode) {
         btn.classList.remove('active');
     });
     document.querySelector(`.mode-button[data-mode="${mode}"]`).classList.add('active');
+}
+
+function sendBleFileList() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    sendBleCmd(BLE_FILM_TRANS_CH_FILE_LIST);
+}
+
+function sendBleFileDelete(fileId) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DELETE, fileId);
+}
+
+function sendBleFileDisplay(fileId) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DISPLAY, fileId);
+}
+
+function sendBleFileDisplayGet() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    sendBleCmd(BLE_FILM_TRANS_CH_FILE_DISPLAY_GET);
+}
+
+async function sendBleCmdWithData(cmdType, value) {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+
+    const packet = new Uint8Array(8);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = cmdType;
+    packet[2] = 4;
+    packet[3] = (value >> 24) & 0xFF;
+    packet[4] = (value >> 16) & 0xFF;
+    packet[5] = (value >> 8) & 0xFF;
+    packet[6] = value & 0xFF;
+    packet[7] = calculateChecksum(packet, 7);
+
+    await characteristic.writeValue(packet);
+    console.log('发送命令:', cmdType.toString(16), '数据:' + value);
+    await delay(BLE_CTRL_DELAY);
+}
+
+function updateFileListDisplay(fileList) {
+    const fileListEl = document.getElementById('film-file-list');
+    if (!fileListEl) return;
+
+    if (fileList.length === 0) {
+        fileListEl.innerHTML = '<div class="empty-state">暂无文件</div>';
+        return;
+    }
+
+    let html = '';
+    fileList.forEach(file => {
+        html += `<div class="file-item" data-id="${file.id}">
+            <input type="checkbox" class="file-checkbox" data-id="${file.id}">
+            <span class="file-id">${file.id}</span>
+            <span class="file-name" title="${file.filename}">${file.filename}</span>
+        </div>`;
+    });
+    fileListEl.innerHTML = html;
+
+    document.querySelectorAll('.file-checkbox').forEach(cb => {
+        cb.addEventListener('change', function() {
+            const id = parseInt(this.dataset.id);
+            if (this.checked) {
+                window.selectedFileId = id;
+                document.querySelectorAll('.file-checkbox').forEach(c => {
+                    if (c !== this) c.checked = false;
+                });
+            }
+        });
+    });
+
+    if (window.currentDisplayFileId !== undefined) {
+        updateCurrentDisplayId(window.currentDisplayFileId);
+    }
+}
+
+function updateCurrentDisplayId(id) {
+    window.currentDisplayFileId = id;
+    document.querySelectorAll('.file-item').forEach(item => {
+        const itemId = parseInt(item.dataset.id);
+        if (itemId === id) {
+            item.classList.add('displaying');
+        } else {
+            item.classList.remove('displaying');
+        }
+    });
+}
+
+function refreshFileList() {
+    window.fileListBuffer = [];
+    const fileListEl = document.getElementById('film-file-list');
+    if (fileListEl) {
+        fileListEl.innerHTML = '<div class="empty-state">正在加载...</div>';
+    }
+    sendBleFileList();
+}
+
+function deleteSelectedFile() {
+    if (window.selectedFileId === undefined || window.selectedFileId === null) {
+        showMessage('请先选择要删除的文件', 'error');
+        return;
+    }
+    if (!confirm('确定要删除选中的文件吗？')) {
+        return;
+    }
+    sendBleFileDelete(window.selectedFileId);
+    showMessage('删除命令已发送', 'success');
+    setTimeout(() => {
+        sendBleFileList();
+    }, 500);
+}
+
+function selectDisplayFile() {
+    if (window.selectedFileId === undefined || window.selectedFileId === null) {
+        showMessage('请先选择要显示的文件', 'error');
+        return;
+    }
+    sendBleFileDisplay(window.selectedFileId);
+    showMessage('显示命令已发送', 'success');
 }
