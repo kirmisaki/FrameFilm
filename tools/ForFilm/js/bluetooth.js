@@ -500,33 +500,27 @@ function startOtaUpgrade() {
     uploadOtaFileViaBle(window.selectedOtaData);
 }
 
-window.bleCmdQueue = [];
-window.bleCmdProcessing = false;
-
-async function processBleCmdQueue() {
-    if (window.bleCmdProcessing || window.bleCmdQueue.length === 0) return;
-
-    window.bleCmdProcessing = true;
-    while (window.bleCmdQueue.length > 0) {
-        const cmd = window.bleCmdQueue.shift();
-        if (cmd.isData) {
-            await characteristic.writeValue(cmd.packet);
-            console.log('发送数据命令:', cmd.cmdType.toString(16), '数据:', cmd.value);
-        } else {
-            await sendBleCmdImmediate(cmd.cmdType, cmd.data);
-        }
-        await delay(BLE_CTRL_DELAY);
-    }
-    window.bleCmdProcessing = false;
-}
-
 async function sendBleCmd(cmdType, data = null) {
     if (!device || !server || !characteristic) {
         throw new Error('请先连接设备');
     }
 
-    window.bleCmdQueue.push({ cmdType, data, isData: false });
-    processBleCmdQueue();
+    if (window.bleCmdQueue === undefined) {
+        window.bleCmdQueue = [];
+        window.bleCmdProcessing = false;
+    }
+
+    const cmd = { cmdType, data };
+    window.bleCmdQueue.push(cmd);
+
+    if (!window.bleCmdProcessing) {
+        window.bleCmdProcessing = true;
+        while (window.bleCmdQueue.length > 0) {
+            const pendingCmd = window.bleCmdQueue.shift();
+            await sendBleCmdImmediate(pendingCmd.cmdType, pendingCmd.data);
+        }
+        window.bleCmdProcessing = false;
+    }
 }
 
 async function sendBleCmdImmediate(cmdType, data = null) {
@@ -818,8 +812,28 @@ async function sendBleCmdWithData(cmdType, value, dataLen = 4) {
 
     packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
 
-    window.bleCmdQueue.push({ packet, cmdType, value, isData: true });
-    processBleCmdQueue();
+    if (window.bleCmdQueue === undefined) {
+        window.bleCmdQueue = [];
+        window.bleCmdProcessing = false;
+    }
+
+    const cmd = { packet, isData: true };
+    window.bleCmdQueue.push(cmd);
+
+    if (!window.bleCmdProcessing) {
+        window.bleCmdProcessing = true;
+        while (window.bleCmdQueue.length > 0) {
+            const pendingCmd = window.bleCmdQueue.shift();
+            if (pendingCmd.isData) {
+                await characteristic.writeValue(pendingCmd.packet);
+                console.log('发送数据命令:', pendingCmd.packet[1].toString(16), '数据:', value);
+                await delay(BLE_CTRL_DELAY);
+            } else {
+                await sendBleCmdImmediate(pendingCmd.cmdType, pendingCmd.data);
+            }
+        }
+        window.bleCmdProcessing = false;
+    }
 }
 
 function updateFileListDisplay(fileList) {
@@ -900,7 +914,6 @@ function selectDisplayFile() {
         showMessage('请先选择要显示的文件', 'error');
         return;
     }
-    console.log('selectDisplayFile: fileId=' + window.selectedFileId);
     sendBleFileDisplay(window.selectedFileId);
     showMessage('显示命令已发送', 'success');
     setTimeout(() => {
