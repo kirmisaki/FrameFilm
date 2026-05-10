@@ -404,9 +404,9 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_FILE_DELETE : // 删除文件
         {
-            if(cmd->len == 4)
+            if(cmd->len == 1)
             {
-                uint32_t file_id = (cmd->pdata[0] << 24) | (cmd->pdata[1] << 16) | (cmd->pdata[2] << 8) | cmd->pdata[3];
+                uint8_t file_id = cmd->pdata[0];
                 sys_logi(BEL_SERVICE_TAG, "Delete file id: %d", file_id);
                 service_file_delete(file_id);
             }
@@ -448,9 +448,9 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_FILE_DISPLAY : // 显示id对应的文件
         {
-            if(cmd->len == 4)
+            if(cmd->len == 1)
             {
-                uint32_t file_id = (cmd->pdata[0] << 24) | (cmd->pdata[1] << 16) | (cmd->pdata[2] << 8) | cmd->pdata[3];
+                uint8_t file_id = cmd->pdata[0];
                 sys_logi(BEL_SERVICE_TAG, "Display file id: %d", file_id);
                 service_film_display(file_id);
             }
@@ -461,15 +461,12 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             uint32_t current_id = service_film_get_current_id();
             sys_logi(BEL_SERVICE_TAG, "Current display file id: %d", current_id);
 
-            uint8_t cmd_buf[8];
+            uint8_t cmd_buf[6];
             cmd_buf[0] = BLE_CMD_HEAD;
             cmd_buf[1] = BLE_FILM_TRANS_CH_FILE_DISPLAY_GET;
-            cmd_buf[2] = 4;
-            cmd_buf[3] = (current_id >> 24) & 0xFF;
-            cmd_buf[4] = (current_id >> 16) & 0xFF;
-            cmd_buf[5] = (current_id >> 8) & 0xFF;
-            cmd_buf[6] = current_id & 0xFF;
-            cmd_buf[7] = ble_checksum(cmd_buf, 7);
+            cmd_buf[2] = 1;
+            cmd_buf[3] = current_id & 0xFF;
+            cmd_buf[4] = ble_checksum(cmd_buf, 4);
             service_ble_msg_gatts_data_send(cmd_buf, sizeof(cmd_buf), MSG_BLE_CH1_OUT_DATA);
             break;
         }
