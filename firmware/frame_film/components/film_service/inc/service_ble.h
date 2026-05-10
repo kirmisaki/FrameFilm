@@ -31,23 +31,24 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_FILE_DELETE                  (0x05) // 删除id对应的文件
 #define BLE_FILM_TRANS_CH_FILE_LIST                    (0x06) // 查询文件列表
 #define BLE_FILM_TRANS_CH_FILE_DISPLAY                 (0x07) // 显示id对应的文件
+#define BLE_FILM_TRANS_CH_FILE_DISPLAY_GET             (0x08) // 查询当前显示的文件
 // OTA               
 #define BLE_FILM_TRANS_CH_OTA_LEN                      (0x10)
 #define BLE_FILM_TRANS_CH_OTA_DATA                     (0x11)
 #define BLE_FILM_TRANS_CH_OTA_START                    (0x12)
 #define BLE_FILM_TRANS_CH_OTA_STOP                     (0x13)
 // FILM控制               
-#define BLE_FILM_TRANS_CH_CTRL_MODE                    (0x20) // Film模式切换 手动/自动
-#define BLE_FILM_TRANS_CH_CTRL_MODE_GET                (0x21) // Film模式查询 手动/自动
+#define BLE_FILM_TRANS_CH_CTRL_MODE                    (0x20) // Film模式切换 （0：手动，1：自动）
+#define BLE_FILM_TRANS_CH_CTRL_MODE_GET                (0x21) // Film模式查询 （0：手动，1：自动）
 #define BLE_FILM_TRANS_CH_CTRL_RESET                   (0x22) // 重置设备到出厂
 #define BLE_FILM_TRANS_CH_CTRL_PWRREAD                 (0x23) // 获取电量
 #define BLE_FILM_TRANS_CH_CTRL_REBOOT                  (0x24) // 重启设备
-#define BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF              (0x25) // 休眠模式开关
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF              (0x25) // 休眠模式开关设置
 #define BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET          (0x26) // 休眠模式开关查询
-#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE               (0x27) // 休眠模式 定时唤醒开关
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE               (0x27) // 休眠模式 定时唤醒开关设置
 #define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET           (0x28) // 休眠模式 定时唤醒开关查询
-#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME          (0x29) // 定时唤醒开关时间（单位分钟）
-#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET      (0x2A) // 定时唤醒开关时间（单位分钟）
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME          (0x29) // 定时唤醒开关时间设置（单位分钟）
+#define BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET      (0x2A) // 定时唤醒开关时间查询（单位分钟）
 
 /*********************************************************************
 * TYPEDEFS

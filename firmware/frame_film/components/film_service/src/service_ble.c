@@ -399,15 +399,19 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             }
             break;
         }
-        case BLE_FILM_TRANS_CH_FILE_DELETE :
+        case BLE_FILM_TRANS_CH_FILE_DELETE : // 删除文件
         {
             break;
         }
-        case BLE_FILM_TRANS_CH_FILE_LIST :
+        case BLE_FILM_TRANS_CH_FILE_LIST : // 查询文件列表
         {
             break;
         }
-        case BLE_FILM_TRANS_CH_FILE_DISPLAY :
+        case BLE_FILM_TRANS_CH_FILE_DISPLAY : // 显示id对应的文件
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_DISPLAY_GET : // 查询当前显示的文件id
         {
             break;
         }
@@ -471,21 +475,49 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             }
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_MODE :
+        case BLE_FILM_TRANS_CH_CTRL_MODE : // Film模式切换
         {
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_RESET :
+        case BLE_FILM_TRANS_CH_CTRL_MODE_GET : // Film模式查询
         {
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_PWRREAD :
+        case BLE_FILM_TRANS_CH_CTRL_RESET : // 重置
         {
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_REBOOT :
+        case BLE_FILM_TRANS_CH_CTRL_PWRREAD : // 读取电池电压
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_REBOOT : // 重启
         {
             sys_reboot();
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF : // 休眠模式开关
+        {
+            break;
+        }         
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET : // 休眠模式开关查询
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE : // 休眠模式 定时唤醒开关
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET : // 休眠模式 定时唤醒开关查询
+        {
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME : // 定时唤醒开关时间（单位分钟）
+        {
+            break;
+        }   
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET : // 定时唤醒开关时间查询（单位分钟）
+        {
             break;
         }
         default :
