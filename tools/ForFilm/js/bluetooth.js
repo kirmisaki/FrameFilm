@@ -83,6 +83,33 @@ let otaTransState = BLE_OTA_TRANS_STATE_IDLE;
 let otaTransFileSize = 0;
 let otaTransSentBytes = 0;
 
+let bleCmdQueue = [];
+let bleCmdProcessing = false;
+
+function queueBleCmd(fn) {
+    return new Promise((resolve, reject) => {
+        bleCmdQueue.push({ fn, resolve, reject });
+        processBleQueue();
+    });
+}
+
+async function processBleQueue() {
+    if (bleCmdProcessing || bleCmdQueue.length === 0) return;
+    bleCmdProcessing = true;
+
+    while (bleCmdQueue.length > 0) {
+        const { fn, resolve, reject } = bleCmdQueue.shift();
+        try {
+            await fn();
+            resolve();
+        } catch (err) {
+            reject(err);
+        }
+    }
+
+    bleCmdProcessing = false;
+}
+
 function initBluetooth() {
     const scanButton = document.getElementById('scan-button');
     if (!scanButton) return;
@@ -124,10 +151,10 @@ function initBluetooth() {
             setupBluetoothListener();
             window.fileListBuffer = [];
 
-            setTimeout(() => {
-                sendBlePwrRead();
-                sendBleFileList();
-                sendBleFileDisplayGet();
+            setTimeout(async () => {
+                await sendBlePwrRead();
+                await sendBleFileList();
+                await sendBleFileDisplayGet();
             }, 300);
 
         } catch (error) {
@@ -529,34 +556,36 @@ async function sendBleCmd(cmdType, data = null) {
 
     debugLog('sendBleCmd: cmd=' + cmdType.toString(16) + ', data=' + data);
 
-    let packet;
-    if (data === null) {
-        packet = new Uint8Array(4);
-        packet[0] = BLE_CMD_HEAD;
-        packet[1] = cmdType;
-        packet[2] = 0;
-        packet[3] = calculateChecksum(packet, 3);
-    } else {
-        packet = new Uint8Array(5);
-        packet[0] = BLE_CMD_HEAD;
-        packet[1] = cmdType;
-        packet[2] = 1;
-        packet[3] = data;
-        packet[4] = calculateChecksum(packet, 4);
-    }
+    return queueBleCmd(async () => {
+        let packet;
+        if (data === null) {
+            packet = new Uint8Array(4);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = cmdType;
+            packet[2] = 0;
+            packet[3] = calculateChecksum(packet, 3);
+        } else {
+            packet = new Uint8Array(5);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = cmdType;
+            packet[2] = 1;
+            packet[3] = data;
+            packet[4] = calculateChecksum(packet, 4);
+        }
 
-    debugLog('发送数据包: ' + Array.from(packet).map(b => b.toString(16).padStart(2, '0')).join(' '));
+        debugLog('发送数据包: ' + Array.from(packet).map(b => b.toString(16).padStart(2, '0')).join(' '));
 
-    try {
-        await characteristic.writeValue(packet);
-        debugLog('BLE写入成功', 'success');
-    } catch (err) {
-        debugLog('BLE写入失败: ' + err.message, 'error');
-        throw err;
-    }
+        try {
+            await characteristic.writeValue(packet);
+            debugLog('BLE写入成功', 'success');
+        } catch (err) {
+            debugLog('BLE写入失败: ' + err.message, 'error');
+            throw err;
+        }
 
-    console.log('发送命令:', cmdType.toString(16), data !== null ? '数据:' + data : '');
-    await delay(BLE_CTRL_DELAY);
+        console.log('发送命令:', cmdType.toString(16), data !== null ? '数据:' + data : '');
+        await delay(BLE_CTRL_DELAY);
+    });
 }
 
 async function sendBleReboot() {
@@ -783,6 +812,7 @@ function sendBleFileList() {
         return;
     }
     sendBleCmd(BLE_FILM_TRANS_CH_FILE_LIST);
+    debugLog('已加入文件列表查询队列');
 }
 
 function sendBleFileDelete(fileId) {
@@ -791,6 +821,7 @@ function sendBleFileDelete(fileId) {
         return;
     }
     sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DELETE, fileId, 1);
+    debugLog('已加入删除文件队列');
 }
 
 function sendBleFileDisplay(fileId) {
@@ -799,6 +830,7 @@ function sendBleFileDisplay(fileId) {
         return;
     }
     sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DISPLAY, fileId, 1);
+    debugLog('已加入显示文件队列');
 }
 
 function sendBleFileDisplayGet() {
@@ -807,6 +839,7 @@ function sendBleFileDisplayGet() {
         return;
     }
     sendBleCmd(BLE_FILM_TRANS_CH_FILE_DISPLAY_GET);
+    debugLog('已加入查询显示状态队列');
 }
 
 async function sendBleCmdWithData(cmdType, value, dataLen = 4) {
@@ -814,25 +847,36 @@ async function sendBleCmdWithData(cmdType, value, dataLen = 4) {
         throw new Error('请先连接设备');
     }
 
-    const packet = new Uint8Array(4 + dataLen);
-    packet[0] = BLE_CMD_HEAD;
-    packet[1] = cmdType;
-    packet[2] = dataLen;
+    return queueBleCmd(async () => {
+        const packet = new Uint8Array(4 + dataLen);
+        packet[0] = BLE_CMD_HEAD;
+        packet[1] = cmdType;
+        packet[2] = dataLen;
 
-    if (dataLen === 1) {
-        packet[3] = value & 0xFF;
-    } else {
-        packet[3] = (value >> 24) & 0xFF;
-        packet[4] = (value >> 16) & 0xFF;
-        packet[5] = (value >> 8) & 0xFF;
-        packet[6] = value & 0xFF;
-    }
+        if (dataLen === 1) {
+            packet[3] = value & 0xFF;
+        } else {
+            packet[3] = (value >> 24) & 0xFF;
+            packet[4] = (value >> 16) & 0xFF;
+            packet[5] = (value >> 8) & 0xFF;
+            packet[6] = value & 0xFF;
+        }
 
-    packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+        packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
 
-    await characteristic.writeValue(packet);
-    console.log('发送命令:', cmdType.toString(16), '数据:' + value);
-    await delay(BLE_CTRL_DELAY);
+        debugLog('sendBleCmdWithData: ' + Array.from(packet).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+        try {
+            await characteristic.writeValue(packet);
+            debugLog('BLE写入成功', 'success');
+        } catch (err) {
+            debugLog('BLE写入失败: ' + err.message, 'error');
+            throw err;
+        }
+
+        console.log('发送命令:', cmdType.toString(16), '数据:' + value);
+        await delay(BLE_CTRL_DELAY);
+    });
 }
 
 function updateFileListDisplay(fileList) {
