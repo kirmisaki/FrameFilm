@@ -146,6 +146,10 @@
                             <div class="setting-item switch-item">
                                 <div class="setting-info">
                                     <span class="setting-label">休眠开关</span>
+                                    <span class="setting-hint-icon" onclick="showHint(this)">
+                                        <i class="material-icons">error_outline</i>
+                                        <span class="hint-tooltip">开启后将在3分钟内自动休眠</span>
+                                    </span>
                                 </div>
                                 <label class="switch">
                                     <input type="checkbox" id="sleep-switch" onchange="toggleSleep()">
@@ -155,6 +159,10 @@
                             <div class="setting-item switch-item">
                                 <div class="setting-info">
                                     <span class="setting-label">休眠自动唤醒</span>
+                                    <span class="setting-hint-icon" onclick="showHint(this)">
+                                        <i class="material-icons">error_outline</i>
+                                        <span class="hint-tooltip">开启后将在设置时间内自动唤醒</span>
+                                    </span>
                                 </div>
                                 <label class="switch">
                                     <input type="checkbox" id="auto-wake-switch" onchange="toggleAutoWake()">

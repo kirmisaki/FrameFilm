@@ -832,3 +832,53 @@ h1 {
     color: #999;
     white-space: nowrap;
 }
+
+.setting-hint {
+    display: block;
+    font-size: 12px;
+    color: #999;
+    font-weight: normal;
+    margin-top: 2px;
+}
+
+.setting-hint-icon {
+    position: relative;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+}
+
+.setting-hint-icon i {
+    font-size: 18px;
+    color: #ff9800;
+}
+
+.hint-tooltip {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 100;
+    margin-bottom: 5px;
+}
+
+.hint-tooltip::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #333;
+}
+
+.setting-hint-icon:hover .hint-tooltip {
+    display: block;
+}
