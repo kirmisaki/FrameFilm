@@ -20,6 +20,20 @@ const BLE_FILM_TRANS_CH_OTA_DATA = 0x11;
 const BLE_FILM_TRANS_CH_OTA_START = 0x12;
 const BLE_FILM_TRANS_CH_OTA_STOP = 0x13;
 
+const BLE_FILM_TRANS_CH_CTRL_MODE = 0x20;
+const BLE_FILM_TRANS_CH_CTRL_MODE_GET = 0x21;
+const BLE_FILM_TRANS_CH_CTRL_RESET = 0x22;
+const BLE_FILM_TRANS_CH_CTRL_PWRREAD = 0x23;
+const BLE_FILM_TRANS_CH_CTRL_REBOOT = 0x24;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF = 0x25;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET = 0x26;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE = 0x27;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET = 0x28;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME = 0x29;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET = 0x2A;
+
+const BLE_CMD_LEN_MIN = 4;
+
 const BLE_FILM_TRANS_STATE_IDLE = 0;
 const BLE_FILM_TRANS_STATE_STARTED = 1;
 const BLE_FILM_TRANS_STATE_RECV_NAME = 2;
@@ -83,6 +97,9 @@ function initBluetooth() {
 
             device.addEventListener('gattserverdisconnected', onDisconnected);
             console.log('设备已连接:', device.name);
+
+            setupBluetoothListener();
+            sendBlePwrRead();
 
         } catch (error) {
             console.error('连接错误:', error);
@@ -474,4 +491,219 @@ function startOtaUpgrade() {
     }
 
     uploadOtaFileViaBle(window.selectedOtaData);
+}
+
+async function sendBleCmd(cmdType, data = null) {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+
+    let packet;
+    if (data === null) {
+        packet = new Uint8Array(4);
+        packet[0] = BLE_CMD_HEAD;
+        packet[1] = cmdType;
+        packet[2] = 0;
+        packet[3] = calculateChecksum(packet, 3);
+    } else {
+        packet = new Uint8Array(5);
+        packet[0] = BLE_CMD_HEAD;
+        packet[1] = cmdType;
+        packet[2] = 1;
+        packet[3] = data;
+        packet[4] = calculateChecksum(packet, 4);
+    }
+
+    await characteristic.writeValue(packet);
+    console.log('发送命令:', cmdType.toString(16), data !== null ? '数据:' + data : '');
+    await delay(BLE_CTRL_DELAY);
+}
+
+async function sendBleReboot() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_REBOOT);
+    showMessage('重启命令已发送', 'success');
+}
+
+async function sendBleReset() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    if (!confirm('确定要重置设备吗？设备将恢复出厂设置并重启。')) {
+        return;
+    }
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_RESET);
+    showMessage('重置命令已发送，设备将重启', 'success');
+}
+
+async function sendBlePwrRead() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return null;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_PWRREAD);
+        return true;
+    } catch (error) {
+        showMessage('发送电量读取命令失败', 'error');
+        return null;
+    }
+}
+
+async function sendBleSleepSet(onoff) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF, onoff ? 1 : 0);
+        showMessage(onoff ? '休眠模式已开启' : '休眠模式已关闭', 'success');
+    } catch (error) {
+        showMessage('发送休眠设置命令失败', 'error');
+    }
+}
+
+async function sendBleSleepModeSet(mode) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPMODE, mode ? 1 : 0);
+        showMessage(mode ? '自动唤醒已开启' : '自动唤醒已关闭', 'success');
+    } catch (error) {
+        showMessage('发送自动唤醒设置命令失败', 'error');
+    }
+}
+
+async function sendBleSleepTimeSet(timeMinutes) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME, timeMinutes);
+        showMessage('唤醒时间已设置', 'success');
+    } catch (error) {
+        showMessage('发送唤醒时间设置命令失败', 'error');
+    }
+}
+
+async function sendBleModeGet() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return null;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_MODE_GET);
+        return true;
+    } catch (error) {
+        showMessage('发送模式查询命令失败', 'error');
+        return null;
+    }
+}
+
+async function sendBleModeSet(mode) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_MODE, mode);
+        showMessage(mode === 1 ? '已切换到自动模式' : '已切换到手动模式', 'success');
+    } catch (error) {
+        showMessage('发送模式设置命令失败', 'error');
+    }
+}
+
+function setupBluetoothListener() {
+    if (!characteristic) return;
+
+    characteristic.addEventListener('characteristicvaluechanged', function(event) {
+        const value = event.target.value;
+        if (!value || value.byteLength < 4) return;
+
+        const data = new Uint8Array(value.buffer);
+        console.log('收到蓝牙数据:', Array.from(data).map(b => b.toString(16)).join(' '));
+
+        if (data[0] === BLE_CMD_HEAD && data[1] === BLE_FILM_TRANS_CH_CTRL_PWRREAD && data[2] === 1) {
+            const batteryLevel = data[3];
+            updateBatteryDisplay(batteryLevel);
+        }
+    });
+
+    characteristic.startNotifications().then(() => {
+        console.log('蓝牙通知已开启');
+    }).catch(err => {
+        console.error('开启蓝牙通知失败:', err);
+    });
+}
+
+function updateBatteryDisplay(level) {
+    const batteryLevelEl = document.getElementById('battery-level');
+    const batteryFillEl = document.getElementById('battery-fill');
+
+    if (batteryLevelEl) {
+        batteryLevelEl.textContent = level + '%';
+    }
+    if (batteryFillEl) {
+        batteryFillEl.style.width = level + '%';
+    }
+}
+
+function toggleSleepSwitch() {
+    const switchEl = document.getElementById('sleep-switch');
+    if (switchEl) {
+        sendBleSleepSet(switchEl.checked);
+    }
+}
+
+function toggleAutoWakeSwitch() {
+    const switchEl = document.getElementById('auto-wake-switch');
+    if (switchEl) {
+        sendBleSleepModeSet(switchEl.checked);
+    }
+}
+
+function formatDuration(minutes) {
+    if (minutes < 60) {
+        return minutes + '分钟';
+    } else if (minutes === 60) {
+        return '1小时';
+    } else {
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        if (mins === 0) {
+            return hours + '小时';
+        }
+        return hours + '小时' + mins + '分钟';
+    }
+}
+
+function updateWakeDurationSlider() {
+    const slider = document.getElementById('wake-duration');
+    const valueDisplay = document.getElementById('wake-duration-value');
+    if (slider && valueDisplay) {
+        const minutes = parseInt(slider.value);
+        valueDisplay.textContent = formatDuration(minutes);
+    }
+}
+
+function getWakeDurationInMinutes() {
+    const slider = document.getElementById('wake-duration');
+    return slider ? parseInt(slider.value) : 60;
+}
+
+function setPhotoMode(mode) {
+    const modeValue = mode === 'auto' ? 1 : 0;
+    sendBleModeSet(modeValue);
+
+    document.querySelectorAll('.mode-button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`.mode-button[data-mode="${mode}"]`).classList.add('active');
 }

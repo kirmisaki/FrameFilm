@@ -75,18 +75,18 @@
                             <div class="setting-item">
                                 <div class="setting-info">
                                     <span class="setting-label">设备电量</span>
-                                    <span id="battery-level" class="setting-value">--%</span>
+                                    <span id="battery-level" class="setting-value" onclick="sendBlePwrRead()" style="cursor:pointer;">--%</span>
                                 </div>
                                 <div class="battery-bar">
                                     <div id="battery-fill" class="battery-fill" style="width: 0%"></div>
                                 </div>
                             </div>
                             <div class="button-row">
-                                <button class="secondary-button" onclick="restartDevice()">
+                                <button class="secondary-button" onclick="sendBleReboot()">
                                     <i class="material-icons">refresh</i>
                                     设备重启
                                 </button>
-                                <button class="secondary-button warning" onclick="resetDevice()">
+                                <button class="secondary-button warning" onclick="sendBleReset()">
                                     <i class="material-icons">restart_alt</i>
                                     设备重置
                                 </button>
@@ -152,7 +152,7 @@
                                     </span>
                                 </div>
                                 <label class="switch">
-                                    <input type="checkbox" id="sleep-switch" onchange="toggleSleep()">
+                                    <input type="checkbox" id="sleep-switch" onchange="toggleSleepSwitch()">
                                     <span class="slider-toggle"></span>
                                 </label>
                             </div>
@@ -165,7 +165,7 @@
                                     </span>
                                 </div>
                                 <label class="switch">
-                                    <input type="checkbox" id="auto-wake-switch" onchange="toggleAutoWake()">
+                                    <input type="checkbox" id="auto-wake-switch" onchange="toggleAutoWakeSwitch()">
                                     <span class="slider-toggle"></span>
                                 </label>
                             </div>
@@ -177,7 +177,7 @@
                                 <div class="wake-slider-wrapper">
                                     <span class="wake-min">10分钟</span>
                                     <div class="slider-container">
-                                        <input type="range" id="wake-duration" min="10" max="2880" step="10" value="60" oninput="updateWakeDuration()">
+                                        <input type="range" id="wake-duration" min="10" max="2880" step="10" value="60" oninput="updateWakeDurationSlider()">
                                     </div>
                                     <span class="wake-max">48小时</span>
                                 </div>
