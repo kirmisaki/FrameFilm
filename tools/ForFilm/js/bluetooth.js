@@ -72,7 +72,7 @@ const BLE_OTA_TRANS_STATE_STOPPED = 4;
 
 const BLE_CHUNK_SIZE = 192;
 const BLE_CTRL_DELAY = 50;
-const BLE_DATA_DELAY = 10;
+const BLE_DATA_DELAY = 5;
 
 let filmTransState = BLE_FILM_TRANS_STATE_IDLE;
 let filmTransFileName = '';
@@ -84,30 +84,24 @@ let otaTransFileSize = 0;
 let otaTransSentBytes = 0;
 
 let bleCmdQueue = [];
-let bleCmdProcessing = false;
 
-function queueBleCmd(fn) {
-    return new Promise((resolve, reject) => {
-        bleCmdQueue.push({ fn, resolve, reject });
-        processBleQueue();
-    });
+async function queueBleCmd(fn) {
+    bleCmdQueue.push(fn);
+    if (bleCmdQueue.length === 1) {
+        processQueue();
+    }
 }
 
-async function processBleQueue() {
-    if (bleCmdProcessing || bleCmdQueue.length === 0) return;
-    bleCmdProcessing = true;
-
+async function processQueue() {
     while (bleCmdQueue.length > 0) {
-        const { fn, resolve, reject } = bleCmdQueue.shift();
+        const fn = bleCmdQueue[0];
         try {
             await fn();
-            resolve();
         } catch (err) {
-            reject(err);
+            console.error('BLE命令错误:', err);
         }
+        bleCmdQueue.shift();
     }
-
-    bleCmdProcessing = false;
 }
 
 function initBluetooth() {
@@ -150,12 +144,13 @@ function initBluetooth() {
 
             setupBluetoothListener();
             window.fileListBuffer = [];
+            bleCmdQueue = [];
 
-            setTimeout(async () => {
-                await sendBlePwrRead();
-                await sendBleFileList();
-                await sendBleFileDisplayGet();
-            }, 300);
+            sendBlePwrRead();
+            sendBleFileList();
+            setTimeout(() => {
+                sendBleFileDisplayGet();
+            }, 1000);
 
         } catch (error) {
             console.error('连接错误:', error);
@@ -807,39 +802,118 @@ function setPhotoMode(mode) {
 }
 
 function sendBleFileList() {
-    if (!device || !server || !characteristic) {
-        showMessage('请先连接设备', 'error');
-        return;
-    }
-    sendBleCmd(BLE_FILM_TRANS_CH_FILE_LIST);
-    debugLog('已加入文件列表查询队列');
+    return new Promise((resolve, reject) => {
+        if (!device || !server || !characteristic) {
+            showMessage('请先连接设备', 'error');
+            reject(new Error('未连接设备'));
+            return;
+        }
+        queueBleCmd(async () => {
+            debugLog('开始发送文件列表请求...');
+            let packet = new Uint8Array(4);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = BLE_FILM_TRANS_CH_FILE_LIST;
+            packet[2] = 0;
+            packet[3] = calculateChecksum(packet, 3);
+
+            try {
+                await characteristic.writeValue(packet);
+                debugLog('文件列表请求已发送', 'success');
+            } catch (err) {
+                debugLog('文件列表请求失败: ' + err.message, 'error');
+                reject(err);
+                return;
+            }
+            await delay(BLE_CTRL_DELAY);
+            resolve();
+        });
+    });
 }
 
 function sendBleFileDelete(fileId) {
-    if (!device || !server || !characteristic) {
-        showMessage('请先连接设备', 'error');
-        return;
-    }
-    sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DELETE, fileId, 1);
-    debugLog('已加入删除文件队列');
+    return new Promise((resolve, reject) => {
+        if (!device || !server || !characteristic) {
+            showMessage('请先连接设备', 'error');
+            reject(new Error('未连接设备'));
+            return;
+        }
+        queueBleCmd(async () => {
+            let packet = new Uint8Array(5);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = BLE_FILM_TRANS_CH_FILE_DELETE;
+            packet[2] = 1;
+            packet[3] = fileId & 0xFF;
+            packet[4] = calculateChecksum(packet, 4);
+
+            try {
+                await characteristic.writeValue(packet);
+                debugLog('删除文件命令已发送', 'success');
+            } catch (err) {
+                debugLog('删除文件命令失败: ' + err.message, 'error');
+                reject(err);
+                return;
+            }
+            await delay(BLE_CTRL_DELAY);
+            resolve();
+        });
+    });
 }
 
 function sendBleFileDisplay(fileId) {
-    if (!device || !server || !characteristic) {
-        showMessage('请先连接设备', 'error');
-        return;
-    }
-    sendBleCmdWithData(BLE_FILM_TRANS_CH_FILE_DISPLAY, fileId, 1);
-    debugLog('已加入显示文件队列');
+    return new Promise((resolve, reject) => {
+        if (!device || !server || !characteristic) {
+            showMessage('请先连接设备', 'error');
+            reject(new Error('未连接设备'));
+            return;
+        }
+        queueBleCmd(async () => {
+            let packet = new Uint8Array(5);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = BLE_FILM_TRANS_CH_FILE_DISPLAY;
+            packet[2] = 1;
+            packet[3] = fileId & 0xFF;
+            packet[4] = calculateChecksum(packet, 4);
+
+            try {
+                await characteristic.writeValue(packet);
+                debugLog('显示文件命令已发送', 'success');
+            } catch (err) {
+                debugLog('显示文件命令失败: ' + err.message, 'error');
+                reject(err);
+                return;
+            }
+            await delay(BLE_CTRL_DELAY);
+            resolve();
+        });
+    });
 }
 
 function sendBleFileDisplayGet() {
-    if (!device || !server || !characteristic) {
-        showMessage('请先连接设备', 'error');
-        return;
-    }
-    sendBleCmd(BLE_FILM_TRANS_CH_FILE_DISPLAY_GET);
-    debugLog('已加入查询显示状态队列');
+    return new Promise((resolve, reject) => {
+        if (!device || !server || !characteristic) {
+            showMessage('请先连接设备', 'error');
+            reject(new Error('未连接设备'));
+            return;
+        }
+        queueBleCmd(async () => {
+            let packet = new Uint8Array(4);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = BLE_FILM_TRANS_CH_FILE_DISPLAY_GET;
+            packet[2] = 0;
+            packet[3] = calculateChecksum(packet, 3);
+
+            try {
+                await characteristic.writeValue(packet);
+                debugLog('查询显示状态已发送', 'success');
+            } catch (err) {
+                debugLog('查询显示状态失败: ' + err.message, 'error');
+                reject(err);
+                return;
+            }
+            await delay(BLE_CTRL_DELAY);
+            resolve();
+        });
+    });
 }
 
 async function sendBleCmdWithData(cmdType, value, dataLen = 4) {
@@ -933,8 +1007,11 @@ function refreshFileList() {
     if (fileListEl) {
         fileListEl.innerHTML = '<div class="empty-state">正在加载...</div>';
     }
-    sendBleFileList();
-    sendBleFileDisplayGet();
+    sendBleFileList().then(() => {
+        setTimeout(() => {
+            sendBleFileDisplayGet();
+        }, 500);
+    }).catch(err => console.error('刷新文件列表失败:', err));
 }
 
 function deleteSelectedFile() {
@@ -945,11 +1022,12 @@ function deleteSelectedFile() {
     if (!confirm('确定要删除选中的文件吗？')) {
         return;
     }
-    sendBleFileDelete(window.selectedFileId);
-    showMessage('删除命令已发送', 'success');
-    setTimeout(() => {
-        refreshFileList();
-    }, 500);
+    sendBleFileDelete(window.selectedFileId).then(() => {
+        showMessage('删除命令已发送', 'success');
+        setTimeout(() => {
+            refreshFileList();
+        }, 500);
+    });
 }
 
 function selectDisplayFile() {
@@ -957,9 +1035,10 @@ function selectDisplayFile() {
         showMessage('请先选择要显示的文件', 'error');
         return;
     }
-    sendBleFileDisplay(window.selectedFileId);
-    showMessage('显示命令已发送', 'success');
-    setTimeout(() => {
-        sendBleFileDisplayGet();
-    }, 500);
+    sendBleFileDisplay(window.selectedFileId).then(() => {
+        showMessage('显示命令已发送', 'success');
+        setTimeout(() => {
+            sendBleFileDisplayGet();
+        }, 500);
+    });
 }
