@@ -104,9 +104,12 @@ function initBluetooth() {
 
             setupBluetoothListener();
             window.fileListBuffer = [];
-            sendBlePwrRead();
-            sendBleFileList();
-            sendBleFileDisplayGet();
+
+            setTimeout(() => {
+                sendBlePwrRead();
+                sendBleFileList();
+                sendBleFileDisplayGet();
+            }, 300);
 
         } catch (error) {
             console.error('连接错误:', error);
@@ -505,25 +508,6 @@ async function sendBleCmd(cmdType, data = null) {
         throw new Error('请先连接设备');
     }
 
-    if (window.bleCmdQueue === undefined) {
-        window.bleCmdQueue = [];
-        window.bleCmdProcessing = false;
-    }
-
-    const cmd = { cmdType, data };
-    window.bleCmdQueue.push(cmd);
-
-    if (!window.bleCmdProcessing) {
-        window.bleCmdProcessing = true;
-        while (window.bleCmdQueue.length > 0) {
-            const pendingCmd = window.bleCmdQueue.shift();
-            await sendBleCmdImmediate(pendingCmd.cmdType, pendingCmd.data);
-        }
-        window.bleCmdProcessing = false;
-    }
-}
-
-async function sendBleCmdImmediate(cmdType, data = null) {
     let packet;
     if (data === null) {
         packet = new Uint8Array(4);
@@ -812,28 +796,9 @@ async function sendBleCmdWithData(cmdType, value, dataLen = 4) {
 
     packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
 
-    if (window.bleCmdQueue === undefined) {
-        window.bleCmdQueue = [];
-        window.bleCmdProcessing = false;
-    }
-
-    const cmd = { packet, isData: true };
-    window.bleCmdQueue.push(cmd);
-
-    if (!window.bleCmdProcessing) {
-        window.bleCmdProcessing = true;
-        while (window.bleCmdQueue.length > 0) {
-            const pendingCmd = window.bleCmdQueue.shift();
-            if (pendingCmd.isData) {
-                await characteristic.writeValue(pendingCmd.packet);
-                console.log('发送数据命令:', pendingCmd.packet[1].toString(16), '数据:', value);
-                await delay(BLE_CTRL_DELAY);
-            } else {
-                await sendBleCmdImmediate(pendingCmd.cmdType, pendingCmd.data);
-            }
-        }
-        window.bleCmdProcessing = false;
-    }
+    await characteristic.writeValue(packet);
+    console.log('发送命令:', cmdType.toString(16), '数据:' + value);
+    await delay(BLE_CTRL_DELAY);
 }
 
 function updateFileListDisplay(fileList) {
