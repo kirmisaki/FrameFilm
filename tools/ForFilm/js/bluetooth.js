@@ -149,15 +149,15 @@ function initBluetooth() {
             setTimeout(() => {
                 debugLog('开始发送初始化命令...');
                 sendBlePwrRead();
-            }, 2000);
+            }, 1000);
 
             setTimeout(() => {
                 sendBleFileList();
-            }, 3000);
+            }, 2000);
 
             setTimeout(() => {
                 sendBleFileDisplayGet();
-            }, 5000);
+            }, 3000);
 
         } catch (error) {
             console.error('连接错误:', error);
