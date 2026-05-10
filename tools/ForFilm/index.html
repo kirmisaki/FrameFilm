@@ -63,12 +63,120 @@
             <!-- 设备控制页面 -->
             <div id="config-page" class="page">
                 <h1>设备设置</h1>
-                <div class="placeholder-content">
-                    <div class="icon">
-                        <i class="material-icons">settings</i>
+                <div class="settings-container">
+
+                    <!-- 设备控制模块 -->
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <i class="material-icons">devices</i>
+                            <span>设备控制</span>
+                        </div>
+                        <div class="section-content">
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">设备电量</span>
+                                    <span id="battery-level" class="setting-value">--%</span>
+                                </div>
+                                <div class="battery-bar">
+                                    <div id="battery-fill" class="battery-fill" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="button-row">
+                                <button class="secondary-button" onclick="restartDevice()">
+                                    <i class="material-icons">refresh</i>
+                                    设备重启
+                                </button>
+                                <button class="secondary-button warning" onclick="resetDevice()">
+                                    <i class="material-icons">restart_alt</i>
+                                    设备重置
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <h2>功能开发中</h2>
-                    <p>设备设置功能正在开发中，敬请期待</p>
+
+                    <!-- FILM设置模块 -->
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <i class="material-icons">movie</i>
+                            <span>FILM设置</span>
+                        </div>
+                        <div class="section-content">
+                            <div class="file-list-header">
+                                <span>文件列表</span>
+                                <button class="icon-button" onclick="refreshFileList()" title="刷新">
+                                    <i class="material-icons">refresh</i>
+                                </button>
+                            </div>
+                            <div id="film-file-list" class="file-list">
+                                <div class="empty-state">暂无文件</div>
+                            </div>
+                            <div class="button-row">
+                                <button class="secondary-button danger" onclick="deleteSelectedFile()">
+                                    <i class="material-icons">delete</i>
+                                    删除文件
+                                </button>
+                                <button class="secondary-button" onclick="selectDisplayFile()">
+                                    <i class="material-icons">check_circle</i>
+                                    选择显示
+                                </button>
+                            </div>
+                            <div class="setting-item">
+                                <span class="setting-label">照片切换模式</span>
+                            </div>
+                            <div class="mode-selector">
+                                <button class="mode-button" data-mode="auto" onclick="setPhotoMode('auto')">
+                                    <i class="material-icons">schedule</i>
+                                    自动
+                                </button>
+                                <button class="mode-button" data-mode="manual" onclick="setPhotoMode('manual')">
+                                    <i class="material-icons">touch_app</i>
+                                    手动
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 休眠设置模块 -->
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <i class="material-icons">bedtime</i>
+                            <span>休眠设置</span>
+                        </div>
+                        <div class="section-content">
+                            <div class="setting-item switch-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">休眠开关</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="sleep-switch" onchange="toggleSleep()">
+                                    <span class="slider-toggle"></span>
+                                </label>
+                            </div>
+                            <div class="setting-item switch-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">休眠自动唤醒</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="auto-wake-switch" onchange="toggleAutoWake()">
+                                    <span class="slider-toggle"></span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">自动唤醒时长</span>
+                                    <span id="wake-duration-value" class="setting-value">10分钟</span>
+                                </div>
+                                <div class="slider-container">
+                                    <input type="range" id="wake-duration" min="10" max="2880" step="10" value="10" oninput="updateWakeDuration()">
+                                    <div class="slider-ticks">
+                                        <span>10分钟</span>
+                                        <span>48小时</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
