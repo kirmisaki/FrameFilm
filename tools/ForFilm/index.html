@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm Web工具</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link id="style-sheet" rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
 </head>
 <body>
@@ -20,6 +20,14 @@
                     <div id="device-list" class="device-list"></div>
                     <div id="bluetooth-info" class="info">
                         <p>点击扫描按钮开始搜索FrameFilm设备</p>
+                    </div>
+                    <!-- 风格切换器 -->
+                    <div class="style-switcher">
+                        <label for="style-selector">主题切换：</label>
+                        <select id="style-selector">
+                            <option value="style.css">Default</option>
+                            <option value="style_bw.css">B&W</option>
+                        </select>
                     </div>
                 </div>
             </div>
