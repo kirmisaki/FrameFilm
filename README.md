@@ -71,15 +71,14 @@ FrameFilm/
 ├── firmware/                   # 设备固件 (ESP-IDF)
 │   └── frame_film/
 │       ├── components/
-│       │   ├── film_sys/      # 系统层
 │       │   ├── film_service/  # 服务层
+│       │   ├── film_sys/      # 系统层
 │       │   ├── film_hal/      # 硬件抽象层
-│       │   └── film_app/      # 应用入口
 │       └── main/              # 主程序
 │
 ├── hardware/                   # 硬件设计
 │   ├── pcb/                   # PCB 设计文件
-│   ├── schematics/           # 电路原理图
+│   ├── schematics/            # 电路原理图
 │   ├── 3dmodels/              # 外壳 3D 模型
 │   ├── bom/                   # 物料清单
 │   ├── datasheets/            # 芯片数据手册
