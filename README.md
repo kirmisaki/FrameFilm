@@ -6,8 +6,8 @@
 
 *复古胶片质感 × 电子纸显示 × 磁吸安装*
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-ESP32-green.svg)](https://www.espressif.com/)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-ESP32-green.svg)](https://www.espressif.com/) 
 
 </div>
 
