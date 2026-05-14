@@ -159,6 +159,10 @@ function initBluetooth() {
                 sendBleFileDisplayGet();
             }, 3000);
 
+            setTimeout(() => {
+                sendBleModeGet();
+            }, 3500);
+
         } catch (error) {
             console.error('连接错误:', error);
             status.textContent = '连接失败: ' + error.message;
@@ -695,6 +699,33 @@ async function sendBleModeSet(mode) {
     }
 }
 
+async function sendBleModeGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_MODE_GET);
+    } catch (error) {
+        console.error('查询模式失败:', error);
+    }
+}
+
+function updatePhotoModeDisplay(mode) {
+    document.querySelectorAll('.mode-button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    const modeStr = mode === 1 ? 'auto' : 'manual';
+    const activeBtn = document.querySelector(`.mode-button[data-mode="${modeStr}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+    }
+}
+
+function setPhotoMode(mode) {
+    const modeValue = mode === 'auto' ? 1 : 0;
+    sendBleModeSet(modeValue);
+}
+
 function setupBluetoothListener() {
     if (!characteristic) return;
 
@@ -711,6 +742,10 @@ function setupBluetoothListener() {
         if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_PWRREAD && cmdLen === 1) {
             const batteryLevel = data[3];
             updateBatteryDisplay(batteryLevel);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_MODE_GET && cmdLen === 1) {
+            const mode = data[3];
+            updatePhotoModeDisplay(mode);
         }
         else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_LIST && cmdLen >= 2) {
             const fileId = data[3];
