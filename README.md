@@ -137,7 +137,7 @@ ForFilm Web 工具，支持以下功能：
 
 ## 开源许可
 
-本项目基于 [MIT License](LICENSE) 开源。
+本项目基于 [GNU General Public License v3.0 (GPLv3)](LICENSE) 开源。
 
 ## 致谢
 
