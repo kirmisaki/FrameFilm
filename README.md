@@ -94,7 +94,7 @@ FrameFilm/
 │   └── production/            # 生产测试工具
 │
 ├── README.md                   # 项目说明文档
-└── LICENSE                     # MIT 许可证
+└── LICENSE                     # 许可证
 ```
 
 ## 快速开始
