@@ -527,10 +527,25 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_CTRL_MODE : // Film模式切换
         {
+            if(cmd->len == 1 && (cmd->pdata[0] == 0 || cmd->pdata[0] == 1))
+            {
+                uint8_t mode = cmd->pdata[0];
+                sys_logi(BEL_SERVICE_TAG, "Set play mode: %d", mode);
+                g_service_param.film.play_mode = mode;
+                service_param_save();
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_MODE_GET : // Film模式查询
         {
+            sys_logi(BEL_SERVICE_TAG, "Current play mode: %d", g_service_param.film.play_mode);
+            uint8_t cmd_buf[6];
+            cmd_buf[0] = BLE_CMD_HEAD;
+            cmd_buf[1] = BLE_FILM_TRANS_CH_CTRL_MODE_GET;
+            cmd_buf[2] = 1;
+            cmd_buf[3] = g_service_param.film.play_mode & 0xFF;
+            cmd_buf[4] = ble_checksum(cmd_buf, 4);
+            service_ble_msg_gatts_data_send(cmd_buf, sizeof(cmd_buf), MSG_BLE_CH1_OUT_DATA);
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_RESET : // 重置
