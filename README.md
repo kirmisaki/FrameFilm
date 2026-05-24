@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![FrameFilm渲染图](assets/pic/model/rendering.png)
+![FrameFilm渲染图](assets/pic/model/rendering2.png)
 
 *复古胶片质感 × 电子纸显示 × 磁吸安装*
 
@@ -25,7 +25,7 @@
 
 | 正面视图 | 侧面视图 |
 |:--------:|:--------:|
-| ![正面](assets/pic/model/model1.png) | ![侧面](assets/pic/model/model2.png) |
+| ![正面](assets/pic/model/model1_2.png) | ![侧面](assets/pic/model/model2_2.png) |
 
 ## 核心功能
 
@@ -49,11 +49,17 @@
 |------|------|
 | 主控芯片 | ESP32-S3 |
 | 显示屏 | 彩色电子纸（E-Ink 6）3.6" |
-| 存储 | TF卡 |
+| 存储 | TF卡 最大32GB |
 | 通信 | 蓝牙 BLE 4.2 |
-| 电池 | 锂电池（可充电） |
-| 尺寸 | 约 70 × 58 × 9 mm |
-| 安装方式 | 背部磁吸 |
+| 电池 | 锂电池 304040规格1.5mm插头 |
+| 尺寸 | 约 91 × 80 × 8 mm |
+| 安装方式 | 背部磁吸 磁铁 2x12mm-1mm 1x15mm-2mm |
+
+## 硬件开源
+
+硬件设计已在立创开源硬件平台开源：
+
+👉 [立创开源硬件平台 - FrameFilm](https://oshwhub.com/kiritro/project_ttfkoxxv)
 
 ## 项目结构
 
