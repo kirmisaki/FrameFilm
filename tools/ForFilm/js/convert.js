@@ -16,14 +16,29 @@ let originalImage = null;
 let uploadedFileName = 'output';
 window.processedDataForDownload = null;
 
-// 固定的六色调色板
+// Film 文件格式常量
+const FILM_SCREEN_WIDTH = 600;
+const FILM_SCREEN_HEIGHT = 400;
+const FILM_HEADER_SIZE = 32;
+const FILM_PIXEL_DATA_SIZE = (FILM_SCREEN_WIDTH * FILM_SCREEN_HEIGHT) / 2;  // 120000 字节
+const FILM_FILE_TOTAL_SIZE = FILM_HEADER_SIZE + FILM_PIXEL_DATA_SIZE;  // 120032 字节
+
+// 颜色编码索引（对应 ColorTable 的位置）
+const COLOR_CODE_BLACK = 0x00;
+const COLOR_CODE_WHITE = 0x01;
+const COLOR_CODE_YELLOW = 0x02;
+const COLOR_CODE_RED = 0x03;
+const COLOR_CODE_BLUE = 0x05;
+const COLOR_CODE_GREEN = 0x06;
+
+// 固定的六色调色板（带颜色编码索引）
 const rgbPalette = [
-    { name: "黄色", r: 255, g: 255, b: 0, value: 0xfc },
-    { name: "绿色", r: 41, g: 204, b: 20, value: 0x1c },
-    { name: "蓝色", r: 0, g: 0, b: 255, value: 0x03 },
-    { name: "红色", r: 255, g: 0, b: 0, value: 0xe0 },
-    { name: "黑色", r: 0, g: 0, b: 0, value: 0x00 },
-    { name: "白色", r: 255, g: 255, b: 255, value: 0xff }
+    { name: "黑色", r: 0, g: 0, b: 0, value: 0x00, code: COLOR_CODE_BLACK },
+    { name: "白色", r: 255, g: 255, b: 255, value: 0xff, code: COLOR_CODE_WHITE },
+    { name: "黄色", r: 255, g: 255, b: 0, value: 0xfc, code: COLOR_CODE_YELLOW },
+    { name: "红色", r: 255, g: 0, b: 0, value: 0xe0, code: COLOR_CODE_RED },
+    { name: "蓝色", r: 0, g: 0, b: 255, value: 0x03, code: COLOR_CODE_BLUE },
+    { name: "绿色", r: 41, g: 204, b: 20, value: 0x1c, code: COLOR_CODE_GREEN }
 ];
 
 function initConvertTool() {
@@ -205,6 +220,46 @@ function downloadFile(data, fileName) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+// 生成 Film 文件头（32字节）
+function generateFilmHeader() {
+    const header = new Array(FILM_HEADER_SIZE).fill(0);
+
+    // FileSize (4 bytes) - 小端序
+    const fileSize = FILM_PIXEL_DATA_SIZE;
+    header[0] = fileSize & 0xFF;
+    header[1] = (fileSize >> 8) & 0xFF;
+    header[2] = (fileSize >> 16) & 0xFF;
+    header[3] = (fileSize >> 24) & 0xFF;
+
+    // ScreenWidth (2 bytes) - 小端序
+    header[4] = FILM_SCREEN_WIDTH & 0xFF;
+    header[5] = (FILM_SCREEN_WIDTH >> 8) & 0xFF;
+
+    // ScreenHeight (2 bytes) - 小端序
+    header[6] = FILM_SCREEN_HEIGHT & 0xFF;
+    header[7] = (FILM_SCREEN_HEIGHT >> 8) & 0xFF;
+
+    // ColorCount (1 byte) - 6色
+    header[8] = 6;
+
+    // Reserved (7 bytes) - 保留字段，填充0
+    // header[9] 到 header[15] 保持为0
+
+    // ColorTable (16 bytes) - 颜色编码映射表
+    // ColorTable[编码索引] = 实际颜色值
+    header[16] = COLOR_CODE_BLACK;   // 编码0 -> 黑色 0x00
+    header[17] = COLOR_CODE_WHITE;   // 编码1 -> 白色 0xff
+    header[18] = COLOR_CODE_YELLOW;  // 编码2 -> 黄色 0xfc
+    header[19] = COLOR_CODE_RED;     // 编码3 -> 红色 0xe0
+    header[20] = COLOR_CODE_BLUE;    // 编码4 -> 蓝色 0x03
+    header[21] = COLOR_CODE_GREEN;   // 编码5 -> 绿色 0x1c
+    header[22] = COLOR_CODE_BLACK;   // 编码6 -> 黑色 0x00
+    header[23] = COLOR_CODE_WHITE;   // 编码7 -> 白色 0xff
+    // header[24] 到 header[31] 保持为0
+
+    return new Uint8Array(header);
 }
 
 function handleFileUpload(event) {
@@ -823,15 +878,31 @@ function decodeProcessedData(processedData, width, height) {
     const data = imageData.data;
 
     for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const newIndex = (x * height) + (height - 1 - y);
-            const value = processedData[newIndex];
-            const color = rgbPalette.find(c => c.value === value) || rgbPalette[5]; // 默认白色
-            const index = (y * width + x) * 4;
-            data[index] = color.r;
-            data[index + 1] = color.g;
-            data[index + 2] = color.b;
-            data[index + 3] = 255; // Alpha 透明度
+        for (let x = 0; x < width; x += 2) {
+            const byteIndex = (y * width + x) / 2;
+            const byte = processedData[byteIndex];
+
+            // 提取高4位和低4位
+            const code1 = (byte >> 4) & 0x0F;
+            const code2 = byte & 0x0F;
+
+            // 像素1
+            const index1 = (y * width + x) * 4;
+            const color1 = rgbPalette.find(c => c.code === code1) || rgbPalette[1]; // 默认白色
+            data[index1] = color1.r;
+            data[index1 + 1] = color1.g;
+            data[index1 + 2] = color1.b;
+            data[index1 + 3] = 255;
+
+            // 像素2
+            if (x + 1 < width) {
+                const index2 = (y * width + x + 1) * 4;
+                const color2 = rgbPalette.find(c => c.code === code2) || rgbPalette[1]; // 默认白色
+                data[index2] = color2.r;
+                data[index2 + 1] = color2.g;
+                data[index2 + 2] = color2.b;
+                data[index2 + 3] = 255;
+            }
         }
     }
 
@@ -843,17 +914,34 @@ function processImageData(imageData) {
     const height = imageData.height;
     const data = imageData.data;
 
-    const processedData = new Uint8Array(width * height);
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const index = (y * width + x) * 4;
-            const r = data[index];
-            const g = data[index + 1];
-            const b = data[index + 2];
+    // 4bit 编码格式：每个字节存储 2 个像素（高4位和低4位）
+    const processedData = new Uint8Array(FILM_PIXEL_DATA_SIZE);
 
-            const closest = findClosestColor(r, g, b);
-            const newIndex = (x * height) + (height - 1 - y); 
-            processedData[newIndex] = closest.value;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x += 2) {
+            const index = (y * width + x) * 4;
+            const r1 = data[index];
+            const g1 = data[index + 1];
+            const b1 = data[index + 2];
+
+            // 计算第一个像素的颜色编码
+            const closest1 = findClosestColor(r1, g1, b1);
+            const code1 = closest1.code;
+
+            let code2 = COLOR_CODE_WHITE; // 默认白色
+
+            // 计算第二个像素的颜色编码（如果存在）
+            if (x + 1 < width) {
+                const r2 = data[index + 4];
+                const g2 = data[index + 5];
+                const b2 = data[index + 6];
+                const closest2 = findClosestColor(r2, g2, b2);
+                code2 = closest2.code;
+            }
+
+            // 组合两个像素到同一个字节：高4位=像素1，低4位=像素2
+            const byteIndex = (y * width + x) / 2;
+            processedData[byteIndex] = (code1 << 4) | code2;
         }
     }
 
@@ -999,7 +1087,8 @@ function convertImage() {
 
         document.getElementById('imageResult').innerHTML = `
             <div class="success">转换完成！</div>
-            <p>文件大小: ${window.processedDataForDownload.length} 字节</div>
+            <p>文件大小: ${window.processedDataForDownload.length} 字节 (像素数据)</p>
+            <p class="info">文件总大小（含头）: ${window.processedDataForDownload.length + FILM_HEADER_SIZE} 字节</p>
             <p class="info">点击下载按钮保存文件</p>
         `;
     } catch (error) {
@@ -1013,6 +1102,14 @@ function downloadFilmFile() {
         return;
     }
 
+    // 生成文件头
+    const header = generateFilmHeader();
+
+    // 合并文件头和像素数据
+    const filmFile = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+    filmFile.set(header, 0);
+    filmFile.set(window.processedDataForDownload, FILM_HEADER_SIZE);
+
     const fileName = document.getElementById('fileName').value || 'output.film';
-    downloadFile(window.processedDataForDownload, fileName);
+    downloadFile(filmFile, fileName);
 }

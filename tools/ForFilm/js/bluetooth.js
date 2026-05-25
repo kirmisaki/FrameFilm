@@ -74,6 +74,13 @@ const BLE_CHUNK_SIZE = 192;
 const BLE_CTRL_DELAY = 50;
 const BLE_DATA_DELAY = 5;
 
+// Film 文件格式常量
+const FILM_SCREEN_WIDTH = 600;
+const FILM_SCREEN_HEIGHT = 400;
+const FILM_HEADER_SIZE = 32;
+const FILM_PIXEL_DATA_SIZE = (FILM_SCREEN_WIDTH * FILM_SCREEN_HEIGHT) / 2;
+const FILM_FILE_TOTAL_SIZE = FILM_HEADER_SIZE + FILM_PIXEL_DATA_SIZE;
+
 let filmTransState = BLE_FILM_TRANS_STATE_IDLE;
 let filmTransFileName = '';
 let filmTransFileSize = 0;
@@ -233,10 +240,10 @@ function uploadToDevice() {
 }
 
 async function uploadFilmFileViaBle(fileName, fileData) {
-    const expectedSize = 600 * 400;
+    const expectedSize = FILM_FILE_TOTAL_SIZE;
 
     if (fileData.length !== expectedSize) {
-        showMessage('文件大小不符合要求(应为240000字节)', 'error');
+        showMessage(`文件大小不符合要求(应为${expectedSize}字节)`, 'error');
         return;
     }
 
