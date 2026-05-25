@@ -159,6 +159,16 @@ void hal_epd_display_green(void);
 void hal_epd_display_pic(const unsigned char* picData);
 
 /**
+ * @brief 显示 .film 文件数据
+ *
+ * 此函数用于在电子纸上显示 .film 格式的文件数据。
+ * 根据 film.md 规范解析文件头和像素数据，支持 4bit 颜色编码。
+ *
+ * @param filmData .film 文件数据指针（包含 32 字节文件头）
+ */
+void hal_epd_display_film(const unsigned char* filmData);
+
+/**
  * @brief 电子纸进入睡眠模式
  *
  * 此函数用于将电子纸进入睡眠模式，以节省电量。

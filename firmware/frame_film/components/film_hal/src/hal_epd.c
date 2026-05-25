@@ -41,9 +41,26 @@
 #define EPD_WIDTH                         (600)
 #define EPD_HEIGHT                        (400)
 
+#define FILM_HEADER_SIZE                  (32)
+#define FILM_COLOR_TABLE_SIZE             (16)
+#define FILM_OFFSET_FILESIZE              (0x00)
+#define FILM_OFFSET_SCREENWIDTH           (0x04)
+#define FILM_OFFSET_SCREENHEIGHT          (0x06)
+#define FILM_OFFSET_COLORCOUNT            (0x08)
+#define FILM_OFFSET_RESERVED              (0x09)
+#define FILM_OFFSET_COLORTABLE            (0x10)
+
 /*********************************************************************
 * TYPEDEFS
 */
+typedef struct {
+    uint32_t fileSize;
+    uint16_t screenWidth;
+    uint16_t screenHeight;
+    uint8_t  colorCount;
+    uint8_t  reserved[7];
+    uint8_t  colorTable[FILM_COLOR_TABLE_SIZE];
+} __attribute__((packed)) FilmHeader;
 
 /*********************************************************************
  * CONSTANTS
@@ -68,6 +85,7 @@ static void lcd_chkstatus(void);
 static void EPD_W21_WriteCMD(unsigned char command);
 static void EPD_W21_WriteDATA(unsigned char datas);
 static unsigned char color_get(unsigned char color_index);
+static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
@@ -174,6 +192,33 @@ static unsigned char color_get(unsigned char color_index)
     return datas;
 }
 
+static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header)
+{
+    if (filmData == NULL || header == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memcpy(&header->fileSize, &filmData[FILM_OFFSET_FILESIZE], sizeof(uint32_t));
+    memcpy(&header->screenWidth, &filmData[FILM_OFFSET_SCREENWIDTH], sizeof(uint16_t));
+    memcpy(&header->screenHeight, &filmData[FILM_OFFSET_SCREENHEIGHT], sizeof(uint16_t));
+    memcpy(&header->colorCount, &filmData[FILM_OFFSET_COLORCOUNT], sizeof(uint8_t));
+    memcpy(header->reserved, &filmData[FILM_OFFSET_RESERVED], 7);
+    memcpy(header->colorTable, &filmData[FILM_OFFSET_COLORTABLE], FILM_COLOR_TABLE_SIZE);
+
+    if (header->colorCount < 2 || header->colorCount > 6) {
+        sys_loge(EPD_TAG, "Invalid color count: %d (expected 2-6)", header->colorCount);
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    uint32_t expectedSize = (EPD_WIDTH * EPD_HEIGHT) / 2;
+    if (header->fileSize != expectedSize) {
+        sys_loge(EPD_TAG, "File size mismatch: %u (expected %u)", header->fileSize, expectedSize);
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    return ESP_OK;
+}
+
 void hal_epd_init(void)
 {
     gpio_config_t io_conf;
@@ -211,7 +256,6 @@ void hal_epd_display_init(void)
     lcd_chkstatus();
     vTaskDelay(30 / portTICK_PERIOD_MS);
 
-    //20211212
     EPD_W21_WriteCMD(0xAA);
     EPD_W21_WriteDATA(0x49);
     EPD_W21_WriteDATA(0x55);
@@ -240,8 +284,6 @@ void hal_epd_display_init(void)
     EPD_W21_WriteDATA(0x1F);
     EPD_W21_WriteDATA(0x22);
 
-    //===================
-    //20211212
     //First setting
     EPD_W21_WriteCMD(BTST2);
     EPD_W21_WriteDATA(0x6F);
@@ -296,7 +338,6 @@ void hal_epd_display_white(void)
     EPD_W21_WriteCMD(PON);
     lcd_chkstatus();
 
-    //20211212
     //Second setting
     EPD_W21_WriteCMD(BTST2);
     EPD_W21_WriteDATA(0x6F);
@@ -328,7 +369,6 @@ void hal_epd_display_black(void)
     EPD_W21_WriteCMD(PON);
     lcd_chkstatus();
 
-    //20211212
     //Second setting
     EPD_W21_WriteCMD(BTST2);
     EPD_W21_WriteDATA(0x6F);
@@ -360,7 +400,6 @@ void hal_epd_display_yellow(void)
     EPD_W21_WriteCMD(PON);
     lcd_chkstatus();
 
-    //20211212
     //Second setting
     EPD_W21_WriteCMD(BTST2);
     EPD_W21_WriteDATA(0x6F);
@@ -392,7 +431,6 @@ void hal_epd_display_red(void)
     EPD_W21_WriteCMD(PON);
     lcd_chkstatus();
 
-    //20211212
     //Second setting
     EPD_W21_WriteCMD(BTST2);
     EPD_W21_WriteDATA(0x6F);
@@ -424,7 +462,6 @@ void hal_epd_display_blue(void)
     EPD_W21_WriteCMD(PON);
     lcd_chkstatus();
 
-    //20211212
     //Second setting
     EPD_W21_WriteCMD(BTST2);
     EPD_W21_WriteDATA(0x6F);
@@ -456,7 +493,6 @@ void hal_epd_display_green(void)
     EPD_W21_WriteCMD(PON);
     lcd_chkstatus();
 
-    //20211212
     //Second setting
     EPD_W21_WriteCMD(BTST2);
     EPD_W21_WriteDATA(0x6F);
@@ -480,7 +516,7 @@ void hal_epd_display_pic(const unsigned char *picData)
     unsigned char temp1, temp2;
     unsigned char data_H, data_L, data;
 
-    EPD_W21_WriteCMD(0x10);
+    EPD_W21_WriteCMD(DTM);
     for(i = 0; i < EPD_HEIGHT; i++)
     {
         k = 0;
@@ -497,11 +533,9 @@ void hal_epd_display_pic(const unsigned char *picData)
     }
 
     //Refresh
-
     EPD_W21_WriteCMD(PON);
     lcd_chkstatus();
 
-    //20211212
     //Second setting
     EPD_W21_WriteCMD(BTST2);
     EPD_W21_WriteDATA(0x6F);
@@ -517,6 +551,76 @@ void hal_epd_display_pic(const unsigned char *picData)
     EPD_W21_WriteCMD(POF);
     EPD_W21_WriteDATA(0x00);
     lcd_chkstatus();         //waiting for the electronic paper IC to release the idle signal
+}
+
+void hal_epd_display_film(const unsigned char *filmData)
+{
+    FilmHeader header;
+    const unsigned char *pixelData;
+    unsigned int i, j;
+    unsigned char byte;
+    unsigned char colorCode1, colorCode2;
+    unsigned char color1, color2;
+    unsigned char data;
+
+    if (filmData == NULL) {
+        sys_loge(EPD_TAG, "filmData is NULL");
+        return;
+    }
+
+    if (film_parse_header(filmData, &header) != ESP_OK) {
+        sys_loge(EPD_TAG, "Failed to parse film header");
+        return;
+    }
+
+    sys_logi(EPD_TAG, "Film info: %ux%u, %d colors, %u bytes",
+             header.screenWidth, header.screenHeight,
+             header.colorCount, header.fileSize);
+
+    sys_logi(EPD_TAG, "Color table:");
+    for (int k = 0; k < 16; k++) {
+        sys_logi(EPD_TAG, "  [%d] = 0x%02X", k, header.colorTable[k]);
+    }
+
+    pixelData = filmData + FILM_HEADER_SIZE;
+
+    EPD_W21_WriteCMD(DTM);
+    for (i = 0; i < EPD_HEIGHT; i++)
+    {
+        for (j = 0; j < EPD_WIDTH / 2; j++)
+        {
+            byte = pixelData[i * (EPD_WIDTH / 2) + j];
+
+            colorCode1 = (byte >> 4) & 0x0F;
+            colorCode2 = byte & 0x0F;
+
+            color1 = header.colorTable[colorCode1];
+            color2 = header.colorTable[colorCode2];
+
+            data = (color_get(color1) << 4) | color_get(color2);
+
+            EPD_W21_WriteDATA(data);
+        }
+    }
+
+    EPD_W21_WriteCMD(PON);
+    lcd_chkstatus();
+
+    EPD_W21_WriteCMD(BTST2);
+    EPD_W21_WriteDATA(0x6F);
+    EPD_W21_WriteDATA(0x1F);
+    EPD_W21_WriteDATA(0x17);
+    EPD_W21_WriteDATA(0x27);
+
+    EPD_W21_WriteCMD(DRF);
+    EPD_W21_WriteDATA(0x00);
+    lcd_chkstatus();
+
+    EPD_W21_WriteCMD(POF);
+    EPD_W21_WriteDATA(0x00);
+    lcd_chkstatus();
+
+    sys_logi(EPD_TAG, "Film display completed");
 }
 
 void hal_epd_sleep(void)
