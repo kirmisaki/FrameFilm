@@ -61,7 +61,9 @@
 
 #define FILE_EPD_IMGAGE_WIDTH       (600)
 #define FILE_EPD_IMGAGE_HEIGHT      (400)
-#define FILE_EPD_IMGAGE_SIZE        (FILE_EPD_IMGAGE_WIDTH * FILE_EPD_IMGAGE_HEIGHT)
+#define FILM_HEADER_SIZE            (32)
+#define FILM_PIXEL_DATA_SIZE        ((FILE_EPD_IMGAGE_WIDTH * FILE_EPD_IMGAGE_HEIGHT) / 2)
+#define FILE_EPD_IMGAGE_SIZE        (FILM_HEADER_SIZE + FILM_PIXEL_DATA_SIZE)
 
 /*********************************************************************
 * TYPEDEFS

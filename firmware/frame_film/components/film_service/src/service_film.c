@@ -257,7 +257,7 @@ static void film_display_event(uint32_t file_id)
 
     // 调用EPD显示接口
     hal_epd_display_init();
-    hal_epd_display_pic(buffer);
+    hal_epd_display_film(buffer);
     hal_epd_pwroff();
 
     // 更新状态
