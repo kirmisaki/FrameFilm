@@ -59,7 +59,7 @@ typedef struct
 /*********************************************************************
  * CONSTANTS
  */
-static const int voltage_levels[VOLTAGE_LEVEL_COUNT] = {3300, 3680, 3733, 3770, 3790, 3840, 3890, 3970, 4070, 4150, 4200};
+static const int voltage_levels[VOLTAGE_LEVEL_COUNT] = {3300, 3680, 3733, 3770, 3790, 3840, 3890, 3920, 3970, 4070, 4140};
 static const int battery_levels[VOLTAGE_LEVEL_COUNT] = {0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
 
 /*********************************************************************
