@@ -878,31 +878,19 @@ function decodeProcessedData(processedData, width, height) {
     const data = imageData.data;
 
     for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x += 2) {
-            const byteIndex = (y * width + x) / 2;
+        for (let x = 0; x < width; x++) {
+            const newIndex = (x * height) + (height - 1 - y);
+            const byteIndex = Math.floor(newIndex / 2);
             const byte = processedData[byteIndex];
 
-            // 提取高4位和低4位
-            const code1 = (byte >> 4) & 0x0F;
-            const code2 = byte & 0x0F;
+            const code = (newIndex % 2 === 0) ? (byte >> 4) & 0x0F : byte & 0x0F;
+            const color = rgbPalette.find(c => c.code === code) || rgbPalette[1];
 
-            // 像素1
-            const index1 = (y * width + x) * 4;
-            const color1 = rgbPalette.find(c => c.code === code1) || rgbPalette[1]; // 默认白色
-            data[index1] = color1.r;
-            data[index1 + 1] = color1.g;
-            data[index1 + 2] = color1.b;
-            data[index1 + 3] = 255;
-
-            // 像素2
-            if (x + 1 < width) {
-                const index2 = (y * width + x + 1) * 4;
-                const color2 = rgbPalette.find(c => c.code === code2) || rgbPalette[1]; // 默认白色
-                data[index2] = color2.r;
-                data[index2 + 1] = color2.g;
-                data[index2 + 2] = color2.b;
-                data[index2 + 3] = 255;
-            }
+            const index = (y * width + x) * 4;
+            data[index] = color.r;
+            data[index + 1] = color.g;
+            data[index + 2] = color.b;
+            data[index + 3] = 255;
         }
     }
 
@@ -914,34 +902,25 @@ function processImageData(imageData) {
     const height = imageData.height;
     const data = imageData.data;
 
-    // 4bit 编码格式：每个字节存储 2 个像素（高4位和低4位）
     const processedData = new Uint8Array(FILM_PIXEL_DATA_SIZE);
-
     for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x += 2) {
+        for (let x = 0; x < width; x++) {
             const index = (y * width + x) * 4;
-            const r1 = data[index];
-            const g1 = data[index + 1];
-            const b1 = data[index + 2];
+            const r = data[index];
+            const g = data[index + 1];
+            const b = data[index + 2];
 
-            // 计算第一个像素的颜色编码
-            const closest1 = findClosestColor(r1, g1, b1);
-            const code1 = closest1.code;
+            const closest = findClosestColor(r, g, b);
+            const code = closest.code;
 
-            let code2 = COLOR_CODE_WHITE; // 默认白色
+            const newIndex = (x * height) + (height - 1 - y);
+            const byteIndex = Math.floor(newIndex / 2);
 
-            // 计算第二个像素的颜色编码（如果存在）
-            if (x + 1 < width) {
-                const r2 = data[index + 4];
-                const g2 = data[index + 5];
-                const b2 = data[index + 6];
-                const closest2 = findClosestColor(r2, g2, b2);
-                code2 = closest2.code;
+            if (newIndex % 2 === 0) {
+                processedData[byteIndex] = (code << 4) | (processedData[byteIndex] & 0x0F);
+            } else {
+                processedData[byteIndex] = (processedData[byteIndex] & 0xF0) | code;
             }
-
-            // 组合两个像素到同一个字节：高4位=像素1，低4位=像素2
-            const byteIndex = (y * width + x) / 2;
-            processedData[byteIndex] = (code1 << 4) | code2;
         }
     }
 
