@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Film转换工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -156,6 +157,7 @@
         <div class="tabs">
             <div class="tab active" onclick="switchTab('header')">头文件转换</div>
             <div class="tab" onclick="switchTab('image')">图片转换</div>
+            <div class="tab" onclick="switchTab('batch')">格式转换</div>
         </div>
         
         <!-- 头文件转换内容 -->
@@ -224,6 +226,32 @@
             <button type="button" onclick="convertImageToFilm()">转换并下载</button>
             
             <div class="result" id="imageResult">
+                <!-- 结果将显示在这里 -->
+            </div>
+        </div>
+
+        <!-- 格式转换内容 -->
+        <div id="batch" class="tab-content">
+            <div class="form-group">
+                <label>选择老格式 film 文件（240000字节）</label>
+                <input type="file" id="batchFiles" accept=".film" multiple>
+                <div class="info">选择多个老格式 .film 文件（每个 240000 字节），转换后打包为 ZIP 下载</div>
+            </div>
+
+            <div class="form-group">
+                <label>或选择文件夹（支持 File System Access API 的浏览器）</label>
+                <button type="button" onclick="batchConvertFolder()">选择文件夹批量转换</button>
+                <div class="info">使用文件夹选择可以更方便地批量处理，转换后的文件打包为 ZIP 下载</div>
+            </div>
+
+            <div class="form-group">
+                <label>输出目录名：</label>
+                <input type="text" id="batchOutputDir" value="new_format" placeholder="输出子目录名（仅用于显示）">
+            </div>
+
+            <button type="button" onclick="batchConvertFiles()">开始转换</button>
+
+            <div class="result" id="batchResult">
                 <!-- 结果将显示在这里 -->
             </div>
         </div>
@@ -1192,6 +1220,259 @@
                 <p class="info">建议保存到 bin 目录</p>
                 <a href="#" class="download-link" onclick="event.preventDefault(); downloadFile(processedData, '${fileName}');">重新下载</a>
             `;
+        }
+
+        // 格式转换功能
+        const FILM_SCREEN_WIDTH = 600;
+        const FILM_SCREEN_HEIGHT = 400;
+        const FILM_HEADER_SIZE = 32;
+        const FILM_PIXEL_DATA_SIZE = (FILM_SCREEN_WIDTH * FILM_SCREEN_HEIGHT) / 2;
+        const FILM_FILE_TOTAL_SIZE = FILM_HEADER_SIZE + FILM_PIXEL_DATA_SIZE;
+        const OLD_FILM_SIZE = 240000;
+
+        const COLOR_CODE_MAP = {
+            0x00: 0x00,
+            0xFF: 0x01,
+            0xFC: 0x02,
+            0xE0: 0x03,
+            0x03: 0x04,
+            0x1C: 0x05
+        };
+
+        function generateNewFilmHeader() {
+            const header = new Array(FILM_HEADER_SIZE).fill(0);
+
+            header[0] = FILM_PIXEL_DATA_SIZE & 0xFF;
+            header[1] = (FILM_PIXEL_DATA_SIZE >> 8) & 0xFF;
+            header[2] = (FILM_PIXEL_DATA_SIZE >> 16) & 0xFF;
+            header[3] = (FILM_PIXEL_DATA_SIZE >> 24) & 0xFF;
+
+            header[4] = FILM_SCREEN_WIDTH & 0xFF;
+            header[5] = (FILM_SCREEN_WIDTH >> 8) & 0xFF;
+
+            header[6] = FILM_SCREEN_HEIGHT & 0xFF;
+            header[7] = (FILM_SCREEN_HEIGHT >> 8) & 0xFF;
+
+            header[8] = 6;
+
+            header[16] = 0x00;
+            header[17] = 0xFF;
+            header[18] = 0xFC;
+            header[19] = 0xE0;
+            header[20] = 0x03;
+            header[21] = 0x1C;
+
+            return new Uint8Array(header);
+        }
+
+        function convertOldFilmToNew(oldData) {
+            const newFile = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+
+            const header = generateNewFilmHeader();
+            newFile.set(header, 0);
+
+            for (let newIndex = 0; newIndex < FILM_PIXEL_DATA_SIZE; newIndex++) {
+                const idx1 = newIndex * 2;
+                const idx2 = idx1 + 1;
+
+                const value1 = oldData[idx1];
+                const value2 = oldData[idx2];
+
+                const code1 = COLOR_CODE_MAP[value1] !== undefined ? COLOR_CODE_MAP[value1] : 0x01;
+                const code2 = COLOR_CODE_MAP[value2] !== undefined ? COLOR_CODE_MAP[value2] : 0x01;
+
+                newFile[FILM_HEADER_SIZE + newIndex] = (code1 << 4) | code2;
+            }
+
+            return newFile;
+        }
+
+        function batchConvertFiles() {
+            const fileInput = document.getElementById('batchFiles');
+            const resultDiv = document.getElementById('batchResult');
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                resultDiv.innerHTML = '<div class="error">请选择至少一个 film 文件</div>';
+                return;
+            }
+
+            const files = Array.from(fileInput.files);
+            let successCount = 0;
+            let errorCount = 0;
+            let results = [];
+
+            let processed = 0;
+            const total = files.length;
+
+            resultDiv.innerHTML = '<div class="info">正在转换...</div>';
+
+            const zip = new JSZip();
+
+            function processNext() {
+                if (processed >= total) {
+                    if (successCount > 0) {
+                        resultDiv.innerHTML = '<div class="info">正在生成压缩包...</div>';
+                        zip.generateAsync({ type: 'blob' }).then(function(blob) {
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = 'new_format.zip';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+
+                            resultDiv.innerHTML = `
+                                <h3>批量转换完成！</h3>
+                                <p>成功: ${successCount} 个文件</p>
+                                <p>失败: ${errorCount} 个文件</p>
+                                <p class="info">已打包为 new_format.zip 下载</p>
+                                <div style="margin-top:10px;">${results.join('')}</div>
+                            `;
+                        });
+                    } else {
+                        resultDiv.innerHTML = `
+                            <h3>批量转换完成！</h3>
+                            <p>成功: ${successCount} 个文件</p>
+                            <p>失败: ${errorCount} 个文件</p>
+                            <div style="margin-top:10px;">${results.join('')}</div>
+                        `;
+                    }
+                    return;
+                }
+
+                const file = files[processed];
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    const oldData = new Uint8Array(e.target.result);
+
+                    if (oldData.length !== OLD_FILM_SIZE) {
+                        errorCount++;
+                        results.push(`<div class="error">${file.name}: 文件大小 ${oldData.length} 字节，不符合老格式（${OLD_FILM_SIZE} 字节）</div>`);
+                        processed++;
+                        processNext();
+                        return;
+                    }
+
+                    const newData = convertOldFilmToNew(oldData);
+                    zip.file(file.name, newData);
+
+                    successCount++;
+                    results.push(`<div class="info">${file.name}: ${OLD_FILM_SIZE} -> ${FILM_FILE_TOTAL_SIZE} 字节 ✓</div>`);
+                    processed++;
+                    processNext();
+                };
+
+                reader.onerror = function() {
+                    errorCount++;
+                    results.push(`<div class="error">${file.name}: 读取失败</div>`);
+                    processed++;
+                    processNext();
+                };
+
+                reader.readAsArrayBuffer(file);
+            }
+
+            processNext();
+        }
+
+        async function batchConvertFolder() {
+            const resultDiv = document.getElementById('batchResult');
+
+            if (!('showDirectoryPicker' in window)) {
+                resultDiv.innerHTML = '<div class="error">当前浏览器不支持文件夹选择，请使用 Chrome/Edge 或使用上方的文件选择功能</div>';
+                return;
+            }
+
+            try {
+                const dirHandle = await window.showDirectoryPicker();
+                let successCount = 0;
+                let errorCount = 0;
+                let skippedCount = 0;
+                let results = [];
+
+                resultDiv.innerHTML = '<div class="info">正在扫描文件夹...</div>';
+
+                const filmFiles = [];
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file' && entry.name.endsWith('.film')) {
+                        filmFiles.push(entry);
+                    }
+                }
+
+                if (filmFiles.length === 0) {
+                    resultDiv.innerHTML = '<div class="info">文件夹中没有找到 .film 文件</div>';
+                    return;
+                }
+
+                resultDiv.innerHTML = `<div class="info">找到 ${filmFiles.length} 个 .film 文件，正在转换...</div>`;
+
+                const zip = new JSZip();
+
+                for (const entry of filmFiles) {
+                    try {
+                        const file = await entry.getFile();
+                        const arrayBuffer = await file.arrayBuffer();
+                        const oldData = new Uint8Array(arrayBuffer);
+
+                        if (oldData.length === FILM_FILE_TOTAL_SIZE) {
+                            skippedCount++;
+                            zip.file(file.name, oldData);
+                            results.push(`<div class="info">${file.name}: 已是新格式，直接打包</div>`);
+                            continue;
+                        }
+
+                        if (oldData.length !== OLD_FILM_SIZE) {
+                            errorCount++;
+                            results.push(`<div class="error">${file.name}: 文件大小 ${oldData.length} 字节，不符合老格式（${OLD_FILM_SIZE} 字节）</div>`);
+                            continue;
+                        }
+
+                        const newData = convertOldFilmToNew(oldData);
+                        zip.file(file.name, newData);
+
+                        successCount++;
+                        results.push(`<div class="info">${file.name}: ${OLD_FILM_SIZE} -> ${FILM_FILE_TOTAL_SIZE} 字节 ✓</div>`);
+                    } catch (err) {
+                        errorCount++;
+                        results.push(`<div class="error">${entry.name}: 处理失败 - ${err.message}</div>`);
+                    }
+                }
+
+                if (successCount + skippedCount > 0) {
+                    resultDiv.innerHTML = '<div class="info">正在生成压缩包...</div>';
+                    const blob = await zip.generateAsync({ type: 'blob' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = dirHandle.name + '_new_format.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    resultDiv.innerHTML = `
+                        <h3>批量转换完成！</h3>
+                        <p>转换: ${successCount} 个文件</p>
+                        <p>直接打包: ${skippedCount} 个文件（已是新格式）</p>
+                        <p>失败: ${errorCount} 个文件</p>
+                        <p class="info">已打包为 ${dirHandle.name}_new_format.zip 下载</p>
+                        <div style="margin-top:10px;">${results.join('')}</div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <h3>批量转换完成！</h3>
+                        <p>转换: ${successCount} 个文件</p>
+                        <p>失败: ${errorCount} 个文件</p>
+                        <div style="margin-top:10px;">${results.join('')}</div>
+                    `;
+                }
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    resultDiv.innerHTML = `<div class="error">操作失败: ${err.message}</div>`;
+                }
+            }
         }
     </script>
 </body>
