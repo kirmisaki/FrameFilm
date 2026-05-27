@@ -28,8 +28,8 @@ const COLOR_CODE_BLACK = 0x00;
 const COLOR_CODE_WHITE = 0x01;
 const COLOR_CODE_YELLOW = 0x02;
 const COLOR_CODE_RED = 0x03;
-const COLOR_CODE_BLUE = 0x05;
-const COLOR_CODE_GREEN = 0x06;
+const COLOR_CODE_BLUE = 0x04;
+const COLOR_CODE_GREEN = 0x05;
 
 // 固定的六色调色板（带颜色编码索引）
 const rgbPalette = [
@@ -490,7 +490,7 @@ function labDistance(lab1, lab2) {
 function findClosestColor(r, g, b) {
     // 蓝色特殊情况
     if (r < 50 && g < 150 && b > 100) {
-        return rgbPalette[2]; // 蓝色
+        return rgbPalette[4]; // 蓝色
     }
 
     const inputLab = rgbToLab(r, g, b);
