@@ -248,16 +248,16 @@ function generateFilmHeader() {
     // header[9] 到 header[15] 保持为0
 
     // ColorTable (16 bytes) - 颜色编码映射表
-    // ColorTable[编码索引] = 实际颜色值
-    header[16] = COLOR_CODE_BLACK;   // 编码0 -> 黑色 0x00
-    header[17] = COLOR_CODE_WHITE;   // 编码1 -> 白色 0xff
-    header[18] = COLOR_CODE_YELLOW;  // 编码2 -> 黄色 0xfc
-    header[19] = COLOR_CODE_RED;     // 编码3 -> 红色 0xe0
-    header[20] = COLOR_CODE_BLUE;    // 编码4 -> 蓝色 0x03
-    header[21] = COLOR_CODE_GREEN;   // 编码5 -> 绿色 0x1c
-    header[22] = COLOR_CODE_BLACK;   // 编码6 -> 黑色 0x00
-    header[23] = COLOR_CODE_WHITE;   // 编码7 -> 白色 0xff
-    // header[24] 到 header[31] 保持为0
+    // ColorTable[编码索引] = 实际颜色值（color_get 函数接收的输入）
+    // 根据 hal_epd.c 中 color_get 的定义：
+    // 0x00 -> Black, 0xFF -> White, 0xFC -> Yellow, 0xE0 -> Red, 0x03 -> Blue, 0x1C -> Green
+    header[16] = 0x00;  // 编码0 -> 黑色 0x00
+    header[17] = 0xFF;  // 编码1 -> 白色 0xFF
+    header[18] = 0xFC;  // 编码2 -> 黄色 0xFC
+    header[19] = 0xE0;  // 编码3 -> 红色 0xE0
+    header[20] = 0x03;  // 编码4 -> 蓝色 0x03
+    header[21] = 0x1C;  // 编码5 -> 绿色 0x1C
+    // header[22] 到 header[31] 保持为0（未使用）
 
     return new Uint8Array(header);
 }
