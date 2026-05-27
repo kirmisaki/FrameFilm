@@ -40,7 +40,7 @@
  */
 #define BAT_TAG             "HAL_BAT"
 
-#define BAT_VOL_MAX         (4200)    //最大电压
+#define BAT_VOL_MAX         (4140)    //最大电压
 #define BAT_VOL_MIN         (3300)    //最小电压
 #define VOLTAGE_LEVEL_COUNT (11)      //电压等级数量
 
