@@ -72,7 +72,7 @@ const BLE_OTA_TRANS_STATE_STOPPED = 4;
 
 const BLE_CHUNK_SIZE = 192;
 const BLE_CTRL_DELAY = 50;
-const BLE_DATA_DELAY = 5;
+const BLE_DATA_DELAY = 2;
 
 let filmTransState = BLE_FILM_TRANS_STATE_IDLE;
 let filmTransFileName = '';
