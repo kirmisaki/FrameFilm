@@ -1076,12 +1076,23 @@ function convertImage() {
 }
 
 function downloadFilmFile() {
-    if (!window.processedDataForDownload) {
-        document.getElementById('imageResult').innerHTML = '<div class="error">请先点击转换按钮</div>';
+    if (!originalImage) {
+        document.getElementById('imageResult').innerHTML = '<div class="error">请先上传图片</div>';
         return;
     }
 
-    // 生成文件头
+    try {
+        const canvas = document.getElementById('canvas');
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        window.processedDataForDownload = processImageData(imageData);
+    } catch (error) {
+        document.getElementById('imageResult').innerHTML = '<div class="error">转换失败: ' + error.message + '</div>';
+        return;
+    }
+
     const header = generateFilmHeader();
 
     // 合并文件头和像素数据
@@ -1091,4 +1102,6 @@ function downloadFilmFile() {
 
     const fileName = document.getElementById('fileName').value || 'output.film';
     downloadFile(filmFile, fileName);
+
+    document.getElementById('imageResult').innerHTML = '<div class="success">下载完成！</div>';
 }

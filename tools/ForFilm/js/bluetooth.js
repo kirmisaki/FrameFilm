@@ -221,8 +221,20 @@ function uploadToDevice() {
         return;
     }
 
-    if (!window.processedDataForDownload) {
-        showMessage('请先转换图片', 'error');
+    if (!originalImage) {
+        showMessage('请先上传图片', 'error');
+        return;
+    }
+
+    try {
+        const canvas = document.getElementById('canvas');
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        window.processedDataForDownload = processImageData(imageData);
+    } catch (error) {
+        showMessage('转换失败: ' + error.message, 'error');
         return;
     }
 
