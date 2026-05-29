@@ -638,6 +638,16 @@ void hal_epd_pwroff(void)
 
     EPD_W21_PWR_OFF;
 
+    sys_logi(EPD_TAG, "EPD power off");
+}
+
+void hal_epd_deinit(void)
+{
+    hal_epd_sleep();
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+
+    EPD_W21_PWR_OFF;
+
     if (m_spi_device != NULL)
     {
         spi_bus_remove_device(m_spi_device);

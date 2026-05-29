@@ -272,7 +272,7 @@ static void monitor_enter_low_power(void)
     hal_led_deinit();
     hal_bat_deinit();
     hal_sd_deinit();
-    hal_epd_pwroff();
+    hal_epd_deinit();
 
     hal_pwr_enter_sleep();
 }

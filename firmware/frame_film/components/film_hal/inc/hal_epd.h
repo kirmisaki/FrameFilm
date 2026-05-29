@@ -101,6 +101,13 @@ extern "C" {
 void hal_epd_init(void);
 
 /**
+ * @brief 释放电子纸硬件资源
+ *
+ * 此函数用于释放电子纸硬件资源，包括GPIO和SPI配置，使电子纸无法再使用。
+ */
+void hal_epd_deinit(void);
+
+/**
  * @brief 初始化电子纸显示
  *
  * 此函数用于初始化电子纸显示参数，准备显示内容。
