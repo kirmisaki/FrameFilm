@@ -46,6 +46,16 @@ function showMessage(message, type = 'info') {
     }, 3000);
 }
 
+function showHint(element) {
+    const tooltip = element.querySelector('.hint-tooltip');
+    if (tooltip) {
+        tooltip.style.display = tooltip.style.display === 'block' ? 'none' : 'block';
+        setTimeout(() => {
+            tooltip.style.display = 'none';
+        }, 3000);
+    }
+}
+
 // 检查浏览器是否支持蓝牙
 function checkBluetoothSupport() {
     return navigator.bluetooth !== undefined;

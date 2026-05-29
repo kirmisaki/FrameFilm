@@ -163,6 +163,18 @@ function initBluetooth() {
                 sendBleModeGet();
             }, 3500);
 
+            setTimeout(() => {
+                sendBleSleepOnOffGet();
+            }, 4000);
+
+            setTimeout(() => {
+                sendBleSleepModeGet();
+            }, 4500);
+
+            setTimeout(() => {
+                sendBleSleepTimeGet();
+            }, 5000);
+
         } catch (error) {
             console.error('连接错误:', error);
             status.textContent = '连接失败: ' + error.message;
@@ -683,10 +695,53 @@ async function sendBleSleepTimeSet(timeMinutes) {
         return;
     }
     try {
-        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME, timeMinutes);
-        showMessage('唤醒时间已设置', 'success');
+        const packet = new Uint8Array(6);
+        packet[0] = BLE_CMD_HEAD;
+        packet[1] = BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME;
+        packet[2] = 2;
+        packet[3] = (timeMinutes >> 8) & 0xFF;
+        packet[4] = timeMinutes & 0xFF;
+        packet[5] = calculateChecksum(packet, 5);
+
+        await characteristic.writeValue(packet);
+        debugLog('发送唤醒时间设置: ' + timeMinutes + ' min', 'success');
+        showMessage('唤醒时间已设置: ' + formatDuration(timeMinutes), 'success');
     } catch (error) {
+        debugLog('发送唤醒时间设置命令失败: ' + error.message, 'error');
         showMessage('发送唤醒时间设置命令失败', 'error');
+    }
+}
+
+async function sendBleSleepOnOffGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET);
+    } catch (error) {
+        debugLog('查询休眠开关失败: ' + error.message, 'error');
+    }
+}
+
+async function sendBleSleepModeGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET);
+    } catch (error) {
+        debugLog('查询自动唤醒开关失败: ' + error.message, 'error');
+    }
+}
+
+async function sendBleSleepTimeGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET);
+    } catch (error) {
+        debugLog('查询唤醒时间失败: ' + error.message, 'error');
     }
 }
 
@@ -787,6 +842,18 @@ function setupBluetoothListener() {
             const currentId = data[3];
             updateCurrentDisplayId(currentId);
         }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET && cmdLen === 1) {
+            const onoff = data[3];
+            updateSleepSwitchDisplay(onoff);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET && cmdLen === 1) {
+            const mode = data[3];
+            updateAutoWakeSwitchDisplay(mode);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET && cmdLen === 2) {
+            const timeMinutes = (data[3] << 8) | data[4];
+            updateWakeDurationDisplay(timeMinutes);
+        }
     });
 
     characteristic.startNotifications().then(() => {
@@ -806,6 +873,34 @@ function updateBatteryDisplay(level) {
     if (batteryFillEl) {
         batteryFillEl.style.width = level + '%';
     }
+}
+
+function updateSleepSwitchDisplay(onoff) {
+    const switchEl = document.getElementById('sleep-switch');
+    if (switchEl) {
+        switchEl.checked = onoff === 1;
+    }
+    debugLog('休眠模式: ' + (onoff ? '开启' : '关闭'));
+}
+
+function updateAutoWakeSwitchDisplay(mode) {
+    const switchEl = document.getElementById('auto-wake-switch');
+    if (switchEl) {
+        switchEl.checked = mode === 1;
+    }
+    debugLog('自动唤醒: ' + (mode ? '开启' : '关闭'));
+}
+
+function updateWakeDurationDisplay(minutes) {
+    const slider = document.getElementById('wake-duration');
+    const valueDisplay = document.getElementById('wake-duration-value');
+    if (slider) {
+        slider.value = minutes;
+    }
+    if (valueDisplay) {
+        valueDisplay.textContent = formatDuration(minutes);
+    }
+    debugLog('唤醒时间: ' + formatDuration(minutes));
 }
 
 function toggleSleepSwitch() {
@@ -849,6 +944,11 @@ function updateWakeDurationSlider() {
 function getWakeDurationInMinutes() {
     const slider = document.getElementById('wake-duration');
     return slider ? parseInt(slider.value) : 60;
+}
+
+function applyWakeDuration() {
+    const minutes = getWakeDurationInMinutes();
+    sendBleSleepTimeSet(minutes);
 }
 
 function setPhotoMode(mode) {

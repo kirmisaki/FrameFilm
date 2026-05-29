@@ -179,7 +179,7 @@
                                 <div class="wake-slider-wrapper">
                                     <span class="wake-min">10分钟</span>
                                     <div class="slider-container">
-                                        <input type="range" id="wake-duration" min="10" max="2880" step="10" value="60" oninput="updateWakeDurationSlider()">
+                                        <input type="range" id="wake-duration" min="10" max="2880" step="10" value="60" oninput="updateWakeDurationSlider()" onchange="applyWakeDuration()">
                                     </div>
                                     <span class="wake-max">48小时</span>
                                 </div>
