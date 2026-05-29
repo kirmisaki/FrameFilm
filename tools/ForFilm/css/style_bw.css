@@ -987,23 +987,10 @@ h1 {
     display: block;
 }
 
-/* 风格切换器样式 */
-.style-switcher {
-    margin-top: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.style-switcher label {
-    font-weight: 700;
-    color: #ffffff;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.style-switcher select {
-    padding: 8px 12px;
+/* 主题切换器样式 */
+.theme-select {
+    width: 100%;
+    padding: 10px 12px;
     border: 2px solid #ffffff;
     border-radius: 0;
     background-color: #000000;
@@ -1014,11 +1001,11 @@ h1 {
     font-family: 'Courier New', Courier, monospace;
 }
 
-.style-switcher select:hover {
+.theme-select:hover {
     background-color: #1a1a1a;
 }
 
-.style-switcher select:focus {
+.theme-select:focus {
     outline: none;
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
 }

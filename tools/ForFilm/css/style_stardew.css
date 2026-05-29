@@ -943,20 +943,9 @@ h1 {
 }
 
 /* 主题切换器样式 */
-.style-switcher {
-    margin-top: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.style-switcher label {
-    font-weight: 600;
-    color: #5e8039;
-}
-
-.style-switcher select {
-    padding: 8px 12px;
+.theme-select {
+    width: 100%;
+    padding: 10px 12px;
     border: 2px solid #c4d8a0;
     border-radius: 10px;
     background-color: #ffffff;
@@ -967,11 +956,11 @@ h1 {
     font-family: 'Nunito', sans-serif;
 }
 
-.style-switcher select:hover {
+.theme-select:hover {
     border-color: #8baf4c;
 }
 
-.style-switcher select:focus {
+.theme-select:focus {
     outline: none;
     border-color: #8baf4c;
 }

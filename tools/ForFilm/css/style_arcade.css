@@ -903,20 +903,9 @@ h1 {
 }
 
 /* 主题切换器样式 */
-.style-switcher {
-    margin-top: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.style-switcher label {
-    font-weight: 600;
-    color: #94a3b8;
-}
-
-.style-switcher select {
-    padding: 8px 12px;
+.theme-select {
+    width: 100%;
+    padding: 10px 12px;
     border: 3px solid #334155;
     background-color: #0f172a;
     color: #e0e0e0;
@@ -925,11 +914,11 @@ h1 {
     transition: all 0.15s;
 }
 
-.style-switcher select:hover {
+.theme-select:hover {
     border-color: #4ade80;
 }
 
-.style-switcher select:focus {
+.theme-select:focus {
     outline: none;
     border-color: #4ade80;
 }
