@@ -45,6 +45,7 @@
 #include "hal_pwr.h"
 #include "service_ble_gatts.h"
 #include "service_monitor.h"
+#include "service_param.h"
 
 /*********************************************************************
  * MACROS
@@ -238,6 +239,12 @@ static void monitor_battery_manage_event(void)
 
 static void monitor_auto_sleep_manage_event(void)
 {
+    if(!g_service_param.sleep.sleep_mode)
+    {
+        m_monitor_state.sleep_counter = 0;
+        return;
+    }
+
     encoder_press_type_t encoder_state = hal_encoder_get_press();
     m_monitor_state.ble_connected = service_ble_gatts_get_connect();
 
@@ -255,6 +262,11 @@ static void monitor_auto_sleep_manage_event(void)
         if(m_monitor_state.sleep_counter >= MONITOR_AUTO_SLEEP_TICK_COUNT)
         {
             sys_logi(MONITOR_TAG, "auto sleep timeout, entering low power mode");
+            if(g_service_param.sleep.sleep_auto && g_service_param.sleep.sleep_time > 0)
+            {
+                hal_pwr_set_timer_wakeup(g_service_param.sleep.sleep_time);
+                sys_logi(MONITOR_TAG, "timer wake enabled: %d min", g_service_param.sleep.sleep_time);
+            }
             monitor_enter_low_power();
         }
     }

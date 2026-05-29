@@ -582,26 +582,75 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF : // 休眠模式开关
         {
+            if(cmd->len == 1 && (cmd->pdata[0] == 0 || cmd->pdata[0] == 1))
+            {
+                uint8_t mode = cmd->pdata[0];
+                sys_logi(BEL_SERVICE_TAG, "Set sleep mode: %s", mode ? "ON" : "OFF");
+                g_service_param.sleep.sleep_mode = mode;
+                service_param_save();
+            }
             break;
         }         
         case BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET : // 休眠模式开关查询
         {
+            sys_logi(BEL_SERVICE_TAG, "Sleep mode: %s", g_service_param.sleep.sleep_mode ? "ON" : "OFF");
+            uint8_t resp_buf[6];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET;
+            resp_buf[2] = 1;
+            resp_buf[3] = g_service_param.sleep.sleep_mode & 0xFF;
+            resp_buf[4] = ble_checksum(resp_buf, 4);
+            service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE : // 休眠模式 定时唤醒开关
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE : // 定时唤醒开关
         {
+            if(cmd->len == 1 && (cmd->pdata[0] == 0 || cmd->pdata[0] == 1))
+            {
+                uint8_t auto_wake = cmd->pdata[0];
+                sys_logi(BEL_SERVICE_TAG, "Set auto wake: %s", auto_wake ? "ON" : "OFF");
+                g_service_param.sleep.sleep_auto = auto_wake;
+                service_param_save();
+            }
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET : // 休眠模式 定时唤醒开关查询
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET : // 定时唤醒开关查询
         {
+            sys_logi(BEL_SERVICE_TAG, "Auto wake: %s", g_service_param.sleep.sleep_auto ? "ON" : "OFF");
+            uint8_t resp_buf[6];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET;
+            resp_buf[2] = 1;
+            resp_buf[3] = g_service_param.sleep.sleep_auto & 0xFF;
+            resp_buf[4] = ble_checksum(resp_buf, 4);
+            service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME : // 定时唤醒开关时间（单位分钟）
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME : // 定时唤醒时间（单位分钟）
         {
+            if(cmd->len == 2)
+            {
+                uint16_t time_min = (cmd->pdata[0] << 8) | cmd->pdata[1];
+                if(time_min >= 10 && time_min <= 2880)
+                {
+                    sys_logi(BEL_SERVICE_TAG, "Set sleep wake time: %d min", time_min);
+                    g_service_param.sleep.sleep_time = time_min;
+                    service_param_save();
+                }
+            }
             break;
         }   
-        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET : // 定时唤醒开关时间查询（单位分钟）
+        case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET : // 定时唤醒时间查询（单位分钟）
         {
+            sys_logi(BEL_SERVICE_TAG, "Sleep wake time: %d min", g_service_param.sleep.sleep_time);
+            uint8_t resp_buf[7];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET;
+            resp_buf[2] = 2;
+            resp_buf[3] = (g_service_param.sleep.sleep_time >> 8) & 0xFF;
+            resp_buf[4] = g_service_param.sleep.sleep_time & 0xFF;
+            resp_buf[5] = ble_checksum(resp_buf, 5);
+            service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
             break;
         }
         default :

@@ -58,6 +58,7 @@
 /*********************************************************************
  * LOCAL VARIABLES
  */
+static uint64_t m_timer_wakeup_us = 0;
 
 
 /*********************************************************************
@@ -135,18 +136,45 @@ void hal_pwr_enter_sleep(void)
         return;
     }
     
+    if (m_timer_wakeup_us > 0)
+    {
+        ret = esp_sleep_enable_timer_wakeup(m_timer_wakeup_us);
+        if (ret != ESP_OK)
+        {
+            sys_loge(PWR_TAG, "Failed to enable timer wakeup: %s", esp_err_to_name(ret));
+        }
+        else
+        {
+            sys_logi(PWR_TAG, "Configured timer wakeup: %llu us", m_timer_wakeup_us);
+        }
+    }
+
     sys_logi(PWR_TAG, "Configured wakeup source: GPIO %d, level %d", WAKEUP_GPIO_NUM, WAKEUP_GPIO_LEVEL);
     
     esp_deep_sleep_start();
+}
+
+void hal_pwr_set_timer_wakeup(uint32_t minutes)
+{
+    if (minutes > 0)
+    {
+        m_timer_wakeup_us = (uint64_t)minutes * 60 * 1000000;
+        sys_logi(PWR_TAG, "Timer wakeup set: %d min (%llu us)", minutes, m_timer_wakeup_us);
+    }
+    else
+    {
+        m_timer_wakeup_us = 0;
+        sys_logi(PWR_TAG, "Timer wakeup disabled");
+    }
 }
 
 bool hal_pwr_check_wakeup(void)
 {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     
-    if (wakeup_reason == ESP_SLEEP_WAKEUP_GPIO)
+    if (wakeup_reason == ESP_SLEEP_WAKEUP_GPIO || wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)
     {
-        sys_logi(PWR_TAG, "Wakeup from deep sleep by GPIO");
+        sys_logi(PWR_TAG, "Wakeup from deep sleep by %s", wakeup_reason == ESP_SLEEP_WAKEUP_TIMER ? "Timer" : "GPIO");
         return true;
     }
     else if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED)

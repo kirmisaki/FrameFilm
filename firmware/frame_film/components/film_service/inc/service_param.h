@@ -33,7 +33,7 @@ typedef struct
 {
     uint8_t sleep_mode;        // 休眠模式开关 0：关闭 1：开启
     uint8_t sleep_auto;        // 定时唤醒开关 0：关闭 1：开启
-    uint8_t sleep_time;        // 定时唤醒时间（单位分钟）
+    uint16_t sleep_time;       // 定时唤醒时间（单位分钟 10min - 48h(48*60min)）
 } ServiceSleep_Def_t;
 
 #pragma pack(4)

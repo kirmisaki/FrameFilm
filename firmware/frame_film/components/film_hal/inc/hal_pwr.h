@@ -6,6 +6,7 @@
  * INCLUDES
  */
 #include <stdbool.h>
+#include <stdint.h>
 
 
 /*********************************************************************
@@ -64,6 +65,13 @@ extern void hal_pwr_init(void);
  * 设备可通过配置的唤醒源（如按键）唤醒。
  */
 extern void hal_pwr_enter_sleep(void);
+
+/**
+ * @brief 设置定时器唤醒时间
+ * 
+ * @param minutes 唤醒时间（单位：分钟），0表示不使用定时器唤醒
+ */
+extern void hal_pwr_set_timer_wakeup(uint32_t minutes);
 
 /**
  * @brief 检查唤醒原因
