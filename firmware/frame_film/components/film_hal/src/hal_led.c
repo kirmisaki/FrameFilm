@@ -29,6 +29,7 @@
  * INCLUDES
  */
 #include "led_strip.h"
+#include "driver/gpio.h"
 
 #include "hal_led.h"
 #include "sys_log.h"
@@ -165,6 +166,28 @@ void hal_led_set_color(uint32_t color)
 uint32_t hal_led_get_color(void)
 {
     return m_led.color;
+}
+
+void hal_led_deinit(void)
+{
+    hal_led_set_color(LED_COLOR_BLACK);
+
+    if (m_rgb != NULL)
+    {
+        led_strip_del(m_rgb);
+        m_rgb = NULL;
+    }
+
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << RGB_LED_WS2812_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    sys_logi(LED_TAG, "LED deinitialized");
 }
 
 led_strip_handle_t configure_led(void)

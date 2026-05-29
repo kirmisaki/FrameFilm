@@ -638,5 +638,23 @@ void hal_epd_pwroff(void)
 
     EPD_W21_PWR_OFF;
 
-    sys_logi(EPD_TAG, "EPD power off");
+    if (m_spi_device != NULL)
+    {
+        spi_bus_remove_device(m_spi_device);
+        m_spi_device = NULL;
+    }
+    spi_bus_free(SPI2_HOST);
+
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << EPD_BUSY_PIN) | (1ULL << EPD_RST_PIN) |
+                        (1ULL << EPD_DC_PIN) | (1ULL << EPD_CS_PIN) |
+                        (1ULL << EPD_PWR_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    sys_logi(EPD_TAG, "EPD power off, SPI and GPIO released");
 }

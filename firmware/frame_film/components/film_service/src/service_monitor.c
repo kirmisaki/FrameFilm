@@ -266,7 +266,13 @@ static void monitor_auto_sleep_manage_event(void)
 
 static void monitor_enter_low_power(void)
 {
-    hal_led_set_color(LED_COLOR_BLACK);
+    xTimerStop(m_monitor_timer, 0);
+
+    service_ble_gatt_server_uninit();
+    hal_led_deinit();
+    hal_bat_deinit();
+    hal_sd_deinit();
     hal_epd_pwroff();
+
     hal_pwr_enter_sleep();
 }

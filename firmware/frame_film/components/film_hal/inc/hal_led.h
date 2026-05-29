@@ -104,6 +104,15 @@ extern void hal_led_set_color(uint32_t color);
  */
 extern uint32_t hal_led_get_color(void);
 
+/**
+ * @brief 反初始化LED硬件
+ *
+ * 此函数用于释放LED硬件资源，将LED设置为关闭状态。
+ * 释放RMT设备并将LED数据引脚配置为低功耗输入模式。
+ * 通常在进入低功耗模式前调用此函数。
+ */
+extern void hal_led_deinit(void);
+
 #ifdef __cplusplus
 }
 #endif

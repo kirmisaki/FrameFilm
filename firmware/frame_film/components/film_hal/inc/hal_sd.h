@@ -67,6 +67,14 @@ extern void hal_sd_init(void);
  */
 extern int hal_sd_get_status(void);
 
+/**
+ * @brief 反初始化SD卡硬件
+ *
+ * 此函数用于卸载SD卡文件系统并释放SDMMC主机资源，
+ * 将SDMMC总线相关引脚配置为低功耗输入模式。
+ * 通常在进入低功耗模式前调用此函数。
+ */
+extern void hal_sd_deinit(void);
 
 #ifdef __cplusplus
 }

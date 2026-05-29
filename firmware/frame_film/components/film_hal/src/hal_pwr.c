@@ -30,6 +30,7 @@
  */
 #include "esp_sleep.h"
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include "esp_pm.h"
 
 #include "sys_log.h"
@@ -112,6 +113,19 @@ void hal_pwr_enter_sleep(void)
 {
     sys_logi(PWR_TAG, "Entering deep sleep");
     
+    sys_logi(PWR_TAG, "Isolating RTC GPIOs to minimize leakage current");
+    for (gpio_num_t gpio = 0; gpio <= GPIO_NUM_21; gpio++)
+    {
+        if (gpio == WAKEUP_GPIO_NUM)
+        {
+            continue;
+        }
+        if (rtc_gpio_is_valid_gpio(gpio))
+        {
+            rtc_gpio_isolate(gpio);
+        }
+    }
+
     sys_logi(PWR_TAG, "Enabling GPIO wakeup on GPIO %d", WAKEUP_GPIO_NUM);
     
     esp_err_t ret = esp_sleep_enable_ext0_wakeup(WAKEUP_GPIO_NUM, 0);

@@ -219,3 +219,28 @@ static void sd_unmount(void)
     sd_mount_status = SD_UNMOUNT;
 }
 
+void hal_sd_deinit(void)
+{
+    if (sd_mount_status == SD_MOUNT)
+    {
+        sd_unmount();
+    }
+
+    sdmmc_host_deinit();
+
+    gpio_isr_handler_remove(PIN_NUM_DET);
+
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << PIN_NUM_CLK) | (1ULL << PIN_NUM_CMD) |
+                        (1ULL << PIN_NUM_D0) | (1ULL << PIN_NUM_D1) |
+                        (1ULL << PIN_NUM_D2) | (1ULL << PIN_NUM_D3),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    sys_logi(TF_TAG, "SD deinitialized");
+}
+

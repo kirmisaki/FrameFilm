@@ -75,6 +75,13 @@ extern int hal_bat_get_level(void);
  */
 extern int hal_bat_get_percent(void);
 
+/**
+ * @brief 反初始化电池模块
+ *
+ * 此函数用于释放电池检测相关的硬件资源，包括ADC单元和校准句柄。
+ * 通常在进入低功耗模式前调用此函数。
+ */
+extern void hal_bat_deinit(void);
 
 #ifdef __cplusplus
 }

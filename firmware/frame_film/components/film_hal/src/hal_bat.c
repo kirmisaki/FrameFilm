@@ -219,3 +219,25 @@ static bool hal_adc_cali_chan0_handle(adc_unit_t unit, adc_channel_t channel, ad
     return calibrated;
 }
 
+void hal_bat_deinit(void)
+{
+    if (m_bat.do_calibration_chan0)
+    {
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+        adc_cali_delete_scheme_curve_fitting(adc_cali_chan0_handle);
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+        adc_cali_delete_scheme_line_fitting(adc_cali_chan0_handle);
+#endif
+        adc_cali_chan0_handle = NULL;
+        m_bat.do_calibration_chan0 = false;
+    }
+
+    if (adc_handle != NULL)
+    {
+        adc_oneshot_del_unit(adc_handle);
+        adc_handle = NULL;
+    }
+
+    sys_logi(BAT_TAG, "bat deinitialized");
+}
+
