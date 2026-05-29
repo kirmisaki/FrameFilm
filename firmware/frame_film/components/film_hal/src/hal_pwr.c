@@ -78,7 +78,19 @@ static uint64_t m_timer_wakeup_us = 0;
 void hal_pwr_init(void)
 {
     sys_logi(PWR_TAG, "pwr init");
-    
+
+    if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_UNDEFINED)
+    {
+        for (gpio_num_t gpio = 0; gpio <= GPIO_NUM_21; gpio++)
+        {
+            if (rtc_gpio_is_valid_gpio(gpio))
+            {
+                rtc_gpio_hold_dis(gpio);
+            }
+        }
+        sys_logi(PWR_TAG, "RTC GPIO hold cleared after wakeup");
+    }
+
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     
     switch (wakeup_reason)
