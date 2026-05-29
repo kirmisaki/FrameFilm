@@ -114,7 +114,7 @@ static void service_param_set_default(void)
     g_service_param.film.play_mode = 0;
     g_service_param.film.current_file_id = 0;
 
-    g_service_param.sleep.sleep_mode = 0;  // 休眠模式默认开启
+    g_service_param.sleep.sleep_mode = 1;  // 休眠模式默认开启
     g_service_param.sleep.sleep_auto = 0;  // 自动唤醒默认关闭
     g_service_param.sleep.sleep_time = 10; // 默认10分钟
 }
