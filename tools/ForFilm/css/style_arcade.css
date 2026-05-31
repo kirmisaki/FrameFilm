@@ -336,7 +336,7 @@ h1 {
 /* 画布样式 */
 .polaroid-frame {
     background: #fff;
-    padding: 3% 4% 10% 4%;
+    padding: 40px 30px 90px 30px;
     border-radius: 3px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
     margin: 15px auto;
@@ -347,11 +347,8 @@ h1 {
 
 .polaroid-inner {
     width: 400px;
-    height: 600px;
+    aspect-ratio: 2 / 3;
     overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     position: relative;
     max-width: 100%;
 }
@@ -369,21 +366,29 @@ h1 {
 }
 
 .polaroid-inner #canvas {
-    transform: rotate(90deg);
     border: none;
     border-radius: 0;
     display: block;
-    max-width: none;
+    width: 600px;
+    height: 400px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(90deg);
 }
 
 @media (max-width: 480px) {
+    .polaroid-frame {
+        padding: 32px 24px 72px 24px;
+    }
+
     .polaroid-inner {
-        width: calc(100vw - 40px);
-        height: calc((100vw - 40px) * 1.5);
+        width: calc(100vw - 76px);
     }
 
     .polaroid-inner #canvas {
-        transform: rotate(90deg) scale(calc((100vw - 40px) / 600));
+        width: calc((100vw - 76px) * 3 / 2);
+        height: calc(100vw - 76px);
     }
 }
 
