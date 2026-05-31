@@ -206,6 +206,77 @@
                 </div>
             </div>
 
+            <!-- Frame页面 -->
+            <div id="frame-page" class="page">
+                <div class="frame-container">
+                    <div class="frame-tabs">
+                        <div class="frame-tab active" data-frame-tab="frame-upload">
+                            <i class="material-icons">photo_library</i>
+                            <span>拾光</span>
+                        </div>
+                        <div class="frame-tab" data-frame-tab="frame-camera">
+                            <i class="material-icons">camera_alt</i>
+                            <span>定影</span>
+                        </div>
+                    </div>
+
+                    <!-- 选图直印 -->
+                    <div id="frame-upload" class="frame-tab-content active">
+                        <input type="file" id="frameFileInput" accept="image/*" style="display:none">
+                        <button class="primary-button frame-action-btn" id="frameSelectBtn">
+                            <i class="material-icons">photo_library</i> 选择照片
+                        </button>
+                        <div class="polaroid-frame">
+                            <div class="polaroid-inner">
+                                <canvas id="frame-canvas" width="600" height="400"></canvas>
+                            </div>
+                        </div>
+                        <p class="info frame-hint">选择照片后自动转换并显示</p>
+                        <button type="button" class="primary-button frame-send-btn" id="frameUploadBtn" disabled>
+                            <i class="material-icons">send</i> 发送到设备
+                        </button>
+                        <div id="frame-transfer-container" class="transfer-container" style="display: none;">
+                            <div id="frame-transfer-status" class="transfer-status">准备传输...</div>
+                            <div class="progress-bar">
+                                <div id="frame-transfer-progress-bar" class="progress-fill"></div>
+                            </div>
+                            <div id="frame-transfer-progress" class="transfer-progress">0%</div>
+                        </div>
+                        <div id="frame-result"></div>
+                    </div>
+
+                    <!-- 即拍即印 -->
+                    <div id="frame-camera" class="frame-tab-content">
+                        <button class="primary-button frame-action-btn" id="frameCaptureBtn">
+                            <i class="material-icons">camera_alt</i> 打开相机
+                        </button>
+                        <div id="frame-video-container" style="display:none;">
+                            <video id="frameVideo" autoplay playsinline></video>
+                            <button class="primary-button frame-capture-confirm" id="frameCaptureConfirm">
+                                <i class="material-icons">photo_camera</i> 拍照
+                            </button>
+                        </div>
+                        <div class="polaroid-frame">
+                            <div class="polaroid-inner">
+                                <canvas id="frame-camera-canvas" width="600" height="400"></canvas>
+                            </div>
+                        </div>
+                        <p class="info frame-hint">拍照后自动转换并显示</p>
+                        <button type="button" class="primary-button frame-send-btn" id="frameCameraUploadBtn" disabled>
+                            <i class="material-icons">send</i> 发送到设备
+                        </button>
+                        <div id="frame-camera-transfer-container" class="transfer-container" style="display: none;">
+                            <div id="frame-camera-transfer-status" class="transfer-status">准备传输...</div>
+                            <div class="progress-bar">
+                                <div id="frame-camera-transfer-progress-bar" class="progress-fill"></div>
+                            </div>
+                            <div id="frame-camera-transfer-progress" class="transfer-progress">0%</div>
+                        </div>
+                        <div id="frame-camera-result"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 照片转换页面 -->
             <div id="convert-page" class="page">
                 <h1>照片转换</h1>
@@ -286,6 +357,10 @@
                 <i class="material-icons">bluetooth</i>
                 <span>蓝牙</span>
             </a>
+            <a href="#" class="nav-item" data-page="frame-page">
+                <i class="material-icons">movie</i>
+                <span>Frame</span>
+            </a>
             <a href="#" class="nav-item" data-page="convert-page">
                 <i class="material-icons">image</i>
                 <span>Film</span>
@@ -300,6 +375,7 @@
     <script src="js/utils.js"></script>
     <script src="js/bluetooth.js"></script>
     <script src="js/convert.js"></script>
+    <script src="js/frame.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

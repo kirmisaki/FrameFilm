@@ -318,7 +318,9 @@ h1 {
     z-index: 1;
 }
 
-.polaroid-inner #canvas {
+.polaroid-inner #canvas,
+.polaroid-inner #frame-canvas,
+.polaroid-inner #frame-camera-canvas {
     border: none;
     border-radius: 0;
     display: block;
@@ -339,10 +341,113 @@ h1 {
         width: calc(100vw - 76px);
     }
 
-    .polaroid-inner #canvas {
+    .polaroid-inner #canvas,
+    .polaroid-inner #frame-canvas,
+    .polaroid-inner #frame-camera-canvas {
         width: calc((100vw - 76px) * 3 / 2);
         height: calc(100vw - 76px);
     }
+}
+
+/* Frame 页面样式 */
+.frame-container {
+    max-width: 100%;
+}
+
+.frame-tabs {
+    display: flex;
+    background-color: #f5ecd0;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(120, 100, 60, 0.15);
+    margin-bottom: 15px;
+    overflow: hidden;
+    border: 2px solid #c4d8a0;
+}
+
+.frame-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 14px 12px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 15px;
+    color: #7a8f5e;
+    transition: all 0.3s;
+    border-bottom: 3px solid transparent;
+}
+
+.frame-tab i {
+    font-size: 20px;
+}
+
+.frame-tab:hover {
+    background-color: #e8e0c0;
+}
+
+.frame-tab.active {
+    color: #5a7a3a;
+    border-bottom-color: #5a7a3a;
+    background-color: #edf5d8;
+}
+
+.frame-tab-content {
+    display: none;
+}
+
+.frame-tab-content.active {
+    display: block;
+}
+
+.frame-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.frame-action-btn i {
+    font-size: 20px;
+}
+
+.frame-send-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 15px;
+}
+
+.frame-send-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.frame-send-btn i {
+    font-size: 18px;
+}
+
+.frame-hint {
+    text-align: center;
+    margin: 10px 0;
+}
+
+#frameVideo {
+    width: 100%;
+    max-width: 400px;
+    border-radius: 8px;
+    margin: 10px auto;
+    display: block;
+}
+
+.frame-capture-confirm {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
 /* 标签页样式 */
