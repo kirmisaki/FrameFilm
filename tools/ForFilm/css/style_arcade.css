@@ -379,10 +379,6 @@ h1 {
     transform: translate(-50%, -50%) rotate(90deg);
 }
 
-.polaroid-inner #canvas {
-    touch-action: none;
-}
-
 @media (max-width: 480px) {
     .polaroid-frame {
         padding: 32px 24px 72px 24px;
