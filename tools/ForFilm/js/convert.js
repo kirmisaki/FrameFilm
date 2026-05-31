@@ -52,7 +52,13 @@ function initConvertTool() {
         document.getElementById('contrastValue').textContent = this.value;
         updateImage();
     });
-    document.getElementById('ditherType').addEventListener('change', updateImage);
+    document.getElementById('ditherType').addEventListener('change', function() {
+        document.getElementById('ditherStrengthContainer').style.display =
+            this.value === 'adaptive' ? 'none' : '';
+        updateImage();
+    });
+    document.getElementById('ditherStrengthContainer').style.display =
+        document.getElementById('ditherType').value === 'adaptive' ? 'none' : '';
     
     // 鼠标滚轮缩放功能
     const canvas = document.getElementById('canvas');
@@ -306,14 +312,6 @@ function toggleDither() {
     const toggleButton = document.getElementById('toggleDither');
     toggleButton.textContent = isDitheringEnabled ? '禁用抖动' : '启用抖动';
     toggleButton.classList.toggle('active', isDitheringEnabled);
-    
-    if (isDitheringEnabled && currentImageData) {
-        // Automatically configure dithering parameters when enabled
-        const imageAnalysis = analyzeImage(currentImageData);
-        const optimalParams = getOptimalDitherParameters(imageAnalysis);
-        applyDitherParameters(optimalParams);
-    }
-    
     updateImage();
 }
 
@@ -433,8 +431,16 @@ function updateImage() {
         const processedData = processImageData(processedImageData);
         const finalImageData = decodeProcessedData(processedData, canvasWidth, canvasHeight);
         ctx.putImageData(finalImageData, 0, 0);
+
+        const ditherType = document.getElementById('ditherType').value;
+        if (ditherType === 'adaptive' && window._adaptiveConfig) {
+            const cfg = window._adaptiveConfig;
+            const algoNames = { floydSteinberg: 'Floyd-Steinberg', atkinson: 'Atkinson', stucki: 'Stucki', jarvis: 'Jarvis-Judice-Ninke' };
+            document.getElementById('imageResult').innerHTML =
+                '<div class="info">自适应选择：' + algoNames[cfg.type] + '，强度 ' + cfg.strength.toFixed(1) + '</div>';
+        }
     } else {
-        ctx.putImageData(imageData, 0, 0); // 显示原始图像（调整对比度后）
+        ctx.putImageData(imageData, 0, 0);
     }
 }
 
@@ -484,26 +490,67 @@ function labDistance(lab1, lab2) {
     const dl = lab1.l - lab2.l;
     const da = lab1.a - lab2.a;
     const db = lab1.b - lab2.b;
-    return Math.sqrt(0.2 * dl * dl + 3 * da * da + 3 * db * db);
+    return Math.sqrt(dl * dl + da * da + db * db);
 }
 
+function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+            case g: h = ((b - r) / d + 2) / 6; break;
+            case b: h = ((r - g) / d + 4) / 6; break;
+        }
+    }
+    return { h: h * 360, s: s, l: l };
+}
+
+const paletteHsl = rgbPalette.map(function(c) {
+    return { color: c, hsl: rgbToHsl(c.r, c.g, c.b) };
+});
+
 function findClosestColor(r, g, b) {
-    // 蓝色特殊情况
-    if (r < 50 && g < 150 && b > 100) {
-        return rgbPalette[4]; // 蓝色
+    const input = rgbToHsl(r, g, b);
+
+    if (input.s < 0.12) {
+        return input.l > 0.5 ? rgbPalette[1] : rgbPalette[0];
     }
 
-    const inputLab = rgbToLab(r, g, b);
-    let minDistance = Infinity;
+    let minDist = Infinity;
     let closestColor = rgbPalette[0];
 
-    for (const color of rgbPalette) {
-        const colorLab = rgbToLab(color.r, color.g, color.b);
-        const distance = labDistance(inputLab, colorLab);
-        if (distance < minDistance) {
-            minDistance = distance;
-            closestColor = color;
+    for (let i = 2; i < paletteHsl.length; i++) {
+        const p = paletteHsl[i];
+        let hueDiff = Math.abs(input.h - p.hsl.h);
+        if (hueDiff > 180) hueDiff = 360 - hueDiff;
+        const satDiff = Math.abs(input.s - p.hsl.s);
+        const lumDiff = Math.abs(input.l - p.hsl.l);
+        const dist = hueDiff + satDiff * 120 + lumDiff * 80;
+        if (dist < minDist) {
+            minDist = dist;
+            closestColor = p.color;
         }
+    }
+
+    const labInput = rgbToLab(r, g, b);
+    const labBlack = rgbToLab(0, 0, 0);
+    const labWhite = rgbToLab(255, 255, 255);
+    const distBlack = labDistance(labInput, labBlack);
+    const distWhite = labDistance(labInput, labWhite);
+    const distNeutral = Math.min(distBlack, distWhite);
+    const neutralColor = distBlack < distWhite ? rgbPalette[0] : rgbPalette[1];
+
+    const labChosen = rgbToLab(closestColor.r, closestColor.g, closestColor.b);
+    const distChosen = labDistance(labInput, labChosen);
+
+    if (distNeutral < distChosen * 0.45) {
+        return neutralColor;
     }
 
     return closestColor;
@@ -855,11 +902,199 @@ function jarvisDither(imageData, strength) {
     return imageData;
 }
 
+function computeEdgeMap(data, width, height) {
+    const edges = new Float32Array(width * height);
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const idx = (y * width + x) * 4;
+            const tl = data[((y-1)*width+x-1)*4]*0.299 + data[((y-1)*width+x-1)*4+1]*0.587 + data[((y-1)*width+x-1)*4+2]*0.114;
+            const tc = data[((y-1)*width+x)*4]*0.299 + data[((y-1)*width+x)*4+1]*0.587 + data[((y-1)*width+x)*4+2]*0.114;
+            const tr = data[((y-1)*width+x+1)*4]*0.299 + data[((y-1)*width+x+1)*4+1]*0.587 + data[((y-1)*width+x+1)*4+2]*0.114;
+            const ml = data[(y*width+x-1)*4]*0.299 + data[(y*width+x-1)*4+1]*0.587 + data[(y*width+x-1)*4+2]*0.114;
+            const mr = data[(y*width+x+1)*4]*0.299 + data[(y*width+x+1)*4+1]*0.587 + data[(y*width+x+1)*4+2]*0.114;
+            const bl = data[((y+1)*width+x-1)*4]*0.299 + data[((y+1)*width+x-1)*4+1]*0.587 + data[((y+1)*width+x-1)*4+2]*0.114;
+            const bc = data[((y+1)*width+x)*4]*0.299 + data[((y+1)*width+x)*4+1]*0.587 + data[((y+1)*width+x)*4+2]*0.114;
+            const br = data[((y+1)*width+x+1)*4]*0.299 + data[((y+1)*width+x+1)*4+1]*0.587 + data[((y+1)*width+x+1)*4+2]*0.114;
+            const gx = -tl - 2*ml - bl + tr + 2*mr + br;
+            const gy = -tl - 2*tc - tr + bl + 2*bc + br;
+            edges[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+        }
+    }
+    return edges;
+}
+
+function analyzeImageAdvanced(imageData) {
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    const pixelCount = width * height;
+    let brightnessSum = 0;
+    let rSum = 0, gSum = 0, bSum = 0;
+    let saturationSum = 0;
+
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        rSum += r;
+        gSum += g;
+        bSum += b;
+        brightnessSum += r * 0.299 + g * 0.587 + b * 0.114;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        saturationSum += max > 0 ? (max - min) / max : 0;
+    }
+
+    const edges = computeEdgeMap(data, width, height);
+    let edgeSum = 0;
+    let edgeCount = 0;
+    for (let i = 0; i < edges.length; i++) {
+        edgeSum += edges[i];
+        if (edges[i] > 20) edgeCount++;
+    }
+
+    const innerPixels = (width - 2) * (height - 2);
+    return {
+        brightness: brightnessSum / pixelCount / 255,
+        edgeDensity: innerPixels > 0 ? edgeCount / innerPixels : 0,
+        avgGradient: innerPixels > 0 ? edgeSum / innerPixels / 255 : 0,
+        saturation: saturationSum / pixelCount
+    };
+}
+
+function downsampleImageData(imageData, tw, th) {
+    const src = document.createElement('canvas');
+    src.width = imageData.width;
+    src.height = imageData.height;
+    src.getContext('2d').putImageData(imageData, 0, 0);
+    const dst = document.createElement('canvas');
+    dst.width = tw;
+    dst.height = th;
+    const ctx = dst.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'medium';
+    ctx.drawImage(src, 0, 0, tw, th);
+    return ctx.getImageData(0, 0, tw, th);
+}
+
+function generateAdaptiveCandidates(analysis) {
+    const candidates = [];
+    const algos = ['floydSteinberg', 'atkinson', 'stucki', 'jarvis'];
+    let strengths;
+
+    if (analysis.edgeDensity > 0.2) {
+        strengths = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6];
+    } else if (analysis.saturation > 0.3) {
+        strengths = [0.7, 0.9, 1.0, 1.2, 1.4, 1.6, 1.8];
+    } else {
+        strengths = [0.6, 0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+    }
+
+    for (const algo of algos) {
+        for (const s of strengths) {
+            candidates.push({ type: algo, strength: s });
+        }
+    }
+    return candidates;
+}
+
+function evaluateDitherResult(original, dithered) {
+    const d1 = original.data;
+    const d2 = dithered.data;
+    const width = original.width;
+    const height = original.height;
+    const n = d1.length / 4;
+
+    let totalLabError = 0;
+    let maxError = 0;
+    for (let i = 0; i < d1.length; i += 4) {
+        const lab1 = rgbToLab(d1[i], d1[i + 1], d1[i + 2]);
+        const lab2 = rgbToLab(d2[i], d2[i + 1], d2[i + 2]);
+        const dist = labDistance(lab1, lab2);
+        totalLabError += dist;
+        if (dist > maxError) maxError = dist;
+    }
+    const avgLabError = totalLabError / n;
+
+    const origEdges = computeEdgeMap(d1, width, height);
+    const dithEdges = computeEdgeMap(d2, width, height);
+    let edgeCorrelation = 0;
+    let origEdgeEnergy = 0;
+    let dithEdgeEnergy = 0;
+    for (let i = 0; i < origEdges.length; i++) {
+        edgeCorrelation += origEdges[i] * dithEdges[i];
+        origEdgeEnergy += origEdges[i] * origEdges[i];
+        dithEdgeEnergy += dithEdges[i] * dithEdges[i];
+    }
+    const edgePreservation = origEdgeEnergy > 0 && dithEdgeEnergy > 0 ?
+        edgeCorrelation / Math.sqrt(origEdgeEnergy * dithEdgeEnergy) : 0;
+
+    const colorMap = new Map();
+    for (let i = 0; i < d2.length; i += 4) {
+        const key = (d2[i] << 16) | (d2[i+1] << 8) | d2[i+2];
+        colorMap.set(key, (colorMap.get(key) || 0) + 1);
+    }
+    const colorCounts = Array.from(colorMap.values()).sort((a, b) => b - a);
+    let colorEntropy = 0;
+    for (const count of colorCounts) {
+        const p = count / n;
+        if (p > 0) colorEntropy -= p * Math.log2(p);
+    }
+    const maxEntropy = Math.log2(Math.min(6, colorCounts.length));
+    const colorBalance = maxEntropy > 0 ? colorEntropy / maxEntropy : 0;
+
+    const score = avgLabError * 0.4 + (1 - edgePreservation) * 80 * 0.35 + (1 - colorBalance) * 30 * 0.25;
+
+    return { score, avgLabError, edgePreservation, colorBalance, maxError };
+}
+
+function applyDitherByType(imageData, type, strength) {
+    switch (type) {
+        case 'floydSteinberg': return floydSteinbergDither(imageData, strength);
+        case 'atkinson': return atkinsonDither(imageData, strength);
+        case 'stucki': return stuckiDither(imageData, strength);
+        case 'jarvis': return jarvisDither(imageData, strength);
+        default: return imageData;
+    }
+}
+
+function adaptiveDither(imageData) {
+    const width = imageData.width;
+    const height = imageData.height;
+    const evalScale = 3;
+    const evalW = Math.max(30, Math.floor(width / evalScale));
+    const evalH = Math.max(30, Math.floor(height / evalScale));
+    const evalData = downsampleImageData(imageData, evalW, evalH);
+
+    const analysis = analyzeImageAdvanced(evalData);
+    const candidates = generateAdaptiveCandidates(analysis);
+
+    let bestScore = Infinity;
+    let bestConfig = candidates[0];
+
+    for (const config of candidates) {
+        const copy = new ImageData(
+            new Uint8ClampedArray(evalData.data),
+            evalW,
+            evalH
+        );
+        applyDitherByType(copy, config.type, config.strength);
+        const result = evaluateDitherResult(evalData, copy);
+        if (result.score < bestScore) {
+            bestScore = result.score;
+            bestConfig = config;
+        }
+    }
+
+    window._adaptiveConfig = bestConfig;
+    return applyDitherByType(imageData, bestConfig.type, bestConfig.strength);
+}
+
 function ditherImage(imageData) {
     const ditherType = document.getElementById('ditherType').value;
     const ditherStrength = parseFloat(document.getElementById('ditherStrength').value);
 
     switch (ditherType) {
+        case 'adaptive':
+            return adaptiveDither(imageData);
         case 'floydSteinberg':
             return floydSteinbergDither(imageData, ditherStrength);
         case 'atkinson':
@@ -1027,6 +1262,8 @@ function applyDitherParameters(params) {
     document.getElementById('ditherStrengthValue').textContent = params.ditherStrength;
     document.getElementById('contrast').value = params.contrast;
     document.getElementById('contrastValue').textContent = params.contrast;
+    document.getElementById('ditherStrengthContainer').style.display =
+        params.ditherType === 'adaptive' ? 'none' : '';
 }
 
 function autoConfigureDither() {

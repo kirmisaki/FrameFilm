@@ -221,6 +221,7 @@
                         <div class="form-group">
                             <label for="ditherType">抖动算法：</label>
                             <select id="ditherType">
+                                <option value="adaptive">自适应（推荐）</option>
                                 <option value="floydSteinberg">Floyd-Steinberg</option>
                                 <option value="atkinson">Atkinson</option>
                                 <option value="stucki">Stucki</option>
@@ -228,7 +229,7 @@
                             </select>
                         </div>
 
-                        <div class="slider-container">
+                        <div id="ditherStrengthContainer" class="slider-container">
                             <label for="ditherStrength">抖动强度：</label>
                             <input type="range" id="ditherStrength" min="0" max="5" step="0.1" value="1.0">
                             <span id="ditherStrengthValue">1.0</span>
