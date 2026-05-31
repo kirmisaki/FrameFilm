@@ -305,10 +305,8 @@ function handleFileUpload(event) {
             const scaleY = effectiveHeight / imgHeight;
             scale = Math.min(scaleX, scaleY);
 
-            const scaledWidth = imgWidth * scale;
-            const scaledHeight = imgHeight * scale;
-            offsetX = (effectiveWidth - scaledWidth) / 2;
-            offsetY = (effectiveHeight - scaledHeight) / 2;
+            offsetX = 0;
+            offsetY = 0;
 
             document.getElementById('fileName').value = uploadedFileName + '.film';
             updateImage();
