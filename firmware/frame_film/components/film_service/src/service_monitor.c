@@ -221,7 +221,7 @@ static void monitor_led_manage_event(void)
     }
     else
     {
-        hal_led_set_color(LED_COLOR_BLUE);
+        hal_led_set_color(LED_COLOR_WHITE);
     }
 }
 
