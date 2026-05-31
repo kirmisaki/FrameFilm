@@ -864,14 +864,16 @@ function setupBluetoothListener() {
 }
 
 function updateBatteryDisplay(level) {
-    const batteryLevelEl = document.getElementById('battery-level');
-    const batteryFillEl = document.getElementById('battery-fill');
+    const batteryIconText = document.getElementById('battery-icon-text');
+    const batteryFillIcon = document.getElementById('battery-fill-icon');
 
-    if (batteryLevelEl) {
-        batteryLevelEl.textContent = level + '%';
+    if (batteryIconText) {
+        batteryIconText.textContent = level + '%';
     }
-    if (batteryFillEl) {
-        batteryFillEl.style.width = level + '%';
+    if (batteryFillIcon) {
+        const maxWidth = 21;
+        const fillWidth = Math.round((level / 100) * maxWidth);
+        batteryFillIcon.setAttribute('width', fillWidth);
     }
 }
 

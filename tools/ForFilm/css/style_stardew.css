@@ -8,12 +8,16 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
 
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+
 body {
     font-family: 'Nunito', sans-serif;
     background-color: #f0f5e6;
     color: #2d3a20;
     line-height: 1.6;
-    min-height: 100vh;
     background-image: 
         radial-gradient(#e8efd8 20%, transparent 20%),
         radial-gradient(#e8efd8 20%, transparent 20%);
@@ -23,7 +27,7 @@ body {
 
 .container {
     max-width: 100%;
-    min-height: 100vh;
+    height: 100%;
     display: flex;
     flex-direction: column;
 }
@@ -32,13 +36,14 @@ body {
 #page-content {
     flex: 1;
     padding: 20px;
-    padding-bottom: 80px;
+    padding-bottom: 20px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .page {
     display: none;
-    overflow-y: auto;
-    max-height: calc(100vh - 80px);
+    padding-bottom: 80px;
 }
 
 .page.active {
@@ -493,6 +498,92 @@ h1 {
 }
 
 /* 设置页面样式 */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.page-header h1 {
+    margin-bottom: 0;
+}
+
+.battery-icon {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 10px;
+    transition: background-color 0.2s;
+}
+
+.battery-icon:hover {
+    background-color: #e0efc8;
+}
+
+.battery-svg {
+    width: 28px;
+    height: 14px;
+}
+
+.battery-outline {
+    fill: none;
+    stroke: #8baf4c;
+    stroke-width: 1;
+}
+
+.battery-cap {
+    fill: #8baf4c;
+}
+
+.battery-fill-icon {
+    fill: #8baf4c;
+    transition: width 0.3s ease;
+}
+
+.battery-icon-text {
+    font-size: 12px;
+    font-weight: 700;
+    color: #5e8039;
+    min-width: 32px;
+}
+
+.ota-inline {
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e0efc8;
+}
+
+.ota-inline-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ota-inline-row .secondary-button {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 10px;
+}
+
+.ota-inline-row .secondary-button i {
+    font-size: 16px;
+}
+
+.ota-inline .ota-file-size {
+    flex: 1;
+    min-width: 80px;
+    font-size: 12px;
+    color: #7a8f5e;
+}
+
 .settings-container {
     display: flex;
     flex-direction: column;
@@ -517,6 +608,77 @@ h1 {
     font-weight: 700;
     color: #5e8039;
     font-size: 16px;
+}
+
+.section-header .debug-toggle {
+    margin-left: auto;
+}
+
+.device-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.action-item {
+    padding: 12px 0;
+}
+
+.action-item:first-child {
+    padding-top: 0;
+}
+
+.action-item:last-child {
+    padding-bottom: 0;
+}
+
+.action-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: #5e8039;
+    font-size: 14px;
+}
+
+.action-header i {
+    font-size: 18px;
+    color: #8baf4c;
+}
+
+.action-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.action-controls .secondary-button {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 14px;
+    font-size: 13px;
+    border-radius: 10px;
+}
+
+.action-controls .secondary-button i {
+    font-size: 16px;
+}
+
+.file-size-text {
+    flex: 1;
+    font-size: 12px;
+    color: #7a8f5e;
+    min-width: 60px;
+}
+
+.action-divider {
+    height: 1px;
+    background-color: #e0efc8;
+    margin: 12px 0;
 }
 
 .section-header i {
