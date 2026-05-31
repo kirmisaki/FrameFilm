@@ -295,10 +295,6 @@ function frameUpdateTransferStatus(prefix, message, progress) {
 }
 
 function initFrameCanvasInteraction(canvasId, btnId) {
-    var canvas = document.getElementById(canvasId);
-    canvas.addEventListener('touchstart', function(e) {
-        e.preventDefault();
-    }, { passive: false });
 }
 
 window.addEventListener('DOMContentLoaded', initFramePage);
