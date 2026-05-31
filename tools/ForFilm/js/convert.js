@@ -404,6 +404,10 @@ function updateImage() {
         effectiveHeight = canvasWidth;
     }
 
+    // 白色填充背景
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, effectiveWidth, effectiveHeight);
+
     // 计算缩放后的图像尺寸
     const imgWidth = originalImage.width * scale;
     const imgHeight = originalImage.height * scale;
