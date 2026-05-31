@@ -441,6 +441,19 @@ h1 {
     max-width: 100%;
 }
 
+.reset-zoom-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 8px;
+    padding: 6px;
+}
+
+.reset-zoom-btn i {
+    font-size: 24px;
+    color: #fff;
+}
+
 .frame-tabs {
     display: flex;
     background-color: #1a1a1a;
