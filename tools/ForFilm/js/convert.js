@@ -224,9 +224,29 @@ function initConvertTool() {
         e.preventDefault();
     });
 
-    canvas.addEventListener('touchend', function() {
+    canvas.addEventListener('touchend', function(e) {
         isDragging = false;
         isPinching = false;
+
+        if (!isDitheringEnabled && originalImage && e.changedTouches.length === 1) {
+            const now = Date.now();
+            if (canvas._lastTap && now - canvas._lastTap < 300) {
+                e.preventDefault();
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+                let effectiveWidth = canvasRotation === 1 ? canvasHeight : canvasWidth;
+                let effectiveHeight = canvasRotation === 1 ? canvasWidth : canvasHeight;
+                const scaleX = effectiveWidth / originalImage.width;
+                const scaleY = effectiveHeight / originalImage.height;
+                scale = Math.min(scaleX, scaleY);
+                offsetX = 0;
+                offsetY = 0;
+                updateImage();
+                canvas._lastTap = 0;
+            } else {
+                canvas._lastTap = now;
+            }
+        }
     });
 }
 
