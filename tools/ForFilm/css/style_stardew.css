@@ -294,6 +294,8 @@ h1 {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
     margin: 15px auto;
     width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .polaroid-inner {
@@ -304,6 +306,7 @@ h1 {
     align-items: center;
     justify-content: center;
     position: relative;
+    max-width: 100%;
 }
 
 .polaroid-inner::after {
@@ -324,6 +327,17 @@ h1 {
     border-radius: 0;
     display: block;
     max-width: none;
+}
+
+@media (max-width: 480px) {
+    .polaroid-inner {
+        width: calc(100vw - 40px);
+        height: calc((100vw - 40px) * 1.5);
+    }
+
+    .polaroid-inner #canvas {
+        transform: rotate(90deg) scale(calc((100vw - 40px) / 600));
+    }
 }
 
 /* 标签页样式 */
