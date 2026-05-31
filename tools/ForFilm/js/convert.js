@@ -100,6 +100,23 @@ function initConvertTool() {
             startOffsetY = offsetY;
         }
     });
+
+    canvas.addEventListener('dblclick', function(e) {
+        if (!isDitheringEnabled && originalImage) {
+            e.preventDefault();
+            const canvas = document.getElementById('canvas');
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            let effectiveWidth = canvasRotation === 1 ? canvasHeight : canvasWidth;
+            let effectiveHeight = canvasRotation === 1 ? canvasWidth : canvasHeight;
+            const scaleX = effectiveWidth / originalImage.width;
+            const scaleY = effectiveHeight / originalImage.height;
+            scale = Math.min(scaleX, scaleY);
+            offsetX = 0;
+            offsetY = 0;
+            updateImage();
+        }
+    });
     
     canvas.addEventListener('mousemove', function(e) {
         if (isDragging && !isDitheringEnabled) {
