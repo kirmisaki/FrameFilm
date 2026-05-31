@@ -110,12 +110,11 @@ function initConvertTool() {
             // 根据旋转状态调整偏移量
             if (canvasRotation === 1) {
                 // 旋转状态下，X和Y方向互换并调整符号，使鼠标移动与图片视觉移动一致
-                offsetX = startOffsetX - deltaY;
-                offsetY = startOffsetY + deltaX;
-            } else {
-                // 非旋转状态下，正常处理
                 offsetX = startOffsetX + deltaX;
                 offsetY = startOffsetY + deltaY;
+            } else {
+                offsetX = startOffsetX + deltaY;
+                offsetY = startOffsetY - deltaX;
             }
             
             updateImage();
@@ -166,11 +165,11 @@ function initConvertTool() {
             const deltaY = e.touches[0].clientY - startY;
             
             if (canvasRotation === 1) {
-                offsetX = startOffsetX - deltaY;
-                offsetY = startOffsetY + deltaX;
-            } else {
                 offsetX = startOffsetX + deltaX;
                 offsetY = startOffsetY + deltaY;
+            } else {
+                offsetX = startOffsetX + deltaY;
+                offsetY = startOffsetY - deltaX;
             }
             
             updateImage();
@@ -281,7 +280,6 @@ function handleFileUpload(event) {
         const img = new Image();
         img.onload = function () {
             originalImage = img;
-            canvasRotation = 0;
 
             const canvas = document.getElementById('canvas');
             const canvasWidth = canvas.width;
@@ -290,14 +288,27 @@ function handleFileUpload(event) {
             const imgWidth = img.width;
             const imgHeight = img.height;
 
-            const scaleX = canvasWidth / imgWidth;
-            const scaleY = canvasHeight / imgHeight;
+            if (imgHeight > imgWidth) {
+                canvasRotation = 1;
+            } else {
+                canvasRotation = 0;
+            }
+
+            let effectiveWidth = canvasWidth;
+            let effectiveHeight = canvasHeight;
+            if (canvasRotation === 1) {
+                effectiveWidth = canvasHeight;
+                effectiveHeight = canvasWidth;
+            }
+
+            const scaleX = effectiveWidth / imgWidth;
+            const scaleY = effectiveHeight / imgHeight;
             scale = Math.min(scaleX, scaleY);
 
             const scaledWidth = imgWidth * scale;
             const scaledHeight = imgHeight * scale;
-            offsetX = (canvasWidth - scaledWidth) / 2;
-            offsetY = (canvasHeight - scaledHeight) / 2;
+            offsetX = (effectiveWidth - scaledWidth) / 2;
+            offsetY = (effectiveHeight - scaledHeight) / 2;
 
             document.getElementById('fileName').value = uploadedFileName + '.film';
             updateImage();

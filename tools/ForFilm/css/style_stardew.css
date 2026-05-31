@@ -287,13 +287,31 @@ h1 {
 }
 
 /* 画布样式 */
-#canvas {
-    border: 3px solid #8baf4c;
-    border-radius: 12px;
+.polaroid-frame {
+    background: #fff;
+    padding: 3% 4% 10% 4%;
+    border-radius: 3px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
     margin: 15px auto;
+    width: fit-content;
+}
+
+.polaroid-inner {
+    width: 400px;
+    height: 600px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.polaroid-inner #canvas {
+    transform: rotate(90deg);
+    border: none;
+    border-radius: 0;
     display: block;
-    max-width: 100%;
-    height: auto;
+    max-width: none;
 }
 
 /* 标签页样式 */
