@@ -46,16 +46,16 @@ function initConvertTool() {
     document.getElementById('imageFile').addEventListener('change', handleFileUpload);
     document.getElementById('ditherStrength').addEventListener('input', function() {
         document.getElementById('ditherStrengthValue').textContent = this.value;
-        updateImage();
+        debounceUpdateImage();
     });
     document.getElementById('contrast').addEventListener('input', function() {
         document.getElementById('contrastValue').textContent = this.value;
-        updateImage();
+        debounceUpdateImage();
     });
     document.getElementById('ditherType').addEventListener('change', function() {
         document.getElementById('ditherStrengthContainer').style.display =
             this.value === 'adaptive' ? 'none' : '';
-        updateImage();
+        debounceUpdateImage();
     });
     document.getElementById('ditherStrengthContainer').style.display =
         document.getElementById('ditherType').value === 'adaptive' ? 'none' : '';
@@ -375,6 +375,15 @@ function rotateCanvas() {
     offsetY = (effectiveHeight - scaledHeight) / 2;
 
     updateImage();
+}
+
+let _rafId = null;
+let _debounceTimer = null;
+function debounceUpdateImage() {
+    if (_debounceTimer) clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(function() {
+        updateImage();
+    }, 150);
 }
 
 function updateImage() {
