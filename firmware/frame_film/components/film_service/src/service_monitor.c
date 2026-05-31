@@ -214,14 +214,17 @@ static void monitor_led_manage_event(void)
     if(m_monitor_state.bat_level < MONITOR_BAT_LOW_THRESHOLD)
     {
         hal_led_set_color(LED_COLOR_RED);
+        hal_led_set_brightness(50);
     }
     else if(m_monitor_state.ble_connected)
     {
         hal_led_set_color(LED_COLOR_GREEN);
+        hal_led_set_brightness(50);
     }
     else
     {
         hal_led_set_color(LED_COLOR_WHITE);
+        hal_led_set_brightness(30);
     }
 }
 
