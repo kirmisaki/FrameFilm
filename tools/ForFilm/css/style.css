@@ -307,8 +307,6 @@ h1 {
     border: none;
     border-radius: 0;
     display: block;
-    width: 600px;
-    height: 400px;
     position: absolute;
     top: 50%;
     left: 50%;
@@ -322,13 +320,6 @@ h1 {
 
     .polaroid-inner {
         width: calc(100vw - 76px);
-    }
-
-    .polaroid-inner #canvas,
-    .polaroid-inner #frame-canvas,
-    .polaroid-inner #frame-camera-canvas {
-        width: calc((100vw - 76px) * 3 / 2);
-        height: calc(100vw - 76px);
     }
 }
 

@@ -1,5 +1,9 @@
 // 照片转换功能
 
+// 画布内部固定尺寸
+const CANVAS_WIDTH = 600;
+const CANVAS_HEIGHT = 400;
+
 // 全局变量
 let currentImageData = null;
 let isDitheringEnabled = false;
@@ -74,8 +78,8 @@ function initConvertTool() {
             const mouseY = e.clientY - rect.top;
             
             // 调整偏移量，使缩放以鼠标位置为中心
-            const relativeX = mouseX / canvas.width;
-            const relativeY = mouseY / canvas.height;
+            const relativeX = mouseX / CANVAS_WIDTH;
+            const relativeY = mouseY / CANVAS_HEIGHT;
             
             const oldWidth = originalImage.width * scale;
             const oldHeight = originalImage.height * scale;
@@ -189,8 +193,8 @@ function initConvertTool() {
             const centerX = (touch1.clientX + touch2.clientX) / 2;
             const centerY = (touch1.clientY + touch2.clientY) / 2;
             const rect = canvas.getBoundingClientRect();
-            const relativeX = (centerX - rect.left) / canvas.width;
-            const relativeY = (centerY - rect.top) / canvas.height;
+            const relativeX = (centerX - rect.left) / CANVAS_WIDTH;
+            const relativeY = (centerY - rect.top) / CANVAS_HEIGHT;
             
             const oldWidth = originalImage.width * scale;
             const oldHeight = originalImage.height * scale;
@@ -211,9 +215,10 @@ function initConvertTool() {
         isDragging = false;
         isPinching = false;
     });
-}
 
-// 头文件转换功能已移除
+    updateCanvasScale();
+    window.addEventListener('resize', updateCanvasScale);
+}
 
 function downloadFile(data, fileName) {
     const blob = new Blob([data], { type: 'application/octet-stream' });
@@ -282,8 +287,8 @@ function handleFileUpload(event) {
             originalImage = img;
 
             const canvas = document.getElementById('canvas');
-            const canvasWidth = canvas.width;
-            const canvasHeight = canvas.height;
+            const canvasWidth = CANVAS_WIDTH;
+            const canvasHeight = CANVAS_HEIGHT;
 
             const imgWidth = img.width;
             const imgHeight = img.height;
@@ -337,7 +342,7 @@ function resetImage() {
     startY = 0;
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     document.getElementById('imageResult').innerHTML = '';
     document.getElementById('fileName').value = 'output.film';
 }
@@ -346,8 +351,8 @@ function rotateCanvas() {
     canvasRotation = (canvasRotation + 1) % 2;
 
     const canvas = document.getElementById('canvas');
-    const canvasWidth = canvas.width;
-    const canvasHeight = canvas.height;
+    const canvasWidth = CANVAS_WIDTH;
+    const canvasHeight = CANVAS_HEIGHT;
 
     let effectiveWidth, effectiveHeight;
     if (canvasRotation === 0) {
@@ -387,8 +392,8 @@ function debounceUpdateImage() {
 function resetZoom() {
     if (!originalImage) return;
     const canvas = document.getElementById('canvas');
-    const canvasWidth = canvas.width;
-    const canvasHeight = canvas.height;
+    const canvasWidth = CANVAS_WIDTH;
+    const canvasHeight = CANVAS_HEIGHT;
     let effectiveWidth = canvasRotation === 1 ? canvasHeight : canvasWidth;
     let effectiveHeight = canvasRotation === 1 ? canvasWidth : canvasHeight;
     const scaleX = effectiveWidth / originalImage.width;
@@ -403,9 +408,11 @@ function updateImage() {
     if (!originalImage) return;
 
     const canvas = document.getElementById('canvas');
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
     const ctx = canvas.getContext('2d');
-    const canvasWidth = canvas.width;
-    const canvasHeight = canvas.height;
+    const canvasWidth = CANVAS_WIDTH;
+    const canvasHeight = CANVAS_HEIGHT;
 
     // 清除画布
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -479,6 +486,7 @@ function updateImage() {
     } else {
         ctx.putImageData(imageData, 0, 0);
     }
+    updateCanvasScale();
 }
 
 function adjustContrast(imageData, factor) {
@@ -1330,8 +1338,8 @@ function convertImage() {
 
     try {
         const canvas = document.getElementById('canvas');
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
+        const canvasWidth = CANVAS_WIDTH;
+        const canvasHeight = CANVAS_HEIGHT;
 
         const ctx = canvas.getContext('2d');
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
@@ -1357,8 +1365,8 @@ function downloadFilmFile() {
 
     try {
         const canvas = document.getElementById('canvas');
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
+        const canvasWidth = CANVAS_WIDTH;
+        const canvasHeight = CANVAS_HEIGHT;
         const ctx = canvas.getContext('2d');
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
         window.processedDataForDownload = processImageData(imageData);
@@ -1378,4 +1386,20 @@ function downloadFilmFile() {
     downloadFile(filmFile, fileName);
 
     document.getElementById('imageResult').innerHTML = '<div class="success">下载完成！</div>';
+}
+
+function updateCanvasScale() {
+    var containers = document.querySelectorAll('.polaroid-inner');
+    for (var i = 0; i < containers.length; i++) {
+        var container = containers[i];
+        var canvas = container.querySelector('canvas');
+        if (!canvas) continue;
+        var containerWidth = container.clientWidth;
+        var containerHeight = container.clientHeight;
+        if (containerWidth === 0 || containerHeight === 0) continue;
+        var rotatedWidth = CANVAS_HEIGHT;
+        var rotatedHeight = CANVAS_WIDTH;
+        var scaleVal = Math.min(containerWidth / rotatedWidth, containerHeight / rotatedHeight);
+        canvas.style.transform = 'translate(-50%, -50%) rotate(90deg) scale(' + scaleVal + ')';
+    }
 }

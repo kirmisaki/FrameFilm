@@ -156,11 +156,11 @@ function frameSetupImage(canvasId) {
         frameCanvasRotation = 0;
     }
 
-    var effectiveWidth = frameCanvasRotation === 1 ? canvas.height : canvas.width;
-    var effectiveHeight = frameCanvasRotation === 1 ? canvas.width : canvas.height;
+    var effectiveWidth = frameCanvasRotation === 1 ? CANVAS_HEIGHT : CANVAS_WIDTH;
+    var effectiveHeight = frameCanvasRotation === 1 ? CANVAS_WIDTH : CANVAS_HEIGHT;
     var scaleX = effectiveWidth / img.width;
     var scaleY = effectiveHeight / img.height;
-    frameScale = Math.max(scaleX, scaleY);
+    frameScale = Math.min(scaleX, scaleY);
     frameOffsetX = 0;
     frameOffsetY = 0;
 }
@@ -169,9 +169,11 @@ function frameUpdateImage(canvasId) {
     if (!frameOriginalImage) return;
 
     var canvas = document.getElementById(canvasId);
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
     var ctx = canvas.getContext('2d');
-    var canvasWidth = canvas.width;
-    var canvasHeight = canvas.height;
+    var canvasWidth = CANVAS_WIDTH;
+    var canvasHeight = CANVAS_HEIGHT;
 
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.save();
@@ -217,6 +219,7 @@ function frameUpdateImage(canvasId) {
     var processedData = processImageData(processedImageData);
     var finalImageData = decodeProcessedData(processedData, canvasWidth, canvasHeight);
     ctx.putImageData(finalImageData, 0, 0);
+    updateCanvasScale();
 }
 
 function frameUploadToDevice(canvasId, prefix) {
@@ -233,7 +236,7 @@ function frameUploadToDevice(canvasId, prefix) {
     try {
         var canvas = document.getElementById(canvasId);
         var ctx = canvas.getContext('2d');
-        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         var processedData = processImageData(imageData);
         var header = generateFilmHeader();
         var fileData = new Uint8Array(FILM_FILE_TOTAL_SIZE);

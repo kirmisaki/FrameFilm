@@ -240,8 +240,8 @@ function uploadToDevice() {
 
     try {
         const canvas = document.getElementById('canvas');
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
+        const canvasWidth = CANVAS_WIDTH;
+        const canvasHeight = CANVAS_HEIGHT;
         const ctx = canvas.getContext('2d');
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
         window.processedDataForDownload = processImageData(imageData);
