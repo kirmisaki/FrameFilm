@@ -160,7 +160,7 @@ function frameSetupImage(canvasId) {
     var effectiveHeight = frameCanvasRotation === 1 ? canvas.width : canvas.height;
     var scaleX = effectiveWidth / img.width;
     var scaleY = effectiveHeight / img.height;
-    frameScale = Math.min(scaleX, scaleY);
+    frameScale = Math.max(scaleX, scaleY);
     frameOffsetX = 0;
     frameOffsetY = 0;
 }
@@ -194,6 +194,11 @@ function frameUpdateImage(canvasId) {
     var drawX = (effectiveWidth - imgWidth) / 2 + frameOffsetX;
     var drawY = (effectiveHeight - imgHeight) / 2 + frameOffsetY;
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, effectiveWidth, effectiveHeight);
+    ctx.clip();
+
     ctx.drawImage(
         frameOriginalImage,
         0, 0,
@@ -202,6 +207,7 @@ function frameUpdateImage(canvasId) {
         imgWidth, imgHeight
     );
 
+    ctx.restore();
     ctx.restore();
 
     var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
