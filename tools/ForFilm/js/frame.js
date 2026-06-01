@@ -63,7 +63,7 @@ function initFrameUpload() {
             var img = new Image();
             img.onload = function() {
                 frameOriginalImage = img;
-                frameSetupImage('frame-canvas');
+                frameSetupImage('frame-canvas', false);
                 frameUpdateImage('frame-canvas');
                 document.getElementById('frameUploadBtn').disabled = false;
             };
@@ -124,7 +124,7 @@ function frameCapturePhoto() {
     var img = new Image();
     img.onload = function() {
         frameOriginalImage = img;
-        frameSetupImage('frame-camera-canvas');
+        frameSetupImage('frame-camera-canvas', true);
         frameUpdateImage('frame-camera-canvas');
         document.getElementById('frameCameraUploadBtn').disabled = false;
     };
@@ -146,7 +146,7 @@ function frameStopCamera() {
     document.getElementById('frameCaptureBtn').style.display = '';
 }
 
-function frameSetupImage(canvasId) {
+function frameSetupImage(canvasId, fill) {
     var canvas = document.getElementById(canvasId);
     var img = frameOriginalImage;
 
@@ -160,7 +160,7 @@ function frameSetupImage(canvasId) {
     var effectiveHeight = frameCanvasRotation === 1 ? CANVAS_WIDTH : CANVAS_HEIGHT;
     var scaleX = effectiveWidth / img.width;
     var scaleY = effectiveHeight / img.height;
-    frameScale = Math.min(scaleX, scaleY);
+    frameScale = fill ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
     frameOffsetX = 0;
     frameOffsetY = 0;
 }
