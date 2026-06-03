@@ -320,7 +320,8 @@ h1 {
 
 .polaroid-inner #canvas,
 .polaroid-inner #frame-canvas,
-.polaroid-inner #frame-camera-canvas {
+.polaroid-inner #frame-camera-canvas,
+.polaroid-inner #frame-quote-canvas {
     border: none;
     border-radius: 0;
     display: block;

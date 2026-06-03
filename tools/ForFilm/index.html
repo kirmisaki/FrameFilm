@@ -218,6 +218,10 @@
                             <i class="material-icons">camera_alt</i>
                             <span>定影</span>
                         </div>
+                        <div class="frame-tab" data-frame-tab="frame-quote">
+                            <i class="material-icons">format_quote</i>
+                            <span>一言</span>
+                        </div>
                     </div>
 
                     <!-- 选图直印 -->
@@ -273,6 +277,29 @@
                             <div id="frame-camera-transfer-progress" class="transfer-progress">0%</div>
                         </div>
                         <div id="frame-camera-result"></div>
+                    </div>
+
+                    <!-- 拾句 -->
+                    <div id="frame-quote" class="frame-tab-content">
+                        <button class="primary-button frame-action-btn" id="frameQuoteBtn">
+                            <i class="material-icons">refresh</i> 换一句
+                        </button>
+                        <div class="polaroid-frame">
+                            <div class="polaroid-inner">
+                                <canvas id="frame-quote-canvas" width="600" height="400"></canvas>
+                            </div>
+                        </div>
+                        <button type="button" class="primary-button frame-send-btn" id="frameQuoteUploadBtn">
+                            <i class="material-icons">send</i> 发送到设备
+                        </button>
+                        <div id="frame-quote-transfer-container" class="transfer-container" style="display: none;">
+                            <div id="frame-quote-transfer-status" class="transfer-status">准备传输...</div>
+                            <div class="progress-bar">
+                                <div id="frame-quote-transfer-progress-bar" class="progress-fill"></div>
+                            </div>
+                            <div id="frame-quote-transfer-progress" class="transfer-progress">0%</div>
+                        </div>
+                        <div id="frame-quote-result"></div>
                     </div>
                 </div>
             </div>
