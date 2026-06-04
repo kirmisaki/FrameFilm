@@ -319,9 +319,9 @@ var frameCurrentQuote = { text: '', author: '' };
 
 // 六色方案
 var frameColorSchemes = [
-    { bg: '#ffffff', text: '#000000', accent: '#ff0000' },
-    { bg: '#ffffff', text: '#000000', accent: '#0000ff' },
-    { bg: '#ffffff', text: '#000000', accent: '#29cc14' },
+    { bg: '#ffffff', text: '#000000', accent: '#ff0000', author: '#000000' },
+    { bg: '#ffffff', text: '#000000', accent: '#0000ff', author: '#000000' },
+    { bg: '#ffffff', text: '#000000', accent: '#29cc14', author: '#000000' },
 ];
 
 function initFrameQuote() {
@@ -420,6 +420,11 @@ function frameRenderQuote(text, author) {
     ctx.stroke();
 
     // 文字
+    ctx.font = 'bold 30px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif';
+    ctx.fillStyle = scheme.text;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
     var zhLines = frameWrapText(ctx, text, 30, w - 80);
     var zhLineHeight = 44;
     var zhTotalHeight = zhLines.length * zhLineHeight;
@@ -428,11 +433,6 @@ function frameRenderQuote(text, author) {
     var availableHeight = h - 100 - bottomSpace;  // 减去顶部和底部空间
     var zhStartY = 100 + (availableHeight - zhTotalHeight) / 2;
 
-    ctx.font = 'bold 30px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif';
-    ctx.fillStyle = scheme.text;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
     for (var i = 0; i < zhLines.length; i++) {
         ctx.fillText(zhLines[i], w / 2, zhStartY + i * zhLineHeight);
     }
@@ -440,8 +440,8 @@ function frameRenderQuote(text, author) {
     // 作者
     if (author) {
         ctx.font = 'bold 18px "Noto Serif SC", "Songti SC", "SimSun", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif';
-        ctx.fillStyle = scheme.accent;
-        ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 100);
+        ctx.fillStyle = scheme.author;
+        ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 130);
     }
 
     // 底部装饰线
