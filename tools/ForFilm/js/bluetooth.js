@@ -3,6 +3,7 @@ let device = null;
 let server = null;
 let service = null;
 let characteristic = null;
+let deviceBatteryLevel = 0; // 设备电量，0-100
 
 function debugLog(message, type = 'info') {
     console.log(message);
@@ -866,6 +867,9 @@ function setupBluetoothListener() {
 function updateBatteryDisplay(level) {
     const batteryIconText = document.getElementById('battery-icon-text');
     const batteryFillIcon = document.getElementById('battery-fill-icon');
+
+    // 更新全局电量变量
+    deviceBatteryLevel = level;
 
     if (batteryIconText) {
         batteryIconText.textContent = level + '%';

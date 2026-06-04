@@ -342,7 +342,7 @@ function initFrameQuote() {
 
 function frameFetchQuote() {
     frameRenderQuote('加载中…', '');
-    fetch('https://v1.hitokoto.cn/?c=d&c=h&c=k&c=i&encode=json')
+    fetch('https://international.v1.hitokoto.cn/?c=d&c=h&c=k&c=i&encode=json')
         .then(function(res) { return res.json(); })
         .then(function(data) {
             if (data && data.hitokoto) {
@@ -393,9 +393,12 @@ function frameRenderQuote(text, author) {
     var zhLines = frameWrapText(ctx, text, 30, w - 80);
     var zhLineHeight = 44;
     var zhTotalHeight = zhLines.length * zhLineHeight;
-    var zhStartY = author ? (h - zhTotalHeight) / 2 - 30 : (h - zhTotalHeight) / 2;
+    // 整体居中：考虑作者和装饰线的空间
+    var bottomSpace = author ? 130 : 60;  // 作者+装饰线+日期的空间
+    var availableHeight = h - 100 - bottomSpace;  // 减去顶部和底部空间
+    var zhStartY = 100 + (availableHeight - zhTotalHeight) / 2;
 
-    ctx.font = '30px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif';
+    ctx.font = 'bold 30px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif';
     ctx.fillStyle = scheme.text;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -406,17 +409,17 @@ function frameRenderQuote(text, author) {
 
     // 作者
     if (author) {
-        ctx.font = '18px "Noto Serif SC", "Songti SC", "SimSun", serif';
+        ctx.font = 'bold 18px "Noto Serif SC", "Songti SC", "SimSun", serif';
         ctx.fillStyle = scheme.accent;
-        ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 60);
+        ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 100);
     }
 
     // 底部装饰线
     ctx.strokeStyle = scheme.accent;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(w / 2 - 20, h - 55);
-    ctx.lineTo(w / 2 + 20, h - 55);
+    ctx.moveTo(w / 2 - 30, h - 65);
+    ctx.lineTo(w / 2 + 30, h - 65);
     ctx.stroke();
 
     // 电量图标（右上角）
@@ -424,7 +427,7 @@ function frameRenderQuote(text, author) {
     var batteryY = 20;
     var batteryWidth = 35;
     var batteryHeight = 18;
-    var batteryLevel = 0.75; // 假设75%电量
+    var batteryLevel = (typeof deviceBatteryLevel !== 'undefined') ? deviceBatteryLevel / 100 : 0;
     var batteryRadius = 4;
 
     // 绘制圆角矩形函数
