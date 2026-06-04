@@ -428,7 +428,7 @@ function frameRenderQuote(text, author) {
     var availableHeight = h - 100 - bottomSpace;  // 减去顶部和底部空间
     var zhStartY = 100 + (availableHeight - zhTotalHeight) / 2;
 
-    ctx.font = 'bold 30px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif';
+    ctx.font = 'bold 30px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif';
     ctx.fillStyle = scheme.text;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -439,7 +439,7 @@ function frameRenderQuote(text, author) {
 
     // 作者
     if (author) {
-        ctx.font = 'bold 18px "Noto Serif SC", "Songti SC", "SimSun", serif';
+        ctx.font = 'bold 18px "Noto Serif SC", "Songti SC", "SimSun", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif';
         ctx.fillStyle = scheme.accent;
         ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 100);
     }
@@ -515,8 +515,10 @@ function frameRenderQuote(text, author) {
 function frameWrapText(ctx, text, fontSize, maxWidth) {
     var lines = [];
     var currentLine = '';
-    for (var i = 0; i < text.length; i++) {
-        var char = text[i];
+    // 使用Array.from正确处理emoji等多码点字符
+    var chars = Array.from(text);
+    for (var i = 0; i < chars.length; i++) {
+        var char = chars[i];
         var testLine = currentLine + char;
         var metrics = ctx.measureText(testLine);
         if (metrics.width > maxWidth && currentLine.length > 0) {
