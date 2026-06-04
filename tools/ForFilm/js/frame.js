@@ -321,7 +321,6 @@ var frameCurrentQuote = { text: '', author: '' };
 var frameColorSchemes = [
     { bg: '#ffffff', text: '#000000', accent: '#ff0000' },
     { bg: '#ffffff', text: '#000000', accent: '#0000ff' },
-    { bg: '#ffffff', text: '#000000', accent: '#ffff00' },
     { bg: '#ffffff', text: '#000000', accent: '#29cc14' },
 ];
 
