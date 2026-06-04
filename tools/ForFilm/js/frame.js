@@ -319,10 +319,6 @@ var frameCurrentQuote = { text: '', author: '' };
 
 // 六色方案
 var frameColorSchemes = [
-    { bg: '#000000', text: '#ffffff', accent: '#ffff00' },
-    { bg: '#000000', text: '#ffffff', accent: '#ff0000' },
-    { bg: '#000000', text: '#ffffff', accent: '#0000ff' },
-    { bg: '#000000', text: '#ffffff', accent: '#29cc14' },
     { bg: '#ffffff', text: '#000000', accent: '#ff0000' },
     { bg: '#ffffff', text: '#000000', accent: '#0000ff' },
     { bg: '#ffffff', text: '#000000', accent: '#ffff00' },
@@ -394,12 +390,12 @@ function frameRenderQuote(text, author) {
     ctx.stroke();
 
     // 文字
-    var zhLines = frameWrapText(ctx, text, 26, w - 80);
-    var zhLineHeight = 40;
+    var zhLines = frameWrapText(ctx, text, 30, w - 80);
+    var zhLineHeight = 44;
     var zhTotalHeight = zhLines.length * zhLineHeight;
-    var zhStartY = author ? (h - zhTotalHeight) / 2 - 20 : (h - zhTotalHeight) / 2;
+    var zhStartY = author ? (h - zhTotalHeight) / 2 - 30 : (h - zhTotalHeight) / 2;
 
-    ctx.font = '26px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif';
+    ctx.font = '30px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif';
     ctx.fillStyle = scheme.text;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -410,18 +406,64 @@ function frameRenderQuote(text, author) {
 
     // 作者
     if (author) {
-        ctx.font = '14px "Noto Serif SC", "Songti SC", "SimSun", serif';
+        ctx.font = '18px "Noto Serif SC", "Songti SC", "SimSun", serif';
         ctx.fillStyle = scheme.accent;
-        ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 50);
+        ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 60);
     }
 
     // 底部装饰线
     ctx.strokeStyle = scheme.accent;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(w / 2 - 20, h - 25);
-    ctx.lineTo(w / 2 + 20, h - 25);
+    ctx.moveTo(w / 2 - 20, h - 55);
+    ctx.lineTo(w / 2 + 20, h - 55);
     ctx.stroke();
+
+    // 电量图标（右上角）
+    var batteryX = w - 55;
+    var batteryY = 20;
+    var batteryWidth = 35;
+    var batteryHeight = 18;
+    var batteryLevel = 0.75; // 假设75%电量
+    var batteryRadius = 4;
+
+    // 绘制圆角矩形函数
+    function drawRoundedRect(x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+    }
+
+    // 电池外框
+    drawRoundedRect(batteryX, batteryY, batteryWidth, batteryHeight, batteryRadius);
+    ctx.strokeStyle = scheme.accent;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 电池正极
+    ctx.fillStyle = scheme.accent;
+    ctx.fillRect(batteryX + batteryWidth + 1, batteryY + 5, 3, batteryHeight - 10);
+
+    // 电池电量
+    drawRoundedRect(batteryX + 2, batteryY + 2, (batteryWidth - 4) * batteryLevel, batteryHeight - 4, 2);
+    ctx.fillStyle = scheme.accent;
+    ctx.fill();
+
+    // 日期显示（底部居中）
+    var now = new Date();
+    var dateStr = now.getFullYear() + ' 年 ' + (now.getMonth() + 1).toString().padStart(2, '0') + ' 月 ' + now.getDate().toString().padStart(2, '0') + ' 日';
+    ctx.font = '600 16px "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = scheme.accent;
+    ctx.textAlign = 'center';
+    ctx.fillText(dateStr, w / 2, h - 30);
 
     ctx.restore();
 
