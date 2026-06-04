@@ -476,6 +476,30 @@ h1 {
     color: #999;
 }
 
+.dither-toggle {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.toggle-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #888;
+}
+
+.toggle-label input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.toggle-text {
+    user-select: none;
+}
+
 .frame-send-btn {
     display: flex;
     align-items: center;

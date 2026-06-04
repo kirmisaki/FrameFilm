@@ -500,9 +500,12 @@ function frameRenderQuote(text, author) {
 
     ctx.restore();
 
-    // 转换为六色最终显示效果
+    // 转换为六色显示效果（根据开关决定是否使用抖动）
     var imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    var processedData = processImageData(imageData);
+    var useDither = document.getElementById('frameQuoteDither').checked;
+    var processedData = useDither 
+        ? processImageData(floydSteinbergDither(imageData, 0.8))
+        : processImageData(imageData);
     var finalData = decodeProcessedData(processedData, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.putImageData(finalData, 0, 0);
 
