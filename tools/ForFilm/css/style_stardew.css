@@ -421,6 +421,45 @@ h1 {
     font-size: 20px;
 }
 
+.quote-btn-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.quote-btn-group .frame-action-btn {
+    flex: 1;
+}
+
+.custom-quote-panel {
+    background: #f5f5f5;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.quote-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.quote-input:focus {
+    outline: none;
+    border-color: #4a90d9;
+}
+
+.quote-input::placeholder {
+    color: #999;
+}
+
 .frame-send-btn {
     display: flex;
     align-items: center;

@@ -327,6 +327,11 @@ var frameColorSchemes = [
 function initFrameQuote() {
     var quoteBtn = document.getElementById('frameQuoteBtn');
     var sendBtn = document.getElementById('frameQuoteUploadBtn');
+    var customToggle = document.getElementById('frameCustomQuoteToggle');
+    var customPanel = document.getElementById('frame-custom-quote-panel');
+    var customBtn = document.getElementById('frameCustomQuoteBtn');
+    var customText = document.getElementById('frameCustomText');
+    var customAuthor = document.getElementById('frameCustomAuthor');
 
     quoteBtn.addEventListener('click', function() {
         frameFetchQuote();
@@ -334,6 +339,32 @@ function initFrameQuote() {
 
     sendBtn.addEventListener('click', function() {
         frameQuoteUploadToDevice();
+    });
+
+    // 自定义名言面板切换
+    customToggle.addEventListener('click', function() {
+        var isHidden = customPanel.style.display === 'none';
+        customPanel.style.display = isHidden ? 'flex' : 'none';
+    });
+
+    // 生成自定义名言
+    customBtn.addEventListener('click', function() {
+        var text = customText.value.trim();
+        if (!text) {
+            customText.focus();
+            return;
+        }
+        var author = customAuthor.value.trim();
+        frameCurrentQuote.text = text;
+        frameCurrentQuote.author = author;
+        frameRenderQuote(text, author);
+    });
+
+    // 支持回车键生成
+    customText.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            customBtn.click();
+        }
     });
 
     frameFetchQuote();
