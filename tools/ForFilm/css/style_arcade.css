@@ -376,6 +376,7 @@ h1 {
     top: 50%;
     left: 50%;
     transform-origin: center center;
+    image-rendering: auto;
 }
 
 .polaroid-inner #canvas {
