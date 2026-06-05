@@ -360,9 +360,9 @@ function initFrameQuote() {
         frameRenderQuote(text, author);
     });
 
-    // 支持回车键生成
+    // 支持 Ctrl+Enter 键生成
     customText.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && e.ctrlKey) {
             customBtn.click();
         }
     });
@@ -514,22 +514,30 @@ function frameRenderQuote(text, author) {
 
 function frameWrapText(ctx, text, fontSize, maxWidth) {
     var lines = [];
-    var currentLine = '';
-    // 使用Array.from正确处理emoji等多码点字符
-    var chars = Array.from(text);
-    for (var i = 0; i < chars.length; i++) {
-        var char = chars[i];
-        var testLine = currentLine + char;
-        var metrics = ctx.measureText(testLine);
-        if (metrics.width > maxWidth && currentLine.length > 0) {
-            lines.push(currentLine);
-            currentLine = char;
-        } else {
-            currentLine = testLine;
+    // 先按手动换行符分割
+    var paragraphs = text.split('\n');
+    for (var p = 0; p < paragraphs.length; p++) {
+        var currentLine = '';
+        // 使用Array.from正确处理emoji等多码点字符
+        var chars = Array.from(paragraphs[p]);
+        if (chars.length === 0) {
+            lines.push('');  // 保留空行
+            continue;
         }
-    }
-    if (currentLine.length > 0) {
-        lines.push(currentLine);
+        for (var i = 0; i < chars.length; i++) {
+            var char = chars[i];
+            var testLine = currentLine + char;
+            var metrics = ctx.measureText(testLine);
+            if (metrics.width > maxWidth && currentLine.length > 0) {
+                lines.push(currentLine);
+                currentLine = char;
+            } else {
+                currentLine = testLine;
+            }
+        }
+        if (currentLine.length > 0) {
+            lines.push(currentLine);
+        }
     }
     return lines;
 }
