@@ -433,9 +433,9 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                 uint8_t checksum = ble_checksum(cmd_buf, 5 + name_len);
                 cmd_buf[5 + name_len] = checksum;
 
-                service_ble_msg_gatts_data_send(cmd_buf, 6 + name_len, MSG_BLE_CH1_OUT_DATA);
+                service_ble_send_notify_data(BLE_NOTIFY_SEND_CH1, cmd_buf, 6 + name_len);
 
-                vTaskDelay(10 / portTICK_PERIOD_MS);
+                vTaskDelay(15 / portTICK_PERIOD_MS);
             }
 
             vPortFree(cmd_buf);
