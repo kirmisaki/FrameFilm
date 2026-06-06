@@ -3,7 +3,7 @@
   <button class="btn-primary" bindtap="chooseImage">从相册选择图片</button>
 
   <!-- 参数设置面板 -->
-  <view class="settings-section" wx:if="{{hasImage}}">
+  <view class="settings-section">
     <view class="section-header">参数设置</view>
     <view class="section-content">
       <!-- 抖动算法选择 -->
@@ -17,21 +17,21 @@
       <!-- 抖动强度滑块（非自适应时显示） -->
       <view class="slider-row" wx:if="{{showStrength}}">
         <text class="slider-label">抖动强度</text>
-        <slider min="0" max="5" step="0.1" value="{{ditherStrength}}" bindchange="onDitherStrengthChange" activeColor="#4CAF50" />
-        <text class="slider-value">{{ditherStrength}}</text>
+        <slider min="0" max="5" step="0.1" value="{{ditherStrength}}" bindchanging="onDitherStrengthChanging" bindchange="onDitherStrengthChange" activeColor="#4CAF50" />
+        <text class="slider-value">{{ditherStrengthDisplay}}</text>
       </view>
 
       <!-- 对比度滑块 -->
       <view class="slider-row">
         <text class="slider-label">对比度</text>
-        <slider min="0.5" max="2" step="0.1" value="{{contrast}}" bindchange="onContrastChange" activeColor="#4CAF50" />
+        <slider min="50" max="200" step="10" value="{{contrastInt}}" bindchanging="onContrastChanging" bindchange="onContrastChange" activeColor="#4CAF50" />
         <text class="slider-value">{{contrast}}</text>
       </view>
     </view>
   </view>
 
   <!-- 操作按钮组 -->
-  <view class="btn-group" wx:if="{{hasImage}}">
+  <view class="btn-group">
     <button class="btn-secondary {{ditherEnabled ? 'active' : ''}}" bindtap="toggleDither">
       {{ditherEnabled ? '关闭抖动' : '开启抖动'}}
     </button>
@@ -41,7 +41,7 @@
   </view>
 
   <!-- Canvas 容器（宝丽来风格） -->
-  <view class="canvas-container" wx:if="{{hasImage}}">
+  <view class="canvas-container">
     <view class="canvas-wrap"
       bindtouchstart="onTouchStart"
       bindtouchmove="onTouchMove"
@@ -50,16 +50,18 @@
     </view>
   </view>
 
+  <view class="info-text">选择照片后自动转换并显示，双指缩放调整大小，拖动调整位置</view>
+
   <!-- 文件名输入 -->
-  <view class="setting-item file-name-row" wx:if="{{hasImage}}">
+  <view class="setting-item file-name-row">
     <view class="setting-label">文件名</view>
     <input class="file-name-input" value="{{fileName}}" bindinput="onFileNameInput" placeholder="output.film" />
   </view>
 
   <!-- 下载与发送按钮 -->
-  <view class="button-row" wx:if="{{hasImage}}">
-    <button class="btn-primary" bindtap="downloadFilm">下载</button>
-    <button class="btn-primary btn-bluetooth" bindtap="sendToDevice" disabled="{{!app.globalData.isConnected}}">发送到设备</button>
+  <view class="button-row">
+    <button class="btn-primary" bindtap="downloadFilm" disabled="{{!hasImage}}">下载</button>
+    <button class="btn-primary btn-bluetooth" bindtap="sendToDevice" disabled="{{!isConnected}}">发送到设备</button>
   </view>
 
   <!-- 传输进度 -->

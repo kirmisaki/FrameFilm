@@ -9,7 +9,9 @@ Page({
     ditherTypes: ['adaptive', 'floydSteinberg', 'atkinson', 'stucki', 'jarvis'],
     ditherTypeNames: ['自适应（推荐）', 'Floyd-Steinberg', 'Atkinson', 'Stucki', 'Jarvis-Judice-Ninke'],
     ditherStrength: 1.0,
+    ditherStrengthDisplay: '1.0',
     contrast: 1.2,
+    contrastInt: 120,
     fileName: 'output.film',
     rotation: 0,
     hasImage: false,
@@ -17,11 +19,14 @@ Page({
     transferStatus: '',
     transferProgress: 0,
     showTransfer: false,
-    resultText: ''
+    resultText: '',
+    isConnected: false
   },
 
   canvas: null,
   ctx: null,
+  tempCanvas: null,
+  tempCtx: null,
   imageInfo: null,
   imageNode: null,
   scale: 1,
@@ -35,18 +40,30 @@ Page({
   _startScale: 1,
   _isPinching: false,
 
+  onShow() {
+    this.setData({ isConnected: app.globalData.isConnected });
+  },
+
   onReady() {
     const query = wx.createSelectorQuery();
     query.select('#film-canvas').fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0]) return;
       this.canvas = res[0].node;
       this.ctx = this.canvas.getContext('2d');
-      this.canvas.width = 600;
-      this.canvas.height = 400;
+      this.canvas.width = 400;
+      this.canvas.height = 600;
+
+      // 临时画布 600×400（用于图像处理）
+      this.tempCanvas = wx.createOffscreenCanvas({ type: '2d', width: 600, height: 400 });
+      this.tempCtx = this.tempCanvas.getContext('2d');
     });
   },
 
   chooseImage() {
+    if (!this.canvas || !this.tempCanvas) {
+      wx.showToast({ title: '画布初始化中，请稍后重试', icon: 'none' });
+      return;
+    }
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
@@ -60,13 +77,17 @@ Page({
           this.scale = 1;
           this.offsetX = 0;
           this.offsetY = 0;
+          // 竖图自动旋转90°，让图片完整填入横屏画布
+          var autoRotation = (img.height > img.width) ? 90 : 0;
           this.setData({
             hasImage: true,
-            rotation: 0,
+            rotation: autoRotation,
             ditherEnabled: false,
             ditherTypeIndex: 0,
             ditherStrength: 1.0,
+            ditherStrengthDisplay: '1.0',
             contrast: 1.2,
+            contrastInt: 120,
             showStrength: false,
             resultText: ''
           });
@@ -81,71 +102,66 @@ Page({
   },
 
   updateImage() {
-    if (!this.canvas || !this.imageNode) return;
-    const ctx = this.ctx;
-    const canvasW = 600;
-    const canvasH = 400;
+    if (!this.canvas || !this.imageNode || !this.tempCanvas) return;
+    const tctx = this.tempCtx;
+    const OW = 600, OH = 400;
     const img = this.imageNode;
     const rotation = this.data.rotation;
 
-    // 清空画布
-    ctx.clearRect(0, 0, canvasW, canvasH);
+    // 1. 在临时画布上绘制（600×400 横屏，无旋转）
+    tctx.clearRect(0, 0, OW, OH);
+    tctx.fillStyle = '#ffffff';
+    tctx.fillRect(0, 0, OW, OH);
 
-    // 计算图像绘制参数（考虑旋转）
-    let drawW, drawH;
     const radians = (rotation * Math.PI) / 180;
     const isRotated = rotation % 180 !== 0;
-    if (isRotated) {
-      drawW = img.height;
-      drawH = img.width;
-    } else {
-      drawW = img.width;
-      drawH = img.height;
-    }
+    let drawW = isRotated ? img.height : img.width;
+    let drawH = isRotated ? img.width : img.height;
 
-    // 适配画布尺寸
-    const ratioW = canvasW / drawW;
-    const ratioH = canvasH / drawH;
-    const fitScale = Math.min(ratioW, ratioH) * this.scale;
+    const fitScale = Math.min(OW / drawW, OH / drawH) * this.scale;
     const finalW = drawW * fitScale;
     const finalH = drawH * fitScale;
+    const cx = OW / 2 + this.offsetX;
+    const cy = OH / 2 + this.offsetY;
 
-    const cx = canvasW / 2 + this.offsetX;
-    const cy = canvasH / 2 + this.offsetY;
+    tctx.save();
+    tctx.translate(cx, cy);
+    tctx.rotate(radians);
+    tctx.drawImage(img, -finalW / 2, -finalH / 2, finalW, finalH);
+    tctx.restore();
 
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(radians);
-    ctx.drawImage(img, -finalW / 2, -finalH / 2, finalW, finalH);
-    ctx.restore();
+    // 2. 图像处理
+    let imageData = tctx.getImageData(0, 0, OW, OH);
 
-    // 获取图像数据
-    let imageData = ctx.getImageData(0, 0, canvasW, canvasH);
-
-    // 应用对比度
     if (this.data.contrast !== 1.0) {
       imageData = filmUtils.adjustContrast(imageData, this.data.contrast);
     }
 
-    // 应用抖动
     if (this.data.ditherEnabled) {
       const type = this.data.ditherTypes[this.data.ditherTypeIndex];
       const strength = this.data.ditherStrength;
       if (type === 'adaptive') {
-        // 自适应模式：使用 Floyd-Steinberg 作为默认
         imageData = filmUtils.floydSteinbergDither(imageData, strength);
       } else {
         imageData = filmUtils.applyDitherByType(imageData, type, strength);
       }
+      // Film 格式回显
+      const processedData = filmUtils.processImageData(imageData);
+      const decoded = filmUtils.decodeProcessedData(processedData, OW, OH);
+      imageData.data.set(decoded.data);
     }
 
-    // 处理为 Film 像素数据
-    const processedData = filmUtils.processImageData(imageData);
-    // 解码为可显示图像
-    const decoded = filmUtils.decodeProcessedData(processedData, canvasW, canvasH);
-    const displayData = ctx.createImageData(canvasW, canvasH);
-    displayData.data.set(decoded.data);
-    ctx.putImageData(displayData, 0, 0);
+    // 3. 把处理结果放回临时画布
+    tctx.putImageData(imageData, 0, 0);
+
+    // 4. 旋转绘制到显示画布（400×600 竖屏）
+    const dctx = this.ctx;
+    dctx.clearRect(0, 0, 400, 600);
+    dctx.save();
+    dctx.translate(0, 600);
+    dctx.rotate(-Math.PI / 2);
+    dctx.drawImage(this.tempCanvas, 0, 0, OW, OH, 0, 0, OW, OH);
+    dctx.restore();
   },
 
   toggleDither() {
@@ -161,13 +177,25 @@ Page({
   },
 
   onDitherStrengthChange(e) {
-    this.setData({ ditherStrength: parseFloat(e.detail.value) });
+    var val = parseFloat(parseFloat(e.detail.value).toFixed(1));
+    this.setData({ ditherStrength: val, ditherStrengthDisplay: val.toFixed(1) });
     this.updateImage();
   },
 
+  onDitherStrengthChanging(e) {
+    var val = parseFloat(parseFloat(e.detail.value).toFixed(1));
+    this.setData({ ditherStrength: val, ditherStrengthDisplay: val.toFixed(1) });
+  },
+
   onContrastChange(e) {
-    this.setData({ contrast: parseFloat(e.detail.value) });
+    var val = parseInt(e.detail.value) / 100;
+    this.setData({ contrast: val, contrastInt: parseInt(e.detail.value) });
     this.updateImage();
+  },
+
+  onContrastChanging(e) {
+    var val = parseInt(e.detail.value) / 100;
+    this.setData({ contrast: val, contrastInt: parseInt(e.detail.value) });
   },
 
   autoConfigure() {
@@ -254,9 +282,11 @@ Page({
 
     this.setData({
       contrast: contrast,
+      contrastInt: Math.round(contrast * 100),
       ditherEnabled: true,
       ditherTypeIndex: ditherTypeIndex,
       ditherStrength: ditherStrength,
+      ditherStrengthDisplay: ditherStrength.toFixed(1),
       showStrength: ditherTypeIndex !== 0
     });
 
@@ -290,7 +320,7 @@ Page({
     this.offsetX = 0;
     this.offsetY = 0;
     if (this.canvas) {
-      this.ctx.clearRect(0, 0, 600, 400);
+      this.ctx.clearRect(0, 0, 400, 600);
     }
   },
 
@@ -342,8 +372,8 @@ Page({
 
     wx.showLoading({ title: '处理中...' });
 
-    // 获取当前画布图像数据
-    const imageData = this.ctx.getImageData(0, 0, 600, 400);
+    // 直接从临时画布获取 600×400 数据
+    const imageData = this.tempCtx.getImageData(0, 0, 600, 400);
     const processedData = filmUtils.processImageData(imageData);
     const header = filmUtils.generateFilmHeader();
 
@@ -382,7 +412,10 @@ Page({
   },
 
   sendToDevice() {
-    if (!this.canvas || !this.imageNode) return;
+    if (!this.canvas || !this.imageNode) {
+      wx.showToast({ title: '请先选择图片', icon: 'none' });
+      return;
+    }
     if (!app.globalData.isConnected) {
       wx.showToast({ title: '请先连接蓝牙设备', icon: 'none' });
       return;
@@ -427,7 +460,8 @@ Page({
           app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_START, null).then(() => {
             sendStep('name');
           }).catch((err) => {
-            that.setData({ transferStatus: '传输失败: ' + (err.errMsg || '初始化错误'), resultText: '传输失败' });
+            console.error('FILE_START failed:', err);
+            that.setData({ transferStatus: '传输失败', resultText: '初始化失败: ' + (err.errMsg || err.message || JSON.stringify(err)) });
           });
           break;
 
