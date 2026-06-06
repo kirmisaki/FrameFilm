@@ -77,7 +77,7 @@ Page({
           this.scale = 1;
           this.offsetX = 0;
           this.offsetY = 0;
-          // 竖图自动旋转90°，让图片完整填入横屏画布
+          // 竖图自动旋转90°，与原版ForFilm一致
           var autoRotation = (img.height > img.width) ? 90 : 0;
           this.setData({
             hasImage: true,
@@ -114,15 +114,23 @@ Page({
     tctx.fillRect(0, 0, OW, OH);
 
     const radians = (rotation * Math.PI) / 180;
-    const isRotated = rotation % 180 !== 0;
-    let drawW = isRotated ? img.height : img.width;
-    let drawH = isRotated ? img.width : img.height;
+    const imgW = img.width;
+    const imgH = img.height;
 
-    const fitScale = Math.min(OW / drawW, OH / drawH) * this.scale;
-    const finalW = drawW * fitScale;
-    const finalH = drawH * fitScale;
-    const cx = OW / 2 + this.offsetX;
-    const cy = OH / 2 + this.offsetY;
+    // 缩放：旋转后图片的视觉尺寸变了
+    var visW, visH;
+    if (rotation === 90 || rotation === 270) {
+      visW = imgH; visH = imgW;
+    } else if (rotation === 180) {
+      visW = imgW; visH = imgH;
+    } else {
+      visW = imgW; visH = imgH;
+    }
+    var fitScale = Math.min(OW / visW, OH / visH) * this.scale;
+    var finalW = imgW * fitScale;
+    var finalH = imgH * fitScale;
+    var cx = OW / 2 + this.offsetX;
+    var cy = OH / 2 + this.offsetY;
 
     tctx.save();
     tctx.translate(cx, cy);
