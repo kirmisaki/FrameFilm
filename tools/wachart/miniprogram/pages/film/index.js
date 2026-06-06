@@ -475,7 +475,10 @@ Page({
 
         case 'name':
           that.setData({ transferStatus: '发送文件名...' });
-          const nameBytes = new TextEncoder().encode(fileName);
+          const nameBytes = new Uint8Array(fileName.length);
+          for (let i = 0; i < fileName.length; i++) {
+            nameBytes[i] = fileName.charCodeAt(i);
+          }
           const namePacket = new Uint8Array(4 + nameBytes.length);
           namePacket[0] = bleUtils.BLE_CMD_HEAD;
           namePacket[1] = bleUtils.BLE_FILM_TRANS_CH_FILE_NAME;

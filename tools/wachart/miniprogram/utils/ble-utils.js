@@ -75,7 +75,10 @@ function buildFileStartPacket() {
 }
 
 function buildFileNamePacket(fileName) {
-  const nameBytes = new TextEncoder().encode(fileName);
+  const nameBytes = new Uint8Array(fileName.length);
+  for (let i = 0; i < fileName.length; i++) {
+    nameBytes[i] = fileName.charCodeAt(i);
+  }
   const packet = new Uint8Array(4 + nameBytes.length);
   packet[0] = BLE_CMD_HEAD;
   packet[1] = BLE_FILM_TRANS_CH_FILE_NAME;
