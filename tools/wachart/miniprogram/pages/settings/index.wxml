@@ -1,0 +1,153 @@
+<view class="container">
+  <!-- 页面头部：电量图标右上角 -->
+  <view class="page-header" wx:if="{{isConnected}}">
+    <view class="header-spacer"></view>
+    <view class="battery-bar" bindtap="refreshBattery">
+      <view class="battery-icon">
+        <view class="battery-body">
+          <view class="battery-fill-view" style="width: {{batteryFillWidth}}rpx"></view>
+        </view>
+        <view class="battery-cap"></view>
+      </view>
+      <text class="battery-text">{{batteryLevel}}%</text>
+    </view>
+  </view>
+
+  <!-- FILM设置 -->
+  <view class="settings-section">
+    <view class="section-header">FILM设置</view>
+    <view class="section-content">
+      <!-- 文件列表 -->
+      <view class="setting-item">
+        <view class="setting-label">
+          文件列表
+          <text class="refresh-btn" bindtap="refreshFileList">刷新</text>
+        </view>
+        <view class="file-list">
+          <block wx:if="{{fileList.length > 0}}">
+            <view
+              class="file-item {{item.fileId === currentDisplayFileId ? 'displaying' : ''}} {{item.fileId === selectedFileId ? 'selected' : ''}}"
+              wx:for="{{fileList}}"
+              wx:key="fileId"
+              bindtap="onFileSelect"
+              data-file-id="{{item.fileId}}"
+            >
+              <text class="file-id">#{{item.fileId}}</text>
+              <text class="file-name">{{item.name}}</text>
+              <text class="file-tag" wx:if="{{item.fileId === currentDisplayFileId}}">显示中</text>
+            </view>
+          </block>
+          <view wx:else class="empty-state">暂无文件</view>
+        </view>
+      </view>
+
+      <!-- 文件操作按钮 -->
+      <view class="button-row">
+        <button class="btn-secondary danger" bindtap="deleteSelectedFile" disabled="{{selectedFileId < 0}}">删除文件</button>
+        <button class="btn-primary" bindtap="selectDisplayFile" disabled="{{selectedFileId < 0}}">选择显示</button>
+      </view>
+
+      <!-- 照片模式 -->
+      <view class="setting-item mode-section">
+        <view class="setting-label">照片模式</view>
+        <view class="mode-selector">
+          <view class="mode-button {{photoMode === 0 ? 'active' : ''}}" bindtap="setManualMode">
+            <text>手动</text>
+          </view>
+          <view class="mode-button {{photoMode === 1 ? 'active' : ''}}" bindtap="setAutoMode">
+            <text>自动</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 休眠设置 -->
+  <view class="settings-section">
+    <view class="section-header">休眠设置</view>
+    <view class="section-content">
+      <view class="switch-row">
+        <text class="setting-label">休眠开关</text>
+        <switch checked="{{sleepOnOff}}" color="#4CAF50" bindchange="onSleepSwitchChange" />
+      </view>
+      <view class="switch-row">
+        <text class="setting-label">自动唤醒</text>
+        <switch checked="{{autoWakeMode}}" color="#4CAF50" bindchange="onAutoWakeSwitchChange" />
+      </view>
+      <view class="setting-item wake-duration-item">
+        <view class="setting-label">唤醒时长: <text class="setting-value">{{wakeDurationText}}</text></view>
+        <view class="wake-slider-row">
+          <text class="wake-min">10分钟</text>
+          <slider
+            min="10"
+            max="2880"
+            step="10"
+            value="{{wakeDuration}}"
+            activeColor="#4CAF50"
+            bindchanging="onWakeDurationChanging"
+            bindchange="onWakeDurationChange"
+          />
+          <text class="wake-max">48小时</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 设备控制 -->
+  <view class="settings-section">
+    <view class="section-header">设备控制</view>
+    <view class="section-content">
+      <!-- 调试 -->
+      <view class="action-item">
+        <view class="action-header">
+          <text>调试模式</text>
+        </view>
+        <view class="action-controls">
+          <button class="btn-secondary" bindtap="toggleDebug">{{showDebug ? '隐藏日志' : '显示日志'}}</button>
+        </view>
+      </view>
+
+      <!-- 调试日志 -->
+      <view class="debug-log" wx:if="{{showDebug}}">
+        <view class="debug-entry {{item.type}}" wx:for="{{debugLogs}}" wx:key="index">
+          {{item.text}}
+        </view>
+        <view class="debug-entry info" wx:if="{{debugLogs.length === 0}}">暂无日志</view>
+      </view>
+
+      <!-- OTA升级 -->
+      <view class="action-item">
+        <view class="action-header">
+          <text>OTA 升级</text>
+        </view>
+        <view class="action-controls">
+          <button class="btn-secondary" bindtap="chooseOtaFile">选择固件</button>
+          <text class="file-size-text" wx:if="{{otaFileName}}">{{otaFileName}} ({{otaFileSize}} 字节)</text>
+        </view>
+        <view class="button-row" wx:if="{{otaFileData}}">
+          <button class="btn-primary" bindtap="startOtaUpgrade" disabled="{{showOtaTransfer}}">开始升级</button>
+        </view>
+      </view>
+
+      <!-- OTA传输进度 -->
+      <view class="transfer-container" wx:if="{{showOtaTransfer}}">
+        <view class="transfer-status">{{otaTransferStatus}}</view>
+        <view class="progress-bar">
+          <view class="progress-fill" style="width: {{otaTransferProgress}}%"></view>
+        </view>
+        <view class="transfer-progress">{{otaTransferProgress}}%</view>
+      </view>
+
+      <!-- 设备管理 -->
+      <view class="action-item">
+        <view class="action-header">
+          <text>设备管理</text>
+        </view>
+        <view class="action-controls">
+          <button class="btn-secondary" bindtap="reboot">重启设备</button>
+          <button class="btn-secondary danger" bindtap="reset">恢复出厂</button>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,406 @@
+.container {
+  padding: 20rpx 30rpx;
+  padding-bottom: 40rpx;
+}
+
+/* 页面头部 */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.header-spacer {
+  flex: 1;
+}
+
+/* 电量条 */
+.battery-bar {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 10rpx 20rpx;
+  background-color: white;
+  border-radius: 30rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.06);
+}
+
+.battery-icon {
+  display: flex;
+  align-items: center;
+}
+
+.battery-body {
+  width: 52rpx;
+  height: 26rpx;
+  border: 3rpx solid #666;
+  border-radius: 6rpx;
+  padding: 3rpx;
+  display: flex;
+  align-items: center;
+}
+
+.battery-fill-view {
+  height: 100%;
+  background-color: #4CAF50;
+  border-radius: 3rpx;
+  transition: width 0.3s ease;
+}
+
+.battery-cap {
+  width: 6rpx;
+  height: 14rpx;
+  background-color: #666;
+  border-radius: 0 3rpx 3rpx 0;
+  margin-left: 2rpx;
+}
+
+.battery-text {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #666;
+}
+
+/* 设置区块 */
+.settings-section {
+  background-color: white;
+  border-radius: 24rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  margin-bottom: 30rpx;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 28rpx 36rpx;
+  background-color: #f8f9fa;
+  border-bottom: 2rpx solid #e9ecef;
+  font-weight: 600;
+  color: #333;
+  font-size: 30rpx;
+}
+
+.section-content {
+  padding: 30rpx 36rpx;
+}
+
+/* 设置项 */
+.setting-item {
+  margin-bottom: 24rpx;
+}
+
+.setting-item:last-child {
+  margin-bottom: 0;
+}
+
+.setting-label {
+  font-weight: 600;
+  color: #555;
+  font-size: 28rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.setting-value {
+  color: #4CAF50;
+  font-weight: 600;
+  font-size: 28rpx;
+}
+
+/* 刷新按钮 */
+.refresh-btn {
+  font-size: 24rpx;
+  color: #2196F3;
+  padding: 4rpx 16rpx;
+  border: 2rpx solid #2196F3;
+  border-radius: 8rpx;
+  margin-left: 16rpx;
+  font-weight: 400;
+}
+
+/* 文件列表 */
+.file-list {
+  max-height: 300rpx;
+  overflow-y: auto;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 16rpx;
+  margin-top: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 24rpx;
+  border-bottom: 2rpx solid #f0f0f0;
+}
+
+.file-item:last-child {
+  border-bottom: none;
+}
+
+.file-item.displaying {
+  background-color: #e3f2fd;
+  border-left: 6rpx solid #2196F3;
+}
+
+.file-item.selected {
+  background-color: #f1f8e9;
+  border-left: 6rpx solid #4CAF50;
+}
+
+.file-id {
+  min-width: 60rpx;
+  font-weight: 600;
+  color: #2196F3;
+  margin-right: 20rpx;
+  font-size: 26rpx;
+}
+
+.file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 26rpx;
+  color: #333;
+}
+
+.file-tag {
+  font-size: 20rpx;
+  background-color: #2196F3;
+  color: white;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  margin-left: 12rpx;
+  font-weight: 400;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40rpx;
+  color: #999;
+  font-size: 26rpx;
+}
+
+/* 按钮 */
+.btn-primary {
+  background-color: #4CAF50;
+  color: white;
+  padding: 24rpx 48rpx;
+  border: none;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  flex: 1;
+}
+
+.btn-primary[disabled] {
+  background-color: #ccc;
+}
+
+.btn-secondary {
+  background-color: #f0f0f0;
+  color: #333;
+  padding: 16rpx 32rpx;
+  border: 2rpx solid #ddd;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  flex: 1;
+}
+
+.btn-secondary.danger {
+  background-color: #ffebee;
+  color: #c62828;
+  border-color: #ffcdd2;
+}
+
+.btn-secondary[disabled] {
+  opacity: 0.5;
+}
+
+/* 按钮行 */
+.button-row {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+  margin-bottom: 24rpx;
+}
+
+/* 模式选择 */
+.mode-section {
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+  border-top: 2rpx solid #f0f0f0;
+}
+
+.mode-selector {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 16rpx;
+}
+
+.mode-button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+  padding: 24rpx 16rpx;
+  background-color: #f5f5f5;
+  border: 4rpx solid transparent;
+  border-radius: 16rpx;
+  color: #666;
+  font-weight: 600;
+  font-size: 28rpx;
+}
+
+.mode-button.active {
+  background-color: #e8f5e8;
+  border-color: #4CAF50;
+  color: #2e7d32;
+}
+
+/* 开关行 */
+.switch-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16rpx 0;
+  border-bottom: 2rpx solid #f0f0f0;
+}
+
+.switch-row:last-child {
+  border-bottom: none;
+}
+
+/* 唤醒时长 */
+.wake-duration-item {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid #f0f0f0;
+}
+
+.wake-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+.wake-min, .wake-max {
+  font-size: 22rpx;
+  color: #999;
+  white-space: nowrap;
+}
+
+.wake-slider-row slider {
+  flex: 1;
+}
+
+/* 操作项 */
+.action-item {
+  padding: 20rpx 0;
+  border-bottom: 2rpx solid #f0f0f0;
+}
+
+.action-item:last-child {
+  border-bottom: none;
+}
+
+.action-header {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+  font-weight: 600;
+  color: #555;
+  font-size: 28rpx;
+}
+
+.action-controls {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex-wrap: wrap;
+}
+
+.file-size-text {
+  font-size: 24rpx;
+  color: #999;
+}
+
+/* 调试日志 */
+.debug-log {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  padding: 16rpx;
+  font-family: monospace;
+  font-size: 20rpx;
+  max-height: 300rpx;
+  overflow-y: auto;
+  border-radius: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.debug-entry {
+  margin: 4rpx 0;
+  padding: 4rpx 0;
+  border-bottom: 2rpx solid #333;
+}
+
+.debug-entry.error {
+  color: #f48771;
+}
+
+.debug-entry.success {
+  color: #89d185;
+}
+
+.debug-entry.info {
+  color: #75beff;
+}
+
+/* 传输进度 */
+.transfer-container {
+  margin: 24rpx 0;
+  padding: 24rpx;
+  background-color: #f5f5f5;
+  border-radius: 16rpx;
+  border: 2rpx solid #ddd;
+}
+
+.transfer-status {
+  text-align: center;
+  font-size: 26rpx;
+  color: #333;
+  margin-bottom: 16rpx;
+  font-weight: 600;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 32rpx;
+  background-color: #e0e0e0;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50, #45a049);
+  transition: width 0.3s ease;
+  border-radius: 16rpx;
+}
+
+.transfer-progress {
+  text-align: center;
+  font-size: 26rpx;
+  color: #666;
+  margin-top: 12rpx;
+  font-weight: 600;
+}

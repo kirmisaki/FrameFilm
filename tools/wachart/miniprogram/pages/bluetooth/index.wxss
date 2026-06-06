@@ -1,0 +1,39 @@
+.device-list {
+  margin-top: 30rpx;
+}
+
+.device-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24rpx 30rpx;
+  background-color: white;
+  border-radius: 16rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.06);
+}
+
+.device-info {
+  flex: 1;
+}
+
+.device-name {
+  font-weight: 600;
+  font-size: 30rpx;
+  color: #333;
+}
+
+.device-id {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 6rpx;
+}
+
+.device-rssi {
+  font-size: 24rpx;
+  color: #666;
+}
+
+.connected-info {
+  margin-top: 30rpx;
+}

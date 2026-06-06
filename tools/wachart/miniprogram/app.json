@@ -1,14 +1,48 @@
 {
   "pages": [
-    "pages/index/index",
-    "pages/example/index"
+    "pages/bluetooth/index",
+    "pages/frame/index",
+    "pages/film/index",
+    "pages/settings/index"
   ],
   "window": {
-    "backgroundColor": "#F6F6F6",
+    "backgroundColor": "#f5f5f5",
     "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#F6F6F6",
-    "navigationBarTitleText": "云开发 QuickStart",
-    "navigationBarTextStyle": "black"
+    "navigationBarBackgroundColor": "#4CAF50",
+    "navigationBarTitleText": "FrameFilm",
+    "navigationBarTextStyle": "white"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#4CAF50",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/bluetooth/index",
+        "text": "蓝牙",
+        "iconPath": "images/icons/bluetooth.png",
+        "selectedIconPath": "images/icons/bluetooth-active.png"
+      },
+      {
+        "pagePath": "pages/frame/index",
+        "text": "Frame",
+        "iconPath": "images/icons/frame.png",
+        "selectedIconPath": "images/icons/frame-active.png"
+      },
+      {
+        "pagePath": "pages/film/index",
+        "text": "Film",
+        "iconPath": "images/icons/film.png",
+        "selectedIconPath": "images/icons/film-active.png"
+      },
+      {
+        "pagePath": "pages/settings/index",
+        "text": "设置",
+        "iconPath": "images/icons/setting.png",
+        "selectedIconPath": "images/icons/setting-active.png"
+      }
+    ]
   },
   "sitemapLocation": "sitemap.json",
   "style": "v2",

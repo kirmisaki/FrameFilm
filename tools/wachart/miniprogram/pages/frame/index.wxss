@@ -1,0 +1,155 @@
+/* frame/index.wxss */
+
+.container {
+  padding: 20rpx 30rpx;
+  padding-bottom: 40rpx;
+}
+
+/* Tab 内容区 */
+.tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+/* 按钮样式 */
+.btn-primary {
+  background-color: #4CAF50;
+  color: white;
+  padding: 24rpx 48rpx;
+  border: none;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  width: 100%;
+  margin: 0;
+}
+
+.btn-primary[disabled] {
+  background-color: #ccc;
+  color: #999;
+}
+
+.btn-secondary {
+  background-color: #f0f0f0;
+  color: #333;
+  padding: 16rpx 32rpx;
+  border: 2rpx solid #ddd;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  flex: 1;
+}
+
+/* 画布容器 - 拍立得风格 */
+.canvas-container {
+  background: #fff;
+  padding: 40rpx 30rpx 80rpx 30rpx;
+  border-radius: 6rpx;
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.12), 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
+  margin: 16rpx auto;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.canvas-wrap {
+  width: 400rpx;
+  height: 600rpx;
+  overflow: hidden;
+  position: relative;
+}
+
+.preview-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* 语录控制区 */
+.quote-controls {
+  display: flex;
+  gap: 16rpx;
+}
+
+/* 自定义面板 */
+.custom-panel {
+  background-color: #f8f9fa;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  border: 2rpx solid #e9ecef;
+}
+
+.custom-textarea {
+  width: 100%;
+  min-height: 120rpx;
+  padding: 16rpx;
+  font-size: 28rpx;
+  border: 2rpx solid #ddd;
+  border-radius: 12rpx;
+  background-color: #fff;
+  box-sizing: border-box;
+}
+
+.custom-input {
+  width: 100%;
+  padding: 16rpx;
+  font-size: 28rpx;
+  border: 2rpx solid #ddd;
+  border-radius: 12rpx;
+  background-color: #fff;
+  box-sizing: border-box;
+}
+
+/* 抖动开关 */
+.dither-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 0;
+}
+
+.dither-label {
+  font-size: 28rpx;
+  color: #555;
+}
+
+/* 传输进度 */
+.transfer-container {
+  margin: 8rpx 0;
+  padding: 24rpx;
+  background-color: #f5f5f5;
+  border-radius: 16rpx;
+  border: 2rpx solid #ddd;
+}
+
+.transfer-status {
+  text-align: center;
+  font-size: 26rpx;
+  color: #333;
+  margin-bottom: 16rpx;
+  font-weight: 600;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 32rpx;
+  background-color: #e0e0e0;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50, #45a049);
+  transition: width 0.3s ease;
+  border-radius: 16rpx;
+}
+
+.transfer-progress {
+  text-align: center;
+  font-size: 26rpx;
+  color: #666;
+  margin-top: 12rpx;
+  font-weight: 600;
+}

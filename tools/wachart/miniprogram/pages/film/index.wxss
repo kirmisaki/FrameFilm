@@ -1,0 +1,219 @@
+/* Film 页面样式 */
+
+.container {
+  padding: 30rpx;
+  padding-bottom: 120rpx;
+}
+
+/* 参数设置面板 */
+.settings-section {
+  background-color: white;
+  border-radius: 24rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  margin-bottom: 30rpx;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 28rpx 36rpx;
+  background-color: #f8f9fa;
+  border-bottom: 2rpx solid #e9ecef;
+  font-weight: 600;
+  color: #333;
+  font-size: 30rpx;
+}
+
+.section-content {
+  padding: 30rpx 36rpx;
+}
+
+.setting-item {
+  margin-bottom: 24rpx;
+}
+
+.setting-item:last-child {
+  margin-bottom: 0;
+}
+
+.setting-label {
+  font-weight: 600;
+  color: #555;
+  font-size: 28rpx;
+  margin-bottom: 12rpx;
+}
+
+/* Picker 样式 */
+.picker-value {
+  padding: 16rpx 24rpx;
+  background-color: #f5f5f5;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  color: #333;
+}
+
+/* 滑块行 */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.slider-label {
+  flex: 0 0 160rpx;
+  font-weight: 600;
+  color: #555;
+  font-size: 26rpx;
+}
+
+.slider-row slider {
+  flex: 1;
+}
+
+.slider-value {
+  flex: 0 0 80rpx;
+  text-align: right;
+  font-weight: 600;
+  font-size: 26rpx;
+  color: #4CAF50;
+}
+
+/* 按钮组 */
+.btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.btn-group .btn-secondary {
+  flex: 1;
+  min-width: 140rpx;
+  text-align: center;
+  font-size: 26rpx;
+}
+
+.btn-group .btn-secondary.active {
+  background-color: #e8f5e8;
+  border-color: #4CAF50;
+  color: #2e7d32;
+}
+
+/* Canvas 容器（宝丽来风格） */
+.canvas-container {
+  background: #fff;
+  padding: 40rpx 30rpx 80rpx 30rpx;
+  border-radius: 6rpx;
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.12), 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
+  margin: 24rpx auto;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.canvas-wrap {
+  width: 600rpx;
+  height: 400rpx;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+
+.film-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* 文件名输入 */
+.file-name-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.file-name-row .setting-label {
+  flex: 0 0 120rpx;
+  margin-bottom: 0;
+}
+
+.file-name-input {
+  flex: 1;
+  padding: 16rpx 24rpx;
+  background-color: #f5f5f5;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  color: #333;
+}
+
+/* 下载/发送按钮行 */
+.button-row {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.button-row .btn-primary {
+  flex: 1;
+}
+
+.btn-bluetooth {
+  background-color: #2196F3 !important;
+}
+
+.btn-bluetooth[disabled] {
+  background-color: #ccc !important;
+}
+
+/* 传输进度 */
+.transfer-container {
+  margin: 24rpx 0;
+  padding: 24rpx;
+  background-color: #f5f5f5;
+  border-radius: 16rpx;
+  border: 2rpx solid #ddd;
+}
+
+.transfer-status {
+  text-align: center;
+  font-size: 26rpx;
+  color: #333;
+  margin-bottom: 16rpx;
+  font-weight: 600;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 32rpx;
+  background-color: #e0e0e0;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50, #45a049);
+  transition: width 0.3s ease;
+  border-radius: 16rpx;
+}
+
+.transfer-progress {
+  text-align: center;
+  font-size: 26rpx;
+  color: #666;
+  margin-top: 12rpx;
+  font-weight: 600;
+}
+
+/* 结果信息 */
+.info-text {
+  color: #666;
+  font-size: 26rpx;
+  text-align: center;
+  margin: 16rpx 0;
+  word-break: break-all;
+}
