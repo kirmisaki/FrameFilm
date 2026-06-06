@@ -1,0 +1,294 @@
+<!--pages/exampleDetail/index.wxml-->
+<block wx:if="{{ type === 'getOpenId' }}">
+  <view class="page-container">
+    <view class="title">功能介绍</view>
+    <view class="info">云函数无需维护鉴权机制及登录票据，仅一行代码即可获得。</view>
+    <view class="title">云函数获取OpenId示例</view>
+    <!-- <view class="info">云函数无需维护鉴权机制及登录票据，仅一行代码即可获得。</view> -->
+    <view class="block">
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">1 </text>quickStartFunctions 云函数代码</view>
+      <view class="code_zone">
+        <rich-text nodes="<pre style='overflow: scroll;'>{{callOpenIdCode}}</pre>" />
+      </view>
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">2 </text>小程序代码段</view>
+      <view class="code_zone">
+        <rich-text nodes="<pre style='overflow: scroll;'>{{callFunctionCode}}</pre>" />
+      </view>
+    </view>
+    <view class="block">
+      <view class="btn-full" bind:tap="getOpenId" wx:if="{{!haveGetOpenId}}">运行示例</view>
+    <view class="box_text">{{ openId ? openId : 'OpenID将展示在这里' }}</view>
+    <cloud-tip-modal showTipProps="{{showTip}}" title="{{title}}" content="{{content}}"></cloud-tip-modal>
+    <view class="button_clear" bindtap="clearOpenId" wx:if="{{haveGetOpenId}}">清空</view>
+    </view>
+  </view>
+</block>
+<block wx:if="{{ type === 'getMiniProgramCode' }}">
+  <view class="page-container">
+    <view class="title">功能介绍</view>
+    <view class="info">可通过云函数免接口调用凭证，直接生成小程序码。</view>
+    <view class="title">云函数获取小程序码示例</view>
+    <view class="block">
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">1 </text>quickStartFunctions 云函数代码</view>
+      <view class="code_zone">
+        <rich-text nodes="<pre style='overflow: scroll;'>{{callMiniProgramCode}}</pre>" />
+      </view>
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">2 </text>小程序代码段</view>
+      <view class="code_zone">
+        <rich-text nodes="<pre style='overflow: scroll;'>{{callFunctionCode}}</pre>" />
+      </view>
+    </view>
+    <view class="block">
+      <view class="btn-full" bind:tap="getCodeSrc" wx:if="{{!haveGetCodeSrc}}">运行示例</view>
+      <view class="box_text" wx:if="{{!codeSrc}}">小程序码将展示在这里</view>
+      <view wx:if="{{codeSrc}}" class="code_box">
+        <image class="code_img" src="{{codeSrc}}"></image>
+      </view>
+      <view class="button_clear" bindtap="clearCodeSrc" wx:if="{{haveGetCodeSrc}}">清空</view>
+      <cloud-tip-modal showTipProps="{{showTip}}" title="{{title}}" content="{{content}}"></cloud-tip-modal>
+    </view>
+  </view>
+</block>
+
+<block wx:if="{{ type === 'createCollection' }}">
+  <view class="page-container">
+    <view class="title">功能介绍</view>
+    <view class="info">集合为常用数据库中表的概念。云开发数据库支持自动备份、无损回档，并且QPS高达3千+。</view>
+    <view class="title">如何体验</view>
+    <view class="info">已自动创建名为“sales”的体验合集，可打开“云开发控制台>数据库>记录列表”中找到该集合。</view>
+    <image class="img" src="../../images/database.png"></image>
+    <view class="title">云函数代码示例</view>
+    <view class="code_zone">
+      <rich-text nodes="<pre style='overflow: scroll;'>{{callCreateCollectionCode}}</pre>" />
+    </view>
+  </view>
+</block>
+
+<block wx:if="{{ type === 'selectRecord' }}">
+  <view class="page-container">
+    <view class="title">功能介绍</view>
+    <view class="top_tip">体验查询记录能力，查询数据表中的销量数据。</view>
+    <view class="box_text" wx:if="{{!record}}">销量数据将展示在这里</view>
+    <view class="title">数据库操作示例</view>
+    <view class="top_tip">参考云函数 quickstartFunctions 示例代码</view>
+    <view wx:if="{{record}}" class="code_box">
+      <view class="code_box_title">地区销量统计</view>
+      <view class="code_box_record">
+        <view class="code_box_record_title">地域</view>
+        <view class="code_box_record_title">城市</view>
+        <view class="code_box_record_title">销量</view>
+        <view class="code_box_record_title">操作</view>
+      </view>
+      <view class="line"></view>
+      <view class="code_box_record" wx:for="{{record}}" wx:key="_id">
+        <view class="code_box_record_detail">{{item.region}}</view>
+        <view class="code_box_record_detail">{{item.city}}</view>
+        <!-- <view class="code_box_record_detail">{{item.sales}}</view> -->
+        <input style="background-color: rgba(0, 0, 0, 0.03)" class="code_box_record_detail" bindinput="bindInput" data-index="{{index}}" value="{{item.sales}}" type="number"></input>
+        <view class="code_box_record_detail">
+          <button style="font-size: 12px" bind:tap="deleteRecord" data-id="{{item._id}}">删除</button>
+        </view>
+      </view>
+    </view>
+    <view class="btn-full" bind:tap="getRecord" >查询记录</view>
+    <view class="btn-full" bind:tap="updateRecord" >更新记录</view>
+    <view class="btn-full" bind:tap="insertRecord" >新增记录</view>
+    <!-- <view class="button_clear" bindtap="clearRecord" wx:if="{{haveGetRecord}}">清空</view> -->
+    <cloud-tip-modal showTipProps="{{showTip}}"></cloud-tip-modal>
+  </view>
+  <view wx:if="{{showInsertModal}}" class="modal-mask">
+  <view class="modal-content">
+    <view class="modal-title">新增销量记录</view>
+    <input class="modal-input" placeholder="地域" value="{{insertRegion}}" bindinput="onInsertRegionInput"/>
+    <input class="modal-input" placeholder="城市" value="{{insertCity}}" bindinput="onInsertCityInput"/>
+    <input class="modal-input" placeholder="销量" value="{{insertSales}}" bindinput="onInsertSalesInput" type="number"/>
+    <view class="modal-actions">
+      <button bindtap="onInsertCancel">取消</button>
+      <button bindtap="onInsertConfirm" type="primary">确认</button>
+    </view>
+  </view>
+</view>
+</block>
+
+<block wx:if="{{ type === 'uploadFile' }}">
+  <view class="page-container">
+    <view class="title">功能介绍</view>
+    <view class="top_tip">多存储类型，仅需一个云函数即可完成上传。</view>
+    <view class="title">文件上传示例</view>
+    <view class="block">
+      <view class="step-title">小程序代码段</view>
+      <view class="code_zone">
+        <rich-text nodes="<pre style='overflow: scroll;'>{{callUploadFileCode}}</pre>" />
+      </view>
+    </view>
+    <view class="btn-full" bind:tap="uploadImg" wx:if="{{!haveGetImgSrc}}">运行示例</view>
+    <view class="box_text" wx:if="{{!imgSrc}}">上传的图片将展示在这里</view>
+    <view wx:if="{{imgSrc}}" class="code_box">
+      <image class="code_img" src="{{imgSrc}}"></image>
+      <!-- <view class="img_info">
+        <view class="img_info_title">文件路径</view>
+        <view class="img_info_detail">{{imgSrc}}</view>
+      </view> -->
+    </view>
+    <view class="button_clear" bindtap="clearImgSrc" wx:if="{{haveGetImgSrc}}">清空</view>
+    <cloud-tip-modal showTipProps="{{showTip}}"></cloud-tip-modal>
+  </view>
+</block>
+
+<block wx:if="{{ type === 'model-guide'}}">
+  <view class="page-container">
+    <view class="title">功能介绍</view>
+    <view class="top_tip">腾讯云开发提供 AI 对话能力，支持 Agent，大模型流式对话，可通过 Agent-UI 组件快速集成 AI 能力</view>
+    <view class="title">集成 Agent-UI 组件指引</view>
+    <view class="block">
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">1 </text>拷贝组件源码包</view>
+      <view style="display: flex;align-items: center;">点击复制查看组件仓库地址 <image mode="widthFix" style="width: 20px;height: 20px" bind:tap="copyUrl" src='../../images/copy.svg'/></view>
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">2 </text>将组件拷贝至小程序目录中</view>
+      <image class="img" mode="widthFix" src="../../images/ai_example2.png"></image>
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">3 </text>在页面 .json 配置文件中注册组件</view>
+      <view class="code_zone">
+        <rich-text nodes="<pre style='overflow: scroll;'>{{ai_page_config}}</pre>" />
+      </view>      
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">4 </text>在页面 .wxml 文件中引用组件</view>
+      <view class="code_zone">
+        <rich-text nodes="<pre style='overflow: scroll;'>{{ai_wxml_config}}</pre>" />
+      </view>  
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">4 </text>在页面 .js 文件中编写配置</view>
+      <view class="code_zone">
+        <rich-text nodes="<pre style='overflow: scroll;'>{{ai_data_config}}</pre>" />
+      </view>  
+    </view>
+  </view>
+</block>
+
+<block wx:if="{{ type === 'cloudbaserun' }}">
+  <view class="page-container">
+    <view class="title">功能介绍</view>
+    <view class="info">云托管 支持托管用任意语言和框架编写的容器化应用，为开发者提供高可用、自动弹性扩缩的云服务。</view>
+    <view class="title">小程序调用云托管示例</view>
+    <view class="block">
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">1 </text>前往云开发平台开通云托管</view>
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">2 </text>新建容器型托管服务，等待部署完成</view>
+      <view class="step-text">
+        此处可使用 Express 示例模板进行安装，此处示例命名为 express-test
+      </view>
+      <view>
+        <image class="img" src="../../images/create_cbr.png" mode="aspectFill"></image>
+      </view>
+      <view class="step-title"><text class="step-left">step</text> <text class="step-right">3</text>小程序端调用</view>
+      <view class="code_zone">
+        <rich-text nodes="<pre style='overflow: scroll;'>{{callcbrCode}}</pre>" />
+      </view>
+      <view class="btn-full" bind:tap="runCallContainer" wx:if="{{!haveGetCallContainerRes}}">运行示例</view>
+      <view class="box_text">{{ callContainerResStr ? callContainerResStr : '云托管调用结果将展示在这里' }}</view>
+      <view class="button_clear" bindtap="clearCallContainerRes" wx:if="{{haveGetCallContainerRes}}">清空</view>
+    </view>
+  </view>
+</block>
+
+<block wx:if="{{ type === 'ai-assistant' }}">
+  <view class="page-container">
+    <view class="title">AI 智能开发小程序</view>
+    <view class="info">连接 AI 开发工具与 MCP 开发小程序</view>
+    
+    <view class="block">
+      <view class="step-title">
+        <text class="step-left">step</text> 
+        <text class="step-right">1 </text>
+        打开扩展面板
+      </view>
+      <view class="step-text">
+        在微信开发者工具中使用快捷键打开扩展面板：
+      </view>
+      <view class="notice-box">
+        <view class="notice-text">
+          <text class="notice-highlight">注意：</text>使用快捷键前需先点击编辑区，将焦点从预览区切换到编辑区。
+        </view>
+      </view>
+      <view class="shortcut-box">
+        <view class="shortcut-item">
+          <view class="shortcut-label">Windows/Linux：</view>
+          <view class="shortcut-key">Ctrl + Shift + X</view>
+        </view>
+        <view class="shortcut-item">
+          <view class="shortcut-label">macOS：</view>
+          <view class="shortcut-key">Shift + Command + X</view>
+        </view>
+      </view>
+
+      <view class="step-title">
+        <text class="step-left">step</text> 
+        <text class="step-right">2 </text>
+        搜索并安装插件
+      </view>
+      <view class="step-text">
+        在扩展商店中搜索：
+      </view>
+      <view class="plugin-name-box">
+        <text class="plugin-name">微信云开发 AI ToolKit</text>
+        <view class="copy-btn" bindtap="copyPluginName">
+          <image class="copy-icon" src="../../images/copy.svg" mode="widthFix"></image>
+          <text class="copy-text">复制</text>
+        </view>
+      </view>
+      <view class="step-text">
+        找到插件后点击安装并启用
+      </view>
+
+      <view class="step-title">
+        <text class="step-left">step</text> 
+        <text class="step-right">3 </text>
+        打开 AI 开发功能
+      </view>
+      <view class="step-text">
+        安装完成后，选中任意文件，点击左上角打开 AI 开发功能即可使用
+      </view>
+      <image class="img step-img" src="https://tcb-advanced-a656fc-1257967285.ap-shanghai.app.tcloudbase.com/imgs/wechat-ide-extension/ide-extension.png" mode="widthFix"></image>
+
+      <view class="divider"></view>
+
+      <view class="feature-section">
+        <view class="feature-title">✨ 场景示例</view>
+        <view class="feature-list">
+          <view class="feature-item-with-examples">
+            <view class="feature-main">💡 智能代码生成与补全</view>
+            <view class="feature-examples">
+              <view class="feature-example-wrapper">
+                <text class="feature-example-text">· 帮我创建一个商品列表页面,包含图片、标题、价格和加入购物车按钮</text>
+                <view class="feature-copy-btn" bindtap="copyPrompt" data-prompt="帮我创建一个商品列表页面,包含图片、标题、价格和加入购物车按钮">
+                  <image class="feature-copy-icon" src="../../images/copy.svg" mode="widthFix"></image>
+                </view>
+              </view>
+              <view class="feature-example-wrapper">
+                <text class="feature-example-text">· 帮我完善这个函数,实现商品搜索功能</text>
+                <view class="feature-copy-btn" bindtap="copyPrompt" data-prompt="帮我完善这个函数,实现商品搜索功能">
+                  <image class="feature-copy-icon" src="../../images/copy.svg" mode="widthFix"></image>
+                </view>
+              </view>
+            </view>
+          </view>
+          
+          <view class="feature-item-with-examples">
+            <view class="feature-main">🔧 代码优化与重构建议</view>
+            <view class="feature-examples">
+              <view class="feature-example-wrapper">
+                <text class="feature-example-text">· 优化这个页面的间隔，提升信息密度</text>
+                <view class="feature-copy-btn" bindtap="copyPrompt" data-prompt="优化这个页面的间隔，提升信息密度">
+                  <image class="feature-copy-icon" src="../../images/copy.svg" mode="widthFix"></image>
+                </view>
+              </view>
+              <view class="feature-example-wrapper">
+                <text class="feature-example-text">· 完善云函数调用的错误处理代码</text>
+                <view class="feature-copy-btn" bindtap="copyPrompt" data-prompt="完善云函数调用的错误处理代码">
+                  <image class="feature-copy-icon" src="../../images/copy.svg" mode="widthFix"></image>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</block>
+
+
