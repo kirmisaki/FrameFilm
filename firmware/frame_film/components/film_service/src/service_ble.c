@@ -412,12 +412,12 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             uint32_t file_count = service_file_get_count();
             sys_logi(BEL_SERVICE_TAG, "File list count: %d", file_count);
 
-            uint8_t *cmd_buf = pvPortMalloc(70);
+            uint8_t *cmd_buf = pvPortMalloc(150);
             if(cmd_buf == NULL) break;
 
             for(uint32_t i = 0; i < file_count; i++)
             {
-                memset(cmd_buf, 0, 70);
+                memset(cmd_buf, 0, 150);
 
                 const char *filename = service_file_get_filename(i);
                 uint8_t name_len = strlen(filename) + 1;
@@ -425,7 +425,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                 cmd_buf[0] = BLE_CMD_HEAD;
                 cmd_buf[1] = BLE_FILM_TRANS_CH_FILE_LIST;
                 cmd_buf[2] = 2 + name_len;
-                cmd_buf[3] = i;
+                cmd_buf[3] = i & 0xff;
                 cmd_buf[4] = name_len;
 
                 memcpy(&cmd_buf[5], filename, name_len);
