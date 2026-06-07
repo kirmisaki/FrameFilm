@@ -273,8 +273,8 @@ function extractLandscapeData(portraitCanvas) {
   var landscapeCanvas = wx.createOffscreenCanvas({ type: '2d', width: 600, height: 400 });
   var ctx = landscapeCanvas.getContext('2d');
   ctx.save();
-  ctx.translate(600, 0);
-  ctx.rotate(Math.PI / 2);
+  ctx.translate(0, 400);
+  ctx.rotate(-Math.PI / 2);
   ctx.drawImage(portraitCanvas, 0, 0, 400, 600, 0, 0, 400, 600);
   ctx.restore();
   return ctx.getImageData(0, 0, 600, 400);
@@ -299,8 +299,8 @@ function processAndDisplay(portraitCanvas, portraitCtx, ditherType, ditherStreng
   tempCtx.putImageData(imgData, 0, 0);
   portraitCtx.clearRect(0, 0, 400, 600);
   portraitCtx.save();
-  portraitCtx.translate(0, 600);
-  portraitCtx.rotate(-Math.PI / 2);
+  portraitCtx.translate(400, 0);
+  portraitCtx.rotate(Math.PI / 2);
   portraitCtx.drawImage(tempCanvas, 0, 0, 600, 400, 0, 0, 600, 400);
   portraitCtx.restore();
   return processedData;
