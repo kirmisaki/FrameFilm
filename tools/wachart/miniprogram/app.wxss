@@ -1,4 +1,4 @@
-/* 全局样式 */
+/* 全局样式 - 黑白配色 */
 page {
   background: #f5f5f5;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -8,12 +8,12 @@ page {
 
 .container {
   padding: 20rpx 30rpx;
-  padding-bottom: 160rpx;
+  padding-bottom: 320rpx;
 }
 
 /* 按钮 */
 .btn-primary {
-  background-color: #4CAF50;
+  background-color: #000;
   color: white;
   padding: 24rpx 48rpx;
   border: none;
@@ -26,13 +26,14 @@ page {
 
 .btn-primary[disabled] {
   background-color: #ccc;
+  color: #999;
 }
 
 .btn-secondary {
-  background-color: #f0f0f0;
+  background-color: #f5f5f5;
   color: #333;
   padding: 16rpx 32rpx;
-  border: 2rpx solid #ddd;
+  border: 2rpx solid #e0e0e0;
   border-radius: 12rpx;
   font-size: 28rpx;
 }
@@ -59,20 +60,21 @@ page {
 }
 
 .status-bar.disconnected {
-  background-color: #ffebee;
-  color: #c62828;
+  background-color: #f5f5f5;
+  color: #666;
+  border: 2rpx solid #e0e0e0;
 }
 
 .status-bar.connected {
-  background-color: #e8f5e8;
-  color: #2e7d32;
+  background-color: #000;
+  color: #fff;
 }
 
 /* 设置区块 */
 .settings-section {
   background-color: white;
   border-radius: 24rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
   overflow: hidden;
   margin-bottom: 30rpx;
 }
@@ -82,8 +84,8 @@ page {
   align-items: center;
   gap: 16rpx;
   padding: 28rpx 36rpx;
-  background-color: #f8f9fa;
-  border-bottom: 2rpx solid #e9ecef;
+  background-color: #fafafa;
+  border-bottom: 2rpx solid #f0f0f0;
   font-weight: 600;
   color: #333;
   font-size: 30rpx;
@@ -108,7 +110,7 @@ page {
 }
 
 .setting-value {
-  color: #4CAF50;
+  color: #000;
   font-weight: 600;
   font-size: 28rpx;
 }
@@ -117,9 +119,9 @@ page {
 .transfer-container {
   margin: 24rpx 0;
   padding: 24rpx;
-  background-color: #f5f5f5;
+  background-color: #fafafa;
   border-radius: 16rpx;
-  border: 2rpx solid #ddd;
+  border: 2rpx solid #e8e8e8;
 }
 
 .transfer-status {
@@ -133,14 +135,14 @@ page {
 .progress-bar {
   width: 100%;
   height: 32rpx;
-  background-color: #e0e0e0;
+  background-color: #e8e8e8;
   border-radius: 16rpx;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4CAF50, #45a049);
+  background: #000;
   transition: width 0.3s ease;
   border-radius: 16rpx;
 }
@@ -157,7 +159,7 @@ page {
 .file-list {
   max-height: 300rpx;
   overflow-y: auto;
-  border: 2rpx solid #e0e0e0;
+  border: 2rpx solid #e8e8e8;
   border-radius: 16rpx;
   margin-bottom: 16rpx;
 }
@@ -174,14 +176,14 @@ page {
 }
 
 .file-item.displaying {
-  background-color: #e3f2fd;
-  border-left: 6rpx solid #2196F3;
+  background-color: #f5f5f5;
+  border-left: 6rpx solid #000;
 }
 
 .file-id {
   min-width: 60rpx;
   font-weight: 600;
-  color: #2196F3;
+  color: #000;
   margin-right: 20rpx;
   font-size: 26rpx;
 }
@@ -224,9 +226,9 @@ page {
 }
 
 .mode-button.active {
-  background-color: #e8f5e8;
-  border-color: #4CAF50;
-  color: #2e7d32;
+  background-color: #f0f0f0;
+  border-color: #000;
+  color: #000;
 }
 
 /* 开关 */
@@ -257,27 +259,15 @@ page {
   gap: 8rpx;
 }
 
-/* 画布容器 */
+/* 画布容器（宝丽来风格） */
 .canvas-container {
   background: #fff;
   padding: 40rpx 30rpx 80rpx 30rpx;
   border-radius: 6rpx;
-  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.12), 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.1), 0 2rpx 6rpx rgba(0, 0, 0, 0.06);
   margin: 24rpx auto;
   width: fit-content;
   max-width: 100%;
-}
-
-.canvas-wrap {
-  width: 400rpx;
-  height: 600rpx;
-  overflow: hidden;
-  position: relative;
-}
-
-.canvas-wrap canvas {
-  width: 100%;
-  height: 100%;
 }
 
 /* Frame tabs */
@@ -285,7 +275,7 @@ page {
   display: flex;
   background-color: white;
   border-radius: 24rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
   margin-bottom: 24rpx;
   overflow: hidden;
 }
@@ -299,26 +289,26 @@ page {
   padding: 24rpx 16rpx;
   font-weight: 600;
   font-size: 28rpx;
-  color: #666;
+  color: #999;
   border-bottom: 6rpx solid transparent;
 }
 
 .frame-tab.active {
-  color: #4CAF50;
-  border-bottom-color: #4CAF50;
-  background-color: #f8fff8;
+  color: #000;
+  border-bottom-color: #000;
+  background-color: #fafafa;
 }
 
 /* 信息文本 */
 .info-text {
-  color: #666;
-  font-size: 26rpx;
+  color: #999;
+  font-size: 24rpx;
   text-align: center;
   margin: 16rpx 0;
 }
 
 .success-text {
-  color: #2e7d32;
+  color: #333;
   font-size: 26rpx;
   margin-top: 16rpx;
 }
@@ -420,7 +410,7 @@ page {
 
 /* 调试日志 */
 .debug-log {
-  background-color: #1e1e1e;
+  background-color: #1a1a1a;
   color: #d4d4d4;
   padding: 16rpx;
   font-family: monospace;
@@ -447,4 +437,55 @@ page {
 
 .debug-entry.info {
   color: #75beff;
+}
+
+/* 全局动画 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30rpx); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes progressPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+/* 卡片入场动画 */
+.settings-section {
+  animation: slideUp 0.4s ease both;
+}
+
+/* 按钮点击反馈 */
+.btn-primary:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.btn-secondary:active {
+  transform: scale(0.97);
+  background-color: #e8e8e8;
+}
+
+/* 传输进度动画 */
+.transfer-container {
+  animation: scaleIn 0.3s ease;
+}
+
+.progress-fill {
+  animation: progressPulse 2s ease-in-out infinite;
+}
+
+/* 页面切换过渡 */
+.page-enter {
+  animation: fadeIn 0.3s ease;
 }

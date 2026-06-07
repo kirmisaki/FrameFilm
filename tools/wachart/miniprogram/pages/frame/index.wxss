@@ -14,7 +14,7 @@
 
 /* 按钮样式 */
 .btn-primary {
-  background-color: #4CAF50;
+  background-color: #000;
   color: white;
   padding: 24rpx 48rpx;
   border: none;
@@ -52,8 +52,8 @@
 }
 
 .canvas-wrap {
-  width: 540rpx;
-  height: 810rpx;
+  width: 480rpx;
+  height: 720rpx;
   overflow: hidden;
   position: relative;
 }
@@ -105,13 +105,14 @@
 .dither-toggle {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  padding: 12rpx 0;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 16rpx 0;
 }
 
 .dither-label {
-  font-size: 28rpx;
-  color: #555;
+  font-size: 24rpx;
+  color: #999;
 }
 
 /* 传输进度 */
@@ -141,7 +142,7 @@
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4CAF50, #45a049);
+  background: #000;
   transition: width 0.3s ease;
   border-radius: 16rpx;
 }

@@ -76,7 +76,7 @@
     </view>
 
     <view class="dither-toggle">
-      <checkbox checked="{{ditherChecked}}" bindtap="toggleDither" color="#4CAF50"></checkbox>
+      <checkbox checked="{{ditherChecked}}" bindtap="toggleDither" color="#000" style="transform: scale(0.7);"></checkbox>
       <text class="dither-label">启用抖动处理</text>
     </view>
 

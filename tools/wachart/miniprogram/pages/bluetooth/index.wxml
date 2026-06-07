@@ -1,40 +1,63 @@
 <view class="container">
-  <view class="status-bar {{isConnected ? 'connected' : 'disconnected'}}">
-    {{statusText}}
+  <!-- 连接状态卡片 -->
+  <view class="status-card {{isConnected ? 'status-connected' : 'status-disconnected'}}">
+    <view class="status-icon-wrap">
+      <view class="status-icon {{isScanning ? 'scanning' : ''}} {{isConnected ? 'connected' : ''}}">
+        <text class="icon-text">{{isConnected ? '✓' : isScanning ? '...' : '⏻'}}</text>
+      </view>
+    </view>
+    <view class="status-info">
+      <text class="status-title">{{isConnected ? connectedDeviceName : (isScanning ? '正在搜索...' : '未连接')}}</text>
+      <text class="status-sub">{{isConnected ? '电量 ' + batteryLevel + '%' : statusText}}</text>
+    </view>
+    <view wx:if="{{isConnected}}" class="battery-bar">
+      <view class="battery-body">
+        <view class="battery-fill" style="width: {{batteryFillWidth}}%"></view>
+      </view>
+    </view>
   </view>
 
-  <button class="btn-primary" bindtap="onScan" disabled="{{isConnected}}">
-    {{isScanning ? '扫描中...' : '扫描设备'}}
-  </button>
+  <!-- 操作按钮 -->
+  <view class="action-buttons">
+    <button wx:if="{{!isConnected}}" class="btn-primary {{isScanning ? 'scanning-btn' : ''}}" bindtap="onScan" disabled="{{isScanning}}">
+      <text class="btn-icon">{{isScanning ? '◌' : '⊕'}}</text>
+      <text>{{isScanning ? '扫描中...' : '扫描设备'}}</text>
+    </button>
+    <button wx:if="{{isConnected}}" class="btn-disconnect" bindtap="onDisconnect">
+      <text class="btn-icon">⊖</text>
+      <text>断开连接</text>
+    </button>
+  </view>
 
+  <!-- 设备列表 -->
   <view wx:if="{{deviceList.length > 0}}" class="device-list">
-    <view wx:for="{{deviceList}}" wx:key="deviceId" class="device-item" bindtap="onConnectDevice" data-index="{{index}}">
+    <view class="list-header">
+      <text class="list-title">发现的设备</text>
+      <text class="list-count">{{deviceList.length}}</text>
+    </view>
+    <view wx:for="{{deviceList}}" wx:key="deviceId"
+      class="device-item"
+      bindtap="onConnectDevice"
+      data-index="{{index}}"
+      style="animation-delay: {{index * 80}}ms">
+      <view class="device-icon">
+        <text>▣</text>
+      </view>
       <view class="device-info">
         <view class="device-name">{{item.name || '未知设备'}}</view>
         <view class="device-id">{{item.deviceId}}</view>
       </view>
-      <text class="device-rssi">{{item.RSSI}}dBm</text>
-    </view>
-  </view>
-
-  <view wx:if="{{isConnected}}" class="connected-info">
-    <view class="settings-section">
-      <view class="section-header">已连接设备</view>
-      <view class="section-content">
-        <view class="setting-item">
-          <text class="setting-label">设备名称: </text>
-          <text class="setting-value">{{connectedDeviceName}}</text>
-        </view>
-        <view class="setting-item">
-          <text class="setting-label">电量: </text>
-          <text class="setting-value">{{batteryLevel}}%</text>
-        </view>
-        <button class="btn-secondary danger" style="width:100%;margin-top:20rpx;" bindtap="onDisconnect">断开连接</button>
+      <view class="device-signal">
+        <view class="signal-bar bar1 {{item.RSSI > -80 ? 'active' : ''}}"></view>
+        <view class="signal-bar bar2 {{item.RSSI > -60 ? 'active' : ''}}"></view>
+        <view class="signal-bar bar3 {{item.RSSI > -40 ? 'active' : ''}}"></view>
       </view>
     </view>
   </view>
 
-  <view wx:if="{{!isConnected && !isScanning}}" class="info-text">
-    点击扫描按钮搜索FrameFilm设备
+  <!-- 提示信息 -->
+  <view wx:if="{{!isConnected && !isScanning && deviceList.length === 0}}" class="hint-area">
+    <text class="hint-icon">￮</text>
+    <text class="hint-text">点击上方按钮搜索 FrameFilm 设备</text>
   </view>
 </view>

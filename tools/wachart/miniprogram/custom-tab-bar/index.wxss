@@ -20,7 +20,7 @@
 }
 
 .tab-item.active {
-  color: #4CAF50;
+  color: #000000;
 }
 
 .tab-icon {

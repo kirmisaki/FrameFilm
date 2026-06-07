@@ -10,7 +10,8 @@ Page({
     statusText: '未连接',
     deviceList: [],
     connectedDeviceName: '',
-    batteryLevel: 0
+    batteryLevel: 0,
+    batteryFillWidth: 0
   },
 
   _bleListener: null,
@@ -26,6 +27,7 @@ Page({
         isConnected: true,
         connectedDeviceName: app.globalData.deviceName,
         batteryLevel: app.globalData.batteryLevel,
+        batteryFillWidth: app.globalData.batteryLevel,
         statusText: '已连接: ' + app.globalData.deviceName
       });
     }
@@ -59,7 +61,7 @@ Page({
     var cmdType = resp.cmdType;
     switch (cmdType) {
       case bleUtils.BLE_FILM_TRANS_CH_CTRL_PWRREAD:
-        this.setData({ batteryLevel: app.globalData.batteryLevel });
+        this.setData({ batteryLevel: app.globalData.batteryLevel, batteryFillWidth: app.globalData.batteryLevel });
         break;
       case bleUtils.BLE_FILM_TRANS_CH_FILE_LIST:
         // 文件列表更新，无需特殊UI处理
@@ -445,6 +447,7 @@ Page({
       isConnected: false,
       connectedDeviceName: '',
       batteryLevel: 0,
+      batteryFillWidth: 0,
       deviceList: [],
       statusText: '未连接'
     });
