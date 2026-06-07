@@ -287,7 +287,7 @@ Page({
     fileData.set(header, 0);
     fileData.set(processedData, filmUtils.FILM_HEADER_SIZE);
 
-    var prefix = tab === 'upload' ? 'Upload' : tab === 'camera' ? 'Camera' : 'Quote';
+    var prefix = tab === 'upload' ? 'upload' : tab === 'camera' ? 'camera' : 'quote';
     that.sendFileViaBle(fileData, prefix, tab);
   },
 
