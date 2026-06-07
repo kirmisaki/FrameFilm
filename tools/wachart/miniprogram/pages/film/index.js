@@ -139,9 +139,7 @@ Page({
 
     // 2. 图像处理
     if (this.data.ditherEnabled) {
-      // 开启抖动：Film 格式处理并回显
       var ditherType = this.data.ditherTypes[this.data.ditherTypeIndex];
-      if (ditherType === 'adaptive') ditherType = 'floydSteinberg';
       filmUtils.processAndDisplay(this.tempCanvas, tctx, ditherType, this.data.ditherStrength, this.data.contrast);
     } else {
       // 未开启抖动：仅调整对比度，显示原图
