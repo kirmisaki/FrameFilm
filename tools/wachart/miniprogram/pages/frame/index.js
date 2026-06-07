@@ -506,7 +506,7 @@ Page({
     updateObj[progressKey] = 0;
     that.setData(updateObj);
 
-    var fileName = prefix + '_' + Date.now() + '.film';
+    var fileName = prefix + '.film';
     var totalSize = fileData.length;
 
     // 发送流程
