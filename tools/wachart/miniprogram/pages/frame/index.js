@@ -232,9 +232,9 @@ Page({
         ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
       }
 
-      // 处理为 Film 格式并回显（对比度1.2 + 自适应抖动）
+      // 处理为 Film 格式并回显（自适应抖动）
       try {
-        filmUtils.processAndDisplay(canvas, ctx, 'floydSteinberg', 1.0, 1.2);
+        filmUtils.processAndDisplay(canvas, ctx, 'adaptive', 1.0, 1.2);
       } catch (e) {
         console.error('processAndDisplay error:', e);
       }

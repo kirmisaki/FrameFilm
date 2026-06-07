@@ -258,8 +258,150 @@ function jarvisDither(imageData, strength) {
   return imageData;
 }
 
+function computeEdgeMap(data, width, height) {
+  var edges = new Float32Array(width * height);
+  for (var y = 1; y < height - 1; y++) {
+    for (var x = 1; x < width - 1; x++) {
+      var tl = data[((y-1)*width+x-1)*4]*0.299 + data[((y-1)*width+x-1)*4+1]*0.587 + data[((y-1)*width+x-1)*4+2]*0.114;
+      var tc = data[((y-1)*width+x)*4]*0.299 + data[((y-1)*width+x)*4+1]*0.587 + data[((y-1)*width+x)*4+2]*0.114;
+      var tr = data[((y-1)*width+x+1)*4]*0.299 + data[((y-1)*width+x+1)*4+1]*0.587 + data[((y-1)*width+x+1)*4+2]*0.114;
+      var ml = data[(y*width+x-1)*4]*0.299 + data[(y*width+x-1)*4+1]*0.587 + data[(y*width+x-1)*4+2]*0.114;
+      var mr = data[(y*width+x+1)*4]*0.299 + data[(y*width+x+1)*4+1]*0.587 + data[(y*width+x+1)*4+2]*0.114;
+      var bl = data[((y+1)*width+x-1)*4]*0.299 + data[((y+1)*width+x-1)*4+1]*0.587 + data[((y+1)*width+x-1)*4+2]*0.114;
+      var bc = data[((y+1)*width+x)*4]*0.299 + data[((y+1)*width+x)*4+1]*0.587 + data[((y+1)*width+x)*4+2]*0.114;
+      var br = data[((y+1)*width+x+1)*4]*0.299 + data[((y+1)*width+x+1)*4+1]*0.587 + data[((y+1)*width+x+1)*4+2]*0.114;
+      var gx = -tl - 2*ml - bl + tr + 2*mr + br;
+      var gy = -tl - 2*tc - tr + bl + 2*bc + br;
+      edges[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+    }
+  }
+  return edges;
+}
+
+function analyzeImageAdvanced(imageData) {
+  var data = imageData.data;
+  var width = imageData.width, height = imageData.height;
+  var pixelCount = width * height;
+  var brightnessSum = 0, rSum = 0, gSum = 0, bSum = 0, saturationSum = 0;
+  for (var i = 0; i < data.length; i += 4) {
+    var r = data[i], g = data[i+1], b = data[i+2];
+    rSum += r; gSum += g; bSum += b;
+    brightnessSum += r * 0.299 + g * 0.587 + b * 0.114;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    saturationSum += max > 0 ? (max - min) / max : 0;
+  }
+  var edges = computeEdgeMap(data, width, height);
+  var edgeSum = 0, edgeCount = 0;
+  for (var i = 0; i < edges.length; i++) {
+    edgeSum += edges[i];
+    if (edges[i] > 20) edgeCount++;
+  }
+  var innerPixels = (width - 2) * (height - 2);
+  return {
+    brightness: brightnessSum / pixelCount / 255,
+    edgeDensity: innerPixels > 0 ? edgeCount / innerPixels : 0,
+    avgGradient: innerPixels > 0 ? edgeSum / innerPixels / 255 : 0,
+    saturation: saturationSum / pixelCount
+  };
+}
+
+function downsampleImageData(imageData, tw, th) {
+  var srcCanvas = wx.createOffscreenCanvas({ type: '2d', width: imageData.width, height: imageData.height });
+  var srcCtx = srcCanvas.getContext('2d');
+  var srcImgData = srcCtx.createImageData(imageData.width, imageData.height);
+  srcImgData.data.set(imageData.data);
+  srcCtx.putImageData(srcImgData, 0, 0);
+  var dstCanvas = wx.createOffscreenCanvas({ type: '2d', width: tw, height: th });
+  var dstCtx = dstCanvas.getContext('2d');
+  dstCtx.drawImage(srcCanvas, 0, 0, tw, th);
+  return dstCtx.getImageData(0, 0, tw, th);
+}
+
+function generateAdaptiveCandidates(analysis) {
+  var candidates = [];
+  var algos = ['floydSteinberg', 'atkinson', 'stucki', 'jarvis'];
+  var strengths;
+  if (analysis.edgeDensity > 0.2) {
+    strengths = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6];
+  } else if (analysis.saturation > 0.3) {
+    strengths = [0.7, 0.9, 1.0, 1.2, 1.4, 1.6, 1.8];
+  } else {
+    strengths = [0.6, 0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+  }
+  for (var ai = 0; ai < algos.length; ai++) {
+    for (var si = 0; si < strengths.length; si++) {
+      candidates.push({ type: algos[ai], strength: strengths[si] });
+    }
+  }
+  return candidates;
+}
+
+function evaluateDitherResult(original, dithered) {
+  var d1 = original.data, d2 = dithered.data;
+  var width = original.width, height = original.height;
+  var n = d1.length / 4;
+  var totalLabError = 0, maxError = 0;
+  for (var i = 0; i < d1.length; i += 4) {
+    var lab1 = rgbToLab(d1[i], d1[i+1], d1[i+2]);
+    var lab2 = rgbToLab(d2[i], d2[i+1], d2[i+2]);
+    var dist = labDistance(lab1, lab2);
+    totalLabError += dist;
+    if (dist > maxError) maxError = dist;
+  }
+  var avgLabError = totalLabError / n;
+  var origEdges = computeEdgeMap(d1, width, height);
+  var dithEdges = computeEdgeMap(d2, width, height);
+  var edgeCorrelation = 0, origEdgeEnergy = 0, dithEdgeEnergy = 0;
+  for (var i = 0; i < origEdges.length; i++) {
+    edgeCorrelation += origEdges[i] * dithEdges[i];
+    origEdgeEnergy += origEdges[i] * origEdges[i];
+    dithEdgeEnergy += dithEdges[i] * dithEdges[i];
+  }
+  var edgePreservation = origEdgeEnergy > 0 && dithEdgeEnergy > 0 ?
+    edgeCorrelation / Math.sqrt(origEdgeEnergy * dithEdgeEnergy) : 0;
+  var colorMap = {};
+  for (var i = 0; i < d2.length; i += 4) {
+    var key = (d2[i] << 16) | (d2[i+1] << 8) | d2[i+2];
+    colorMap[key] = (colorMap[key] || 0) + 1;
+  }
+  var colorCounts = Object.values(colorMap).sort(function(a,b){ return b-a; });
+  var colorEntropy = 0;
+  for (var i = 0; i < colorCounts.length; i++) {
+    var p = colorCounts[i] / n;
+    if (p > 0) colorEntropy -= p * Math.log2(p);
+  }
+  var maxEntropy = Math.log2(Math.min(6, colorCounts.length));
+  var colorBalance = maxEntropy > 0 ? colorEntropy / maxEntropy : 0;
+  var score = avgLabError * 0.4 + (1 - edgePreservation) * 80 * 0.35 + (1 - colorBalance) * 30 * 0.25;
+  return { score: score, avgLabError: avgLabError, edgePreservation: edgePreservation, colorBalance: colorBalance, maxError: maxError };
+}
+
+function adaptiveDither(imageData) {
+  var width = imageData.width, height = imageData.height;
+  var evalScale = 3;
+  var evalW = Math.max(30, Math.floor(width / evalScale));
+  var evalH = Math.max(30, Math.floor(height / evalScale));
+  var evalData = downsampleImageData(imageData, evalW, evalH);
+  var analysis = analyzeImageAdvanced(evalData);
+  var candidates = generateAdaptiveCandidates(analysis);
+  var bestScore = Infinity;
+  var bestConfig = candidates[0];
+  for (var ci = 0; ci < candidates.length; ci++) {
+    var config = candidates[ci];
+    var copy = { data: new Uint8ClampedArray(evalData.data), width: evalW, height: evalH };
+    applyDitherByType(copy, config.type, config.strength);
+    var result = evaluateDitherResult(evalData, copy);
+    if (result.score < bestScore) {
+      bestScore = result.score;
+      bestConfig = config;
+    }
+  }
+  return applyDitherByType(imageData, bestConfig.type, bestConfig.strength);
+}
+
 function applyDitherByType(imageData, type, strength) {
   switch (type) {
+    case 'adaptive': return adaptiveDither(imageData);
     case 'floydSteinberg': return floydSteinbergDither(imageData, strength);
     case 'atkinson': return atkinsonDither(imageData, strength);
     case 'stucki': return stuckiDither(imageData, strength);
@@ -283,10 +425,13 @@ function extractLandscapeData(portraitCanvas) {
 // 处理图像数据为 Film 格式并旋转回 400×600 竖屏用于显示
 function processAndDisplay(portraitCanvas, portraitCtx, ditherType, ditherStrength, contrast) {
   var landscapeData = extractLandscapeData(portraitCanvas);
+  // 与原版 ForFrame 一致：先应用外部对比度，再抖动
   if (contrast && contrast !== 1.0) {
     adjustContrast(landscapeData, contrast);
   }
-  if (ditherType) {
+  if (ditherType === 'adaptive') {
+    landscapeData = adaptiveDither(landscapeData);
+  } else if (ditherType) {
     landscapeData = applyDitherByType(landscapeData, ditherType, ditherStrength || 1.0);
   }
   var processedData = processImageData(landscapeData);
