@@ -320,7 +320,7 @@ Page({
     });
   },
 
-  // 渲染语录到画布
+  // 渲染语录到画布（与原版 ForFrame 完全一致）
   renderQuote: function () {
     var that = this;
     var canvas = that._canvasQuote;
@@ -331,89 +331,109 @@ Page({
     var author = that.data.quoteAuthor;
     if (!text) return;
 
-    // 选择色彩方案
-    var schemeIndex = Math.floor(Math.random() * frameColorSchemes.length);
-    var scheme = frameColorSchemes[schemeIndex];
+    var scheme = frameColorSchemes[Math.floor(Math.random() * frameColorSchemes.length)];
+    var w = CANVAS_WIDTH;   // 400
+    var h = CANVAS_HEIGHT;  // 600
 
-    var drawW = CANVAS_WIDTH;  // 400
-    var drawH = CANVAS_HEIGHT; // 600
+    ctx.clearRect(0, 0, w, h);
 
-    ctx.clearRect(0, 0, drawW, drawH);
-
-    // 绘制背景
+    // 纯色背景
     ctx.fillStyle = scheme.bg;
-    ctx.fillRect(0, 0, drawW, drawH);
-
-    // 顶部装饰线
-    ctx.fillStyle = scheme.accent;
-    ctx.fillRect(30, 30, 6, 80);
-
-    // 日期
-    ctx.fillStyle = scheme.author;
-    ctx.font = '18px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(formatDate(), 50, 48);
+    ctx.fillRect(0, 0, w, h);
 
     // 装饰引号
+    ctx.font = '80px serif';
     ctx.fillStyle = scheme.accent;
-    ctx.font = 'bold 80px serif';
     ctx.textAlign = 'left';
-    ctx.fillText('\u201C', 30, 160);
+    ctx.fillText('\u201C', 5, 90);
 
-    // 计算文字区域
-    var textX = 50;
-    var textY = 170;
-    var maxTextWidth = drawW - 80;
-    var fontSize = 24;
-    var lineHeight = 38;
+    // 装饰线（引号下方）
+    ctx.strokeStyle = scheme.accent;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(45, 100);
+    ctx.lineTo(100, 100);
+    ctx.stroke();
 
-    // 使用 filmUtils.wrapText 进行换行
-    ctx.font = fontSize + 'px sans-serif';
+    // 文字（居中）
+    ctx.font = 'bold 30px serif';
     ctx.fillStyle = scheme.text;
-    ctx.textAlign = 'left';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
 
-    var lines = filmUtils.wrapText(ctx, text, fontSize, maxTextWidth);
-    // 限制最多 8 行
-    if (lines.length > 8) {
-      lines = lines.slice(0, 8);
-      lines[7] = lines[7].slice(0, -1) + '\u2026';
-    }
+    var lines = filmUtils.wrapText(ctx, text, 30, w - 80);
+    var zhLineHeight = 44;
+    var zhTotalHeight = lines.length * zhLineHeight;
+    var bottomSpace = author ? 130 : 60;
+    var availableHeight = h - 100 - bottomSpace;
+    var zhStartY = 100 + (availableHeight - zhTotalHeight) / 2;
 
     for (var i = 0; i < lines.length; i++) {
-      ctx.fillText(lines[i], textX, textY + i * lineHeight);
+      ctx.fillText(lines[i], w / 2, zhStartY + i * zhLineHeight);
     }
 
     // 作者
-    var authorY = textY + lines.length * lineHeight + 30;
     if (author) {
+      ctx.font = 'bold 18px serif';
       ctx.fillStyle = scheme.author;
-      ctx.font = '18px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText('\u2014\u2014 ' + author, drawW - 40, authorY);
+      ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 130);
     }
 
     // 底部装饰线
-    ctx.fillStyle = scheme.accent;
-    var bottomY = drawH - 40;
-    ctx.fillRect(drawW - 60, bottomY, 30, 6);
+    ctx.strokeStyle = scheme.accent;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - 30, h - 65);
+    ctx.lineTo(w / 2 + 30, h - 65);
+    ctx.stroke();
 
-    // 电池图标
-    var batteryLevel = app.globalData.batteryLevel || 0;
-    var battX = drawW - 50;
-    var battY = drawH - 30;
-    var battW = 24;
-    var battH = 12;
-    ctx.strokeStyle = scheme.text;
+    // 电量图标（右上角）
+    var batteryLevel = (app.globalData.batteryLevel || 0) / 100;
+    var battX = w - 55, battY = 20;
+    var battW = 35, battH = 18;
+    var battR = 4;
+
+    function drawRoundedRect(x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+
+    // 电池外框
+    drawRoundedRect(battX, battY, battW, battH, battR);
+    ctx.strokeStyle = scheme.accent;
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(battX, battY, battW, battH);
-    ctx.fillStyle = scheme.text;
-    ctx.fillRect(battX + battW, battY + 3, 3, battH - 6);
-    var fillW = Math.max(0, (batteryLevel / 100) * (battW - 2));
-    ctx.fillRect(battX + 1, battY + 1, fillW, battH - 2);
+    ctx.stroke();
 
-    // 抖动处理和 Film 格式回显
+    // 电池正极
+    ctx.fillStyle = scheme.accent;
+    ctx.fillRect(battX + battW + 1, battY + 5, 3, battH - 10);
+
+    // 电池电量
+    drawRoundedRect(battX + 2, battY + 2, (battW - 4) * batteryLevel, battH - 4, 2);
+    ctx.fillStyle = scheme.accent;
+    ctx.fill();
+
+    // 日期显示（底部居中）
+    var now = new Date();
+    var dateStr = now.getFullYear() + ' \u5E74 ' + ('0' + (now.getMonth() + 1)).slice(-2) + ' \u6708 ' + ('0' + now.getDate()).slice(-2) + ' \u65E5';
+    ctx.font = '600 16px sans-serif';
+    ctx.fillStyle = scheme.accent;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(dateStr, w / 2, h - 30);
+
+    // Film 格式处理并回显
     var ditherType = that.data.ditherChecked ? 'floydSteinberg' : null;
-    filmUtils.processAndDisplay(canvas, ctx, ditherType, 1.0, null);
+    filmUtils.processAndDisplay(canvas, ctx, ditherType, 0.8, null);
   },
 
   // 切换自定义面板
