@@ -34,8 +34,10 @@ function formatDate() {
 }
 
 // 拟合图片到画布区域（保持比例居中）
-function fitImageToCanvas(imgW, imgH, canvasW, canvasH) {
-  var ratio = Math.min(canvasW / imgW, canvasH / imgH);
+function fitImageToCanvas(imgW, imgH, canvasW, canvasH, fill) {
+  var ratio = fill
+    ? Math.max(canvasW / imgW, canvasH / imgH)
+    : Math.min(canvasW / imgW, canvasH / imgH);
   var w = imgW * ratio;
   var h = imgH * ratio;
   var x = (canvasW - w) / 2;
@@ -209,8 +211,26 @@ Page({
       // 清空画布并绘制原图
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      var fit = fitImageToCanvas(img.width, img.height, CANVAS_WIDTH, CANVAS_HEIGHT);
-      ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
+      // 横图自动旋转90°（拾光tab）
+      var drawImgW = img.width;
+      var drawImgH = img.height;
+      if (tab === 'upload' && img.width > img.height) {
+        drawImgW = img.height;
+        drawImgH = img.width;
+      }
+
+      var fit = fitImageToCanvas(drawImgW, drawImgH, CANVAS_WIDTH, CANVAS_HEIGHT, tab === 'camera');
+
+      if (tab === 'upload' && img.width > img.height) {
+        // 横图：旋转90°后绘制
+        ctx.save();
+        ctx.translate(fit.x + fit.w / 2, fit.y + fit.h / 2);
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(img, -fit.h / 2, -fit.w / 2, fit.h, fit.w);
+        ctx.restore();
+      } else {
+        ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
+      }
 
       // 处理为 Film 格式并回显（对比度1.2 + 自适应抖动）
       try {
