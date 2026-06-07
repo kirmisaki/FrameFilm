@@ -114,7 +114,7 @@
 /* Canvas 容器（宝丽来风格） */
 .canvas-container {
   background: #fff;
-  padding: 40rpx 30rpx 80rpx 30rpx;
+  padding: 70rpx 50rpx 120rpx 50rpx;
   border-radius: 6rpx;
   box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.12), 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
   margin: 24rpx auto;
@@ -123,8 +123,8 @@
 }
 
 .canvas-wrap {
-  width: 480rpx;
-  height: 720rpx;
+  width: 540rpx;
+  height: 810rpx;
   overflow: hidden;
   position: relative;
   touch-action: none;
@@ -132,8 +132,8 @@
 }
 
 .film-canvas {
-  width: 480rpx;
-  height: 720rpx;
+  width: 540rpx;
+  height: 810rpx;
 }
 
 /* 文件名输入 */

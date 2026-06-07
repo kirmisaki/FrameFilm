@@ -60,4 +60,7 @@
     <text class="hint-icon">￮</text>
     <text class="hint-text">点击上方按钮搜索 FrameFilm 设备</text>
   </view>
+
+  <!-- 底部占位，防止被 tabBar 遮挡 -->
+  <view class="tab-bar-spacer"></view>
 </view>

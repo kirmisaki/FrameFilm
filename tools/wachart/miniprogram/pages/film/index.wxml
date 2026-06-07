@@ -75,4 +75,7 @@
 
   <!-- 结果信息 -->
   <view class="info-text" wx:if="{{resultText}}">{{resultText}}</view>
+
+  <!-- 底部占位，防止被 tabBar 遮挡 -->
+  <view class="tab-bar-spacer"></view>
 </view>

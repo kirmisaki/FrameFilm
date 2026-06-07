@@ -11,6 +11,11 @@ page {
   padding-bottom: 320rpx;
 }
 
+/* 底部占位，防止内容被自定义 tabBar 遮挡 */
+.tab-bar-spacer {
+  height: 160rpx;
+}
+
 /* 按钮 */
 .btn-primary {
   background-color: #000;

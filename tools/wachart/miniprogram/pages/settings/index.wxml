@@ -150,4 +150,7 @@
       </view>
     </view>
   </view>
+
+  <!-- 底部占位，防止被 tabBar 遮挡 -->
+  <view class="tab-bar-spacer"></view>
 </view>

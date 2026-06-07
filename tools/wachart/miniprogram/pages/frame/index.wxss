@@ -43,7 +43,7 @@
 /* 画布容器 - 拍立得风格 */
 .canvas-container {
   background: #fff;
-  padding: 40rpx 30rpx 80rpx 30rpx;
+  padding: 70rpx 50rpx 120rpx 50rpx;
   border-radius: 6rpx;
   box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.12), 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
   margin: 16rpx auto;
@@ -52,8 +52,8 @@
 }
 
 .canvas-wrap {
-  width: 480rpx;
-  height: 720rpx;
+  width: 540rpx;
+  height: 810rpx;
   overflow: hidden;
   position: relative;
 }
@@ -93,21 +93,21 @@
 
 .custom-input {
   width: 100%;
-  padding: 16rpx;
+  padding: 20rpx 24rpx;
   font-size: 28rpx;
   border: 2rpx solid #ddd;
   border-radius: 12rpx;
   background-color: #fff;
   box-sizing: border-box;
-}
-
-/* 抖动开关 */
+  height: 70rpx;
+}/* 抖动开关 */
 .dither-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8rpx;
-  padding: 16rpx 0;
+  padding: 0;
+  margin-top: -12rpx;
 }
 
 .dither-label {
