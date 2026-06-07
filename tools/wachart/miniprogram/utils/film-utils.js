@@ -1,6 +1,6 @@
 // Film 格式常量
-const CANVAS_WIDTH = 600;
-const CANVAS_HEIGHT = 400;
+const CANVAS_WIDTH = 400;
+const CANVAS_HEIGHT = 600;
 const FILM_SCREEN_WIDTH = 600;
 const FILM_SCREEN_HEIGHT = 400;
 const FILM_HEADER_SIZE = 32;
@@ -268,6 +268,44 @@ function applyDitherByType(imageData, type, strength) {
   }
 }
 
+// 从 400×600 竖屏画布提取 600×400 横屏数据（与原版 ForFilm 的 CSS rotate(90deg) 等效）
+function extractLandscapeData(portraitCanvas) {
+  var landscapeCanvas = wx.createOffscreenCanvas({ type: '2d', width: 600, height: 400 });
+  var ctx = landscapeCanvas.getContext('2d');
+  ctx.save();
+  ctx.translate(600, 0);
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(portraitCanvas, 0, 0, 400, 600, 0, 0, 400, 600);
+  ctx.restore();
+  return ctx.getImageData(0, 0, 600, 400);
+}
+
+// 处理图像数据为 Film 格式并旋转回 400×600 竖屏用于显示
+function processAndDisplay(portraitCanvas, portraitCtx, ditherType, ditherStrength, contrast) {
+  var landscapeData = extractLandscapeData(portraitCanvas);
+  if (contrast && contrast !== 1.0) {
+    adjustContrast(landscapeData, contrast);
+  }
+  if (ditherType) {
+    landscapeData = applyDitherByType(landscapeData, ditherType, ditherStrength || 1.0);
+  }
+  var processedData = processImageData(landscapeData);
+  var decoded = decodeProcessedData(processedData, 600, 400);
+  // 将 600×400 横屏结果旋转回 400×600 竖屏
+  var tempCanvas = wx.createOffscreenCanvas({ type: '2d', width: 600, height: 400 });
+  var tempCtx = tempCanvas.getContext('2d');
+  var imgData = tempCtx.createImageData(600, 400);
+  imgData.data.set(decoded.data);
+  tempCtx.putImageData(imgData, 0, 0);
+  portraitCtx.clearRect(0, 0, 400, 600);
+  portraitCtx.save();
+  portraitCtx.translate(0, 600);
+  portraitCtx.rotate(-Math.PI / 2);
+  portraitCtx.drawImage(tempCanvas, 0, 0, 600, 400, 0, 0, 600, 400);
+  portraitCtx.restore();
+  return processedData;
+}
+
 function processImageData(imageData) {
   const width = imageData.width, height = imageData.height;
   const data = imageData.data;
@@ -362,6 +400,8 @@ module.exports = {
   floydSteinbergDither, atkinsonDither, stuckiDither, jarvisDither,
   applyDitherByType,
   processImageData, decodeProcessedData,
+  extractLandscapeData,
+  processAndDisplay,
   generateFilmHeader,
   wrapText
 };

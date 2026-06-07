@@ -53,8 +53,8 @@ Page({
       this.canvas.width = 400;
       this.canvas.height = 600;
 
-      // 临时画布 600×400（用于图像处理）
-      this.tempCanvas = wx.createOffscreenCanvas({ type: '2d', width: 600, height: 400 });
+      // 临时画布 400×600（与显示画布一致）
+      this.tempCanvas = wx.createOffscreenCanvas({ type: '2d', width: 400, height: 600 });
       this.tempCtx = this.tempCanvas.getContext('2d');
     });
   },
@@ -77,11 +77,9 @@ Page({
           this.scale = 1;
           this.offsetX = 0;
           this.offsetY = 0;
-          // 竖图自动旋转90°，与原版ForFilm一致
-          var autoRotation = (img.height > img.width) ? 90 : 0;
           this.setData({
             hasImage: true,
-            rotation: autoRotation,
+            rotation: 0,
             ditherEnabled: false,
             ditherTypeIndex: 0,
             ditherStrength: 1.0,
@@ -104,33 +102,31 @@ Page({
   updateImage() {
     if (!this.canvas || !this.imageNode || !this.tempCanvas) return;
     const tctx = this.tempCtx;
-    const OW = 600, OH = 400;
+    const CW = 400, CH = 600; // 竖屏，与设备屏幕一致
     const img = this.imageNode;
     const rotation = this.data.rotation;
 
-    // 1. 在临时画布上绘制（600×400 横屏，无旋转）
-    tctx.clearRect(0, 0, OW, OH);
+    // 1. 在临时画布上绘制（400×600 竖屏）
+    tctx.clearRect(0, 0, CW, CH);
     tctx.fillStyle = '#ffffff';
-    tctx.fillRect(0, 0, OW, OH);
+    tctx.fillRect(0, 0, CW, CH);
 
     const radians = (rotation * Math.PI) / 180;
     const imgW = img.width;
     const imgH = img.height;
 
-    // 缩放：旋转后图片的视觉尺寸变了
+    // 计算旋转后的视觉尺寸
     var visW, visH;
     if (rotation === 90 || rotation === 270) {
       visW = imgH; visH = imgW;
-    } else if (rotation === 180) {
-      visW = imgW; visH = imgH;
     } else {
       visW = imgW; visH = imgH;
     }
-    var fitScale = Math.min(OW / visW, OH / visH) * this.scale;
+    var fitScale = Math.min(CW / visW, CH / visH) * this.scale;
     var finalW = imgW * fitScale;
     var finalH = imgH * fitScale;
-    var cx = OW / 2 + this.offsetX;
-    var cy = OH / 2 + this.offsetY;
+    var cx = CW / 2 + this.offsetX;
+    var cy = CH / 2 + this.offsetY;
 
     tctx.save();
     tctx.translate(cx, cy);
@@ -139,37 +135,24 @@ Page({
     tctx.restore();
 
     // 2. 图像处理
-    let imageData = tctx.getImageData(0, 0, OW, OH);
-
-    if (this.data.contrast !== 1.0) {
-      imageData = filmUtils.adjustContrast(imageData, this.data.contrast);
-    }
-
     if (this.data.ditherEnabled) {
-      const type = this.data.ditherTypes[this.data.ditherTypeIndex];
-      const strength = this.data.ditherStrength;
-      if (type === 'adaptive') {
-        imageData = filmUtils.floydSteinbergDither(imageData, strength);
-      } else {
-        imageData = filmUtils.applyDitherByType(imageData, type, strength);
+      // 开启抖动：Film 格式处理并回显
+      var ditherType = this.data.ditherTypes[this.data.ditherTypeIndex];
+      if (ditherType === 'adaptive') ditherType = 'floydSteinberg';
+      filmUtils.processAndDisplay(this.tempCanvas, tctx, ditherType, this.data.ditherStrength, this.data.contrast);
+    } else {
+      // 未开启抖动：仅调整对比度，显示原图
+      var imageData = tctx.getImageData(0, 0, CW, CH);
+      if (this.data.contrast !== 1.0) {
+        filmUtils.adjustContrast(imageData, this.data.contrast);
+        tctx.putImageData(imageData, 0, 0);
       }
-      // Film 格式回显
-      const processedData = filmUtils.processImageData(imageData);
-      const decoded = filmUtils.decodeProcessedData(processedData, OW, OH);
-      imageData.data.set(decoded.data);
     }
 
-    // 3. 把处理结果放回临时画布
-    tctx.putImageData(imageData, 0, 0);
-
-    // 4. 旋转绘制到显示画布（400×600 竖屏）
+    // 3. 复制到显示画布
     const dctx = this.ctx;
-    dctx.clearRect(0, 0, 400, 600);
-    dctx.save();
-    dctx.translate(0, 600);
-    dctx.rotate(-Math.PI / 2);
-    dctx.drawImage(this.tempCanvas, 0, 0, OW, OH, 0, 0, OW, OH);
-    dctx.restore();
+    dctx.clearRect(0, 0, CW, CH);
+    dctx.drawImage(this.tempCanvas, 0, 0, CW, CH, 0, 0, CW, CH);
   },
 
   toggleDither() {
@@ -375,13 +358,17 @@ Page({
     this.setData({ fileName: e.detail.value });
   },
 
+  // 从竖屏画布提取横屏 600×400 Film 数据
+  getFilmImageData() {
+    return filmUtils.extractLandscapeData(this.tempCanvas);
+  },
+
   downloadFilm() {
     if (!this.canvas || !this.imageNode) return;
 
     wx.showLoading({ title: '处理中...' });
 
-    // 直接从临时画布获取 600×400 数据
-    const imageData = this.tempCtx.getImageData(0, 0, 600, 400);
+    var imageData = this.getFilmImageData();
     const processedData = filmUtils.processImageData(imageData);
     const header = filmUtils.generateFilmHeader();
 
@@ -431,8 +418,8 @@ Page({
 
     wx.showLoading({ title: '处理中...' });
 
-    // 获取当前画布图像数据
-    const imageData = this.ctx.getImageData(0, 0, 600, 400);
+    // 从竖屏画布提取横屏 600×400 数据
+    var imageData = this.getFilmImageData();
     const processedData = filmUtils.processImageData(imageData);
     const header = filmUtils.generateFilmHeader();
 

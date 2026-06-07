@@ -198,23 +198,8 @@ Page({
       var fit = fitImageToCanvas(img.width, img.height, CANVAS_WIDTH, CANVAS_HEIGHT);
       ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
 
-      // 获取图像数据进行处理
-      var imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-      // 调整对比度
-      filmUtils.adjustContrast(imageData, 1.2);
-
-      // 应用抖动
-      filmUtils.floydSteinbergDither(imageData, 1.0);
-
-      // 处理为 film 格式
-      var processedData = filmUtils.processImageData(imageData);
-
-      // 解码显示结果
-      var decoded = filmUtils.decodeProcessedData(processedData, CANVAS_WIDTH, CANVAS_HEIGHT);
-      var newImageData = ctx.createImageData(CANVAS_WIDTH, CANVAS_HEIGHT);
-      newImageData.data.set(decoded.data);
-      ctx.putImageData(newImageData, 0, 0);
+      // 处理为 Film 格式并回显（对比度1.2 + 自适应抖动）
+      filmUtils.processAndDisplay(canvas, ctx, 'floydSteinberg', 1.0, 1.2);
 
       // 启用发送按钮
       if (tab === 'upload') {
@@ -254,8 +239,8 @@ Page({
       return;
     }
 
-    // 获取当前画布图像数据
-    var imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // 从 400×600 竖屏画布提取 600×400 横屏数据
+    var imageData = filmUtils.extractLandscapeData(canvas);
     var processedData = filmUtils.processImageData(imageData);
     var header = filmUtils.generateFilmHeader();
 
@@ -312,14 +297,10 @@ Page({
     var schemeIndex = Math.floor(Math.random() * frameColorSchemes.length);
     var scheme = frameColorSchemes[schemeIndex];
 
-    // 画布原始尺寸 600x400，旋转后绘制区域为 400x600（竖屏）
-    var drawW = CANVAS_HEIGHT; // 旋转后可见宽度 = 400
-    var drawH = CANVAS_WIDTH;  // 旋转后可见高度 = 600
+    var drawW = CANVAS_WIDTH;  // 400
+    var drawH = CANVAS_HEIGHT; // 600
 
-    // 旋转画布坐标系（竖屏绘制）
-    ctx.save();
-    ctx.translate(0, CANVAS_HEIGHT);
-    ctx.rotate(-Math.PI / 2);
+    ctx.clearRect(0, 0, drawW, drawH);
 
     // 绘制背景
     ctx.fillStyle = scheme.bg;
@@ -392,26 +373,9 @@ Page({
     var fillW = Math.max(0, (batteryLevel / 100) * (battW - 2));
     ctx.fillRect(battX + 1, battY + 1, fillW, battH - 2);
 
-    ctx.restore();
-
-    // 抖动处理
-    if (that.data.ditherChecked) {
-      var imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      filmUtils.floydSteinbergDither(imageData, 1.0);
-      var processedData = filmUtils.processImageData(imageData);
-      var decoded = filmUtils.decodeProcessedData(processedData, CANVAS_WIDTH, CANVAS_HEIGHT);
-      var newImageData = ctx.createImageData(CANVAS_WIDTH, CANVAS_HEIGHT);
-      newImageData.data.set(decoded.data);
-      ctx.putImageData(newImageData, 0, 0);
-    } else {
-      // 不抖动但仍需映射到6色
-      var imageData2 = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      var processedData2 = filmUtils.processImageData(imageData2);
-      var decoded2 = filmUtils.decodeProcessedData(processedData2, CANVAS_WIDTH, CANVAS_HEIGHT);
-      var newImageData2 = ctx.createImageData(CANVAS_WIDTH, CANVAS_HEIGHT);
-      newImageData2.data.set(decoded2.data);
-      ctx.putImageData(newImageData2, 0, 0);
-    }
+    // 抖动处理和 Film 格式回显
+    var ditherType = that.data.ditherChecked ? 'floydSteinberg' : null;
+    filmUtils.processAndDisplay(canvas, ctx, ditherType, 1.0, null);
   },
 
   // 切换自定义面板
