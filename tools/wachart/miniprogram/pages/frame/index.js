@@ -81,8 +81,13 @@ Page({
   },
 
   onShow: function () {
-    // 从后台回来时重新初始化当前 tab 的 canvas
-    this._initCurrentCanvas();
+    // 仅在画布未初始化时初始化
+    var that = this;
+    var tab = that.data.activeTab;
+    var key = tab === 'upload' ? '_canvasUpload' : tab === 'camera' ? '_canvasCamera' : '_canvasQuote';
+    if (!that[key]) {
+      that._initCurrentCanvas();
+    }
   },
 
   // 初始化当前 tab 的 canvas
@@ -103,6 +108,8 @@ Page({
   // 通用 canvas 初始化
   _initCanvas: function (selectorId, canvasKey, ctxKey) {
     var that = this;
+    // 已初始化则跳过（避免重置画布内容）
+    if (that[canvasKey]) return;
     var query = wx.createSelectorQuery();
     query.select('#' + selectorId).fields({ node: true, size: true }).exec(function (res) {
       if (!res || !res[0] || !res[0].node) return;
@@ -112,7 +119,6 @@ Page({
       canvas.height = CANVAS_HEIGHT;
       that[canvasKey] = canvas;
       that[ctxKey] = ctx;
-      // 清空画布
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     });
@@ -125,6 +131,13 @@ Page({
 
     // 如果离开 quote tab，不做特殊处理
     // 如果离开 camera tab，可以通过停止预览（此处无需停止，因为用的是 chooseMedia）
+
+    // wx:if 切换会销毁旧 canvas，清除引用以便重新初始化
+    var oldTab = this.data.activeTab;
+    if (oldTab === 'upload') { this._canvasUpload = null; this._ctxUpload = null; }
+    else if (oldTab === 'camera') { this._canvasCamera = null; this._ctxCamera = null; }
+    else if (oldTab === 'quote') { this._canvasQuote = null; this._ctxQuote = null; }
+
     this.setData({ activeTab: tab });
 
     var that = this;
@@ -190,16 +203,18 @@ Page({
 
     var img = canvas.createImage();
     img.onload = function () {
-      // 清空画布
+      // 清空画布并绘制原图
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-      // 拟合图片
       var fit = fitImageToCanvas(img.width, img.height, CANVAS_WIDTH, CANVAS_HEIGHT);
       ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
 
       // 处理为 Film 格式并回显（对比度1.2 + 自适应抖动）
-      filmUtils.processAndDisplay(canvas, ctx, 'floydSteinberg', 1.0, 1.2);
+      try {
+        filmUtils.processAndDisplay(canvas, ctx, 'floydSteinberg', 1.0, 1.2);
+      } catch (e) {
+        console.error('processAndDisplay error:', e);
+      }
 
       // 启用发送按钮
       if (tab === 'upload') {
@@ -482,13 +497,22 @@ Page({
       var totalSteps = 4; // START, NAME, LEN, DATA+STOP
       var dataSent = 0;
 
+      var lastDisplayedPct = -1;
+
       function updateProgress(extraPercent) {
-        var base = (step / totalSteps) * 100;
-        var dataPercent = totalSize > 0 ? (extraPercent / totalSize) * (100 / totalSteps) : 0;
-        var pct = Math.min(99, Math.floor(base + dataPercent));
-        var obj = {};
-        obj[progressKey] = pct;
-        that.setData(obj);
+        // 控制步骤占 5%，数据传输占 95%
+        var controlWeight = 0.05;
+        var dataWeight = 0.95;
+        var controlProgress = (step / 4) * controlWeight * 100;
+        var dataProgress = totalSize > 0 ? (extraPercent / totalSize) * dataWeight * 100 : 0;
+        var pct = Math.min(99, Math.floor(controlProgress + dataProgress));
+        // 仅在进度变化时更新 UI
+        if (pct !== lastDisplayedPct) {
+          lastDisplayedPct = pct;
+          var obj = {};
+          obj[progressKey] = pct;
+          that.setData(obj);
+        }
       }
 
       function updateStatus(msg) {
