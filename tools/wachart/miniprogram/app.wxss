@@ -8,7 +8,7 @@ page {
 
 .container {
   padding: 20rpx 30rpx;
-  padding-bottom: 40rpx;
+  padding-bottom: 160rpx;
 }
 
 /* 按钮 */

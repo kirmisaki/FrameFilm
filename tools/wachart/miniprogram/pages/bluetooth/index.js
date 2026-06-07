@@ -16,6 +16,10 @@ Page({
   _bleListener: null,
 
   onShow: function () {
+    // 设置自定义 tabBar 选中状态
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 0 });
+    }
     // 从globalData同步状态
     if (app.globalData.isConnected) {
       this.setData({

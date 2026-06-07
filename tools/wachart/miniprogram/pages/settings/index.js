@@ -28,6 +28,9 @@ Page({
   _fileListBuffer: [],
 
   onShow: function () {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 3 });
+    }
     this._syncFromGlobal();
     this._startSyncTimer();
     this._setupBleListener();

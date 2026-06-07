@@ -81,6 +81,9 @@ Page({
   },
 
   onShow: function () {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 1 });
+    }
     // 仅在画布未初始化时初始化
     var that = this;
     var tab = that.data.activeTab;
