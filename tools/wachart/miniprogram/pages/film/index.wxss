@@ -123,8 +123,8 @@
 }
 
 .canvas-wrap {
-  width: 400rpx;
-  height: 600rpx;
+  width: 540rpx;
+  height: 810rpx;
   overflow: hidden;
   position: relative;
   touch-action: none;
@@ -132,8 +132,8 @@
 }
 
 .film-canvas {
-  width: 400rpx;
-  height: 600rpx;
+  width: 540rpx;
+  height: 810rpx;
 }
 
 /* 文件名输入 */
