@@ -31,6 +31,7 @@
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
+#include "driver/gpio.h"
 
 #include "sys_log.h"
 #include "hal_bat.h"
@@ -238,6 +239,16 @@ void hal_bat_deinit(void)
         adc_handle = NULL;
     }
 
-    sys_logi(BAT_TAG, "bat deinitialized");
+    // 配置ADC引脚为高阻态，减少休眠漏电
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << GPIO_NUM_0),  // ADC_CHANNEL_0 = GPIO0
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    sys_logi(BAT_TAG, "bat deinitialized, ADC pin set to high-impedance");
 }
 

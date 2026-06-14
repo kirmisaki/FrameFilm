@@ -118,7 +118,7 @@ void hal_encoder_init(void)
         .gpio_button_config = {
             .gpio_num = ENCODER_PIN_PUSH,
             .active_level = ENCODER_BUTTON_ACTIVE_LEVEL,
-            .disable_pull = false,
+            .disable_pull = true,   // 外部已有上拉电阻，禁用内部上拉减少漏电
         },
     };
     m_encoder.btn[ENCODER_BTN_PUSH] = iot_button_create(&cfg);

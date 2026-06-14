@@ -79,18 +79,6 @@ void hal_pwr_init(void)
 {
     sys_logi(PWR_TAG, "pwr init");
 
-    if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_UNDEFINED)
-    {
-        for (gpio_num_t gpio = 0; gpio <= GPIO_NUM_21; gpio++)
-        {
-            if (rtc_gpio_is_valid_gpio(gpio))
-            {
-                rtc_gpio_hold_dis(gpio);
-            }
-        }
-        sys_logi(PWR_TAG, "RTC GPIO hold cleared after wakeup");
-    }
-
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     
     switch (wakeup_reason)
@@ -125,21 +113,6 @@ void hal_pwr_init(void)
 void hal_pwr_enter_sleep(void)
 {
     sys_logi(PWR_TAG, "Entering deep sleep");
-    
-    sys_logi(PWR_TAG, "Isolating RTC GPIOs to minimize leakage current");
-    for (gpio_num_t gpio = 0; gpio <= GPIO_NUM_21; gpio++)
-    {
-        if (gpio == WAKEUP_GPIO_NUM)
-        {
-            continue;
-        }
-        if (rtc_gpio_is_valid_gpio(gpio))
-        {
-            rtc_gpio_isolate(gpio);
-        }
-    }
-
-    sys_logi(PWR_TAG, "Enabling GPIO wakeup on GPIO %d", WAKEUP_GPIO_NUM);
     
     esp_err_t ret = esp_sleep_enable_ext0_wakeup(WAKEUP_GPIO_NUM, 0);
     if (ret != ESP_OK)
