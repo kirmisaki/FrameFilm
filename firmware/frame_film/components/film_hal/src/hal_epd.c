@@ -118,7 +118,7 @@ static void spi_init(void)
 
     spi_device_interface_config_t devcfg =
     {
-        .clock_speed_hz = 40000000, // 40MHz - ESP32-S3 max stable speed
+        .clock_speed_hz = 10000000, // 40MHz - ESP32-S3 max stable speed
         .mode = 0, // SPI mode 0
         .spics_io_num = -1, // CS pin handled manually
         .queue_size = 1
@@ -234,13 +234,14 @@ void hal_epd_init(void)
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
 
-    // Configure PWR pin as output
+    // Configure PWR pin as output, max drive strength
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pin_bit_mask = (1ULL << EPD_PWR_PIN);
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
+    gpio_set_drive_capability(EPD_PWR_PIN, GPIO_DRIVE_CAP_3);  // 40mA
 
     // Initialize SPI bus
     spi_init();
