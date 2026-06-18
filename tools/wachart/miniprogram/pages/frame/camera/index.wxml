@@ -24,12 +24,18 @@
     </view>
   </view>
 
-  <view wx:if="{{showTransfer}}" class="transfer-container">
-    <view class="transfer-status">{{transferStatus}}</view>
-    <view class="progress-bar">
-      <view class="progress-fill" style="width: {{transferProgress}}%"></view>
+  <view wx:if="{{showTransfer}}" class="transfer-overlay">
+    <view class="transfer-modal">
+      <view class="flight-area">
+        <view class="airplane {{transferProgress >= 100 ? 'airplane-done' : ''}}">✈</view>
+        <view class="flight-trail"></view>
+      </view>
+      <view class="transfer-percent">{{transferProgress}}%</view>
+      <view class="transfer-msg">{{transferStatus}}</view>
+      <view class="modal-progress-bar">
+        <view class="modal-progress-fill" style="width: {{transferProgress}}%"></view>
+      </view>
     </view>
-    <view class="transfer-progress">{{transferProgress}}%</view>
   </view>
 
   <view class="tab-bar-spacer"></view>

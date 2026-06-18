@@ -53,43 +53,111 @@
   height: 100%;
 }
 
-.transfer-container {
-  margin: 8rpx 0;
-  padding: 24rpx;
-  background-color: #f5f5f5;
-  border-radius: 16rpx;
-  border: 2rpx solid #ddd;
+/* 飞行传输弹窗 */
+.transfer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
 }
 
-.transfer-status {
+.transfer-modal {
+  width: 560rpx;
+  background: #fff;
+  border-radius: 28rpx;
+  padding: 48rpx 40rpx 36rpx;
   text-align: center;
-  font-size: 26rpx;
-  color: #333;
-  margin-bottom: 16rpx;
-  font-weight: 600;
+  animation: scaleIn 0.3s ease;
 }
 
-.progress-bar {
+.flight-area {
+  height: 110rpx;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 24rpx;
+}
+
+.airplane {
+  font-size: 72rpx;
+  color: #7a8594;
+  position: absolute;
+  top: 0;
+  animation: flyAcross 2s linear infinite;
+}
+
+.airplane-done {
+  animation: flyOut 0.6s ease forwards;
+}
+
+.flight-trail {
+  position: absolute;
+  bottom: 8rpx;
+  left: 0;
+  right: 0;
+  height: 4rpx;
+  background: linear-gradient(90deg, transparent, #ddd 20%, #ddd 80%, transparent);
+  animation: trailPulse 1.5s ease-in-out infinite;
+}
+
+.transfer-percent {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #111;
+  margin-bottom: 8rpx;
+  letter-spacing: 2rpx;
+}
+
+.transfer-msg {
+  font-size: 24rpx;
+  color: #999;
+  margin-bottom: 28rpx;
+}
+
+.modal-progress-bar {
   width: 100%;
-  height: 32rpx;
-  background-color: #e0e0e0;
-  border-radius: 16rpx;
+  height: 16rpx;
+  background-color: #f0f0f0;
+  border-radius: 8rpx;
   overflow: hidden;
 }
 
-.progress-fill {
+.modal-progress-fill {
   height: 100%;
-  background: #000;
+  background: #7a8594;
   transition: width 0.3s ease;
-  border-radius: 16rpx;
+  border-radius: 8rpx;
 }
 
-.transfer-progress {
-  text-align: center;
-  font-size: 26rpx;
-  color: #666;
-  margin-top: 12rpx;
-  font-weight: 600;
+@keyframes flyAcross {
+  0% { left: -10%; }
+  100% { left: 100%; }
+}
+
+@keyframes flyOut {
+  0% { left: 50%; opacity: 1; }
+  100% { left: 120%; opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes trailPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
 }
 
 .tab-bar-spacer {

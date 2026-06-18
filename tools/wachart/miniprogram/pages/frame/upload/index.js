@@ -218,8 +218,7 @@ Page({
       return app.sendBlePacket(bleUtils.buildFileStopPacket());
     }).then(function () {
       that.setData({ transferStatus: '传输完成！', transferProgress: 100 });
-      wx.showToast({ title: '传输完成', icon: 'success' });
-      setTimeout(function () { that.setData({ showTransfer: false }); }, 2000);
+      setTimeout(function () { that.setData({ showTransfer: false }); }, 1500);
     }).catch(function (err) {
       that.setData({ transferStatus: '传输失败：' + (err.errMsg || err.message || '未知错误') });
       console.error('BLE 传输失败:', err);
