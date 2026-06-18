@@ -5,6 +5,7 @@
     "pages/frame/upload/index",
     "pages/frame/camera/index",
     "pages/frame/quote/index",
+    "pages/frame/draw/index",
     "pages/film/index",
     "pages/settings/index"
   ],

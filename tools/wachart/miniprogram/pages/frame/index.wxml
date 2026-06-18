@@ -37,5 +37,16 @@
       <view class="feature-name">一言</view>
       <view class="feature-arrow">›</view>
     </view>
+    <view class="feature-card" bindtap="goToDraw">
+      <view class="feature-icon-area">
+        <view class="feature-icon-circle draw-bg">
+          <view class="icon-draw">
+            <view class="draw-pen">✎</view>
+          </view>
+        </view>
+      </view>
+      <view class="feature-name">绘梦</view>
+      <view class="feature-arrow">›</view>
+    </view>
   </view>
 </view>

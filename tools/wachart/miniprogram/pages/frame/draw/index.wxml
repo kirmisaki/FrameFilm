@@ -1,0 +1,122 @@
+<view class="container">
+  <!-- 画布区域 -->
+  <view class="canvas-container">
+    <view class="canvas-wrap">
+      <canvas type="2d" id="draw-canvas" class="draw-canvas"
+        bindtouchstart="onTouchStart"
+        bindtouchmove="onTouchMove"
+        bindtouchend="onTouchEnd"
+        disable-scroll="true">
+      </canvas>
+    </view>
+  </view>
+
+  <!-- 工具栏 -->
+  <view class="toolbar">
+    <view class="tool-row">
+      <view class="tool-btn {{tool === 'pen' ? 'active' : ''}}" bindtap="selectPen">
+        <text class="tool-icon">✏</text>
+      </view>
+      <view class="tool-btn {{tool === 'eraser' ? 'active' : ''}}" bindtap="selectEraser">
+        <text class="tool-icon">◯</text>
+      </view>
+      <view class="tool-btn" bindtap="clearCanvas">
+        <text class="tool-icon">✕</text>
+      </view>
+    </view>
+    <view class="size-row">
+      <text class="size-label">粗细</text>
+      <slider class="size-slider" min="1" max="50" step="1" value="{{brushSize}}" activeColor="#7a8594" bindchanging="onSizeChanging" bindchange="onSizeChange" />
+      <text class="size-value">{{brushSize}}</text>
+    </view>
+  </view>
+
+  <!-- 颜色栏 -->
+  <view class="color-bar">
+    <view wx:for="{{colors}}" wx:key="value"
+      class="color-item {{currentColor === item.value ? 'active' : ''}}"
+      style="background-color: {{item.value}}; {{item.value === '#ffffff' ? 'border: 2rpx solid #ddd;' : ''}}"
+      bindtap="selectColor"
+      data-color="{{item.value}}">
+    </view>
+    <view class="color-item color-custom" bindtap="openColorPicker">
+      <text class="custom-plus">+</text>
+    </view>
+  </view>
+
+  <!-- 操作按钮 -->
+  <view class="button-row">
+    <button class="btn-primary" bindtap="convertDither">{{converted ? '还原' : '转换'}}</button>
+    <button class="btn-primary btn-send" disabled="{{!converted}}" bindtap="sendToDevice">发送到设备</button>
+  </view>
+
+  <!-- 文件名重命名 -->
+  <view wx:if="{{converted}}" class="filename-area">
+    <view wx:if="{{!isEditingName}}" class="filename-display" bindtap="startEditName">
+      <text class="filename-label">文件名</text>
+      <text class="filename-value">{{customFileName || 'draw'}}.film</text>
+      <text class="filename-edit">修改</text>
+    </view>
+    <view wx:else class="filename-edit-row">
+      <text class="filename-label">文件名</text>
+      <input class="filename-input" value="{{customFileName}}" placeholder="draw" bindinput="onFileNameInput" bindblur="onFileNameBlur" focus="{{isEditingName}}" />
+      <text class="filename-ext">.film</text>
+    </view>
+  </view>
+
+  <!-- 飞行传输弹窗 -->
+  <view wx:if="{{showTransfer}}" class="transfer-overlay">
+    <view class="transfer-modal">
+      <view class="flight-area">
+        <view class="airplane {{transferProgress >= 100 ? 'airplane-done' : ''}}">✈</view>
+        <view class="flight-trail"></view>
+      </view>
+      <view class="transfer-percent">{{transferProgress}}%</view>
+      <view class="transfer-msg">{{transferStatus}}</view>
+      <view class="modal-progress-bar">
+        <view class="modal-progress-fill" style="width: {{transferProgress}}%"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 自定义颜色弹窗 -->
+  <view wx:if="{{showColorPicker}}" class="color-picker-overlay" bindtap="closeColorPicker">
+    <view class="color-picker-modal" catchtap="">
+      <view class="picker-title">自定义颜色</view>
+      <view class="picker-body">
+        <view class="picker-preview-area">
+          <view class="picker-preview" style="background-color: {{customColor}}"></view>
+          <text class="picker-hex">{{customColor}}</text>
+        </view>
+        <view class="picker-sliders">
+          <view class="picker-hue-row">
+            <view class="picker-hue-bar">
+              <slider class="hue-slider" min="0" max="360" value="{{hueValue}}" activeColor="transparent" bindchanging="onHueChange" />
+            </view>
+          </view>
+          <view class="picker-row">
+            <view class="picker-color-dot" style="background:#ff0000"></view>
+            <slider class="picker-slider" min="0" max="255" value="{{colorR}}" activeColor="#ff0000" backgroundColor="#ffcccc" bindchanging="onColorRChange" />
+            <text class="picker-val">{{colorR}}</text>
+          </view>
+          <view class="picker-row">
+            <view class="picker-color-dot" style="background:#00aa00"></view>
+            <slider class="picker-slider" min="0" max="255" value="{{colorG}}" activeColor="#00aa00" background-color="#ccffcc" bindchanging="onColorGChange" />
+            <text class="picker-val">{{colorG}}</text>
+          </view>
+          <view class="picker-row">
+            <view class="picker-color-dot" style="background:#0000ff"></view>
+            <slider class="picker-slider" min="0" max="255" value="{{colorB}}" activeColor="#0000ff" background-color="#ccccff" bindchanging="onColorBChange" />
+            <text class="picker-val">{{colorB}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="picker-buttons">
+        <button class="btn-cancel" bindtap="closeColorPicker">取消</button>
+        <button class="btn-confirm" bindtap="applyCustomColor">确定</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>

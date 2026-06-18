@@ -19,4 +19,8 @@ Page({
   goToQuote: function () {
     wx.navigateTo({ url: '/pages/frame/quote/index' });
   },
+
+  goToDraw: function () {
+    wx.navigateTo({ url: '/pages/frame/draw/index' });
+  },
 });
