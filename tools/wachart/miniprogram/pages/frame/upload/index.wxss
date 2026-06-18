@@ -1,0 +1,159 @@
+.container {
+  padding: 20rpx 30rpx;
+}
+
+.btn-primary {
+  background-color: #000;
+  color: white;
+  padding: 24rpx 48rpx;
+  border: none;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  width: 100%;
+  margin: 0;
+}
+
+.btn-primary[disabled] {
+  background-color: #ccc;
+  color: #999;
+}
+
+.button-row {
+  display: flex;
+  gap: 16rpx;
+  max-width: 668rpx;
+  margin: 40rpx auto 0;
+}
+
+.button-row .btn-primary {
+  flex: 1;
+}
+
+.canvas-container {
+  background: #fff;
+  padding: 60rpx 40rpx 100rpx 40rpx;
+  border-radius: 6rpx;
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.12), 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
+  margin: 40rpx auto 0;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.canvas-wrap {
+  width: 600rpx;
+  height: 900rpx;
+  overflow: hidden;
+  position: relative;
+  border: 2rpx solid #e0e0e0;
+}
+
+.preview-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.transfer-container {
+  margin: 8rpx 0;
+  padding: 24rpx;
+  background-color: #f5f5f5;
+  border-radius: 16rpx;
+  border: 2rpx solid #ddd;
+}
+
+.transfer-status {
+  text-align: center;
+  font-size: 26rpx;
+  color: #333;
+  margin-bottom: 16rpx;
+  font-weight: 600;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 32rpx;
+  background-color: #e0e0e0;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #000;
+  transition: width 0.3s ease;
+  border-radius: 16rpx;
+}
+
+.transfer-progress {
+  text-align: center;
+  font-size: 26rpx;
+  color: #666;
+  margin-top: 12rpx;
+  font-weight: 600;
+}
+
+.tab-bar-spacer {
+  height: 160rpx;
+}
+
+/* 文件名重命名 */
+.filename-area {
+  max-width: 668rpx;
+  margin: 12rpx auto 0;
+}
+
+.filename-display {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 20rpx;
+  background-color: #f8f8f8;
+  border-radius: 12rpx;
+}
+
+.filename-label {
+  font-size: 24rpx;
+  color: #bbb;
+  flex-shrink: 0;
+}
+
+.filename-value {
+  flex: 1;
+  font-size: 24rpx;
+  color: #999;
+}
+
+.filename-edit {
+  font-size: 22rpx;
+  color: #aaa;
+  padding: 4rpx 16rpx;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 8rpx;
+  flex-shrink: 0;
+}
+
+.filename-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 20rpx;
+  background-color: #f8f8f8;
+  border-radius: 12rpx;
+}
+
+.filename-input {
+  flex: 1;
+  font-size: 24rpx;
+  color: #666;
+  background: #fff;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 8rpx;
+  padding: 8rpx 12rpx;
+  min-width: 0;
+}
+
+.filename-ext {
+  font-size: 24rpx;
+  color: #bbb;
+  flex-shrink: 0;
+}

@@ -1,0 +1,36 @@
+<view class="container">
+  <view class="quote-controls">
+    <button class="btn-secondary" bindtap="fetchQuote">换一句</button>
+    <button class="btn-secondary" bindtap="toggleCustomPanel">自定义</button>
+  </view>
+
+  <!-- 自定义面板 -->
+  <view wx:if="{{showCustomPanel}}" class="custom-panel">
+    <textarea class="custom-textarea" placeholder="输入自定义文字" value="{{customQuoteText}}" bindinput="onCustomQuoteInput" maxlength="200" auto-height></textarea>
+    <input class="custom-input" placeholder="输入作者" value="{{customQuoteAuthor}}" bindinput="onCustomAuthorInput" maxlength="20" />
+    <button class="btn-secondary" bindtap="generateCustomQuote">生成</button>
+  </view>
+
+  <view class="canvas-container">
+    <view class="canvas-wrap">
+      <canvas type="2d" id="canvas-quote" class="preview-canvas"></canvas>
+    </view>
+  </view>
+
+  <button class="btn-primary" bindtap="sendToDevice">发送到设备</button>
+
+  <view class="dither-toggle">
+    <checkbox checked="{{ditherChecked}}" bindtap="toggleDither" color="#000" style="transform: scale(0.7);"></checkbox>
+    <text class="dither-label">启用抖动处理</text>
+  </view>
+
+  <view wx:if="{{showTransfer}}" class="transfer-container">
+    <view class="transfer-status">{{transferStatus}}</view>
+    <view class="progress-bar">
+      <view class="progress-fill" style="width: {{transferProgress}}%"></view>
+    </view>
+    <view class="transfer-progress">{{transferProgress}}%</view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>

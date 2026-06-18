@@ -1,156 +1,164 @@
-/* frame/index.wxss */
-
+/* Frame 主页面 - 功能入口列表 */
 .container {
-  padding: 20rpx 30rpx;
-  padding-bottom: 40rpx;
+  padding: 30rpx;
 }
 
-/* Tab 内容区 */
-.tab-content {
+.feature-list {
   display: flex;
   flex-direction: column;
-  gap: 24rpx;
+  gap: 20rpx;
 }
 
-/* 按钮样式 */
-.btn-primary {
-  background-color: #000;
-  color: white;
-  padding: 24rpx 48rpx;
-  border: none;
-  border-radius: 16rpx;
-  font-size: 30rpx;
-  font-weight: 600;
-  width: 100%;
-  margin: 0;
-}
-
-.btn-primary[disabled] {
-  background-color: #ccc;
-  color: #999;
-}
-
-.btn-secondary {
-  background-color: #f0f0f0;
-  color: #333;
-  padding: 16rpx 32rpx;
-  border: 2rpx solid #ddd;
-  border-radius: 12rpx;
-  font-size: 28rpx;
-  flex: 1;
-}
-
-/* 画布容器 - 拍立得风格 */
-.canvas-container {
-  background: #fff;
-  padding: 70rpx 50rpx 120rpx 50rpx;
-  border-radius: 6rpx;
-  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.12), 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
-  margin: 16rpx auto;
-  width: fit-content;
-  max-width: 100%;
-}
-
-.canvas-wrap {
-  width: 540rpx;
-  height: 810rpx;
-  overflow: hidden;
-  position: relative;
-}
-
-.preview-canvas {
-  width: 100%;
-  height: 100%;
-}
-
-/* 语录控制区 */
-.quote-controls {
+.feature-card {
   display: flex;
-  gap: 16rpx;
-}
-
-/* 自定义面板 */
-.custom-panel {
-  background-color: #f8f9fa;
-  border-radius: 16rpx;
-  padding: 24rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-  border: 2rpx solid #e9ecef;
-}
-
-.custom-textarea {
-  width: 100%;
-  min-height: 120rpx;
-  padding: 16rpx;
-  font-size: 28rpx;
-  border: 2rpx solid #ddd;
-  border-radius: 12rpx;
+  align-items: center;
+  padding: 30rpx 36rpx;
   background-color: #fff;
-  box-sizing: border-box;
+  border-radius: 20rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
+  transition: transform 0.15s ease;
 }
 
-.custom-input {
-  width: 100%;
-  padding: 20rpx 24rpx;
-  font-size: 28rpx;
-  border: 2rpx solid #ddd;
-  border-radius: 12rpx;
-  background-color: #fff;
-  box-sizing: border-box;
-  height: 70rpx;
-}/* 抖动开关 */
-.dither-toggle {
+.feature-card:active {
+  transform: scale(0.98);
+}
+
+/* 图标区域 */
+.feature-icon-area {
+  margin-right: 36rpx;
+  flex-shrink: 0;
+}
+
+.feature-icon-circle {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 24rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8rpx;
-  padding: 0;
-  margin-top: -12rpx;
-}
-
-.dither-label {
-  font-size: 24rpx;
-  color: #999;
-}
-
-/* 传输进度 */
-.transfer-container {
-  margin: 8rpx 0;
-  padding: 24rpx;
-  background-color: #f5f5f5;
-  border-radius: 16rpx;
-  border: 2rpx solid #ddd;
-}
-
-.transfer-status {
-  text-align: center;
-  font-size: 26rpx;
-  color: #333;
-  margin-bottom: 16rpx;
-  font-weight: 600;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 32rpx;
-  background-color: #e0e0e0;
-  border-radius: 16rpx;
   overflow: hidden;
 }
 
-.progress-fill {
-  height: 100%;
-  background: #000;
-  transition: width 0.3s ease;
-  border-radius: 16rpx;
+/* 莫兰迪色系背景 */
+.upload-bg {
+  background: linear-gradient(135deg, #8b7d78, #a3938e);
 }
 
-.transfer-progress {
-  text-align: center;
-  font-size: 26rpx;
-  color: #666;
-  margin-top: 12rpx;
+.camera-bg {
+  background: linear-gradient(135deg, #7a8b7a, #95a895);
+}
+
+.quote-bg {
+  background: linear-gradient(135deg, #7a8594, #94a0b0);
+}
+
+/* 相册图标 */
+.icon-album {
+  width: 40rpx;
+  height: 34rpx;
+  position: relative;
+}
+
+.album-body {
+  width: 40rpx;
+  height: 30rpx;
+  border: 3rpx solid rgba(255,255,255,0.9);
+  border-radius: 4rpx;
+  position: absolute;
+  bottom: 0;
+  box-sizing: border-box;
+}
+
+.album-mountain {
+  width: 0;
+  height: 0;
+  border-left: 10rpx solid transparent;
+  border-right: 10rpx solid transparent;
+  border-bottom: 12rpx solid rgba(255,255,255,0.7);
+  position: absolute;
+  left: 4rpx;
+  bottom: 6rpx;
+}
+
+.album-sun {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.8);
+  position: absolute;
+  right: 6rpx;
+  top: 4rpx;
+}
+
+/* 相机图标 */
+.icon-camera {
+  width: 44rpx;
+  height: 32rpx;
+  position: relative;
+}
+
+.cam-body {
+  width: 44rpx;
+  height: 28rpx;
+  border: 3rpx solid rgba(255,255,255,0.9);
+  border-radius: 6rpx;
+  position: absolute;
+  bottom: 0;
+  box-sizing: border-box;
+}
+
+.cam-lens {
+  width: 16rpx;
+  height: 16rpx;
+  border: 3rpx solid rgba(255,255,255,0.9);
+  border-radius: 50%;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+}
+
+.cam-flash {
+  width: 12rpx;
+  height: 6rpx;
+  border-radius: 2rpx;
+  background: rgba(255,255,255,0.7);
+  position: absolute;
+  left: 8rpx;
+  top: -2rpx;
+}
+
+/* 引号图标 */
+.icon-quote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.quote-mark {
+  font-size: 56rpx;
+  color: rgba(255,255,255,0.9);
+  font-weight: 700;
+  font-family: Georgia, serif;
+  line-height: 1;
+}
+
+/* 文字 */
+.feature-name {
+  flex: 1;
+  font-size: 32rpx;
   font-weight: 600;
+  color: #111;
+  letter-spacing: 2rpx;
+}
+
+.feature-arrow {
+  font-size: 44rpx;
+  color: #ccc;
+  font-weight: 300;
+  line-height: 1;
+  flex-shrink: 0;
 }

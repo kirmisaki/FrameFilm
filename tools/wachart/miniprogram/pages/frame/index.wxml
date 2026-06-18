@@ -1,96 +1,41 @@
-<!-- frame/index.wxml -->
 <view class="container">
-  <!-- Tab 栏 -->
-  <view class="frame-tabs">
-    <view class="frame-tab {{activeTab === 'upload' ? 'active' : ''}}" data-tab="upload" bindtap="switchTab">
-      <text>拾光</text>
+  <view class="feature-list">
+    <view class="feature-card" bindtap="goToUpload">
+      <view class="feature-icon-area">
+        <view class="feature-icon-circle upload-bg">
+          <view class="icon-album">
+            <view class="album-body"></view>
+            <view class="album-mountain"></view>
+            <view class="album-sun"></view>
+          </view>
+        </view>
+      </view>
+      <view class="feature-name">拾光</view>
+      <view class="feature-arrow">›</view>
     </view>
-    <view class="frame-tab {{activeTab === 'camera' ? 'active' : ''}}" data-tab="camera" bindtap="switchTab">
-      <text>定影</text>
+    <view class="feature-card" bindtap="goToCamera">
+      <view class="feature-icon-area">
+        <view class="feature-icon-circle camera-bg">
+          <view class="icon-camera">
+            <view class="cam-body"></view>
+            <view class="cam-lens"></view>
+            <view class="cam-flash"></view>
+          </view>
+        </view>
+      </view>
+      <view class="feature-name">定影</view>
+      <view class="feature-arrow">›</view>
     </view>
-    <view class="frame-tab {{activeTab === 'quote' ? 'active' : ''}}" data-tab="quote" bindtap="switchTab">
-      <text>一言</text>
+    <view class="feature-card" bindtap="goToQuote">
+      <view class="feature-icon-area">
+        <view class="feature-icon-circle quote-bg">
+          <view class="icon-quote">
+            <view class="quote-mark">"</view>
+          </view>
+        </view>
+      </view>
+      <view class="feature-name">一言</view>
+      <view class="feature-arrow">›</view>
     </view>
   </view>
-
-  <!-- Tab 1: 拾光 - 相册上传 -->
-  <view wx:if="{{activeTab === 'upload'}}" class="tab-content">
-    <button class="btn-primary" bindtap="chooseImage">从相册选择</button>
-
-    <view class="canvas-container">
-      <view class="canvas-wrap">
-        <canvas type="2d" id="canvas-upload" class="preview-canvas"></canvas>
-      </view>
-    </view>
-
-    <button class="btn-primary" disabled="{{sendDisabled}}" bindtap="sendUploadToDevice">发送到设备</button>
-
-    <view wx:if="{{showTransferUpload}}" class="transfer-container">
-      <view class="transfer-status">{{transferStatusUpload}}</view>
-      <view class="progress-bar">
-        <view class="progress-fill" style="width: {{transferProgressUpload}}%"></view>
-      </view>
-      <view class="transfer-progress">{{transferProgressUpload}}%</view>
-    </view>
-  </view>
-
-  <!-- Tab 2: 定影 - 拍照 -->
-  <view wx:if="{{activeTab === 'camera'}}" class="tab-content">
-    <button class="btn-primary" bindtap="openCamera">拍照</button>
-
-    <view class="canvas-container">
-      <view class="canvas-wrap">
-        <canvas type="2d" id="canvas-camera" class="preview-canvas"></canvas>
-      </view>
-    </view>
-
-    <button class="btn-primary" disabled="{{sendDisabledCamera}}" bindtap="sendCameraToDevice">发送到设备</button>
-
-    <view wx:if="{{showTransferCamera}}" class="transfer-container">
-      <view class="transfer-status">{{transferStatusCamera}}</view>
-      <view class="progress-bar">
-        <view class="progress-fill" style="width: {{transferProgressCamera}}%"></view>
-      </view>
-      <view class="transfer-progress">{{transferProgressCamera}}%</view>
-    </view>
-  </view>
-
-  <!-- Tab 3: 一言 - 语录 -->
-  <view wx:if="{{activeTab === 'quote'}}" class="tab-content">
-    <view class="quote-controls">
-      <button class="btn-secondary" bindtap="fetchQuote">换一句</button>
-      <button class="btn-secondary" bindtap="toggleCustomPanel">自定义</button>
-    </view>
-
-    <!-- 自定义面板 -->
-    <view wx:if="{{showCustomPanel}}" class="custom-panel">
-      <textarea class="custom-textarea" placeholder="输入自定义文字" value="{{customQuoteText}}" bindinput="onCustomQuoteInput" maxlength="200" auto-height></textarea>
-      <input class="custom-input" placeholder="输入作者" value="{{customQuoteAuthor}}" bindinput="onCustomAuthorInput" maxlength="20" />
-      <button class="btn-secondary" bindtap="generateCustomQuote">生成</button>
-    </view>
-
-    <view class="canvas-container">
-      <view class="canvas-wrap">
-        <canvas type="2d" id="canvas-quote" class="preview-canvas"></canvas>
-      </view>
-    </view>
-
-    <button class="btn-primary" bindtap="sendQuoteToDevice">发送到设备</button>
-
-    <view class="dither-toggle">
-      <checkbox checked="{{ditherChecked}}" bindtap="toggleDither" color="#000" style="transform: scale(0.7);"></checkbox>
-      <text class="dither-label">启用抖动处理</text>
-    </view>
-
-    <view wx:if="{{showTransferQuote}}" class="transfer-container">
-      <view class="transfer-status">{{transferStatusQuote}}</view>
-      <view class="progress-bar">
-        <view class="progress-fill" style="width: {{transferProgressQuote}}%"></view>
-      </view>
-      <view class="transfer-progress">{{transferProgressQuote}}%</view>
-    </view>
-  </view>
-
-  <!-- 底部占位，防止被 tabBar 遮挡 -->
-  <view class="tab-bar-spacer"></view>
 </view>

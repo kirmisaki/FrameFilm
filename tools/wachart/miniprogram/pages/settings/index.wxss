@@ -231,6 +231,12 @@
   margin-bottom: 24rpx;
 }
 
+.button-row button {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+
 /* 模式选择 */
 .mode-section {
   margin-top: 24rpx;

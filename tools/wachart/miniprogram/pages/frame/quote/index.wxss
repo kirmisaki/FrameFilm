@@ -1,0 +1,141 @@
+.container {
+  padding: 20rpx 30rpx;
+}
+
+.btn-primary {
+  background-color: #000;
+  color: white;
+  padding: 24rpx 48rpx;
+  border: none;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  width: 100%;
+  margin: 0;
+}
+
+.btn-secondary {
+  background-color: #f0f0f0;
+  color: #333;
+  padding: 16rpx 32rpx;
+  border: 2rpx solid #ddd;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  flex: 1;
+}
+
+.quote-controls {
+  display: flex;
+  gap: 16rpx;
+}
+
+.custom-panel {
+  background-color: #f8f9fa;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  border: 2rpx solid #e9ecef;
+}
+
+.custom-textarea {
+  width: 100%;
+  min-height: 120rpx;
+  padding: 16rpx;
+  font-size: 28rpx;
+  border: 2rpx solid #ddd;
+  border-radius: 12rpx;
+  background-color: #fff;
+  box-sizing: border-box;
+}
+
+.custom-input {
+  width: 100%;
+  padding: 20rpx 24rpx;
+  font-size: 28rpx;
+  border: 2rpx solid #ddd;
+  border-radius: 12rpx;
+  background-color: #fff;
+  box-sizing: border-box;
+  height: 100rpx;
+}
+
+.canvas-container {
+  background: #fff;
+  padding: 60rpx 40rpx 100rpx 40rpx;
+  border-radius: 6rpx;
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.12), 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
+  margin: 16rpx auto;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.canvas-wrap {
+  width: 600rpx;
+  height: 900rpx;
+  overflow: hidden;
+  position: relative;
+  border: 2rpx solid #e0e0e0;
+}
+
+.preview-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.dither-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 12rpx 0;
+}
+
+.dither-label {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.transfer-container {
+  margin: 8rpx 0;
+  padding: 24rpx;
+  background-color: #f5f5f5;
+  border-radius: 16rpx;
+  border: 2rpx solid #ddd;
+}
+
+.transfer-status {
+  text-align: center;
+  font-size: 26rpx;
+  color: #333;
+  margin-bottom: 16rpx;
+  font-weight: 600;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 32rpx;
+  background-color: #e0e0e0;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #000;
+  transition: width 0.3s ease;
+  border-radius: 16rpx;
+}
+
+.transfer-progress {
+  text-align: center;
+  font-size: 26rpx;
+  color: #666;
+  margin-top: 12rpx;
+  font-weight: 600;
+}
+
+.tab-bar-spacer {
+  height: 160rpx;
+}

@@ -2,6 +2,9 @@
   "pages": [
     "pages/bluetooth/index",
     "pages/frame/index",
+    "pages/frame/upload/index",
+    "pages/frame/camera/index",
+    "pages/frame/quote/index",
     "pages/film/index",
     "pages/settings/index"
   ],
