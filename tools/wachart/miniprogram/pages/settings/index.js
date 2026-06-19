@@ -63,10 +63,10 @@ Page({
       updates.wakeDuration = g.wakeDuration;
       updates.wakeDurationText = bleUtils.formatDuration(g.wakeDuration);
     }
-    // fileList 同步
+    // fileList 同步 - 直接使用拷贝避免引用共享
     var globalList = g.fileList || [];
-    if (JSON.stringify(this.data.fileList) !== JSON.stringify(globalList)) {
-      updates.fileList = globalList;
+    if (this.data.fileList.length !== globalList.length) {
+      updates.fileList = globalList.slice();
     }
     if (Object.keys(updates).length > 0) {
       this.setData(updates);
@@ -215,10 +215,9 @@ Page({
   // 文件管理
   refreshFileList: function () {
     var that = this;
-    that._fileListBuffer = [];
-    that.setData({ fileList: [] });
-    app.globalData.fileList = [];
     that.debugLog('刷新文件列表...', 'info');
+    app.globalData.fileList = [];
+    that.setData({ fileList: [] });
     app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_LIST, null).then(function () {
       that.debugLog('文件列表请求已发送', 'success');
       // 防抖：等待文件列表接收完成后再查询显示状态

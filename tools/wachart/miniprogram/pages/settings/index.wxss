@@ -124,7 +124,7 @@
 
 /* 文件列表 */
 .file-list {
-  max-height: 300rpx;
+  max-height: 600rpx;
   overflow-y: auto;
   border: 2rpx solid #e0e0e0;
   border-radius: 16rpx;
