@@ -71,7 +71,17 @@ Page({
   _syncFromGlobal: function () {
     var g = app.globalData;
     var updates = {};
-    if (this.data.isConnected !== g.isConnected) updates.isConnected = g.isConnected;
+    if (this.data.isConnected !== g.isConnected) {
+      updates.isConnected = g.isConnected;
+      // 断开连接时重置 OTA 升级状态
+      if (!g.isConnected) {
+        updates.otaFileName = '';
+        updates.otaFileData = null;
+        updates.showOtaTransfer = false;
+        updates.otaTransferStatus = '';
+        updates.otaTransferProgress = 0;
+      }
+    }
     if (this.data.batteryLevel !== g.batteryLevel) {
       updates.batteryLevel = g.batteryLevel;
       updates.batteryFillWidth = Math.round((g.batteryLevel / 100) * 46);
@@ -528,7 +538,7 @@ Page({
     });
     that.debugLog('开始 OTA 升级，总大小: ' + totalSize + ' 字节，分 ' + totalChunks + ' 包', 'info');
 
-    // 1. 发送 OTA_LEN
+    // 1. 发送 OTA_LEN（固件端会自动进入 OTA 模式，无需再发 OTA_START）
     var lenPacket = new Uint8Array(8);
     lenPacket[0] = bleUtils.BLE_CMD_HEAD;
     lenPacket[1] = bleUtils.BLE_FILM_TRANS_CH_OTA_LEN;
@@ -540,10 +550,13 @@ Page({
     lenPacket[7] = bleUtils.calculateChecksum(lenPacket, 7);
 
     app.sendBlePacket(lenPacket).then(function () {
-      that.debugLog('OTA_LEN 已发送', 'success');
-      return app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_OTA_START, null);
+      that.debugLog('OTA_LEN 已发送，等待设备初始化...', 'info');
+      that.setData({ otaTransferStatus: '初始化中...' });
+      return new Promise(function (resolve) {
+        setTimeout(resolve, 5000);
+      });
     }).then(function () {
-      that.debugLog('OTA_START 已发送，开始传输数据...', 'info');
+      that.debugLog('开始传输数据...', 'info');
       that.setData({ otaTransferStatus: '传输中...' });
       return that._sendOtaChunks(otaData, chunkSize, totalChunks);
     }).then(function () {
@@ -592,7 +605,9 @@ Page({
           });
           that.debugLog('OTA 进度: ' + progress + '% (' + index + '/' + totalChunks + ')', 'info');
         }
-        return sendNext();
+        return new Promise(function (resolve) {
+          setTimeout(function () { resolve(sendNext()); }, 2);
+        });
       });
     }
 
