@@ -435,7 +435,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
 
                 service_ble_send_notify_data(BLE_NOTIFY_SEND_CH1, cmd_buf, 6 + name_len);
 
-                vTaskDelay(15 / portTICK_PERIOD_MS);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
             }
 
             vPortFree(cmd_buf);
