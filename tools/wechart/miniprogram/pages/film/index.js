@@ -102,7 +102,7 @@ Page({
     });
   },
 
-  updateImage() {
+  _drawToCanvas() {
     if (!this.canvas || !this.imageNode || !this.tempCanvas) return;
     const tctx = this.tempCtx;
     const CW = 400, CH = 600; // 竖屏，与设备屏幕一致
@@ -136,8 +136,25 @@ Page({
     tctx.rotate(radians);
     tctx.drawImage(img, -finalW / 2, -finalH / 2, finalW, finalH);
     tctx.restore();
+  },
 
-    // 2. 图像处理
+  // 只画原图不处理，用于拖动缩放时保持流畅
+  _quickDraw() {
+    this._drawToCanvas();
+    const dctx = this.ctx;
+    dctx.clearRect(0, 0, 400, 600);
+    dctx.drawImage(this.tempCanvas, 0, 0, 400, 600, 0, 0, 400, 600);
+  },
+
+  // 完整处理：绘图 + 抖动算法
+  updateImage() {
+    this._drawToCanvas();
+    this._applyProcessing();
+  },
+
+  _applyProcessing() {
+    const tctx = this.tempCtx;
+    const CW = 400, CH = 600;
     if (this.data.ditherEnabled) {
       var ditherType = this.data.ditherTypes[this.data.ditherTypeIndex];
       filmUtils.processAndDisplay(this.tempCanvas, tctx, ditherType, this.data.ditherStrength, this.data.contrast);
@@ -317,6 +334,7 @@ Page({
   },
 
   onTouchStart(e) {
+    if (this.data.ditherEnabled) return;
     if (e.touches.length === 1) {
       this._touchStartX = e.touches[0].clientX;
       this._touchStartY = e.touches[0].clientY;
@@ -333,26 +351,29 @@ Page({
   },
 
   onTouchMove(e) {
+    if (this.data.ditherEnabled) return;
     if (e.touches.length === 1 && !this._isPinching) {
       const dx = e.touches[0].clientX - this._touchStartX;
       const dy = e.touches[0].clientY - this._touchStartY;
       this.offsetX = this._startOffsetX + dx * 0.5;
       this.offsetY = this._startOffsetY + dy * 0.5;
-      this.updateImage();
+      this._quickDraw();
     } else if (e.touches.length === 2 && this._isPinching) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const scaleChange = dist / this._startDist;
       this.scale = Math.max(0.1, Math.min(5, this._startScale * scaleChange));
-      this.updateImage();
+      this._quickDraw();
     }
   },
 
   onTouchEnd(e) {
+    if (this.data.ditherEnabled) return;
     if (e.touches.length < 2) {
       this._isPinching = false;
     }
+    this._applyProcessing();
   },
 
   onFileNameInput(e) {
