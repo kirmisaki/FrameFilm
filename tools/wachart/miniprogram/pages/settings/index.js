@@ -2,6 +2,25 @@ const bleUtils = require('../../utils/ble-utils');
 const app = getApp();
 
 Page({
+  // 唤醒时长点位：60分钟前每10分钟一档，之后每60分钟一档
+  _wakePoints: (function () {
+    var pts = [];
+    for (var i = 10; i <= 60; i += 10) pts.push(i);
+    for (var i = 120; i <= 2880; i += 60) pts.push(i);
+    return pts;
+  })(),
+
+  _durationToIndex: function (minutes) {
+    var pts = this._wakePoints;
+    var best = 0;
+    var diff = Math.abs(pts[0] - minutes);
+    for (var i = 1; i < pts.length; i++) {
+      var d = Math.abs(pts[i] - minutes);
+      if (d < diff) { diff = d; best = i; }
+    }
+    return best;
+  },
+
   data: {
     isConnected: false,
     batteryLevel: 0,
@@ -13,6 +32,8 @@ Page({
     sleepOnOff: false,
     autoWakeMode: false,
     wakeDuration: 60,
+    wakeIndex: 5,  // 初始60分钟 = 第5个点
+    wakeMaxIndex: 52,  // 最后一个点的索引
     wakeDurationText: '1小时',
     showDebug: false,
     debugLogs: [],
@@ -61,6 +82,7 @@ Page({
     if (this.data.autoWakeMode !== g.autoWakeMode) updates.autoWakeMode = !!g.autoWakeMode;
     if (this.data.wakeDuration !== g.wakeDuration) {
       updates.wakeDuration = g.wakeDuration;
+      updates.wakeIndex = this._durationToIndex(g.wakeDuration);
       updates.wakeDurationText = bleUtils.formatDuration(g.wakeDuration);
     }
     // fileList 同步 - 直接使用拷贝避免引用共享
@@ -172,7 +194,11 @@ Page({
         if (cmdLen >= 2) {
           var minutes = (data[3] << 8) | data[4];
           var text = bleUtils.formatDuration(minutes);
-          this.setData({ wakeDuration: minutes, wakeDurationText: text });
+          this.setData({
+            wakeDuration: minutes,
+            wakeIndex: this._durationToIndex(minutes),
+            wakeDurationText: text
+          });
           app.globalData.wakeDuration = minutes;
           this.debugLog('唤醒时长: ' + text, 'success');
         }
@@ -332,12 +358,13 @@ Page({
   onSleepSwitchChange: function (e) {
     var that = this;
     var val = e.detail.value ? 1 : 0;
+    app.globalData.sleepOnOff = val;
     that.debugLog('休眠开关: ' + (val ? '开启' : '关闭'), 'info');
     app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF, val).then(function () {
       that.debugLog('休眠开关已设置', 'success');
       setTimeout(function () {
         app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET, null);
-      }, 300);
+      }, 500);
     }).catch(function (err) {
       that.debugLog('设置失败: ' + JSON.stringify(err), 'error');
     });
@@ -346,29 +373,43 @@ Page({
   onAutoWakeSwitchChange: function (e) {
     var that = this;
     var val = e.detail.value ? 1 : 0;
+    app.globalData.autoWakeMode = val;
     that.debugLog('自动唤醒: ' + (val ? '开启' : '关闭'), 'info');
     app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_SLEEPMODE, val).then(function () {
       that.debugLog('自动唤醒已设置', 'success');
       setTimeout(function () {
         app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET, null);
-      }, 300);
+      }, 500);
     }).catch(function (err) {
       that.debugLog('设置失败: ' + JSON.stringify(err), 'error');
     });
   },
 
-  // 滑块拖动时实时更新显示
-  onWakeDurationChanging: function (e) {
-    var minutes = e.detail.value;
-    var text = bleUtils.formatDuration(minutes);
-    this.setData({ wakeDuration: minutes, wakeDurationText: text });
+  // 唤醒时长滑块（固定点位数组）
+  onWakeChanging: function (e) {
+    var idx = e.detail.value;
+    var pts = this._wakePoints;
+    var minutes = pts[idx];
+    this.setData({
+      wakeIndex: idx,
+      wakeDuration: minutes,
+      wakeDurationText: bleUtils.formatDuration(minutes)
+    });
   },
 
-  onWakeDurationChange: function (e) {
+  onWakeChange: function (e) {
     var that = this;
-    var minutes = e.detail.value;
+    var idx = e.detail.value;
+    var pts = that._wakePoints;
+    var minutes = pts[idx];
     var text = bleUtils.formatDuration(minutes);
-    that.setData({ wakeDuration: minutes, wakeDurationText: text });
+    that.setData({
+      wakeIndex: idx,
+      wakeDuration: minutes,
+      wakeDurationText: text
+    });
+    // 立即更新 globalData，防止 _syncFromGlobal 用旧值覆盖
+    app.globalData.wakeDuration = minutes;
     that.debugLog('唤醒时长: ' + text + ' (' + minutes + '分钟)', 'info');
     var packet = bleUtils.buildSleepTimePacket(minutes);
     app.sendBlePacket(packet).then(function () {

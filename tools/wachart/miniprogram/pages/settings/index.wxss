@@ -287,8 +287,6 @@
 /* 唤醒时长 */
 .wake-duration-item {
   margin-top: 16rpx;
-  padding-top: 16rpx;
-  border-top: 2rpx solid #f0f0f0;
 }
 
 .wake-slider-row {

@@ -79,13 +79,13 @@
         <view class="wake-slider-row">
           <text class="wake-min">10分钟</text>
           <slider
-            min="10"
-            max="2880"
-            step="10"
-            value="{{wakeDuration}}"
+            min="0"
+            max="{{wakeMaxIndex}}"
+            step="1"
+            value="{{wakeIndex}}"
             activeColor="#4CAF50"
-            bindchanging="onWakeDurationChanging"
-            bindchange="onWakeDurationChange"
+            bindchanging="onWakeChanging"
+            bindchange="onWakeChange"
           />
           <text class="wake-max">48小时</text>
         </view>
