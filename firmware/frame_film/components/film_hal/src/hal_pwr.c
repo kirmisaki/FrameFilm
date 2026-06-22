@@ -41,7 +41,7 @@
  */
 #define PWR_TAG                 "HAL_PWR"
 
-#define WAKEUP_GPIO_NUM         (9)
+#define WAKEUP_GPIO_NUM         (5)
 #define WAKEUP_GPIO_LEVEL       (0)
 
 #define PERI_PWR_PIN            GPIO_NUM_21     //外设供电管脚
