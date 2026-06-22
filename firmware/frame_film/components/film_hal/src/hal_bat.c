@@ -32,6 +32,8 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "sys_log.h"
 #include "hal_bat.h"
@@ -44,6 +46,10 @@
 #define BAT_VOL_MAX         (4140)    //最大电压
 #define BAT_VOL_MIN         (3300)    //最小电压
 #define VOLTAGE_LEVEL_COUNT (11)      //电压等级数量
+
+#define BAT_ADC_EN_PIN      (GPIO_NUM_8)  // ADC采样使能引脚
+#define BAT_SAMPLE_COUNT    (10)          // 采样次数
+#define BAT_SAMPLE_DELAY_MS (2)           // 采样间隔(ms)
 
 
 /*********************************************************************
@@ -91,6 +97,17 @@ static int hal_bat_voltage_to_level(int voltage);
 
 void hal_bat_init(void)
 {
+    //-------------ADC使能引脚配置---------------//
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << BAT_ADC_EN_PIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,  // 使能下拉，确保默认低电平
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+    gpio_set_level(BAT_ADC_EN_PIN, 0);  // 初始状态关闭采样
+
     //-------------ADC1 Init---------------//
     adc_oneshot_unit_init_cfg_t init_config =
     {
@@ -115,20 +132,62 @@ void hal_bat_init(void)
 
 int hal_bat_get_level(void)
 {
+    // 使能ADC采样电路
+    gpio_set_level(BAT_ADC_EN_PIN, 1);
+
     if (m_bat.do_calibration_chan0)
     {
-        ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL_0, &m_bat.adc_raw));
-        sys_logd(BAT_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, ADC_CHANNEL_0, m_bat.adc_raw);
-        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc_cali_chan0_handle, m_bat.adc_raw, &m_bat.voltage));
-        sys_logd(BAT_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, ADC_CHANNEL_0, m_bat.voltage);
+        int raw_samples[BAT_SAMPLE_COUNT];
+        int voltage_samples[BAT_SAMPLE_COUNT];
+        int min_idx = 0, max_idx = 0;
+        int32_t sum = 0;
+
+        // 多次采样
+        for (int i = 0; i < BAT_SAMPLE_COUNT; i++)
+        {
+            ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL_0, &raw_samples[i]));
+            int voltage = 0;
+            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc_cali_chan0_handle, raw_samples[i], &voltage));
+            voltage_samples[i] = voltage;
+
+            // 记录最大最小值索引
+            if (voltage_samples[i] < voltage_samples[min_idx]) min_idx = i;
+            if (voltage_samples[i] > voltage_samples[max_idx]) max_idx = i;
+
+            if (i < BAT_SAMPLE_COUNT - 1)
+            {
+                vTaskDelay(pdMS_TO_TICKS(BAT_SAMPLE_DELAY_MS));
+            }
+        }
+
+        sys_logd(BAT_TAG, "Raw samples: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
+                 raw_samples[0], raw_samples[1], raw_samples[2], raw_samples[3], raw_samples[4],
+                 raw_samples[5], raw_samples[6], raw_samples[7], raw_samples[8], raw_samples[9]);
+
+        // 去掉最大最小值后求平均
+        for (int i = 0; i < BAT_SAMPLE_COUNT; i++)
+        {
+            if (i != min_idx && i != max_idx)
+            {
+                sum += voltage_samples[i];
+            }
+        }
+        m_bat.voltage = sum / (BAT_SAMPLE_COUNT - 2);
+
+        sys_logd(BAT_TAG, "ADC%d Channel[%d] Avg Voltage: %d mV (removed min:%d, max:%d)",
+                 ADC_UNIT_1 + 1, ADC_CHANNEL_0, m_bat.voltage, voltage_samples[min_idx], voltage_samples[max_idx]);
     }
     else
     {
         m_bat.voltage = 0;
     }
+
+    // 关闭ADC采样电路，防止分压电路漏电
+    gpio_set_level(BAT_ADC_EN_PIN, 0);
+
     m_bat.voltage = m_bat.voltage * 3; // 20k-10k 分压
     m_bat.level = hal_bat_voltage_to_level(m_bat.voltage);
-    sys_logi(BAT_TAG, "bat vlotage: %d mV bat level: %d", m_bat.voltage, m_bat.level);
+    sys_logi(BAT_TAG, "bat voltage: %d mV bat level: %d", m_bat.voltage, m_bat.level);
     return m_bat.level;
 }
 
@@ -222,6 +281,9 @@ static bool hal_adc_cali_chan0_handle(adc_unit_t unit, adc_channel_t channel, ad
 
 void hal_bat_deinit(void)
 {
+    // 关闭ADC采样使能引脚
+    gpio_set_level(BAT_ADC_EN_PIN, 0);
+
     if (m_bat.do_calibration_chan0)
     {
 #if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
