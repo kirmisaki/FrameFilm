@@ -57,6 +57,8 @@
 #define PIN_NUM_DET             (45)
 #define GPIO_INPUT_PIN_SEL      (1ULL << PIN_NUM_DET)
 
+#define SD_USE_SDNAND           1
+
 
 /*********************************************************************
 * TYPEDEFS
@@ -71,7 +73,9 @@
 /*********************************************************************
  * LOCAL VARIABLES
  */
+#if SD_USE_SDNAND == 0
 static QueueHandle_t gpio_evt_queue = NULL;
+#endif
 static uint8_t sd_mount_status = 0;
 static sdmmc_card_t *card;
 
@@ -83,11 +87,13 @@ static sdmmc_card_t *card;
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
-static void gpio_isr_handler(void *arg);
-static void sd_check_task(void *arg);
-static void sd_det_init(void);
 static void sd_mount(void);
 static void sd_unmount(void);
+#if SD_USE_SDNAND == 0
+static void sd_det_init(void);
+static void gpio_isr_handler(void *arg);
+static void sd_check_task(void *arg);
+#endif
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
@@ -97,12 +103,16 @@ static void sd_unmount(void);
 
 void hal_sd_init(void)
 {
+#if SD_USE_SDNAND
+    sd_mount();
+#else
     sd_det_init();
     int io_level = gpio_get_level(PIN_NUM_DET);
     if(!io_level)
     {
         sd_mount();
     }
+#endif
 }
 
 int hal_sd_get_status(void)
@@ -110,7 +120,7 @@ int hal_sd_get_status(void)
     return sd_mount_status;
 }
 
-
+#if SD_USE_SDNAND == 0
 static void IRAM_ATTR gpio_isr_handler(void *arg)
 {
     uint32_t gpio_num = (uint32_t) arg;
@@ -161,13 +171,18 @@ static void sd_det_init(void)
     gpio_install_isr_service(0);
     gpio_isr_handler_add(PIN_NUM_DET, gpio_isr_handler, (void *) PIN_NUM_DET);
 }
+#endif
 
 static void sd_mount(void)
 {
     esp_err_t ret;
     esp_vfs_fat_sdmmc_mount_config_t mount_config =
     {
+#if SD_USE_SDNAND
+        .format_if_mount_failed = true,
+#else
         .format_if_mount_failed = false,
+#endif
         .max_files = 5,
         .allocation_unit_size = 16 * 1024
     };
