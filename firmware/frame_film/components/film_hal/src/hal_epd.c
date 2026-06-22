@@ -234,28 +234,14 @@ void hal_epd_init(void)
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
 
-    // Configure PWR pin as output, max drive strength
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = (1ULL << EPD_PWR_PIN);
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    gpio_config(&io_conf);
-    gpio_set_drive_capability(EPD_PWR_PIN, GPIO_DRIVE_CAP_3);  // 40mA
-
     // Initialize SPI bus
     spi_init();
-
-    // 提前打开电源进行电路充电防止电流过大导致重启
-    EPD_W21_PWR_ON;
 
     sys_logi(EPD_TAG, "EPD hardware initialized");
 }
 
 void hal_epd_display_init(void)
 {
-    EPD_W21_PWR_ON;
-
     reset();
     lcd_chkstatus();
     vTaskDelay(30 / portTICK_PERIOD_MS);
@@ -630,8 +616,6 @@ void hal_epd_pwroff(void)
     hal_epd_sleep();
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    EPD_W21_PWR_OFF;
-
     sys_logi(EPD_TAG, "EPD power off");
 }
 
@@ -639,8 +623,6 @@ void hal_epd_deinit(void)
 {
     hal_epd_sleep();
     vTaskDelay(100 / portTICK_PERIOD_MS);
-
-    EPD_W21_PWR_OFF;
 
     if (m_spi_device != NULL)
     {
@@ -651,8 +633,7 @@ void hal_epd_deinit(void)
 
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << EPD_BUSY_PIN) | (1ULL << EPD_RST_PIN) |
-                        (1ULL << EPD_DC_PIN) | (1ULL << EPD_CS_PIN) |
-                        (1ULL << EPD_PWR_PIN),
+                        (1ULL << EPD_DC_PIN) | (1ULL << EPD_CS_PIN),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_ENABLE,

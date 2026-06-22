@@ -44,6 +44,10 @@
 #define WAKEUP_GPIO_NUM         (9)
 #define WAKEUP_GPIO_LEVEL       (0)
 
+#define PERI_PWR_PIN            GPIO_NUM_21     //外设供电管脚
+#define PERI_PWR_ON             gpio_set_level(PERI_PWR_PIN, 1)
+#define PERI_PWR_OFF            gpio_set_level(PERI_PWR_PIN, 0)
+
 
 /*********************************************************************
 * TYPEDEFS
@@ -79,6 +83,16 @@ void hal_pwr_init(void)
 {
     sys_logi(PWR_TAG, "pwr init");
 
+    // 初始化外设供电管脚
+    gpio_config_t io_conf = {0};
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = (1ULL << PERI_PWR_PIN);
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config(&io_conf);
+    PERI_PWR_ON;
+
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     
     switch (wakeup_reason)
@@ -113,6 +127,17 @@ void hal_pwr_init(void)
 void hal_pwr_enter_sleep(void)
 {
     sys_logi(PWR_TAG, "Entering deep sleep");
+
+    // 关闭外设供电管脚
+    PERI_PWR_OFF;
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << PERI_PWR_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
     
     esp_err_t ret = esp_sleep_enable_ext0_wakeup(WAKEUP_GPIO_NUM, 0);
     if (ret != ESP_OK)

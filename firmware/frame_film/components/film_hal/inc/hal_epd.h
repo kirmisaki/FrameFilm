@@ -29,7 +29,6 @@ extern "C" {
 #define EPD_RST_PIN  GPIO_NUM_12  //RES
 #define EPD_DC_PIN   GPIO_NUM_13  //DC
 #define EPD_CS_PIN   GPIO_NUM_14  //CS
-#define EPD_PWR_PIN  GPIO_NUM_21  //PWR
 
 #define isEPD_W21_BUSY gpio_get_level(EPD_BUSY_PIN)
 #define EPD_W21_RST_0 gpio_set_level(EPD_RST_PIN, 0)
@@ -38,8 +37,6 @@ extern "C" {
 #define EPD_W21_DC_1  gpio_set_level(EPD_DC_PIN, 1)
 #define EPD_W21_CS_0 gpio_set_level(EPD_CS_PIN, 0)
 #define EPD_W21_CS_1 gpio_set_level(EPD_CS_PIN, 1)
-#define EPD_W21_PWR_ON gpio_set_level(EPD_PWR_PIN, 1)
-#define EPD_W21_PWR_OFF gpio_set_level(EPD_PWR_PIN, 0)
 
 #define PSR         0x00
 #define PWR         0x01

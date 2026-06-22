@@ -289,5 +289,6 @@ static void monitor_enter_low_power(void)
     hal_sd_deinit();
     hal_epd_deinit();
 
+    // 关闭外设供电并进入休眠
     hal_pwr_enter_sleep();
 }
