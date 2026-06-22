@@ -50,6 +50,7 @@
 #define BAT_ADC_EN_PIN      (GPIO_NUM_8)  // ADC采样使能引脚
 #define BAT_SAMPLE_COUNT    (10)          // 采样次数
 #define BAT_SAMPLE_DELAY_MS (2)           // 采样间隔(ms)
+#define BAT_STABIL_DELAY_MS (100)         // 电容稳定时间(ms)
 
 
 /*********************************************************************
@@ -134,6 +135,8 @@ int hal_bat_get_level(void)
 {
     // 使能ADC采样电路
     gpio_set_level(BAT_ADC_EN_PIN, 1);
+    // 等待电容稳定
+    vTaskDelay(pdMS_TO_TICKS(BAT_STABIL_DELAY_MS));
 
     if (m_bat.do_calibration_chan0)
     {
@@ -185,7 +188,7 @@ int hal_bat_get_level(void)
     // 关闭ADC采样电路，防止分压电路漏电
     gpio_set_level(BAT_ADC_EN_PIN, 0);
 
-    m_bat.voltage = m_bat.voltage * 3; // 20k-10k 分压
+    m_bat.voltage = m_bat.voltage * 3.06; // 20k-10k 分压（修正系数）
     m_bat.level = hal_bat_voltage_to_level(m_bat.voltage);
     sys_logi(BAT_TAG, "bat voltage: %d mV bat level: %d", m_bat.voltage, m_bat.level);
     return m_bat.level;
@@ -303,7 +306,7 @@ void hal_bat_deinit(void)
 
     // 配置ADC引脚为高阻态，减少休眠漏电
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << GPIO_NUM_0),  // ADC_CHANNEL_0 = GPIO0
+        .pin_bit_mask = (1ULL << GPIO_NUM_1) | (1ULL << BAT_ADC_EN_PIN),  // ADC_CHANNEL_0 = GPIO1 
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
