@@ -108,6 +108,7 @@ static void monitor_led_manage_event(void);
 static void monitor_battery_manage_event(void);
 static void monitor_auto_sleep_manage_event(void);
 static void monitor_enter_low_power(void);
+static void monitor_encoder_activity_cb(void);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
@@ -135,6 +136,12 @@ void service_monitor_init(void)
         SYS_ERROR_CHECK(m_monitor_timer == NULL);
     }
     xTimerStart(m_monitor_timer, 0);
+
+    // 注册编码器回调，用于重置休眠计数器
+    hal_encoder_register_cb(ENCODER_PRESS_SHORT, monitor_encoder_activity_cb);
+    hal_encoder_register_cb(ENCODER_PRESS_LONG, monitor_encoder_activity_cb);
+    hal_encoder_register_cb(ENCODER_PRESS_UP, monitor_encoder_activity_cb);
+    hal_encoder_register_cb(ENCODER_PRESS_DOWN, monitor_encoder_activity_cb);
 }
 
 static void monitor_task_handle(void *pvParameters)
@@ -248,18 +255,9 @@ static void monitor_auto_sleep_manage_event(void)
         return;
     }
 
-    encoder_press_type_t encoder_state = hal_encoder_get_press();
+    m_monitor_state.sleep_counter++;
+    
     m_monitor_state.ble_connected = service_ble_gatts_get_connect();
-
-    if(encoder_state != ENCODER_PRESS_NONE)
-    {
-        m_monitor_state.sleep_counter = 0;
-    }
-    else
-    {
-        m_monitor_state.sleep_counter++;
-    }
-
     if(!m_monitor_state.ble_connected) // ble disconnected
     {
         if(m_monitor_state.sleep_counter >= MONITOR_AUTO_SLEEP_TICK_COUNT)
@@ -288,7 +286,13 @@ static void monitor_enter_low_power(void)
     hal_bat_deinit();
     hal_sd_deinit();
     hal_epd_deinit();
+    hal_encoder_deinit();
 
     // 关闭外设供电并进入休眠
     hal_pwr_enter_sleep();
+}
+
+static void monitor_encoder_activity_cb(void)
+{
+    m_monitor_state.sleep_counter = 0;
 }
