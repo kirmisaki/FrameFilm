@@ -39,9 +39,9 @@
  */
 #define ENCODER_TAG                       "HAL_ENCODER"
 
-#define ENCODER_PIN_DIFFA                 (46)
-#define ENCODER_PIN_DIFFB                 (10)
-#define ENCODER_PIN_PUSH                  (9)
+#define ENCODER_PIN_DIFFA                 (6)
+#define ENCODER_PIN_DIFFB                 (4)
+#define ENCODER_PIN_PUSH                  (5)
 
 #define ENCODER_BTN_PUSH                  (0)
 #define ENCODER_BTN_UP                    (1)
@@ -203,7 +203,7 @@ static void button_press_up_cb(void *arg, void *data)
             uint32_t ticks = iot_button_get_ticks_time(m_encoder.btn[ENCODER_BTN_UP]);
             if(ticks > ENCODER_MIN_TICKS && ticks < ENCODER_MAX_TICKS)
             {
-                // m_encoder.status = m_encoder.statustmp;
+                m_encoder.status = m_encoder.statustmp;
                 if(m_encoder.status == ENCODER_PRESS_UP)
                 {
                     sys_logi(ENCODER_TAG, "ENCODER DIFF+");
