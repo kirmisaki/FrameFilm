@@ -15,5 +15,4 @@ dependencies:
   #   # All dependencies of `main` are public by default.
   #   public: true
   espressif/led_strip: ^3.0.1
-  espressif/button: ^3.5.0
   esp-idf-lib/encoder: ^3.0.2
