@@ -251,7 +251,7 @@ void hal_sd_deinit(void)
                         (1ULL << PIN_NUM_D2) | (1ULL << PIN_NUM_D3),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);

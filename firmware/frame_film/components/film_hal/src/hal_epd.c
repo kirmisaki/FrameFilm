@@ -633,10 +633,11 @@ void hal_epd_deinit(void)
 
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << EPD_BUSY_PIN) | (1ULL << EPD_RST_PIN) |
-                        (1ULL << EPD_DC_PIN) | (1ULL << EPD_CS_PIN),
+                        (1ULL << EPD_DC_PIN) | (1ULL << EPD_CS_PIN) |
+                        (1ULL << EPD_SCK_PIN) | (1ULL << EPD_SDIN_PIN),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);

@@ -160,7 +160,10 @@ void hal_pwr_enter_sleep(void)
     }
 
     sys_logi(PWR_TAG, "Configured wakeup source: GPIO %d, level %d", WAKEUP_GPIO_NUM, WAKEUP_GPIO_LEVEL);
-    
+
+    // 唤醒脚高阻态：断开数字 I/O 缓冲器减少漏电
+    rtc_gpio_isolate(WAKEUP_GPIO_NUM);
+
     esp_deep_sleep_start();
 }
 
