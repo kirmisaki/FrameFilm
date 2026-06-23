@@ -242,8 +242,10 @@ void hal_sd_deinit(void)
     }
 
     sdmmc_host_deinit();
-
+    
+#if SD_USE_SDNAND == 0
     gpio_isr_handler_remove(PIN_NUM_DET);
+#endif
 
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_NUM_CLK) | (1ULL << PIN_NUM_CMD) |
