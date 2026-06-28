@@ -49,10 +49,10 @@
 |------|------|
 | 主控芯片 | ESP32-S3 |
 | 显示屏 | 彩色电子纸（E-Ink 6）3.6" |
-| 存储 | TF卡 最大32GB |
+| 存储 | TF卡 最大32GB 或 内置SDnand |
 | 通信 | 蓝牙 BLE 4.2 |
 | 电池 | 锂电池 304040规格1.5mm插头 |
-| 尺寸 | 约 91 × 80 × 8 mm |
+| 尺寸 | 约 92 × 60 × 7 mm |
 | 安装方式 | 背部磁吸 磁铁 2x12mm-1mm 1x15mm-2mm |
 
 ## 硬件开源
@@ -65,14 +65,14 @@
 
 ```
 FrameFilm/
-├── assets/                    # 资源文件
-│   └── pic/model/            # 产品图片和渲染图
+├── assets/                     # 资源文件
+│   └── pic/                   # 产品图片和渲染图
 │
 ├── docs/                      # 文档资料
-│   ├── api/                   # API 接口文档
-│   ├── design/                # 设计文档和原型图
-│   ├── user-guide/            # 用户使用手册
-│   └── development/            # 开发文档
+│   ├── blecmd/                # BLE 通信协议文档
+│   ├── datasheet/             # 芯片和模块数据手册
+│   ├── film/                  # film 文件格式规范
+│   └── hardware/              # 硬件规格说明文档
 │
 ├── firmware/                   # 设备固件 (ESP-IDF)
 │   └── frame_film/
@@ -83,21 +83,13 @@ FrameFilm/
 │       └── main/              # 主程序
 │
 ├── hardware/                   # 硬件设计
-│   ├── pcb/                   # PCB 设计文件
-│   ├── schematics/            # 电路原理图
-│   ├── 3dmodels/              # 外壳 3D 模型
-│   ├── bom/                   # 物料清单
-│   ├── datasheets/            # 芯片数据手册
-│   └── gerber/                # PCB 加工文件
+│   ├── pcb/                   # PCB 电路原理图
+│   └── model/                 # 外壳 3D 模型
 │
 ├── tools/                      # 开发工具
 │   ├── convert/               # 照片转换工具
-│   │   ├── convert_tool.html  # 照片转 Film Web 工具
-│   │   ├── analyze_image.py   # 图片分析脚本
-│   │   └── image_h/           # 转换后的图片数据
-│   ├── flash/                 # 固件烧录工具
-│   ├── debug/                 # 调试工具
-│   └── production/            # 生产测试工具
+│   ├── ForFilm/               # Web 端相框管理工具
+│   └── wechart/               # 微信小程序
 │
 ├── README.md                   # 项目说明文档
 └── LICENSE                     # 许可证
@@ -123,6 +115,7 @@ FrameFilm/
 
 ### 照片转换
 
+#### ForFilm
 ForFilm Web 工具，支持以下功能：
 
 - **照片格式转换** - 将普通照片转换为 .Film 格式文件
@@ -133,13 +126,33 @@ ForFilm Web 工具，支持以下功能：
 **在线工具（GitHub Pages）：**
 👉 [FrameFilm Web 工具](https://kirmisaki.github.io/FrameFilm/tools/ForFilm/)
 
+#### 微信小程序
+
+FrameFilm 微信小程序，方便在手机端管理和传输照片：
+
+- **蓝牙连接** - 连接 FrameFilm 设备进行通信
+- **相框管理** - 管理多个相框设备
+- **照片传输** - 从手机相册上传或直接拍照发送到设备
+- **手绘创作** - 在手机上手绘图案并发送显示
+
+**小程序码，扫码即可体验。**  
+![小程序码](assets/pic/wechartQR.png)
+
 ## 开发指南
 
-详细的开发文档请参考 [docs/](docs/) 目录：
+详细的开发文档请参考各模块 README：
 
-- [固件开发](firmware/README.md)
-- [硬件设计](hardware/README.md)
-- [工具使用](tools/README.md)
+- [固件开发](firmware/README.md) - ESP32 固件代码开发
+- [硬件设计](hardware/README.md) - PCB 和外壳设计文件
+- [工具使用](tools/README.md) - ForFilm Web 工具和辅助脚本
+- [微信小程序](tools/wechart/README.md) - 小程序源码
+
+技术文档目录：
+
+- [docs/blecmd/](docs/blecmd/) - BLE 通信协议文档
+- [docs/film/](docs/film/) - Film 文件格式规范
+- [docs/hardware/](docs/hardware/) - 硬件规格说明
+- [docs/datasheet/](docs/datasheet/) - 芯片和模块数据手册
 
 ## 开源许可
 
