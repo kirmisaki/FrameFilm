@@ -19,6 +19,8 @@ extern "C" {
  */
 // LED管理参数
 #define MONITOR_LED_UPDATE_INTERVAL_MS      (500)    // LED状态更新间隔 500ms
+#define MONITOR_LED_BLINK_ON_TICKS          (1)      // LED闪烁点亮tick数 (1 * 500ms = 500ms亮)
+#define MONITOR_LED_BLINK_OFF_TICKS         (3)      // LED闪烁熄灭tick数 (3 * 500ms = 1500ms灭)
 
 // 电池管理参数
 #define MONITOR_BAT_CHECK_INTERVAL_MS       (30000)  // 电池检测间隔 30s

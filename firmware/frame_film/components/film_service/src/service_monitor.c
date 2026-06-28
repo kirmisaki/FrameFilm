@@ -216,22 +216,34 @@ static void monitor_timer_callback(TimerHandle_t xTimer)
 
 static void monitor_led_manage_event(void)
 {
+    uint32_t led_color;
+    uint32_t blink_cycle = MONITOR_LED_BLINK_ON_TICKS + MONITOR_LED_BLINK_OFF_TICKS;
+
     m_monitor_state.ble_connected = service_ble_gatts_get_connect();
 
     if(m_monitor_state.bat_level < MONITOR_BAT_LOW_THRESHOLD)
     {
-        hal_led_set_color(LED_COLOR_RED);
-        hal_led_set_brightness(20);
+        led_color = LED_COLOR_RED;
     }
     else if(m_monitor_state.ble_connected)
     {
-        hal_led_set_color(LED_COLOR_GREEN);
-        hal_led_set_brightness(20);
+        led_color = LED_COLOR_GREEN;
     }
     else
     {
-        hal_led_set_color(LED_COLOR_WHITE);
-        hal_led_set_brightness(10);
+        led_color = LED_COLOR_WHITE;
+    }
+
+    // 闪烁控制: led_state作为周期计数器
+    m_monitor_state.led_state = (m_monitor_state.led_state + 1) % blink_cycle;
+    if(m_monitor_state.led_state < MONITOR_LED_BLINK_ON_TICKS)
+    {
+        hal_led_set_color(led_color);
+        hal_led_set_brightness(5);
+    }
+    else
+    {
+        hal_led_set_color(LED_COLOR_BLACK);
     }
 }
 
