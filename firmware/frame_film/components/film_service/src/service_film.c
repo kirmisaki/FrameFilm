@@ -81,6 +81,7 @@ static void film_msg_send(void *p_msg, bool in_isr);
 
 static void film_display_event(uint32_t file_id);
 static void film_next_event(void);
+static void film_prev_event(void);
 static void film_init_event(void);
 static void film_clear_event(void);
 
@@ -118,7 +119,9 @@ static void film_task_handle(void *pvParameters)
     film_msg_send(&msg, 0);
 
     // 注册编码器回调
-    hal_encoder_register_cb(ENCODER_PRESS_SHORT, service_film_next);
+    // hal_encoder_register_cb(ENCODER_PRESS_SHORT, service_film_next);
+    hal_encoder_register_cb(ENCODER_PRESS_UP, service_film_prev);
+    hal_encoder_register_cb(ENCODER_PRESS_DOWN, service_film_next);
     hal_encoder_register_cb(ENCODER_PRESS_LONG, service_film_clear);
 
     for(;;)
@@ -133,6 +136,9 @@ static void film_task_handle(void *pvParameters)
                 break;
             case MSG_FILM_NEXT:
                 film_next_event();
+                break;
+            case MSG_FILM_PREV:
+                film_prev_event();
                 break;
             case MSG_FILM_INIT:
                 film_init_event();
@@ -294,6 +300,33 @@ static void film_next_event(void)
     }
 }
 
+static void film_prev_event(void)
+{
+    // 获取文件总数
+    uint32_t file_count = service_file_get_count();
+    if(file_count == 0)
+    {
+        sys_logw(FILM_TAG, "No files available");
+        return;
+    }
+
+    // 计算上一张图片ID
+    uint32_t current_id = g_service_param.film.current_file_id;
+    uint32_t prev_id = (current_id == 0) ? (file_count - 1) : (current_id - 1);
+
+    // 显示上一张图片
+    if(g_service_param.film.load_complete)
+    {
+        // 加载完成，直接显示上一张图片
+        film_display_event(prev_id);
+    }
+    else
+    {
+        // 未加载完成，更新无效
+        sys_logi(FILM_TAG, "Load not complete, updating invalid");
+    }
+}
+
 
 void service_film_display(uint32_t file_id)
 {
@@ -315,6 +348,21 @@ void service_film_next(void)
     else
     {
         sys_logi(FILM_TAG, "Load not complete, next event invalid");
+    }
+}
+
+void service_film_prev(void)
+{
+    if(g_service_param.film.load_complete)
+    {
+        // 加载完成，显示上一张图片
+        film_msg_t msg;
+        msg.ID = MSG_FILM_PREV;
+        film_msg_send(&msg, 0);
+    }
+    else
+    {
+        sys_logi(FILM_TAG, "Load not complete, prev event invalid");
     }
 }
 

@@ -28,6 +28,7 @@ extern "C" {
 typedef enum {
     MSG_FILM_DISPLAY,          // 显示指定图片
     MSG_FILM_NEXT,             // 显示下一张图片
+    MSG_FILM_PREV,             // 显示上一张图片
     MSG_FILM_INIT,             // 初始化播放
     MSG_FILM_AUTO_PLAY,        // 自动播放
     MSG_FILM_CLEAR,            // EPD维护显示为白色用于长期保存
@@ -84,6 +85,13 @@ extern void service_film_display(uint32_t file_id);
  * 此函数用于显示下一张图片，实现循环切换。
  */
 extern void service_film_next(void);
+
+/**
+ * @brief 显示上一张图片
+ *
+ * 此函数用于显示上一张图片，实现循环切换。
+ */
+extern void service_film_prev(void);
 
 /**
  * @brief 清除显示
