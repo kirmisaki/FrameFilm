@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_sleep.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -50,21 +51,22 @@
 /*********************************************************************
  * MACROS
  */
-#define MONITOR_TAG                    "monitor"
+#define MONITOR_TAG                              "MONITOR"
 
-#define MONITOR_MSG_QUEUE_LENGTH       30
-#define MONITOR_MSG_QUEUE_ITEM_SIZE    sizeof( monitor_msg_t )
+#define MONITOR_MSG_QUEUE_LENGTH                 30
+#define MONITOR_MSG_QUEUE_ITEM_SIZE              sizeof( monitor_msg_t )
 
-#define SYS_OS_PRI_MONITOR_TASK        (7)
-#define SYS_OS_SIZE_MONITOR_TASK       (4096)
-#define SYS_OS_NAME_MONITOR_TASK       "monitor_task"
+#define SYS_OS_PRI_MONITOR_TASK                  (7)
+#define SYS_OS_SIZE_MONITOR_TASK                 (4096)
+#define SYS_OS_NAME_MONITOR_TASK                 "monitor_task"
 
-#define MONITOR_TIMER_BASE_INTERVAL_MS (100)
+#define MONITOR_TIMER_BASE_INTERVAL_MS           (100)
 
-#define MONITOR_LED_TICK_COUNT         (MONITOR_LED_UPDATE_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
-#define MONITOR_BAT_TICK_COUNT         (MONITOR_BAT_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
-#define MONITOR_SLEEP_TICK_COUNT       (MONITOR_SLEEP_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
-#define MONITOR_AUTO_SLEEP_TICK_COUNT  (MONITOR_AUTO_SLEEP_TIMEOUT_SEC * 1000 / MONITOR_SLEEP_CHECK_INTERVAL_MS)
+#define MONITOR_LED_TICK_COUNT                   (MONITOR_LED_UPDATE_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
+#define MONITOR_BAT_TICK_COUNT                   (MONITOR_BAT_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
+#define MONITOR_SLEEP_TICK_COUNT                 (MONITOR_SLEEP_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
+#define MONITOR_AUTO_SLEEP_TICK_COUNT            (MONITOR_AUTO_SLEEP_TIMEOUT_SEC * 1000 / MONITOR_SLEEP_CHECK_INTERVAL_MS)
+#define MONITOR_AUTO_SLEEP_TICK_COUNT_LOW        (MONITOR_AUTO_SLEEP_TIMEOUT_SEC_LOW * 1000 / MONITOR_SLEEP_CHECK_INTERVAL_MS)
 
 /*********************************************************************
 * TYPEDEFS
@@ -77,6 +79,7 @@ typedef struct
     uint32_t sleep_counter;
     uint8_t last_encoder_state;
     uint32_t tick_counter;
+    uint32_t wakeup_ticks;
 } monitor_state_t;
 
 /*********************************************************************
@@ -121,6 +124,18 @@ void service_monitor_init(void)
     m_monitor_state.bat_level = 100;
     m_monitor_state.led_state = 0;
     m_monitor_state.tick_counter = 0;
+
+    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+    if(wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) // 定时唤醒
+    {
+        m_monitor_state.wakeup_ticks = MONITOR_AUTO_SLEEP_TICK_COUNT_LOW;
+        // sys_logi(MONITOR_TAG, "wakeup by timer, wakeup_ticks: %d", m_monitor_state.wakeup_ticks);
+    }
+    else // 手动唤醒
+    {
+        m_monitor_state.wakeup_ticks = MONITOR_AUTO_SLEEP_TICK_COUNT;
+        // sys_logi(MONITOR_TAG, "wakeup by manual, wakeup_ticks: %d", m_monitor_state.wakeup_ticks);
+    }
 
     if(m_monitor_task_hdl == NULL)
     {
@@ -268,11 +283,11 @@ static void monitor_auto_sleep_manage_event(void)
     }
 
     m_monitor_state.sleep_counter++;
-    
+
     m_monitor_state.ble_connected = service_ble_gatts_get_connect();
     if(!m_monitor_state.ble_connected) // ble disconnected
     {
-        if(m_monitor_state.sleep_counter >= MONITOR_AUTO_SLEEP_TICK_COUNT)
+        if(m_monitor_state.sleep_counter >= m_monitor_state.wakeup_ticks)
         {
             sys_logi(MONITOR_TAG, "auto sleep timeout, entering low power mode");
             if(g_service_param.sleep.sleep_auto && g_service_param.sleep.sleep_time > 0)

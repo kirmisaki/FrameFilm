@@ -93,35 +93,34 @@ void hal_pwr_init(void)
     gpio_config(&io_conf);
     PERI_PWR_ON;
 
-    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-    
-    switch (wakeup_reason)
-    {
-        case ESP_SLEEP_WAKEUP_EXT0:
-            sys_logi(PWR_TAG, "Wakeup caused by external signal using RTC_IO");
-            break;
-        case ESP_SLEEP_WAKEUP_EXT1:
-            sys_logi(PWR_TAG, "Wakeup caused by external signal using RTC_CNTL");
-            break;
-        case ESP_SLEEP_WAKEUP_TIMER:
-            sys_logi(PWR_TAG, "Wakeup caused by timer");
-            break;
-        case ESP_SLEEP_WAKEUP_TOUCHPAD:
-            sys_logi(PWR_TAG, "Wakeup caused by touchpad");
-            break;
-        case ESP_SLEEP_WAKEUP_ULP:
-            sys_logi(PWR_TAG, "Wakeup caused by ULP program");
-            break;
-        case ESP_SLEEP_WAKEUP_GPIO:
-            sys_logi(PWR_TAG, "Wakeup caused by GPIO");
-            break;
-        case ESP_SLEEP_WAKEUP_UART:
-            sys_logi(PWR_TAG, "Wakeup caused by UART");
-            break;
-        default:
-            sys_logi(PWR_TAG, "Wakeup was not caused by deep sleep: %d", wakeup_reason);
-            break;
-    }
+    // esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+    // switch (wakeup_reason)
+    // {
+    //     case ESP_SLEEP_WAKEUP_EXT0:
+    //         sys_logi(PWR_TAG, "Wakeup caused by external signal using RTC_IO");
+    //         break;
+    //     case ESP_SLEEP_WAKEUP_EXT1:
+    //         sys_logi(PWR_TAG, "Wakeup caused by external signal using RTC_CNTL");
+    //         break;
+    //     case ESP_SLEEP_WAKEUP_TIMER:
+    //         sys_logi(PWR_TAG, "Wakeup caused by timer");
+    //         break;
+    //     case ESP_SLEEP_WAKEUP_TOUCHPAD:
+    //         sys_logi(PWR_TAG, "Wakeup caused by touchpad");
+    //         break;
+    //     case ESP_SLEEP_WAKEUP_ULP:
+    //         sys_logi(PWR_TAG, "Wakeup caused by ULP program");
+    //         break;
+    //     case ESP_SLEEP_WAKEUP_GPIO:
+    //         sys_logi(PWR_TAG, "Wakeup caused by GPIO");
+    //         break;
+    //     case ESP_SLEEP_WAKEUP_UART:
+    //         sys_logi(PWR_TAG, "Wakeup caused by UART");
+    //         break;
+    //     default:
+    //         sys_logi(PWR_TAG, "Wakeup was not caused by deep sleep: %d", wakeup_reason);
+    //         break;
+    // }
 }
 
 void hal_pwr_enter_sleep(void)
