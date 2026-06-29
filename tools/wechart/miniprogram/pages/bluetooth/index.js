@@ -404,6 +404,14 @@ Page({
     }, delay);
   },
 
+  // 分享给朋友
+  onShareAppMessage: function () {
+    return {
+      title: 'FrameFilm - 蓝牙',
+      path: '/pages/bluetooth/index'
+    };
+  },
+
   // 断开连接
   onDisconnect: function () {
     var that = this;

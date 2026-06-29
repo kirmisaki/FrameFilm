@@ -8,6 +8,14 @@ Page({
     }
   },
 
+  // 分享给朋友
+  onShareAppMessage: function () {
+    return {
+      title: 'FrameFilm - Frame',
+      path: '/pages/frame/index'
+    };
+  },
+
   goToUpload: function () {
     wx.navigateTo({ url: '/pages/frame/upload/index' });
   },

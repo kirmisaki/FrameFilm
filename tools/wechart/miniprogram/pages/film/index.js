@@ -456,6 +456,14 @@ Page({
     this.sendFileViaBle(fileData, fileName);
   },
 
+  // 分享给朋友
+  onShareAppMessage: function () {
+    return {
+      title: 'FrameFilm - Film',
+      path: '/pages/film/index'
+    };
+  },
+
   sendFileViaBle(fileData, fileName) {
     const that = this;
     const chunkSize = bleUtils.BLE_CHUNK_SIZE;

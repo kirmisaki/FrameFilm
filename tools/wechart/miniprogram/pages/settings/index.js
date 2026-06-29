@@ -57,6 +57,14 @@ Page({
     this._setupBleListener();
   },
 
+  // 分享给朋友
+  onShareAppMessage: function () {
+    return {
+      title: 'FrameFilm - 设置',
+      path: '/pages/settings/index'
+    };
+  },
+
   onHide: function () {
     this._stopSyncTimer();
     this._removeBleListener();
