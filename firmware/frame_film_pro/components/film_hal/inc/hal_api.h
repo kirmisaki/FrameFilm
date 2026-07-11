@@ -6,11 +6,12 @@
  * INCLUDES
  */
 #include "hal_init.h"
-#include "hal_encoder.h"
+#include "hal_button.h"
 #include "hal_bat.h"
 #include "hal_led.h"
 #include "hal_sd.h"
 #include "hal_pwr.h"
+#include "hal_epd.h"
 
 /*********************************************************************
  * CPPMIX

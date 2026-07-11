@@ -1,5 +1,5 @@
-#ifndef __HAL_ENCODER_H__
-#define __HAL_ENCODER_H__
+#ifndef __HAL_BUTTON_H__
+#define __HAL_BUTTON_H__
 
 
 /*********************************************************************
@@ -23,14 +23,14 @@ extern "C" {
 * TYPEDEFS
 */
 typedef enum {
-    ENCODER_PRESS_NONE = 0,
-    ENCODER_PRESS_SHORT,  // 编码器短按
-    ENCODER_PRESS_LONG ,  // 编码器长按
-    ENCODER_PRESS_UP,     // 编码器+
-    ENCODER_PRESS_DOWN,   // 编码器-
-    ENCODER_PRESS_PRESSED,
-    ENCODER_PRESS_MAX,
-} encoder_press_type_t;
+    HAL_BUTTON_PRESS_NONE = 0,
+    HAL_BUTTON_PRESS_SHORT,  // 按键短按
+    HAL_BUTTON_PRESS_LONG ,  // 按键长按
+    HAL_BUTTON_PRESS_UP,     // 上/右按键
+    HAL_BUTTON_PRESS_DOWN,   // 下/左按键
+    HAL_BUTTON_PRESS_PRESSED,
+    HAL_BUTTON_PRESS_MAX,
+} hal_button_press_type_t;
 
 /*********************************************************************
  * CONSTANTS
@@ -55,41 +55,41 @@ typedef enum {
 /*********************************************************************
  * TYPEDEFS
  */
-typedef void (*encoder_callback_t)(void);
+typedef void (*button_callback_t)(void);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
 /**
- * @brief 初始化编码器硬件模块
- * 该函数用于对编码器进行初始化操作，确保编码器能够正常工作。
+ * @brief 初始化按键硬件模块
+ * 该函数用于对按键进行初始化操作，确保按键能够正常工作。
  */
-extern void hal_encoder_init(void);
+extern void hal_button_init(void);
 
 /**
- * @brief 注册编码器回调函数
+ * @brief 注册按键回调函数
  * @param type 事件类型
  * @param cb 回调函数指针
  * @return 0 成功，其他值 失败
  */
-extern int hal_encoder_register_cb(encoder_press_type_t type, encoder_callback_t cb);
+extern int hal_button_register_cb(hal_button_press_type_t type, button_callback_t cb);
 
 /**
- * @brief 注销编码器回调函数
+ * @brief 注销按键回调函数
  * @param type 事件类型
  * @param cb 回调函数指针
  * @return 0 成功，其他值 失败
  */
-extern int hal_encoder_unregister_cb(encoder_press_type_t type, encoder_callback_t cb);
+extern int hal_button_unregister_cb(hal_button_press_type_t type, button_callback_t cb);
 
 /**
- * @brief 反初始化编码器硬件模块
- * 释放 rotary_encoder 资源，将编码器引脚设为高阻态
+ * @brief 反初始化按键硬件模块
+ * 释放按键资源，将按键引脚设为高阻态
  */
-extern void hal_encoder_deinit(void);
+extern void hal_button_deinit(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __HAL_ENCODER_H__ */
+#endif /* __HAL_BUTTON_H__ */
