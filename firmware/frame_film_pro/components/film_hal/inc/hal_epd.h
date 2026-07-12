@@ -6,6 +6,7 @@
  */
 #include "esp_system.h"
 #include "driver/gpio.h"
+#include "driver/spi_master.h"
 
 /*********************************************************************
  * CPPMIX
@@ -19,15 +20,17 @@ extern "C" {
  */
 #define EPD_TAG                        "HAL_EPD"
 
-//IO settings
+// IO settings - SE0368-C
 #define EPD_SCK_PIN                    GPIO_NUM_48  // SCK
-#define EPD_SDIN_PIN                   GPIO_NUM_47  // SDIN (MOSI+MISO, bidirectional)
+#define EPD_SDIN_PIN                   GPIO_NUM_47  // SDIN (half-duplex: MOSI+MISO)
 #define EPD_BUSY_PIN                   GPIO_NUM_11  // BUSY
 #define EPD_RST_PIN                    GPIO_NUM_12  // RES
 #define EPD_DC_PIN                     GPIO_NUM_13  // DC
 #define EPD_CS_PIN                     GPIO_NUM_14  // CS
 
-// Bit-bang control macros (match reference driver exactly)
+#define EPD_SPI_HOST                   SPI2_HOST
+
+// GPIO control macros (CS/DC/RST/BUSY managed manually)
 #define isEPD_W21_BUSY                 gpio_get_level(EPD_BUSY_PIN)
 #define EPD_W21_RST_0                  gpio_set_level(EPD_RST_PIN, 0)
 #define EPD_W21_RST_1                  gpio_set_level(EPD_RST_PIN, 1)
@@ -35,11 +38,6 @@ extern "C" {
 #define EPD_W21_DC_1                   gpio_set_level(EPD_DC_PIN, 1)
 #define EPD_W21_CS_0                   gpio_set_level(EPD_CS_PIN, 0)
 #define EPD_W21_CS_1                   gpio_set_level(EPD_CS_PIN, 1)
-#define EPD_W21_CLK_0                  gpio_set_level(EPD_SCK_PIN, 0)
-#define EPD_W21_CLK_1                  gpio_set_level(EPD_SCK_PIN, 1)
-#define EPD_W21_MOSI_0                 gpio_set_level(EPD_SDIN_PIN, 0)
-#define EPD_W21_MOSI_1                 gpio_set_level(EPD_SDIN_PIN, 1)
-#define READ_SDA                       gpio_get_level(EPD_SDIN_PIN)
 
 // SE0368-C commands
 #define PSR                            0x00  // Panel setting
