@@ -1,31 +1,23 @@
 // 照片转换功能
 
-// 画布内部固定尺寸
-const CANVAS_WIDTH = 600;
-const CANVAS_HEIGHT = 400;
-
 // 全局变量
-let currentImageData = null;
-let isDitheringEnabled = false;
-let canvasRotation = 0; // 0: 原始, 1: 旋转90度
-let scale = 1.0;
-let offsetX = 0;
-let offsetY = 0;
-let isDragging = false;
-let startX = 0;
-let startY = 0;
-let startOffsetX = 0;
-let startOffsetY = 0;
-let originalImage = null;
-let uploadedFileName = 'output';
+var currentImageData = null;
+var isDitheringEnabled = false;
+var canvasRotation = 0; // 0: 原始, 1: 旋转90度
+var scale = 1.0;
+var offsetX = 0;
+var offsetY = 0;
+var isDragging = false;
+var startX = 0;
+var startY = 0;
+var startOffsetX = 0;
+var startOffsetY = 0;
+var originalImage = null;
+var uploadedFileName = 'output';
 window.processedDataForDownload = null;
 
-// Film 文件格式常量
-const FILM_SCREEN_WIDTH = 600;
-const FILM_SCREEN_HEIGHT = 400;
-const FILM_HEADER_SIZE = 32;
-const FILM_PIXEL_DATA_SIZE = (FILM_SCREEN_WIDTH * FILM_SCREEN_HEIGHT) / 2;  // 120000 字节
-const FILM_FILE_TOTAL_SIZE = FILM_HEADER_SIZE + FILM_PIXEL_DATA_SIZE;  // 120032 字节
+// Film 文件头大小（固定 32 字节）
+var FILM_HEADER_SIZE = 32;
 
 // 颜色编码索引（对应 ColorTable 的位置）
 const COLOR_CODE_BLACK = 0x00;
@@ -78,8 +70,8 @@ function initConvertTool() {
             const mouseY = e.clientY - rect.top;
             
             // 调整偏移量，使缩放以鼠标位置为中心
-            const relativeX = mouseX / CANVAS_WIDTH;
-            const relativeY = mouseY / CANVAS_HEIGHT;
+            var relativeX = mouseX / getCanvasWidth();
+            var relativeY = mouseY / getCanvasHeight();
             
             const oldWidth = originalImage.width * scale;
             const oldHeight = originalImage.height * scale;
@@ -193,8 +185,8 @@ function initConvertTool() {
             const centerX = (touch1.clientX + touch2.clientX) / 2;
             const centerY = (touch1.clientY + touch2.clientY) / 2;
             const rect = canvas.getBoundingClientRect();
-            const relativeX = (centerX - rect.left) / CANVAS_WIDTH;
-            const relativeY = (centerY - rect.top) / CANVAS_HEIGHT;
+            var relativeX = (centerX - rect.left) / getCanvasWidth();
+            var relativeY = (centerY - rect.top) / getCanvasHeight();
             
             const oldWidth = originalImage.width * scale;
             const oldHeight = originalImage.height * scale;
@@ -234,22 +226,25 @@ function downloadFile(data, fileName) {
 
 // 生成 Film 文件头（32字节）
 function generateFilmHeader() {
-    const header = new Array(FILM_HEADER_SIZE).fill(0);
+    var screenWidth = getCanvasWidth();
+    var screenHeight = getCanvasHeight();
+    var pixelDataSize = getFilmPixelDataSize();
+    var header = new Array(FILM_HEADER_SIZE).fill(0);
 
     // FileSize (4 bytes) - 小端序
-    const fileSize = FILM_PIXEL_DATA_SIZE;
+    var fileSize = pixelDataSize;
     header[0] = fileSize & 0xFF;
     header[1] = (fileSize >> 8) & 0xFF;
     header[2] = (fileSize >> 16) & 0xFF;
     header[3] = (fileSize >> 24) & 0xFF;
 
     // ScreenWidth (2 bytes) - 小端序
-    header[4] = FILM_SCREEN_WIDTH & 0xFF;
-    header[5] = (FILM_SCREEN_WIDTH >> 8) & 0xFF;
+    header[4] = screenWidth & 0xFF;
+    header[5] = (screenWidth >> 8) & 0xFF;
 
     // ScreenHeight (2 bytes) - 小端序
-    header[6] = FILM_SCREEN_HEIGHT & 0xFF;
-    header[7] = (FILM_SCREEN_HEIGHT >> 8) & 0xFF;
+    header[6] = screenHeight & 0xFF;
+    header[7] = (screenHeight >> 8) & 0xFF;
 
     // ColorCount (1 byte) - 6色
     header[8] = 6;
@@ -286,12 +281,12 @@ function handleFileUpload(event) {
         img.onload = function () {
             originalImage = img;
 
-            const canvas = document.getElementById('canvas');
-            const canvasWidth = CANVAS_WIDTH;
-            const canvasHeight = CANVAS_HEIGHT;
+            var canvas = document.getElementById('canvas');
+            var canvasWidth = getCanvasWidth();
+            var canvasHeight = getCanvasHeight();
 
-            const imgWidth = img.width;
-            const imgHeight = img.height;
+            var imgWidth = img.width;
+            var imgHeight = img.height;
 
             if (imgHeight > imgWidth) {
                 canvasRotation = 1;
@@ -342,7 +337,7 @@ function resetImage() {
     startY = 0;
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.clearRect(0, 0, getCanvasWidth(), getCanvasHeight());
     document.getElementById('imageResult').innerHTML = '';
     document.getElementById('fileName').value = 'output.film';
 }
@@ -350,11 +345,10 @@ function resetImage() {
 function rotateCanvas() {
     canvasRotation = (canvasRotation + 1) % 2;
 
-    const canvas = document.getElementById('canvas');
-    const canvasWidth = CANVAS_WIDTH;
-    const canvasHeight = CANVAS_HEIGHT;
-
-    let effectiveWidth, effectiveHeight;
+    var canvas = document.getElementById('canvas');
+    var canvasWidth = getCanvasWidth();
+    var canvasHeight = getCanvasHeight();
+    var effectiveWidth, effectiveHeight;
     if (canvasRotation === 0) {
         effectiveWidth = canvasWidth;
         effectiveHeight = canvasHeight;
@@ -391,11 +385,11 @@ function debounceUpdateImage() {
 
 function resetZoom() {
     if (!originalImage) return;
-    const canvas = document.getElementById('canvas');
-    const canvasWidth = CANVAS_WIDTH;
-    const canvasHeight = CANVAS_HEIGHT;
-    let effectiveWidth = canvasRotation === 1 ? canvasHeight : canvasWidth;
-    let effectiveHeight = canvasRotation === 1 ? canvasWidth : canvasHeight;
+    var canvas = document.getElementById('canvas');
+    var canvasWidth = getCanvasWidth();
+    var canvasHeight = getCanvasHeight();
+    var effectiveWidth = canvasRotation === 1 ? canvasHeight : canvasWidth;
+    var effectiveHeight = canvasRotation === 1 ? canvasWidth : canvasHeight;
     const scaleX = effectiveWidth / originalImage.width;
     const scaleY = effectiveHeight / originalImage.height;
     scale = Math.min(scaleX, scaleY);
@@ -407,12 +401,12 @@ function resetZoom() {
 function updateImage() {
     if (!originalImage) return;
 
-    const canvas = document.getElementById('canvas');
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
-    const ctx = canvas.getContext('2d');
-    const canvasWidth = CANVAS_WIDTH;
-    const canvasHeight = CANVAS_HEIGHT;
+    var canvas = document.getElementById('canvas');
+    var canvasWidth = getCanvasWidth();
+    var canvasHeight = getCanvasHeight();
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    var ctx = canvas.getContext('2d');
 
     // 清除画布
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -1159,7 +1153,7 @@ function decodeProcessedData(processedData, width, height) {
 
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            const newIndex = (x * height) + (height - 1 - y);
+            const newIndex = (y * width) + x;
             const byteIndex = Math.floor(newIndex / 2);
             const byte = processedData[byteIndex];
 
@@ -1182,7 +1176,7 @@ function processImageData(imageData) {
     const height = imageData.height;
     const data = imageData.data;
 
-    const processedData = new Uint8Array(FILM_PIXEL_DATA_SIZE);
+    var processedData = new Uint8Array(getFilmPixelDataSize());
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const index = (y * width + x) * 4;
@@ -1193,7 +1187,7 @@ function processImageData(imageData) {
             const closest = findClosestColor(r, g, b);
             const code = closest.code;
 
-            const newIndex = (x * height) + (height - 1 - y);
+            const newIndex = (y * width) + x;
             const byteIndex = Math.floor(newIndex / 2);
 
             if (newIndex % 2 === 0) {
@@ -1338,8 +1332,8 @@ function convertImage() {
 
     try {
         const canvas = document.getElementById('canvas');
-        const canvasWidth = CANVAS_WIDTH;
-        const canvasHeight = CANVAS_HEIGHT;
+        const canvasWidth = getCanvasWidth();
+        const canvasHeight = getCanvasHeight();
 
         const ctx = canvas.getContext('2d');
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
@@ -1365,8 +1359,8 @@ function downloadFilmFile() {
 
     try {
         const canvas = document.getElementById('canvas');
-        const canvasWidth = CANVAS_WIDTH;
-        const canvasHeight = CANVAS_HEIGHT;
+        const canvasWidth = getCanvasWidth();
+        const canvasHeight = getCanvasHeight();
         const ctx = canvas.getContext('2d');
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
         window.processedDataForDownload = processImageData(imageData);
@@ -1378,7 +1372,8 @@ function downloadFilmFile() {
     const header = generateFilmHeader();
 
     // 合并文件头和像素数据
-    const filmFile = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+    var totalSize = getFilmFileTotalSize();
+    var filmFile = new Uint8Array(totalSize);
     filmFile.set(header, 0);
     filmFile.set(window.processedDataForDownload, FILM_HEADER_SIZE);
 
@@ -1397,8 +1392,8 @@ function updateCanvasScale() {
         var containerWidth = container.clientWidth;
         var containerHeight = container.clientHeight;
         if (containerWidth === 0 || containerHeight === 0) continue;
-        var rotatedWidth = CANVAS_HEIGHT;
-        var rotatedHeight = CANVAS_WIDTH;
+        var rotatedWidth = getCanvasHeight();
+        var rotatedHeight = getCanvasWidth();
         var scaleVal = Math.min(containerWidth / rotatedWidth, containerHeight / rotatedHeight);
         canvas.style.transform = 'translate(-50%, -50%) rotate(90deg) scale(' + scaleVal + ')';
     }

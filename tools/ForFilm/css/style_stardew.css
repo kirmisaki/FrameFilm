@@ -254,6 +254,39 @@ h1 {
     color: #155724;
 }
 
+/* 设备类型信息 */
+.device-type-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+}
+
+.device-type-badge {
+    background-color: rgba(255, 255, 255, 0.25);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.device-resolution {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.device-hint {
+    font-size: 13px;
+    color: #888;
+    margin-top: 5px;
+}
+
 .device-list {
     margin: 20px 0;
 }

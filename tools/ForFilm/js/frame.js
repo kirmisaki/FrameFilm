@@ -6,9 +6,6 @@ let frameCanvasRotation = 0;
 let frameCameraStream = null;
 let frameActiveTab = 'frame-upload';
 
-const FRAME_CANVAS_WIDTH = 600;
-const FRAME_CANVAS_HEIGHT = 400;
-
 function initFrameTabSwitch() {
     var tabs = document.querySelectorAll('.frame-tab');
     tabs.forEach(function(tab) {
@@ -141,8 +138,8 @@ function frameSetupImage(canvasId, fill) {
         frameCanvasRotation = 0;
     }
 
-    var effectiveWidth = frameCanvasRotation === 1 ? CANVAS_HEIGHT : CANVAS_WIDTH;
-    var effectiveHeight = frameCanvasRotation === 1 ? CANVAS_WIDTH : CANVAS_HEIGHT;
+    var effectiveWidth = frameCanvasRotation === 1 ? getCanvasHeight() : getCanvasWidth();
+    var effectiveHeight = frameCanvasRotation === 1 ? getCanvasWidth() : getCanvasHeight();
     var scaleX = effectiveWidth / img.width;
     var scaleY = effectiveHeight / img.height;
     frameScale = fill ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
@@ -154,11 +151,11 @@ function frameUpdateImage(canvasId) {
     if (!frameOriginalImage) return;
 
     var canvas = document.getElementById(canvasId);
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
+    var canvasWidth = getCanvasWidth();
+    var canvasHeight = getCanvasHeight();
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
     var ctx = canvas.getContext('2d');
-    var canvasWidth = CANVAS_WIDTH;
-    var canvasHeight = CANVAS_HEIGHT;
 
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.save();
@@ -221,12 +218,15 @@ function frameUploadToDevice(canvasId, prefix) {
     try {
         var canvas = document.getElementById(canvasId);
         var ctx = canvas.getContext('2d');
-        var imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        var cw = getCanvasWidth();
+        var ch = getCanvasHeight();
+        var imageData = ctx.getImageData(0, 0, cw, ch);
         var processedData = processImageData(imageData);
         var header = generateFilmHeader();
-        var fileData = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+        var totalSize = getFilmFileTotalSize();
+        var fileData = new Uint8Array(totalSize);
         fileData.set(header, 0);
-        fileData.set(processedData, FILM_HEADER_SIZE);
+        fileData.set(processedData, 32);
 
         frameUploadViaBle('frame.film', fileData, prefix);
     } catch (error) {
@@ -243,12 +243,15 @@ function frameQuoteUploadToDevice() {
     try {
         var canvas = document.getElementById('frame-quote-canvas');
         var ctx = canvas.getContext('2d');
-        var imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        var cw = getCanvasWidth();
+        var ch = getCanvasHeight();
+        var imageData = ctx.getImageData(0, 0, cw, ch);
         var processedData = processImageData(imageData);
         var header = generateFilmHeader();
-        var fileData = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+        var totalSize = getFilmFileTotalSize();
+        var fileData = new Uint8Array(totalSize);
         fileData.set(header, 0);
-        fileData.set(processedData, FILM_HEADER_SIZE);
+        fileData.set(processedData, 32);
 
         frameUploadViaBle('quote.film', fileData, 'frame-quote-transfer-');
     } catch (error) {
@@ -257,7 +260,7 @@ function frameQuoteUploadToDevice() {
 }
 
 async function frameUploadViaBle(fileName, fileData, prefix) {
-    var expectedSize = FILM_FILE_TOTAL_SIZE;
+    var expectedSize = getFilmFileTotalSize();
     if (fileData.length !== expectedSize) {
         showMessage('文件大小不符合要求(应为' + expectedSize + '字节)', 'error');
         return;
@@ -388,16 +391,18 @@ function frameFetchQuote() {
 
 function frameRenderQuote(text, author) {
     var canvas = document.getElementById('frame-quote-canvas');
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
+    var cw = getCanvasWidth();
+    var ch = getCanvasHeight();
+    canvas.width = cw;
+    canvas.height = ch;
     var ctx = canvas.getContext('2d');
 
-    // 竖屏渲染：反向旋转抵消CSS的rotate(90deg)，有效绘制区域为 400x600
+    // 竖屏渲染：反向旋转抵消CSS的rotate(90deg)，有效绘制区域为 height x width
     ctx.save();
-    ctx.translate(0, CANVAS_HEIGHT);
+    ctx.translate(0, ch);
     ctx.rotate(-Math.PI / 2);
-    var w = CANVAS_HEIGHT;  // 400
-    var h = CANVAS_WIDTH;   // 600
+    var w = ch;
+    var h = cw;
 
     // 随机配色方案
     var scheme = frameColorSchemes[Math.floor(Math.random() * frameColorSchemes.length)];
@@ -501,12 +506,12 @@ function frameRenderQuote(text, author) {
     ctx.restore();
 
     // 转换为六色显示效果（根据开关决定是否使用抖动）
-    var imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    var imageData = ctx.getImageData(0, 0, cw, ch);
     var useDither = document.getElementById('frameQuoteDither').checked;
     var processedData = useDither 
         ? processImageData(floydSteinbergDither(imageData, 0.8))
         : processImageData(imageData);
-    var finalData = decodeProcessedData(processedData, CANVAS_WIDTH, CANVAS_HEIGHT);
+    var finalData = decodeProcessedData(processedData, cw, ch);
     ctx.putImageData(finalData, 0, 0);
 
     updateCanvasScale();

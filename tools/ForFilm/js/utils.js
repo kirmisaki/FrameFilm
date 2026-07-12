@@ -1,5 +1,80 @@
 // 工具函数
 
+// ===== 设备配置 =====
+var DEVICE_CONFIGS = {
+    FRAMEFILM: {
+        screenWidth: 600,
+        screenHeight: 400,
+        displayName: 'FrameFilm'
+    },
+    FRAMEFILMPRO: {
+        screenWidth: 792,
+        screenHeight: 528,
+        displayName: 'FrameFilm Pro'
+    }
+};
+
+var currentDeviceType = 'FRAMEFILM';
+
+function getDeviceConfig() {
+    return DEVICE_CONFIGS[currentDeviceType] || DEVICE_CONFIGS['FRAMEFILM'];
+}
+
+function setDeviceType(type) {
+    if (DEVICE_CONFIGS[type]) {
+        currentDeviceType = type;
+        onDeviceTypeChanged();
+    }
+}
+
+function onDeviceTypeChanged() {
+    // 更新所有 canvas 尺寸
+    var cfg = getDeviceConfig();
+    var canvases = document.querySelectorAll('canvas[id]');
+    for (var i = 0; i < canvases.length; i++) {
+        canvases[i].width = cfg.screenWidth;
+        canvases[i].height = cfg.screenHeight;
+    }
+    // 更新设备类型信息显示
+    var badge = document.getElementById('device-type-badge');
+    var resolution = document.getElementById('device-resolution');
+    var typeInfo = document.getElementById('device-type-info');
+    if (badge) {
+        badge.textContent = cfg.displayName;
+    }
+    if (resolution) {
+        resolution.textContent = cfg.screenWidth + ' x ' + cfg.screenHeight;
+    }
+    if (typeInfo) {
+        typeInfo.style.display = 'flex';
+    }
+}
+
+function getCanvasWidth() {
+    var w = getDeviceConfig().screenWidth;
+    console.log('[DEBUG] getCanvasWidth() = ' + w + ' | deviceType=' + currentDeviceType);
+    return w;
+}
+
+function getCanvasHeight() {
+    var h = getDeviceConfig().screenHeight;
+    console.log('[DEBUG] getCanvasHeight() = ' + h + ' | deviceType=' + currentDeviceType);
+    return h;
+}
+
+function getFilmPixelDataSize() {
+    var cfg = getDeviceConfig();
+    var size = (cfg.screenWidth * cfg.screenHeight) / 2;
+    console.log('[DEBUG] getFilmPixelDataSize() = ' + size + ' | deviceType=' + currentDeviceType);
+    return size;
+}
+
+function getFilmFileTotalSize() {
+    var total = 32 + getFilmPixelDataSize();
+    console.log('[DEBUG] getFilmFileTotalSize() = ' + total + ' | deviceType=' + currentDeviceType);
+    return total;
+}
+
 // 显示消息提示
 function showMessage(message, type = 'info') {
     const messageDiv = document.createElement('div');

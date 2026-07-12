@@ -135,10 +135,19 @@ function initBluetooth() {
             service = await server.getPrimaryService(BLE_SERVICE_UUID);
             characteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
 
-            status.textContent = '已连接';
+            // 根据设备名称检测设备类型
+            var deviceName = device.name || '';
+            if (deviceName.toUpperCase().indexOf('PRO') !== -1) {
+                setDeviceType('FRAMEFILMPRO');
+            } else {
+                setDeviceType('FRAMEFILM');
+            }
+            var devCfg = getDeviceConfig();
+
+            status.textContent = '已连接 - ' + devCfg.displayName;
             status.className = 'status connected';
 
-            deviceList.innerHTML = '<div class="device-item connected-device"><div class="device-info"><strong>' + (device.name || '已连接设备') + '</strong><p class="device-id">' + device.id + '</p></div><button class="disconnect-btn" onclick="disconnectDevice()">断开</button></div>';
+            deviceList.innerHTML = '<div class="device-item connected-device"><div class="device-info"><strong>' + (device.name || '已连接设备') + '</strong><p class="device-id">' + devCfg.displayName + ' | ' + devCfg.screenWidth + 'x' + devCfg.screenHeight + '</p></div><button class="disconnect-btn" onclick="disconnectDevice()">断开</button></div>';
 
             device.addEventListener('gattserverdisconnected', onDisconnected);
             console.log('设备已连接:', device.name);
@@ -187,12 +196,13 @@ function initBluetooth() {
 
 function onDisconnected(event) {
     filmTransState = BLE_FILM_TRANS_STATE_IDLE;
-    const status = document.getElementById('connection-status');
+    setDeviceType('FRAMEFILM');
+    var status = document.getElementById('connection-status');
     if (status) {
         status.textContent = '设备已断开';
         status.className = 'status';
     }
-    const deviceList = document.getElementById('device-list');
+    var deviceList = document.getElementById('device-list');
     if (deviceList) {
         deviceList.innerHTML = '<div class="no-devices">设备已断开连接</div>';
     }
@@ -240,31 +250,33 @@ function uploadToDevice() {
     }
 
     try {
-        const canvas = document.getElementById('canvas');
-        const canvasWidth = CANVAS_WIDTH;
-        const canvasHeight = CANVAS_HEIGHT;
-        const ctx = canvas.getContext('2d');
-        const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        var canvas = document.getElementById('canvas');
+        var canvasWidth = getCanvasWidth();
+        var canvasHeight = getCanvasHeight();
+        var ctx = canvas.getContext('2d');
+        var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
         window.processedDataForDownload = processImageData(imageData);
     } catch (error) {
         showMessage('转换失败: ' + error.message, 'error');
         return;
     }
 
-    const fileName = document.getElementById('fileName').value || 'output.film';
-    const pixelData = window.processedDataForDownload;
+    var fileName = document.getElementById('fileName').value || 'output.film';
+    var pixelData = window.processedDataForDownload;
 
     // 生成文件头并合并
-    const header = generateFilmHeader();
-    const fileData = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+    var header = generateFilmHeader();
+    var totalSize = getFilmFileTotalSize();
+    var headerSize = 32;
+    var fileData = new Uint8Array(totalSize);
     fileData.set(header, 0);
-    fileData.set(pixelData, FILM_HEADER_SIZE);
+    fileData.set(pixelData, headerSize);
 
     uploadFilmFileViaBle(fileName, fileData);
 }
 
 async function uploadFilmFileViaBle(fileName, fileData) {
-    const expectedSize = FILM_FILE_TOTAL_SIZE;
+    var expectedSize = getFilmFileTotalSize();
 
     if (fileData.length !== expectedSize) {
         showMessage(`文件大小不符合要求(应为${expectedSize}字节)`, 'error');
