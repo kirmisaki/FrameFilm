@@ -683,8 +683,8 @@ void hal_epd_pwroff(void)
 
 void hal_epd_deinit(void)
 {
-    hal_epd_sleep();
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    // hal_epd_sleep();
+    // vTaskDelay(100 / portTICK_PERIOD_MS);
 
     // Release all GPIOs to input
     gpio_config_t io_conf =
