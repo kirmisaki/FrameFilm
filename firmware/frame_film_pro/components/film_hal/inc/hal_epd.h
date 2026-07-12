@@ -6,7 +6,6 @@
  */
 #include "esp_system.h"
 #include "driver/gpio.h"
-#include "driver/spi_master.h"
 
 /*********************************************************************
  * CPPMIX
@@ -21,49 +20,63 @@ extern "C" {
 #define EPD_TAG                        "HAL_EPD"
 
 //IO settings
-//SCK--GPIO12(SCLK)
-//SDIN---GPIO11(MOSI)
-#define EPD_SCK_PIN  GPIO_NUM_48  //SCK
-#define EPD_SDIN_PIN GPIO_NUM_47  //SDIN
-#define EPD_BUSY_PIN GPIO_NUM_11  //BUSY
-#define EPD_RST_PIN  GPIO_NUM_12  //RES
-#define EPD_DC_PIN   GPIO_NUM_13  //DC
-#define EPD_CS_PIN   GPIO_NUM_14  //CS
+#define EPD_SCK_PIN                    GPIO_NUM_48  // SCK
+#define EPD_SDIN_PIN                   GPIO_NUM_47  // SDIN (MOSI+MISO, bidirectional)
+#define EPD_BUSY_PIN                   GPIO_NUM_11  // BUSY
+#define EPD_RST_PIN                    GPIO_NUM_12  // RES
+#define EPD_DC_PIN                     GPIO_NUM_13  // DC
+#define EPD_CS_PIN                     GPIO_NUM_14  // CS
 
-#define isEPD_W21_BUSY gpio_get_level(EPD_BUSY_PIN)
-#define EPD_W21_RST_0 gpio_set_level(EPD_RST_PIN, 0)
-#define EPD_W21_RST_1 gpio_set_level(EPD_RST_PIN, 1)
-#define EPD_W21_DC_0  gpio_set_level(EPD_DC_PIN, 0)
-#define EPD_W21_DC_1  gpio_set_level(EPD_DC_PIN, 1)
-#define EPD_W21_CS_0 gpio_set_level(EPD_CS_PIN, 0)
-#define EPD_W21_CS_1 gpio_set_level(EPD_CS_PIN, 1)
+// Bit-bang control macros (match reference driver exactly)
+#define isEPD_W21_BUSY                 gpio_get_level(EPD_BUSY_PIN)
+#define EPD_W21_RST_0                  gpio_set_level(EPD_RST_PIN, 0)
+#define EPD_W21_RST_1                  gpio_set_level(EPD_RST_PIN, 1)
+#define EPD_W21_DC_0                   gpio_set_level(EPD_DC_PIN, 0)
+#define EPD_W21_DC_1                   gpio_set_level(EPD_DC_PIN, 1)
+#define EPD_W21_CS_0                   gpio_set_level(EPD_CS_PIN, 0)
+#define EPD_W21_CS_1                   gpio_set_level(EPD_CS_PIN, 1)
+#define EPD_W21_CLK_0                  gpio_set_level(EPD_SCK_PIN, 0)
+#define EPD_W21_CLK_1                  gpio_set_level(EPD_SCK_PIN, 1)
+#define EPD_W21_MOSI_0                 gpio_set_level(EPD_SDIN_PIN, 0)
+#define EPD_W21_MOSI_1                 gpio_set_level(EPD_SDIN_PIN, 1)
+#define READ_SDA                       gpio_get_level(EPD_SDIN_PIN)
 
-#define PSR         0x00
-#define PWR         0x01
-#define POF         0x02
-#define POFS        0x03
-#define PON         0x04
-#define BTST1       0x05
-#define BTST2       0x06
-#define DSLP        0x07
-#define BTST3       0x08
-#define DTM         0x10
-#define DRF         0x12
-#define PLL         0x30
-#define CDI         0x50
-#define TCON        0x60
-#define TRES        0x61
-#define REV         0x70
-#define VDCS        0x82
-#define T_VDCS      0x84
-#define PWS         0xE3
+// SE0368-C commands
+#define PSR                            0x00  // Panel setting
+#define PWR                            0x01  // Power setting
+#define POF                            0x02  // Power off
+#define POFS                           0x03  // Power off sequence
+#define PON                            0x04  // Power on
+#define BTST1                          0x05  // Booster soft start 1
+#define BTST2                          0x06  // Booster soft start 2
+#define DSLP                           0x07  // Deep sleep
+#define BTST3                          0x08  // Booster soft start 3
+#define DTM                            0x10  // Data start transmission
+#define REF                            0x17  // Display refresh
+#define PLL                            0x30  // PLL control
+#define TSE                            0x40  // Temperature sensor read
+#define TSD                            0x41  // Temperature sensor data
+#define CDI                            0x50  // CDI
+#define RES2                           0x62  // Resolution setting 2
+#define RSET                           0x83  // Resolution extended setting
+#define WFT                            0xE0  // Waveform temperature
+#define VCOM2                          0xE1  // VCOM2
+#define PWS                            0xE3  // Power saving
+#define WFD                            0xE6  // Waveform temperature data
+#define VCOM                           0xE7  // VCOM
+#define BOD                            0xE9  // Border
 
-#define EPD_COLOR_BLACK   0x00  
-#define EPD_COLOR_WHITE   0x11  
-#define EPD_COLOR_GREEN   0x66  
-#define EPD_COLOR_BLUE    0x55  
-#define EPD_COLOR_RED     0x33  
-#define EPD_COLOR_YELLOW  0x22  
+// 4-bit pixel color index (input format, 2 pixels per byte)
+#define EPD_COLOR_BLACK                0x00
+#define EPD_COLOR_WHITE                0x11
+#define EPD_COLOR_GREEN                0x66
+#define EPD_COLOR_BLUE                 0x55
+#define EPD_COLOR_RED                  0x33
+#define EPD_COLOR_YELLOW               0x22
+
+// Screen resolution - SE0368-C
+#define EPD_WIDTH                      792
+#define EPD_HEIGHT                     528
 
 /*********************************************************************
 * TYPEDEFS

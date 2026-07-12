@@ -20,7 +20,7 @@
  *
  * FileName : /film_hal/src/hal_epd.c
  * Author: Kiritro  Version: v0.1  Date: 2026/3/31
- * Description: Function introduction
+ * Description: SE0368-C 6-color EPD driver (software bit-bang SPI)
  * ChangeLog: Change Notes
  *
  *********************************************************************/
@@ -38,8 +38,9 @@
 /*********************************************************************
  * MACROS
  */
-#define EPD_WIDTH                         (600)
-#define EPD_HEIGHT                        (400)
+// 4bpp input → 2bpp output conversion
+#define EPD_INPUT_LINE      (EPD_WIDTH / 2)   // 396 bytes per line
+#define EPD_OUTPUT_LINE     (EPD_WIDTH / 4)   // 198 bytes per line
 
 #define FILM_HEADER_SIZE                  (32)
 #define FILM_COLOR_TABLE_SIZE             (16)
@@ -49,6 +50,13 @@
 #define FILM_OFFSET_COLORCOUNT            (0x08)
 #define FILM_OFFSET_RESERVED              (0x09)
 #define FILM_OFFSET_COLORTABLE            (0x10)
+
+// SDA direction helper (match reference driver SDA_IN / SDA_OUT)
+#define SDA_IN()   gpio_set_direction(EPD_SDIN_PIN, GPIO_MODE_INPUT)
+#define SDA_OUT()  gpio_set_direction(EPD_SDIN_PIN, GPIO_MODE_OUTPUT)
+
+// Pack 4 identical 2-bit values into one byte
+#define PACK4(v)  (((v) << 6) | ((v) << 4) | ((v) << 2) | (v))
 
 /*********************************************************************
 * TYPEDEFS
@@ -65,6 +73,7 @@ typedef struct {
 /*********************************************************************
  * CONSTANTS
  */
+// 4-bit color index → device 4-bit LUT (for film format playback)
 static const unsigned char color_lut[256] = {
     [0x00] = 0x00, // Black
     [0xFF] = 0x01, // White
@@ -74,117 +83,217 @@ static const unsigned char color_lut[256] = {
     [0x1C] = 0x06, // Green
 };
 
-/*********************************************************************
- * LOCAL VARIABLES
- */
-// SPI bus handle
-static spi_device_handle_t m_spi_device;
-
-/*********************************************************************
- * GLOBAL VARIABLES
- */
+// SE0368-C 2-bit color maps for dual-pass display (from reference driver)
+static const uint8_t color_map[16]  = {1, 1, 2, 3, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+static const uint8_t color_map1[16] = {0, 1, 1, 3, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
-static void spi_init(void);
-static void reset(void);
-static void lcd_chkstatus(void);
+static void SPI_Write(unsigned char value);
 static void EPD_W21_WriteCMD(unsigned char command);
 static void EPD_W21_WriteDATA(unsigned char datas);
 static void EPD_W21_WriteDATA_Bulk(const unsigned char *data, uint32_t len);
-static unsigned char color_get(unsigned char color_index);
+static unsigned char EPD_read(void);
+static void reset(void);
+static void lcd_chkstatus(void);
+static unsigned char epd_read_temp(void);
+static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap, uint8_t temp_val);
+static void epd_display_solid_pass(unsigned char fill_byte, unsigned char temp_val);
+static void epd_display_solid(unsigned char color_index);
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header);
 
 /*********************************************************************
- * GLOBAL FUNCTIONS
- */
+ * SOFTWARE SPI (match reference driver exactly)
+ *********************************************************************/
 
-static void spi_init(void)
+static void SPI_Write(unsigned char value)
 {
-    esp_err_t ret;
-    spi_bus_config_t buscfg =
-    {
-        .miso_io_num = -1, // Not used
-        .mosi_io_num = EPD_SDIN_PIN, // SDIN (SPI2 MOSI)
-        .sclk_io_num = EPD_SCK_PIN, // SCK (SPI2 SCLK)
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = EPD_WIDTH * EPD_HEIGHT / 2
-    };
+    unsigned char i;
 
-    ret = spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO);
-    assert(ret == ESP_OK);
+    for (i = 0; i < 8; i++) {
+        EPD_W21_CLK_0;
 
-    spi_device_interface_config_t devcfg =
-    {
-        .clock_speed_hz = 10000000, // 40MHz - ESP32-S3 max stable speed
-        .mode = 0, // SPI mode 0
-        .spics_io_num = -1, // CS pin handled manually
-        .queue_size = 1
-    };
+        if (value & 0x80)
+            EPD_W21_MOSI_1;
+        else
+            EPD_W21_MOSI_0;
 
-    ret = spi_bus_add_device(SPI2_HOST, &devcfg, &m_spi_device);
-    assert(ret == ESP_OK);
-}
+        value = (value << 1);
 
-static void reset(void)
-{
-    //20220330
-    //dual reset
-    EPD_W21_RST_0; // Reset
-    vTaskDelay(30 / portTICK_PERIOD_MS);
-    EPD_W21_RST_1;
-    vTaskDelay(30 / portTICK_PERIOD_MS);
-    EPD_W21_RST_0; // Reset
-    vTaskDelay(30 / portTICK_PERIOD_MS);
-    EPD_W21_RST_1;
-}
-
-static void lcd_chkstatus(void)
-{
-    while(!isEPD_W21_BUSY);
+        EPD_W21_CLK_1;
+    }
 }
 
 static void EPD_W21_WriteCMD(unsigned char command)
 {
     EPD_W21_CS_0;
-    EPD_W21_DC_0;  // D/C#   0:command  1:data
-    spi_transaction_t t;
-    memset(&t, 0, sizeof(t));
-    t.length = 8;
-    t.tx_buffer = &command;
-    spi_device_transmit(m_spi_device, &t);
+    EPD_W21_DC_0;           // command write
+    SPI_Write(command);
     EPD_W21_CS_1;
+    EPD_W21_DC_1;           // restore DC to data mode
 }
 
 static void EPD_W21_WriteDATA(unsigned char datas)
 {
+    EPD_W21_MOSI_0;
     EPD_W21_CS_0;
-    EPD_W21_DC_1;  // D/C#   0:command  1:data
-    spi_transaction_t t;
-    memset(&t, 0, sizeof(t));
-    t.length = 8;
-    t.tx_buffer = &datas;
-    spi_device_transmit(m_spi_device, &t);
+    EPD_W21_DC_1;           // data write
+    SPI_Write(datas);
     EPD_W21_CS_1;
+    EPD_W21_DC_1;
+    EPD_W21_MOSI_0;
 }
 
 static void EPD_W21_WriteDATA_Bulk(const unsigned char *data, uint32_t len)
 {
+    EPD_W21_MOSI_0;
     EPD_W21_CS_0;
-    EPD_W21_DC_1;  // D/C#   0:command  1:data
-    spi_transaction_t t;
-    memset(&t, 0, sizeof(t));
-    t.length = len * 8;
-    t.tx_buffer = data;
-    spi_device_transmit(m_spi_device, &t);
+    EPD_W21_DC_1;
+    for (uint32_t i = 0; i < len; i++) {
+        SPI_Write(data[i]);
+    }
     EPD_W21_CS_1;
+    EPD_W21_DC_1;
+    EPD_W21_MOSI_0;
 }
 
-static inline unsigned char color_get(unsigned char color_index)
+static unsigned char EPD_read(void)
 {
-    return color_lut[color_index];
+    unsigned char i;
+    unsigned char DATA_BUF = 0;
+
+    EPD_W21_CS_0;
+    SDA_IN();               // set SDIN as input
+    EPD_W21_DC_1;           // data read
+    EPD_W21_CLK_0;
+    for (i = 0; i < 8; i++) {
+        DATA_BUF = DATA_BUF << 1;
+        DATA_BUF |= READ_SDA;
+        EPD_W21_CLK_1;
+        EPD_W21_CLK_0;
+    }
+    EPD_W21_CS_1;
+    EPD_W21_DC_1;
+    SDA_OUT();              // restore SDIN as output
+
+    return DATA_BUF;
+}
+
+/*********************************************************************
+ * HELPER FUNCTIONS
+ *********************************************************************/
+
+static void reset(void)
+{
+    // SE0368-C hardware reset (match reference driver)
+    EPD_W21_RST_1;
+    vTaskDelay(20 / portTICK_PERIOD_MS);
+    EPD_W21_RST_0;
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    EPD_W21_RST_1;
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    lcd_chkstatus();
+}
+
+static void lcd_chkstatus(void)
+{
+    while (isEPD_W21_BUSY == 0);
+}
+
+static unsigned char epd_read_temp(void)
+{
+    EPD_W21_WriteCMD(TSD);   // 0x41
+    EPD_W21_WriteDATA(0x00);
+    EPD_W21_WriteCMD(TSE);   // 0x40
+    lcd_chkstatus();
+    return EPD_read();
+}
+
+/**
+ * @brief Send one display pass: set waveform, convert 4bpp→2bpp data, refresh
+ */
+static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap, uint8_t temp_val)
+{
+    // Set temperature waveform
+    EPD_W21_WriteCMD(WFT);   // 0xE0
+    EPD_W21_WriteDATA(0x02);
+    EPD_W21_WriteCMD(WFD);   // 0xE6
+    EPD_W21_WriteDATA(temp_val);
+    lcd_chkstatus();
+
+    // Send pixel data: 4bpp input → 2bpp output, 4 pixels per byte
+    EPD_W21_WriteCMD(DTM);   // 0x10
+
+    unsigned char out_line[EPD_OUTPUT_LINE]; // 198 bytes
+    for (int row = 0; row < EPD_HEIGHT; row++) {
+        const unsigned char *in_ptr = input_data + row * EPD_INPUT_LINE;
+        for (int col = 0, out_idx = 0; col < EPD_INPUT_LINE; col += 2, out_idx++) {
+            uint8_t in1 = in_ptr[col];
+            uint8_t in2 = in_ptr[col + 1];
+            uint8_t p1 = (in1 >> 4) & 0x0F;
+            uint8_t p2 = in1 & 0x0F;
+            uint8_t p3 = (in2 >> 4) & 0x0F;
+            uint8_t p4 = in2 & 0x0F;
+            out_line[out_idx] = (cmap[p1] << 6) | (cmap[p2] << 4)
+                              | (cmap[p3] << 2) | cmap[p4];
+        }
+        EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
+    }
+
+    // Refresh
+    EPD_W21_WriteCMD(REF);   // 0x17
+    EPD_W21_WriteDATA(0xA5);
+    lcd_chkstatus();
+}
+
+/**
+ * @brief Display solid color for one pass (uniform fill, no per-pixel conversion)
+ */
+static void epd_display_solid_pass(unsigned char fill_byte, unsigned char temp_val)
+{
+    EPD_W21_WriteCMD(WFT);
+    EPD_W21_WriteDATA(0x02);
+    EPD_W21_WriteCMD(WFD);
+    EPD_W21_WriteDATA(temp_val);
+    lcd_chkstatus();
+
+    EPD_W21_WriteCMD(DTM);
+
+    unsigned char line[EPD_OUTPUT_LINE];
+    memset(line, fill_byte, EPD_OUTPUT_LINE);
+    for (int row = 0; row < EPD_HEIGHT; row++) {
+        EPD_W21_WriteDATA_Bulk(line, EPD_OUTPUT_LINE);
+    }
+
+    EPD_W21_WriteCMD(REF);
+    EPD_W21_WriteDATA(0xA5);
+    lcd_chkstatus();
+}
+
+/**
+ * @brief Display solid color with dual-pass pipeline
+ */
+static void epd_display_solid(unsigned char color_index)
+{
+    unsigned char var_temp, temp1, temp2;
+
+    var_temp = epd_read_temp();
+
+    if (var_temp < 5)                { temp1 = 2;  temp2 = 7;  }
+    else if (var_temp <= 10)         { temp1 = 12; temp2 = 17; }
+    else if (var_temp <= 20)         { temp1 = 22; temp2 = 27; }
+    else if (var_temp <= 30)         { temp1 = 32; temp2 = 37; }
+    else /* var_temp > 30 && <= 127*/{ temp1 = 42; temp2 = 47; }
+
+    uint8_t pass1 = PACK4(color_map[color_index]);
+    uint8_t pass2 = PACK4(color_map1[color_index]);
+
+    sys_logi(EPD_TAG, "Solid color idx=%d temp=%d t1=%d t2=%d p1=0x%02X p2=0x%02X",
+             color_index, var_temp, temp1, temp2, pass1, pass2);
+
+    epd_display_solid_pass(pass1, temp1);
+    epd_display_solid_pass(pass2, temp2);
 }
 
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header)
@@ -207,18 +316,23 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
 
     uint32_t expectedSize = (EPD_WIDTH * EPD_HEIGHT) / 2;
     if (header->fileSize != expectedSize) {
-        sys_loge(EPD_TAG, "File size mismatch: %u (expected %u)", header->fileSize, expectedSize);
+        sys_loge(EPD_TAG, "File size mismatch: %lu (expected %lu)",
+                 (unsigned long)header->fileSize, (unsigned long)expectedSize);
         return ESP_ERR_INVALID_SIZE;
     }
 
     return ESP_OK;
 }
 
+/*********************************************************************
+ * GLOBAL FUNCTIONS
+ *********************************************************************/
+
 void hal_epd_init(void)
 {
     gpio_config_t io_conf;
 
-    // Configure BUSY pin as input
+    // BUSY: input
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pin_bit_mask = (1ULL << EPD_BUSY_PIN);
@@ -226,323 +340,127 @@ void hal_epd_init(void)
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
 
-    // Configure RES, DC, CS pins as output
+    // RST, DC, CS, SCK, SDIN: output
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = (1ULL << EPD_RST_PIN) | (1ULL << EPD_DC_PIN) | (1ULL << EPD_CS_PIN);
+    io_conf.pin_bit_mask = (1ULL << EPD_RST_PIN) | (1ULL << EPD_DC_PIN) |
+                           (1ULL << EPD_CS_PIN)  | (1ULL << EPD_SCK_PIN) |
+                           (1ULL << EPD_SDIN_PIN);
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
 
-    // Initialize SPI bus
-    spi_init();
+    // Initial pin states
+    EPD_W21_CS_1;
+    EPD_W21_DC_1;
+    EPD_W21_CLK_0;
+    EPD_W21_MOSI_0;
 
-    sys_logi(EPD_TAG, "EPD hardware initialized");
+    sys_logi(EPD_TAG, "EPD GPIO initialized (software SPI)");
 }
 
 void hal_epd_display_init(void)
 {
     reset();
+
+    // SE0368-C init sequence (match reference driver)
+    EPD_W21_WriteCMD(PSR);   // 0x00 Panel setting
+    EPD_W21_WriteDATA(0x27); // scan direction
+    EPD_W21_WriteDATA(0x29);
+
+    EPD_W21_WriteCMD(RSET);  // 0x83 Resolution extended
+    EPD_W21_WriteDATA(0x00);
+    EPD_W21_WriteDATA(0x00);
+    EPD_W21_WriteDATA(0x03);
+    EPD_W21_WriteDATA(0x17);
+    EPD_W21_WriteDATA(0x00);
+    EPD_W21_WriteDATA(0x48);
+    EPD_W21_WriteDATA(0x02);
+    EPD_W21_WriteDATA(0x57);
+    EPD_W21_WriteDATA(0x01);
     lcd_chkstatus();
-    vTaskDelay(30 / portTICK_PERIOD_MS);
 
-    EPD_W21_WriteCMD(0xAA);
-    EPD_W21_WriteDATA(0x49);
-    EPD_W21_WriteDATA(0x55);
-    EPD_W21_WriteDATA(0x20);
-    EPD_W21_WriteDATA(0x08);
-    EPD_W21_WriteDATA(0x09);
-    EPD_W21_WriteDATA(0x18);
-
-    EPD_W21_WriteCMD(PWR);
-    EPD_W21_WriteDATA(0x3F);
-
-    EPD_W21_WriteCMD(PSR);
-    EPD_W21_WriteDATA(0x5F);
-    EPD_W21_WriteDATA(0x69);
-
-
-    EPD_W21_WriteCMD(BTST1);
-    EPD_W21_WriteDATA(0x40);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x2C);
-
-    EPD_W21_WriteCMD(BTST3);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x22);
-
-    //First setting
-    EPD_W21_WriteCMD(BTST2);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x17);
-    //===================
-
-    EPD_W21_WriteCMD(POFS);
+    EPD_W21_WriteCMD(PWR);   // 0x01 Power setting
+    EPD_W21_WriteDATA(0x07);
     EPD_W21_WriteDATA(0x00);
+
+    EPD_W21_WriteCMD(POFS);  // 0x03 Power off sequence
+    EPD_W21_WriteDATA(0x10);
     EPD_W21_WriteDATA(0x54);
-    EPD_W21_WriteDATA(0x00);
     EPD_W21_WriteDATA(0x44);
 
-    EPD_W21_WriteCMD(TCON);
-    EPD_W21_WriteDATA(0x02);
-    EPD_W21_WriteDATA(0x00);
-    //Please notice that PLL must be set for version 2 IC
-    EPD_W21_WriteCMD(PLL);
+    EPD_W21_WriteCMD(BTST2); // 0x06 Booster soft start
+    EPD_W21_WriteDATA(0x25);
+    EPD_W21_WriteDATA(0x25);
+    EPD_W21_WriteDATA(0x3C);
+    EPD_W21_WriteDATA(0x17);
+
+    EPD_W21_WriteCMD(PLL);   // 0x30 PLL
     EPD_W21_WriteDATA(0x08);
+    lcd_chkstatus();
 
+    EPD_W21_WriteCMD(TSD);   // 0x41 Temperature sensor
+    EPD_W21_WriteDATA(0x00);
 
-    EPD_W21_WriteCMD(CDI);
-    EPD_W21_WriteDATA(0x3F);
+    EPD_W21_WriteCMD(CDI);   // 0x50 CDI
+    EPD_W21_WriteDATA(0x37);
 
-    EPD_W21_WriteCMD(TRES);
-    EPD_W21_WriteDATA(0x01);
-    EPD_W21_WriteDATA(0x90);
+    EPD_W21_WriteCMD(RES2);  // 0x62 Resolution 2
     EPD_W21_WriteDATA(0x02);
-    EPD_W21_WriteDATA(0x58);
+    EPD_W21_WriteDATA(0x02);
 
-    EPD_W21_WriteCMD(PWS);
-    EPD_W21_WriteDATA(0x2F);
+    EPD_W21_WriteCMD(VCOM);  // 0xE7 VCOM
+    EPD_W21_WriteDATA(0x1C);
 
-    EPD_W21_WriteCMD(T_VDCS);
+    EPD_W21_WriteCMD(PWS);   // 0xE3 Power saving
+    EPD_W21_WriteDATA(0x22);
+
+    EPD_W21_WriteCMD(BOD);   // 0xE9 Border
     EPD_W21_WriteDATA(0x01);
+
+    EPD_W21_WriteCMD(VCOM2); // 0xE1 VCOM2
+    EPD_W21_WriteDATA(0x02);
 
     sys_logi(EPD_TAG, "EPD display initialized");
 }
 
-void hal_epd_display_white(void)
-{
-    unsigned char line_buffer[EPD_WIDTH / 2];
-    memset(line_buffer, EPD_COLOR_WHITE, EPD_WIDTH / 2);
-
-    EPD_W21_WriteCMD(DTM);
-    for(unsigned long i = 0; i < EPD_HEIGHT; i++)
-    {
-        EPD_W21_WriteDATA_Bulk(line_buffer, EPD_WIDTH / 2);
-    }
-    EPD_W21_WriteCMD(PON);
-    lcd_chkstatus();
-
-    //Second setting
-    EPD_W21_WriteCMD(BTST2);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x27);
-
-
-    EPD_W21_WriteCMD(DRF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-
-    EPD_W21_WriteCMD(POF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-}
-
-void hal_epd_display_black(void)
-{
-    unsigned char line_buffer[EPD_WIDTH / 2];
-    memset(line_buffer, EPD_COLOR_BLACK, EPD_WIDTH / 2);
-
-    EPD_W21_WriteCMD(DTM);
-    for(unsigned long i = 0; i < EPD_HEIGHT; i++)
-    {
-        EPD_W21_WriteDATA_Bulk(line_buffer, EPD_WIDTH / 2);
-    }
-    EPD_W21_WriteCMD(PON);
-    lcd_chkstatus();
-
-    //Second setting
-    EPD_W21_WriteCMD(BTST2);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x27);
-
-
-    EPD_W21_WriteCMD(DRF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-
-    EPD_W21_WriteCMD(POF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-}
-
-void hal_epd_display_yellow(void)
-{
-    unsigned char line_buffer[EPD_WIDTH / 2];
-    memset(line_buffer, EPD_COLOR_YELLOW, EPD_WIDTH / 2);
-
-    EPD_W21_WriteCMD(DTM);
-    for(unsigned long i = 0; i < EPD_HEIGHT; i++)
-    {
-        EPD_W21_WriteDATA_Bulk(line_buffer, EPD_WIDTH / 2);
-    }
-    EPD_W21_WriteCMD(PON);
-    lcd_chkstatus();
-
-    //Second setting
-    EPD_W21_WriteCMD(BTST2);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x27);
-
-
-    EPD_W21_WriteCMD(DRF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-
-    EPD_W21_WriteCMD(POF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-}
-
-void hal_epd_display_red(void)
-{
-    unsigned char line_buffer[EPD_WIDTH / 2];
-    memset(line_buffer, EPD_COLOR_RED, EPD_WIDTH / 2);
-
-    EPD_W21_WriteCMD(DTM);
-    for(unsigned long i = 0; i < EPD_HEIGHT; i++)
-    {
-        EPD_W21_WriteDATA_Bulk(line_buffer, EPD_WIDTH / 2);
-    }
-    EPD_W21_WriteCMD(PON);
-    lcd_chkstatus();
-
-    //Second setting
-    EPD_W21_WriteCMD(BTST2);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x27);
-
-
-    EPD_W21_WriteCMD(DRF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-
-    EPD_W21_WriteCMD(POF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-}
-
-void hal_epd_display_blue(void)
-{
-    unsigned char line_buffer[EPD_WIDTH / 2];
-    memset(line_buffer, EPD_COLOR_BLUE, EPD_WIDTH / 2);
-
-    EPD_W21_WriteCMD(DTM);
-    for(unsigned long i = 0; i < EPD_HEIGHT; i++)
-    {
-        EPD_W21_WriteDATA_Bulk(line_buffer, EPD_WIDTH / 2);
-    }
-    EPD_W21_WriteCMD(PON);
-    lcd_chkstatus();
-
-    //Second setting
-    EPD_W21_WriteCMD(BTST2);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x27);
-
-
-    EPD_W21_WriteCMD(DRF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-
-    EPD_W21_WriteCMD(POF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-}
-
-void hal_epd_display_green(void)
-{
-    unsigned char line_buffer[EPD_WIDTH / 2];
-    memset(line_buffer, EPD_COLOR_GREEN, EPD_WIDTH / 2);
-
-    EPD_W21_WriteCMD(DTM);
-    for(unsigned long i = 0; i < EPD_HEIGHT; i++)
-    {
-        EPD_W21_WriteDATA_Bulk(line_buffer, EPD_WIDTH / 2);
-    }
-    EPD_W21_WriteCMD(PON);
-    lcd_chkstatus();
-
-    //Second setting
-    EPD_W21_WriteCMD(BTST2);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x27);
-
-
-    EPD_W21_WriteCMD(DRF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-
-    EPD_W21_WriteCMD(POF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
-}
+void hal_epd_display_white(void)  { epd_display_solid(0x01); }
+void hal_epd_display_black(void)  { epd_display_solid(0x00); }
+void hal_epd_display_yellow(void) { epd_display_solid(0x02); }
+void hal_epd_display_red(void)    { epd_display_solid(0x03); }
+void hal_epd_display_blue(void)   { epd_display_solid(0x05); }
+void hal_epd_display_green(void)  { epd_display_solid(0x06); }
 
 void hal_epd_display_pic(const unsigned char *picData)
 {
-    unsigned int i, j, k;
-    unsigned char temp1, temp2;
-    unsigned char line_buffer[EPD_WIDTH / 2];
-
-    EPD_W21_WriteCMD(DTM);
-    for(i = 0; i < EPD_HEIGHT; i++)
-    {
-        k = 0;
-        for(j = 0; j < EPD_WIDTH / 2; j++)
-        {
-            temp1 = picData[i * EPD_WIDTH + k++];
-            temp2 = picData[i * EPD_WIDTH + k++];
-            line_buffer[j] = (color_get(temp1) << 4) | color_get(temp2);
-        }
-        EPD_W21_WriteDATA_Bulk(line_buffer, EPD_WIDTH / 2);
+    if (picData == NULL) {
+        sys_loge(EPD_TAG, "picData is NULL");
+        return;
     }
 
-    //Refresh
-    EPD_W21_WriteCMD(PON);
-    lcd_chkstatus();
+    unsigned char var_temp, temp1, temp2;
 
-    //Second setting
-    EPD_W21_WriteCMD(BTST2);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x27);
+    var_temp = epd_read_temp();
 
+    if (var_temp < 5)                { temp1 = 2;  temp2 = 7;  }
+    else if (var_temp <= 10)         { temp1 = 12; temp2 = 17; }
+    else if (var_temp <= 20)         { temp1 = 22; temp2 = 27; }
+    else if (var_temp <= 30)         { temp1 = 32; temp2 = 37; }
+    else /* var_temp > 30 && <= 127*/{ temp1 = 42; temp2 = 47; }
 
-    EPD_W21_WriteCMD(DRF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();
+    sys_logi(EPD_TAG, "Display pic: temp=%d t1=%d t2=%d", var_temp, temp1, temp2);
 
-    EPD_W21_WriteCMD(POF);
-    EPD_W21_WriteDATA(0x00);
-    lcd_chkstatus();         //waiting for the electronic paper IC to release the idle signal
+    epd_do_pass(picData, color_map,  temp1);
+    epd_do_pass(picData, color_map1, temp2);
+
+    sys_logi(EPD_TAG, "Display pic completed");
 }
 
 void hal_epd_display_film(const unsigned char *filmData)
 {
     FilmHeader header;
     const unsigned char *pixelData;
-    unsigned int i, j;
-    unsigned char byte;
-    unsigned char colorCode1, colorCode2;
-    unsigned char color1, color2;
-    unsigned char line_buffer[EPD_WIDTH / 2];
+    uint32_t i, j;
 
     if (filmData == NULL) {
         sys_loge(EPD_TAG, "filmData is NULL");
@@ -554,50 +472,95 @@ void hal_epd_display_film(const unsigned char *filmData)
         return;
     }
 
-    sys_logi(EPD_TAG, "Film info: %ux%u, %d colors, %u bytes",
+    sys_logi(EPD_TAG, "Film: %ux%u, %d colors, %lu bytes",
              header.screenWidth, header.screenHeight,
-             header.colorCount, header.fileSize);
-
-    sys_logi(EPD_TAG, "Color table:");
-    for (int k = 0; k < 16; k++) {
-        sys_logi(EPD_TAG, "  [%d] = 0x%02X", k, header.colorTable[k]);
-    }
+             header.colorCount, (unsigned long)header.fileSize);
 
     pixelData = filmData + FILM_HEADER_SIZE;
 
+    unsigned char var_temp, temp1, temp2;
+
+    var_temp = epd_read_temp();
+
+    if (var_temp < 5)                { temp1 = 2;  temp2 = 7;  }
+    else if (var_temp <= 10)         { temp1 = 12; temp2 = 17; }
+    else if (var_temp <= 20)         { temp1 = 22; temp2 = 27; }
+    else if (var_temp <= 30)         { temp1 = 32; temp2 = 37; }
+    else /* var_temp > 30 && <= 127*/{ temp1 = 42; temp2 = 47; }
+
+    sys_logi(EPD_TAG, "Film temp=%d t1=%d t2=%d", var_temp, temp1, temp2);
+
+    // ---- Pass 1 (color_map) ----
+    EPD_W21_WriteCMD(WFT);
+    EPD_W21_WriteDATA(0x02);
+    EPD_W21_WriteCMD(WFD);
+    EPD_W21_WriteDATA(temp1);
+    lcd_chkstatus();
+
     EPD_W21_WriteCMD(DTM);
-    for (i = 0; i < EPD_HEIGHT; i++)
-    {
-        for (j = 0; j < EPD_WIDTH / 2; j++)
-        {
-            byte = pixelData[i * (EPD_WIDTH / 2) + j];
 
-            colorCode1 = (byte >> 4) & 0x0F;
-            colorCode2 = byte & 0x0F;
+    unsigned char line_4bpp[EPD_INPUT_LINE];
+    unsigned char out_line[EPD_OUTPUT_LINE];
 
-            color1 = header.colorTable[colorCode1];
-            color2 = header.colorTable[colorCode2];
-
-            line_buffer[j] = (color_get(color1) << 4) | color_get(color2);
+    for (i = 0; i < EPD_HEIGHT; i++) {
+        // Decode film pixel data → 4bpp line buffer
+        for (j = 0; j < EPD_INPUT_LINE; j++) {
+            uint8_t byte = pixelData[i * EPD_INPUT_LINE + j];
+            uint8_t cc1 = (byte >> 4) & 0x0F;
+            uint8_t cc2 = byte & 0x0F;
+            line_4bpp[j] = (color_lut[header.colorTable[cc1]] << 4)
+                         |  color_lut[header.colorTable[cc2]];
         }
-        EPD_W21_WriteDATA_Bulk(line_buffer, EPD_WIDTH / 2);
+        // Convert 4bpp → 2bpp
+        for (int k = 0; k < EPD_INPUT_LINE; k += 2) {
+            uint8_t in1 = line_4bpp[k];
+            uint8_t in2 = line_4bpp[k + 1];
+            uint8_t p1 = (in1 >> 4) & 0x0F;
+            uint8_t p2 = in1 & 0x0F;
+            uint8_t p3 = (in2 >> 4) & 0x0F;
+            uint8_t p4 = in2 & 0x0F;
+            out_line[k / 2] = (color_map[p1] << 6) | (color_map[p2] << 4)
+                            | (color_map[p3] << 2) | color_map[p4];
+        }
+        EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
     }
 
-    EPD_W21_WriteCMD(PON);
+    EPD_W21_WriteCMD(REF);
+    EPD_W21_WriteDATA(0xA5);
     lcd_chkstatus();
 
-    EPD_W21_WriteCMD(BTST2);
-    EPD_W21_WriteDATA(0x6F);
-    EPD_W21_WriteDATA(0x1F);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x27);
-
-    EPD_W21_WriteCMD(DRF);
-    EPD_W21_WriteDATA(0x00);
+    // ---- Pass 2 (color_map1) ----
+    EPD_W21_WriteCMD(WFT);
+    EPD_W21_WriteDATA(0x02);
+    EPD_W21_WriteCMD(WFD);
+    EPD_W21_WriteDATA(temp2);
     lcd_chkstatus();
 
-    EPD_W21_WriteCMD(POF);
-    EPD_W21_WriteDATA(0x00);
+    EPD_W21_WriteCMD(DTM);
+
+    for (i = 0; i < EPD_HEIGHT; i++) {
+        for (j = 0; j < EPD_INPUT_LINE; j++) {
+            uint8_t byte = pixelData[i * EPD_INPUT_LINE + j];
+            uint8_t cc1 = (byte >> 4) & 0x0F;
+            uint8_t cc2 = byte & 0x0F;
+            line_4bpp[j] = (color_lut[header.colorTable[cc1]] << 4)
+                         |  color_lut[header.colorTable[cc2]];
+        }
+        for (int k = 0; k < EPD_INPUT_LINE; k += 2) {
+            uint8_t in1 = line_4bpp[k];
+            uint8_t in2 = line_4bpp[k + 1];
+            uint8_t p1 = (in1 >> 4) & 0x0F;
+            uint8_t p2 = in1 & 0x0F;
+            uint8_t p3 = (in2 >> 4) & 0x0F;
+            uint8_t p4 = in2 & 0x0F;
+            out_line[k / 2] = (color_map1[p1] << 6) | (color_map1[p2] << 4)
+                            | (color_map1[p3] << 2) | color_map1[p4];
+        }
+        EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
+    }
+
+    EPD_W21_WriteCMD(REF);
+    EPD_W21_WriteDATA(0xA5);
     lcd_chkstatus();
 
     sys_logi(EPD_TAG, "Film display completed");
@@ -605,10 +568,11 @@ void hal_epd_display_film(const unsigned char *filmData)
 
 void hal_epd_sleep(void)
 {
-    EPD_W21_WriteCMD(DSLP);
+    lcd_chkstatus();
+    EPD_W21_WriteCMD(DSLP);  // 0x07
     EPD_W21_WriteDATA(0xA5);
 
-    sys_logi(EPD_TAG, "EPD entered sleep mode");
+    sys_logi(EPD_TAG, "EPD sleep");
 }
 
 void hal_epd_pwroff(void)
@@ -624,17 +588,11 @@ void hal_epd_deinit(void)
     hal_epd_sleep();
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    if (m_spi_device != NULL)
-    {
-        spi_bus_remove_device(m_spi_device);
-        m_spi_device = NULL;
-    }
-    spi_bus_free(SPI2_HOST);
-
+    // Release all GPIOs to input
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << EPD_BUSY_PIN) | (1ULL << EPD_RST_PIN) |
-                        (1ULL << EPD_DC_PIN) | (1ULL << EPD_CS_PIN) |
-                        (1ULL << EPD_SCK_PIN) | (1ULL << EPD_SDIN_PIN),
+                        (1ULL << EPD_DC_PIN)   | (1ULL << EPD_CS_PIN) |
+                        (1ULL << EPD_SCK_PIN)  | (1ULL << EPD_SDIN_PIN),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -642,5 +600,5 @@ void hal_epd_deinit(void)
     };
     gpio_config(&io_conf);
 
-    sys_logi(EPD_TAG, "EPD power off, SPI and GPIO released");
+    sys_logi(EPD_TAG, "EPD deinit, GPIOs released");
 }
