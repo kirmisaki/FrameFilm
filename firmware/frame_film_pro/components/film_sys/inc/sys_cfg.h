@@ -14,8 +14,8 @@ extern "C" {
  * MACROS
  */
 // SYS CONFIG
-#define SYS_DEVICE_NAME                "FRAMEFILM"
-#define SYS_MANUFACTURER_NAME          "FRAMEFILM"
+#define SYS_DEVICE_NAME                "FRAMEFILMPRO"
+#define SYS_MANUFACTURER_NAME          "FRAMEFILMPRO"
 #define SYS_MODEL_NUMBER               "M1.0"
 #define SYS_SERIAL_NUMBER              "FILM000001"             //SN号
 #define SYS_HAREWARE_VERSION           "H1.0"                   //硬件版本号
