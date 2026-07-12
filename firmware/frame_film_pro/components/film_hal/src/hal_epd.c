@@ -61,7 +61,8 @@
 /*********************************************************************
 * TYPEDEFS
 */
-typedef struct {
+typedef struct
+{
     uint32_t fileSize;
     uint16_t screenWidth;
     uint16_t screenHeight;
@@ -74,7 +75,8 @@ typedef struct {
  * CONSTANTS
  */
 // 4-bit color index → device 4-bit LUT (for film format playback)
-static const unsigned char color_lut[256] = {
+static const unsigned char color_lut[256] =
+{
     [0x00] = 0x00, // Black
     [0xFF] = 0x01, // White
     [0xFC] = 0x02, // Yellow
@@ -111,7 +113,8 @@ static void SPI_Write(unsigned char value)
 {
     unsigned char i;
 
-    for (i = 0; i < 8; i++) {
+    for (i = 0; i < 8; i++)
+    {
         EPD_W21_CLK_0;
 
         if (value & 0x80)
@@ -150,7 +153,8 @@ static void EPD_W21_WriteDATA_Bulk(const unsigned char *data, uint32_t len)
     EPD_W21_MOSI_0;
     EPD_W21_CS_0;
     EPD_W21_DC_1;
-    for (uint32_t i = 0; i < len; i++) {
+    for (uint32_t i = 0; i < len; i++)
+    {
         SPI_Write(data[i]);
     }
     EPD_W21_CS_1;
@@ -167,7 +171,8 @@ static unsigned char EPD_read(void)
     SDA_IN();               // set SDIN as input
     EPD_W21_DC_1;           // data read
     EPD_W21_CLK_0;
-    for (i = 0; i < 8; i++) {
+    for (i = 0; i < 8; i++)
+    {
         DATA_BUF = DATA_BUF << 1;
         DATA_BUF |= READ_SDA;
         EPD_W21_CLK_1;
@@ -226,9 +231,11 @@ static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap, ui
     EPD_W21_WriteCMD(DTM);   // 0x10
 
     unsigned char out_line[EPD_OUTPUT_LINE]; // 198 bytes
-    for (int row = 0; row < EPD_HEIGHT; row++) {
+    for (int row = 0; row < EPD_HEIGHT; row++)
+    {
         const unsigned char *in_ptr = input_data + row * EPD_INPUT_LINE;
-        for (int col = 0, out_idx = 0; col < EPD_INPUT_LINE; col += 2, out_idx++) {
+        for (int col = 0, out_idx = 0; col < EPD_INPUT_LINE; col += 2, out_idx++)
+        {
             uint8_t in1 = in_ptr[col];
             uint8_t in2 = in_ptr[col + 1];
             uint8_t p1 = (in1 >> 4) & 0x0F;
@@ -236,7 +243,7 @@ static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap, ui
             uint8_t p3 = (in2 >> 4) & 0x0F;
             uint8_t p4 = in2 & 0x0F;
             out_line[out_idx] = (cmap[p1] << 6) | (cmap[p2] << 4)
-                              | (cmap[p3] << 2) | cmap[p4];
+                                | (cmap[p3] << 2) | cmap[p4];
         }
         EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
     }
@@ -262,7 +269,8 @@ static void epd_display_solid_pass(unsigned char fill_byte, unsigned char temp_v
 
     unsigned char line[EPD_OUTPUT_LINE];
     memset(line, fill_byte, EPD_OUTPUT_LINE);
-    for (int row = 0; row < EPD_HEIGHT; row++) {
+    for (int row = 0; row < EPD_HEIGHT; row++)
+    {
         EPD_W21_WriteDATA_Bulk(line, EPD_OUTPUT_LINE);
     }
 
@@ -280,11 +288,31 @@ static void epd_display_solid(unsigned char color_index)
 
     var_temp = epd_read_temp();
 
-    if (var_temp < 5)                { temp1 = 2;  temp2 = 7;  }
-    else if (var_temp <= 10)         { temp1 = 12; temp2 = 17; }
-    else if (var_temp <= 20)         { temp1 = 22; temp2 = 27; }
-    else if (var_temp <= 30)         { temp1 = 32; temp2 = 37; }
-    else /* var_temp > 30 && <= 127*/{ temp1 = 42; temp2 = 47; }
+    if (var_temp < 5)
+    {
+        temp1 = 2;
+        temp2 = 7;
+    }
+    else if (var_temp <= 10)
+    {
+        temp1 = 12;
+        temp2 = 17;
+    }
+    else if (var_temp <= 20)
+    {
+        temp1 = 22;
+        temp2 = 27;
+    }
+    else if (var_temp <= 30)
+    {
+        temp1 = 32;
+        temp2 = 37;
+    }
+    else /* var_temp > 30 && <= 127*/
+    {
+        temp1 = 42;
+        temp2 = 47;
+    }
 
     uint8_t pass1 = PACK4(color_map[color_index]);
     uint8_t pass2 = PACK4(color_map1[color_index]);
@@ -298,7 +326,8 @@ static void epd_display_solid(unsigned char color_index)
 
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header)
 {
-    if (filmData == NULL || header == NULL) {
+    if (filmData == NULL || header == NULL)
+    {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -309,13 +338,15 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
     memcpy(header->reserved, &filmData[FILM_OFFSET_RESERVED], 7);
     memcpy(header->colorTable, &filmData[FILM_OFFSET_COLORTABLE], FILM_COLOR_TABLE_SIZE);
 
-    if (header->colorCount < 2 || header->colorCount > 6) {
+    if (header->colorCount < 2 || header->colorCount > 6)
+    {
         sys_loge(EPD_TAG, "Invalid color count: %d (expected 2-6)", header->colorCount);
         return ESP_ERR_INVALID_SIZE;
     }
 
     uint32_t expectedSize = (EPD_WIDTH * EPD_HEIGHT) / 2;
-    if (header->fileSize != expectedSize) {
+    if (header->fileSize != expectedSize)
+    {
         sys_loge(EPD_TAG, "File size mismatch: %lu (expected %lu)",
                  (unsigned long)header->fileSize, (unsigned long)expectedSize);
         return ESP_ERR_INVALID_SIZE;
@@ -424,16 +455,35 @@ void hal_epd_display_init(void)
     sys_logi(EPD_TAG, "EPD display initialized");
 }
 
-void hal_epd_display_white(void)  { epd_display_solid(0x01); }
-void hal_epd_display_black(void)  { epd_display_solid(0x00); }
-void hal_epd_display_yellow(void) { epd_display_solid(0x02); }
-void hal_epd_display_red(void)    { epd_display_solid(0x03); }
-void hal_epd_display_blue(void)   { epd_display_solid(0x05); }
-void hal_epd_display_green(void)  { epd_display_solid(0x06); }
+void hal_epd_display_white(void)
+{
+    epd_display_solid(0x01);
+}
+void hal_epd_display_black(void)
+{
+    epd_display_solid(0x00);
+}
+void hal_epd_display_yellow(void)
+{
+    epd_display_solid(0x02);
+}
+void hal_epd_display_red(void)
+{
+    epd_display_solid(0x03);
+}
+void hal_epd_display_blue(void)
+{
+    epd_display_solid(0x05);
+}
+void hal_epd_display_green(void)
+{
+    epd_display_solid(0x06);
+}
 
 void hal_epd_display_pic(const unsigned char *picData)
 {
-    if (picData == NULL) {
+    if (picData == NULL)
+    {
         sys_loge(EPD_TAG, "picData is NULL");
         return;
     }
@@ -442,11 +492,31 @@ void hal_epd_display_pic(const unsigned char *picData)
 
     var_temp = epd_read_temp();
 
-    if (var_temp < 5)                { temp1 = 2;  temp2 = 7;  }
-    else if (var_temp <= 10)         { temp1 = 12; temp2 = 17; }
-    else if (var_temp <= 20)         { temp1 = 22; temp2 = 27; }
-    else if (var_temp <= 30)         { temp1 = 32; temp2 = 37; }
-    else /* var_temp > 30 && <= 127*/{ temp1 = 42; temp2 = 47; }
+    if (var_temp < 5)
+    {
+        temp1 = 2;
+        temp2 = 7;
+    }
+    else if (var_temp <= 10)
+    {
+        temp1 = 12;
+        temp2 = 17;
+    }
+    else if (var_temp <= 20)
+    {
+        temp1 = 22;
+        temp2 = 27;
+    }
+    else if (var_temp <= 30)
+    {
+        temp1 = 32;
+        temp2 = 37;
+    }
+    else /* var_temp > 30 && <= 127*/
+    {
+        temp1 = 42;
+        temp2 = 47;
+    }
 
     sys_logi(EPD_TAG, "Display pic: temp=%d t1=%d t2=%d", var_temp, temp1, temp2);
 
@@ -462,12 +532,14 @@ void hal_epd_display_film(const unsigned char *filmData)
     const unsigned char *pixelData;
     uint32_t i, j;
 
-    if (filmData == NULL) {
+    if (filmData == NULL)
+    {
         sys_loge(EPD_TAG, "filmData is NULL");
         return;
     }
 
-    if (film_parse_header(filmData, &header) != ESP_OK) {
+    if (film_parse_header(filmData, &header) != ESP_OK)
+    {
         sys_loge(EPD_TAG, "Failed to parse film header");
         return;
     }
@@ -482,11 +554,31 @@ void hal_epd_display_film(const unsigned char *filmData)
 
     var_temp = epd_read_temp();
 
-    if (var_temp < 5)                { temp1 = 2;  temp2 = 7;  }
-    else if (var_temp <= 10)         { temp1 = 12; temp2 = 17; }
-    else if (var_temp <= 20)         { temp1 = 22; temp2 = 27; }
-    else if (var_temp <= 30)         { temp1 = 32; temp2 = 37; }
-    else /* var_temp > 30 && <= 127*/{ temp1 = 42; temp2 = 47; }
+    if (var_temp < 5)
+    {
+        temp1 = 2;
+        temp2 = 7;
+    }
+    else if (var_temp <= 10)
+    {
+        temp1 = 12;
+        temp2 = 17;
+    }
+    else if (var_temp <= 20)
+    {
+        temp1 = 22;
+        temp2 = 27;
+    }
+    else if (var_temp <= 30)
+    {
+        temp1 = 32;
+        temp2 = 37;
+    }
+    else /* var_temp > 30 && <= 127*/
+    {
+        temp1 = 42;
+        temp2 = 47;
+    }
 
     sys_logi(EPD_TAG, "Film temp=%d t1=%d t2=%d", var_temp, temp1, temp2);
 
@@ -502,17 +594,20 @@ void hal_epd_display_film(const unsigned char *filmData)
     unsigned char line_4bpp[EPD_INPUT_LINE];
     unsigned char out_line[EPD_OUTPUT_LINE];
 
-    for (i = 0; i < EPD_HEIGHT; i++) {
+    for (i = 0; i < EPD_HEIGHT; i++)
+    {
         // Decode film pixel data → 4bpp line buffer
-        for (j = 0; j < EPD_INPUT_LINE; j++) {
+        for (j = 0; j < EPD_INPUT_LINE; j++)
+        {
             uint8_t byte = pixelData[i * EPD_INPUT_LINE + j];
             uint8_t cc1 = (byte >> 4) & 0x0F;
             uint8_t cc2 = byte & 0x0F;
             line_4bpp[j] = (color_lut[header.colorTable[cc1]] << 4)
-                         |  color_lut[header.colorTable[cc2]];
+                           |  color_lut[header.colorTable[cc2]];
         }
         // Convert 4bpp → 2bpp
-        for (int k = 0; k < EPD_INPUT_LINE; k += 2) {
+        for (int k = 0; k < EPD_INPUT_LINE; k += 2)
+        {
             uint8_t in1 = line_4bpp[k];
             uint8_t in2 = line_4bpp[k + 1];
             uint8_t p1 = (in1 >> 4) & 0x0F;
@@ -520,7 +615,7 @@ void hal_epd_display_film(const unsigned char *filmData)
             uint8_t p3 = (in2 >> 4) & 0x0F;
             uint8_t p4 = in2 & 0x0F;
             out_line[k / 2] = (color_map[p1] << 6) | (color_map[p2] << 4)
-                            | (color_map[p3] << 2) | color_map[p4];
+                              | (color_map[p3] << 2) | color_map[p4];
         }
         EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
     }
@@ -538,15 +633,18 @@ void hal_epd_display_film(const unsigned char *filmData)
 
     EPD_W21_WriteCMD(DTM);
 
-    for (i = 0; i < EPD_HEIGHT; i++) {
-        for (j = 0; j < EPD_INPUT_LINE; j++) {
+    for (i = 0; i < EPD_HEIGHT; i++)
+    {
+        for (j = 0; j < EPD_INPUT_LINE; j++)
+        {
             uint8_t byte = pixelData[i * EPD_INPUT_LINE + j];
             uint8_t cc1 = (byte >> 4) & 0x0F;
             uint8_t cc2 = byte & 0x0F;
             line_4bpp[j] = (color_lut[header.colorTable[cc1]] << 4)
-                         |  color_lut[header.colorTable[cc2]];
+                           |  color_lut[header.colorTable[cc2]];
         }
-        for (int k = 0; k < EPD_INPUT_LINE; k += 2) {
+        for (int k = 0; k < EPD_INPUT_LINE; k += 2)
+        {
             uint8_t in1 = line_4bpp[k];
             uint8_t in2 = line_4bpp[k + 1];
             uint8_t p1 = (in1 >> 4) & 0x0F;
@@ -554,7 +652,7 @@ void hal_epd_display_film(const unsigned char *filmData)
             uint8_t p3 = (in2 >> 4) & 0x0F;
             uint8_t p4 = in2 & 0x0F;
             out_line[k / 2] = (color_map1[p1] << 6) | (color_map1[p2] << 4)
-                            | (color_map1[p3] << 2) | color_map1[p4];
+                              | (color_map1[p3] << 2) | color_map1[p4];
         }
         EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
     }
@@ -589,10 +687,11 @@ void hal_epd_deinit(void)
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     // Release all GPIOs to input
-    gpio_config_t io_conf = {
+    gpio_config_t io_conf =
+    {
         .pin_bit_mask = (1ULL << EPD_BUSY_PIN) | (1ULL << EPD_RST_PIN) |
-                        (1ULL << EPD_DC_PIN)   | (1ULL << EPD_CS_PIN) |
-                        (1ULL << EPD_SCK_PIN)  | (1ULL << EPD_SDIN_PIN),
+        (1ULL << EPD_DC_PIN)   | (1ULL << EPD_CS_PIN) |
+        (1ULL << EPD_SCK_PIN)  | (1ULL << EPD_SDIN_PIN),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
