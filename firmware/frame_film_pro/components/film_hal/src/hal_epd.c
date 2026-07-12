@@ -391,6 +391,20 @@ void hal_epd_display_init(void)
     EPD_W21_WriteDATA(0x27);
     EPD_W21_WriteDATA(0x29);
 
+    // 00寄存器第一byte写0x2B或2F扫描方向用以下设置
+	// EPD_W21_WriteCMD (0x61);
+	// EPD_W21_WriteDATA(0x03);
+	// EPD_W21_WriteDATA(0x18);
+	// EPD_W21_WriteDATA(0x02);
+	// EPD_W21_WriteDATA(0x58);
+	// lcd_chkstatus();
+	// EPD_W21_WriteCMD (0x65);
+	// EPD_W21_WriteDATA(0x00);
+	// EPD_W21_WriteDATA(0x00);
+	// EPD_W21_WriteDATA(0x00);
+	// EPD_W21_WriteDATA(0x00);
+
+    // 00寄存器第一byte写0x23或27扫描方向用以下设置
     EPD_W21_WriteCMD(RSET);  // 0x83
     EPD_W21_WriteDATA(0x00);
     EPD_W21_WriteDATA(0x00);
@@ -673,9 +687,6 @@ void hal_epd_pwroff(void)
 
 void hal_epd_deinit(void)
 {
-    hal_epd_sleep();
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-
     if (m_spi_device != NULL)
     {
         spi_bus_remove_device(m_spi_device);
