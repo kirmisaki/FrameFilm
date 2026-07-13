@@ -5,12 +5,14 @@ var DEVICE_CONFIGS = {
     FRAMEFILM: {
         screenWidth: 600,
         screenHeight: 400,
-        displayName: 'FrameFilm'
+        displayName: 'FrameFilm',
+        pixelLayout: 'rotated' // 列优先翻转: (x * height) + (height - 1 - y)
     },
     FRAMEFILMPRO: {
         screenWidth: 792,
         screenHeight: 528,
-        displayName: 'FrameFilm Pro'
+        displayName: 'FrameFilm Pro',
+        pixelLayout: 'row-major' // 行优先: (y * width) + x
     }
 };
 
@@ -73,6 +75,17 @@ function getFilmFileTotalSize() {
     var total = 32 + getFilmPixelDataSize();
     console.log('[DEBUG] getFilmFileTotalSize() = ' + total + ' | deviceType=' + currentDeviceType);
     return total;
+}
+
+// 根据设备类型返回正确的像素索引
+function getPixelIndex(x, y, width, height) {
+    var layout = getDeviceConfig().pixelLayout;
+    if (layout === 'rotated') {
+        // 老设备 FrameFilm: 列优先翻转
+        return (x * height) + (height - 1 - y);
+    }
+    // Pro 及默认: 行优先
+    return (y * width) + x;
 }
 
 // 显示消息提示

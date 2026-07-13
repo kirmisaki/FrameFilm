@@ -1153,7 +1153,7 @@ function decodeProcessedData(processedData, width, height) {
 
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            const newIndex = (y * width) + x;
+            const newIndex = getPixelIndex(x, y, width, height);
             const byteIndex = Math.floor(newIndex / 2);
             const byte = processedData[byteIndex];
 
@@ -1187,7 +1187,7 @@ function processImageData(imageData) {
             const closest = findClosestColor(r, g, b);
             const code = closest.code;
 
-            const newIndex = (y * width) + x;
+            const newIndex = getPixelIndex(x, y, width, height);
             const byteIndex = Math.floor(newIndex / 2);
 
             if (newIndex % 2 === 0) {
