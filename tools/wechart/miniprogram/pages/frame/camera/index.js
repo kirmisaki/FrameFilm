@@ -3,9 +3,7 @@ var filmUtils = require('../../../utils/film-utils');
 var bleUtils = require('../../../utils/ble-utils');
 var app = getApp();
 
-var CANVAS_WIDTH = filmUtils.CANVAS_WIDTH;
-var CANVAS_HEIGHT = filmUtils.CANVAS_HEIGHT;
-var FILM_FILE_TOTAL_SIZE = filmUtils.FILM_FILE_TOTAL_SIZE;
+var FILM_HEADER_SIZE = filmUtils.FILM_HEADER_SIZE;
 var BLE_CHUNK_SIZE = bleUtils.BLE_CHUNK_SIZE;
 var BLE_CTRL_DELAY = bleUtils.BLE_CTRL_DELAY;
 var BLE_DATA_DELAY = bleUtils.BLE_DATA_DELAY;
@@ -49,12 +47,14 @@ Page({
       if (!res || !res[0] || !res[0].node) return;
       var canvas = res[0].node;
       var ctx = canvas.getContext('2d');
-      canvas.width = CANVAS_WIDTH;
-      canvas.height = CANVAS_HEIGHT;
+      var CW = filmUtils.getCanvasWidth();
+      var CH = filmUtils.getCanvasHeight();
+      canvas.width = CW;
+      canvas.height = CH;
       that._canvas = canvas;
       that._ctx = ctx;
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.fillRect(0, 0, CW, CH);
     });
   },
 
@@ -80,12 +80,15 @@ Page({
       return;
     }
 
+    var CW = filmUtils.getCanvasWidth();
+    var CH = filmUtils.getCanvasHeight();
+
     var img = canvas.createImage();
     img.onload = function () {
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.fillRect(0, 0, CW, CH);
 
-      var fit = fitImageToCanvas(img.width, img.height, CANVAS_WIDTH, CANVAS_HEIGHT);
+      var fit = fitImageToCanvas(img.width, img.height, CW, CH);
       ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
 
       try {
@@ -115,9 +118,10 @@ Page({
     var processedData = filmUtils.processImageData(imageData);
     var header = filmUtils.generateFilmHeader();
 
-    var fileData = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+    var totalSize = filmUtils.getFilmFileTotalSize();
+    var fileData = new Uint8Array(totalSize);
     fileData.set(header, 0);
-    fileData.set(processedData, filmUtils.FILM_HEADER_SIZE);
+    fileData.set(processedData, FILM_HEADER_SIZE);
 
     that._sendViaBle(fileData);
   },

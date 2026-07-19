@@ -1,9 +1,53 @@
 // Film 格式常量
+const FILM_HEADER_SIZE = 32;
+
+// 设备配置表
+const DEVICE_CONFIGS = {
+  FRAMEFILM: {
+    screenWidth: 600, screenHeight: 400,
+    canvasWidth: 400, canvasHeight: 600,
+    displayName: 'FrameFilm',
+    isPortraitPanel: true,   // 物理竖屏面板，需要旋转显示
+    pixelLayout: 'rotated'   // 列优先翻转: (x * height) + (height - 1 - y)
+  },
+  FRAMEFILMPRO: {
+    screenWidth: 792, screenHeight: 528,
+    canvasWidth: 528, canvasHeight: 792,
+    displayName: 'FrameFilm Pro',
+    isPortraitPanel: true,     // 物理竖屏面板，需要旋转显示
+    pixelLayout: 'row-major'   // 行优先: (y * width) + x，设备端采样方式不同无需旋转
+  }
+};
+
+var currentDeviceType = 'FRAMEFILM';
+
+function getDeviceConfig() {
+  return DEVICE_CONFIGS[currentDeviceType] || DEVICE_CONFIGS['FRAMEFILM'];
+}
+
+function setDeviceType(type) {
+  if (DEVICE_CONFIGS[type]) {
+    currentDeviceType = type;
+  }
+}
+
+function getDeviceType() {
+  return currentDeviceType;
+}
+
+// 动态尺寸 getter（向后兼容旧页面引用）
+function getCanvasWidth() { return getDeviceConfig().canvasWidth; }
+function getCanvasHeight() { return getDeviceConfig().canvasHeight; }
+function getScreenWidth() { return getDeviceConfig().screenWidth; }
+function getScreenHeight() { return getDeviceConfig().screenHeight; }
+function getFilmPixelDataSize() { return (getScreenWidth() * getScreenHeight()) / 2; }
+function getFilmFileTotalSize() { return FILM_HEADER_SIZE + getFilmPixelDataSize(); }
+
+// 保留旧常量作为默认值（标准版），供已有页面顶部 var 引用
 const CANVAS_WIDTH = 400;
 const CANVAS_HEIGHT = 600;
 const FILM_SCREEN_WIDTH = 600;
 const FILM_SCREEN_HEIGHT = 400;
-const FILM_HEADER_SIZE = 32;
 const FILM_PIXEL_DATA_SIZE = (FILM_SCREEN_WIDTH * FILM_SCREEN_HEIGHT) / 2;
 const FILM_FILE_TOTAL_SIZE = FILM_HEADER_SIZE + FILM_PIXEL_DATA_SIZE;
 
@@ -410,20 +454,35 @@ function applyDitherByType(imageData, type, strength) {
   }
 }
 
-// 从 400×600 竖屏画布提取 600×400 横屏数据（与原版 ForFilm 的 CSS rotate(90deg) 等效）
+// 从竖屏画布提取横屏数据（标准版90°旋转）或直接提取（Pro版无需旋转）
 function extractLandscapeData(portraitCanvas) {
-  var landscapeCanvas = wx.createOffscreenCanvas({ type: '2d', width: 600, height: 400 });
-  var ctx = landscapeCanvas.getContext('2d');
-  ctx.save();
-  ctx.translate(0, 400);
-  ctx.rotate(-Math.PI / 2);
-  ctx.drawImage(portraitCanvas, 0, 0, 400, 600, 0, 0, 400, 600);
-  ctx.restore();
-  return ctx.getImageData(0, 0, 600, 400);
+  var cfg = getDeviceConfig();
+  var sw = cfg.screenWidth;
+  var sh = cfg.screenHeight;
+  if (cfg.isPortraitPanel) {
+    // 标准版：竖屏面板，需要旋转90°得到横屏数据
+    var landscapeCanvas = wx.createOffscreenCanvas({ type: '2d', width: sw, height: sh });
+    var ctx = landscapeCanvas.getContext('2d');
+    ctx.save();
+    ctx.translate(0, sh);
+    ctx.rotate(-Math.PI / 2);
+    ctx.drawImage(portraitCanvas, 0, 0, cfg.canvasWidth, cfg.canvasHeight, 0, 0, cfg.canvasWidth, cfg.canvasHeight);
+    ctx.restore();
+    return ctx.getImageData(0, 0, sw, sh);
+  } else {
+    // Pro版：横屏面板，画布已是横屏方向，直接提取
+    return portraitCanvas.getContext('2d').getImageData(0, 0, sw, sh);
+  }
 }
 
-// 处理图像数据为 Film 格式并旋转回 400×600 竖屏用于显示
+// 处理图像数据为 Film 格式并回显到画布
 function processAndDisplay(portraitCanvas, portraitCtx, ditherType, ditherStrength, contrast) {
+  var cfg = getDeviceConfig();
+  var sw = cfg.screenWidth;
+  var sh = cfg.screenHeight;
+  var cw = cfg.canvasWidth;
+  var ch = cfg.canvasHeight;
+
   var landscapeData = extractLandscapeData(portraitCanvas);
   // 与原版 ForFrame 一致：先应用外部对比度，再抖动
   if (contrast && contrast !== 1.0) {
@@ -435,32 +494,49 @@ function processAndDisplay(portraitCanvas, portraitCtx, ditherType, ditherStreng
     landscapeData = applyDitherByType(landscapeData, ditherType, ditherStrength || 1.0);
   }
   var processedData = processImageData(landscapeData);
-  var decoded = decodeProcessedData(processedData, 600, 400);
-  // 将 600×400 横屏结果旋转回 400×600 竖屏
-  var tempCanvas = wx.createOffscreenCanvas({ type: '2d', width: 600, height: 400 });
-  var tempCtx = tempCanvas.getContext('2d');
-  var imgData = tempCtx.createImageData(600, 400);
-  imgData.data.set(decoded.data);
-  tempCtx.putImageData(imgData, 0, 0);
-  portraitCtx.clearRect(0, 0, 400, 600);
-  portraitCtx.save();
-  portraitCtx.translate(400, 0);
-  portraitCtx.rotate(Math.PI / 2);
-  portraitCtx.drawImage(tempCanvas, 0, 0, 600, 400, 0, 0, 600, 400);
-  portraitCtx.restore();
+  var decoded = decodeProcessedData(processedData, sw, sh);
+
+  if (cfg.isPortraitPanel) {
+    // 标准版：将横屏结果旋转回竖屏用于显示
+    var tempCanvas = wx.createOffscreenCanvas({ type: '2d', width: sw, height: sh });
+    var tempCtx = tempCanvas.getContext('2d');
+    var imgData = tempCtx.createImageData(sw, sh);
+    imgData.data.set(decoded.data);
+    tempCtx.putImageData(imgData, 0, 0);
+    portraitCtx.clearRect(0, 0, cw, ch);
+    portraitCtx.save();
+    portraitCtx.translate(cw, 0);
+    portraitCtx.rotate(Math.PI / 2);
+    portraitCtx.drawImage(tempCanvas, 0, 0, sw, sh, 0, 0, sw, sh);
+    portraitCtx.restore();
+  } else {
+    // Pro版：画布已是横屏，直接回显
+    var imgData = portraitCtx.createImageData(sw, sh);
+    imgData.data.set(decoded.data);
+    portraitCtx.clearRect(0, 0, cw, ch);
+    portraitCtx.putImageData(imgData, 0, 0);
+  }
   return processedData;
 }
 
 function processImageData(imageData) {
   const width = imageData.width, height = imageData.height;
   const data = imageData.data;
-  const processedData = new Uint8Array(FILM_PIXEL_DATA_SIZE);
+  var cfg = getDeviceConfig();
+  const processedData = new Uint8Array(getFilmPixelDataSize());
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const index = (y * width + x) * 4;
       const closest = findClosestColor(data[index], data[index + 1], data[index + 2]);
       const code = closest.code;
-      const newIndex = (x * height) + (height - 1 - y);
+      var newIndex;
+      if (cfg.pixelLayout === 'row-major') {
+        // Pro版：行优先，设备端采样方式不同无需旋转
+        newIndex = (y * width) + x;
+      } else {
+        // 标准版：列优先翻转，产生90°旋转
+        newIndex = (x * height) + (height - 1 - y);
+      }
       const byteIndex = Math.floor(newIndex / 2);
       if (newIndex % 2 === 0) {
         processedData[byteIndex] = (code << 4) | (processedData[byteIndex] & 0x0F);
@@ -473,10 +549,16 @@ function processImageData(imageData) {
 }
 
 function decodeProcessedData(processedData, width, height) {
+  var cfg = getDeviceConfig();
   const pixels = new Uint8ClampedArray(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const newIndex = (x * height) + (height - 1 - y);
+      var newIndex;
+      if (cfg.pixelLayout === 'row-major') {
+        newIndex = (y * width) + x;
+      } else {
+        newIndex = (x * height) + (height - 1 - y);
+      }
       const byteIndex = Math.floor(newIndex / 2);
       const byte = processedData[byteIndex];
       const code = (newIndex % 2 === 0) ? (byte >> 4) & 0x0F : byte & 0x0F;
@@ -493,15 +575,17 @@ function decodeProcessedData(processedData, width, height) {
 
 function generateFilmHeader() {
   const header = new Uint8Array(FILM_HEADER_SIZE);
-  const fileSize = FILM_PIXEL_DATA_SIZE;
-  header[0] = fileSize & 0xFF;
-  header[1] = (fileSize >> 8) & 0xFF;
-  header[2] = (fileSize >> 16) & 0xFF;
-  header[3] = (fileSize >> 24) & 0xFF;
-  header[4] = FILM_SCREEN_WIDTH & 0xFF;
-  header[5] = (FILM_SCREEN_WIDTH >> 8) & 0xFF;
-  header[6] = FILM_SCREEN_HEIGHT & 0xFF;
-  header[7] = (FILM_SCREEN_HEIGHT >> 8) & 0xFF;
+  var pixelDataSize = getFilmPixelDataSize();
+  var sw = getScreenWidth();
+  var sh = getScreenHeight();
+  header[0] = pixelDataSize & 0xFF;
+  header[1] = (pixelDataSize >> 8) & 0xFF;
+  header[2] = (pixelDataSize >> 16) & 0xFF;
+  header[3] = (pixelDataSize >> 24) & 0xFF;
+  header[4] = sw & 0xFF;
+  header[5] = (sw >> 8) & 0xFF;
+  header[6] = sh & 0xFF;
+  header[7] = (sh >> 8) & 0xFF;
   header[8] = 6;
   header[16] = 0x00;
   header[17] = 0xFF;
@@ -539,6 +623,10 @@ module.exports = {
   CANVAS_WIDTH, CANVAS_HEIGHT,
   FILM_SCREEN_WIDTH, FILM_SCREEN_HEIGHT,
   FILM_HEADER_SIZE, FILM_PIXEL_DATA_SIZE, FILM_FILE_TOTAL_SIZE,
+  DEVICE_CONFIGS,
+  setDeviceType, getDeviceType, getDeviceConfig,
+  getCanvasWidth, getCanvasHeight, getScreenWidth, getScreenHeight,
+  getFilmPixelDataSize, getFilmFileTotalSize,
   rgbPalette,
   findClosestColor,
   adjustContrast,

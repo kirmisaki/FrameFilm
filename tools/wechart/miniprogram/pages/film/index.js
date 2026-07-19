@@ -53,11 +53,13 @@ Page({
       if (!res || !res[0]) return;
       this.canvas = res[0].node;
       this.ctx = this.canvas.getContext('2d');
-      this.canvas.width = 400;
-      this.canvas.height = 600;
+      var cw = filmUtils.getCanvasWidth();
+      var ch = filmUtils.getCanvasHeight();
+      this.canvas.width = cw;
+      this.canvas.height = ch;
 
-      // 临时画布 400×600（与显示画布一致）
-      this.tempCanvas = wx.createOffscreenCanvas({ type: '2d', width: 400, height: 600 });
+      // 临时画布（与显示画布一致）
+      this.tempCanvas = wx.createOffscreenCanvas({ type: '2d', width: cw, height: ch });
       this.tempCtx = this.tempCanvas.getContext('2d');
     });
   },
@@ -105,11 +107,12 @@ Page({
   _drawToCanvas() {
     if (!this.canvas || !this.imageNode || !this.tempCanvas) return;
     const tctx = this.tempCtx;
-    const CW = 400, CH = 600; // 竖屏，与设备屏幕一致
+    var CW = filmUtils.getCanvasWidth();
+    var CH = filmUtils.getCanvasHeight();
     const img = this.imageNode;
     const rotation = this.data.rotation;
 
-    // 1. 在临时画布上绘制（400×600 竖屏）
+    // 1. 在临时画布上绘制
     tctx.clearRect(0, 0, CW, CH);
     tctx.fillStyle = '#ffffff';
     tctx.fillRect(0, 0, CW, CH);
@@ -141,9 +144,11 @@ Page({
   // 只画原图不处理，用于拖动缩放时保持流畅
   _quickDraw() {
     this._drawToCanvas();
-    const dctx = this.ctx;
-    dctx.clearRect(0, 0, 400, 600);
-    dctx.drawImage(this.tempCanvas, 0, 0, 400, 600, 0, 0, 400, 600);
+    var dctx = this.ctx;
+    var CW = filmUtils.getCanvasWidth();
+    var CH = filmUtils.getCanvasHeight();
+    dctx.clearRect(0, 0, CW, CH);
+    dctx.drawImage(this.tempCanvas, 0, 0, CW, CH, 0, 0, CW, CH);
   },
 
   // 完整处理：绘图 + 抖动算法
@@ -154,7 +159,8 @@ Page({
 
   _applyProcessing() {
     const tctx = this.tempCtx;
-    const CW = 400, CH = 600;
+    var CW = filmUtils.getCanvasWidth();
+    var CH = filmUtils.getCanvasHeight();
     if (this.data.ditherEnabled) {
       var ditherType = this.data.ditherTypes[this.data.ditherTypeIndex];
       filmUtils.processAndDisplay(this.tempCanvas, tctx, ditherType, this.data.ditherStrength, this.data.contrast);
@@ -210,8 +216,8 @@ Page({
   autoConfigure() {
     if (!this.canvas || !this.imageNode) return;
     const ctx = this.ctx;
-    const canvasW = 600;
-    const canvasH = 400;
+    var canvasW = filmUtils.getScreenWidth();
+    var canvasH = filmUtils.getScreenHeight();
 
     // 绘制原图用于分析
     ctx.clearRect(0, 0, canvasW, canvasH);
@@ -329,7 +335,7 @@ Page({
     this.offsetX = 0;
     this.offsetY = 0;
     if (this.canvas) {
-      this.ctx.clearRect(0, 0, 400, 600);
+      this.ctx.clearRect(0, 0, filmUtils.getCanvasWidth(), filmUtils.getCanvasHeight());
     }
   },
 
@@ -380,7 +386,7 @@ Page({
     this.setData({ fileName: e.detail.value });
   },
 
-  // 从竖屏画布提取横屏 600×400 Film 数据
+  // 从画布提取横屏 Film 数据
   getFilmImageData() {
     return filmUtils.extractLandscapeData(this.tempCanvas);
   },
@@ -395,7 +401,8 @@ Page({
     const header = filmUtils.generateFilmHeader();
 
     // 合并 header + pixelData
-    const fileData = new Uint8Array(filmUtils.FILM_FILE_TOTAL_SIZE);
+    var totalSize = filmUtils.getFilmFileTotalSize();
+    const fileData = new Uint8Array(totalSize);
     fileData.set(header, 0);
     fileData.set(processedData, filmUtils.FILM_HEADER_SIZE);
 
@@ -440,13 +447,14 @@ Page({
 
     wx.showLoading({ title: '处理中...' });
 
-    // 从竖屏画布提取横屏 600×400 数据
+    // 从画布提取数据
     var imageData = this.getFilmImageData();
     const processedData = filmUtils.processImageData(imageData);
     const header = filmUtils.generateFilmHeader();
 
     // 合并 header + pixelData
-    const fileData = new Uint8Array(filmUtils.FILM_FILE_TOTAL_SIZE);
+    var totalSize = filmUtils.getFilmFileTotalSize();
+    const fileData = new Uint8Array(totalSize);
     fileData.set(header, 0);
     fileData.set(processedData, filmUtils.FILM_HEADER_SIZE);
 

@@ -1,6 +1,5 @@
 const bleUtils = require('../../utils/ble-utils');
 const filmUtils = require('../../utils/film-utils');
-
 const app = getApp();
 
 Page({
@@ -246,18 +245,27 @@ Page({
           wx.closeBLEConnection({ deviceId: device.deviceId });
           return;
         }
+        // 检测设备类型
+        var deviceType = 'FRAMEFILM';
+        if (device.name && device.name.toUpperCase().indexOf('PRO') !== -1) {
+          deviceType = 'FRAMEFILMPRO';
+        }
+        filmUtils.setDeviceType(deviceType);
+        var devCfg = filmUtils.getDeviceConfig();
+
         // 保存连接信息到全局
         app.globalData._deviceId = device.deviceId;
         app.globalData._serviceId = serviceId;
         app.globalData._characteristicId = matchedCharId;
         app.globalData.deviceId = device.deviceId;
         app.globalData.deviceName = device.name;
+        app.globalData.deviceType = deviceType;
         app.globalData.isConnected = true;
 
         that.setData({
           isConnected: true,
           connectedDeviceName: device.name,
-          statusText: '已连接: ' + device.name
+          statusText: '已连接: ' + device.name + ' (' + devCfg.displayName + ')'
         });
 
         // 启用通知
@@ -433,6 +441,7 @@ Page({
     app.stopBleNotify();
     app.globalData.deviceId = '';
     app.globalData.deviceName = '';
+    app.globalData.deviceType = 'FRAMEFILM';
     app.globalData.isConnected = false;
     app.globalData.batteryLevel = 0;
     app.globalData.fileList = [];
@@ -444,6 +453,9 @@ Page({
     app.globalData._deviceId = '';
     app.globalData._serviceId = '';
     app.globalData._characteristicId = '';
+
+    // 重置设备类型
+    filmUtils.setDeviceType('FRAMEFILM');
 
     // 关闭蓝牙适配器，确保下次扫描能正常工作
     wx.closeBluetoothAdapter({

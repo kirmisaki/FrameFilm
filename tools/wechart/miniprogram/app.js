@@ -4,6 +4,7 @@ App({
   globalData: {
     deviceId: '',
     deviceName: '',
+    deviceType: 'FRAMEFILM',
     isConnected: false,
     batteryLevel: 0,
     fileList: [],

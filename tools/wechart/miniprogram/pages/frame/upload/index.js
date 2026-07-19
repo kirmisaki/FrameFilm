@@ -3,9 +3,7 @@ var filmUtils = require('../../../utils/film-utils');
 var bleUtils = require('../../../utils/ble-utils');
 var app = getApp();
 
-var CANVAS_WIDTH = filmUtils.CANVAS_WIDTH;
-var CANVAS_HEIGHT = filmUtils.CANVAS_HEIGHT;
-var FILM_FILE_TOTAL_SIZE = filmUtils.FILM_FILE_TOTAL_SIZE;
+var FILM_HEADER_SIZE = filmUtils.FILM_HEADER_SIZE;
 var BLE_CHUNK_SIZE = bleUtils.BLE_CHUNK_SIZE;
 var BLE_CTRL_DELAY = bleUtils.BLE_CTRL_DELAY;
 var BLE_DATA_DELAY = bleUtils.BLE_DATA_DELAY;
@@ -49,12 +47,14 @@ Page({
       if (!res || !res[0] || !res[0].node) return;
       var canvas = res[0].node;
       var ctx = canvas.getContext('2d');
-      canvas.width = CANVAS_WIDTH;
-      canvas.height = CANVAS_HEIGHT;
+      var CW = filmUtils.getCanvasWidth();
+      var CH = filmUtils.getCanvasHeight();
+      canvas.width = CW;
+      canvas.height = CH;
       that._canvas = canvas;
       that._ctx = ctx;
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.fillRect(0, 0, CW, CH);
     });
   },
 
@@ -80,22 +80,26 @@ Page({
       return;
     }
 
+    var CW = filmUtils.getCanvasWidth();
+    var CH = filmUtils.getCanvasHeight();
+
     var img = canvas.createImage();
     img.onload = function () {
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.fillRect(0, 0, CW, CH);
 
       var drawImgW = img.width;
       var drawImgH = img.height;
-      // 横图自动旋转90°
-      if (img.width > img.height) {
+      var cfg = filmUtils.getDeviceConfig();
+      // 标准版：横图自动旋转90°（竖屏面板需要）
+      if (cfg.isPortraitPanel && img.width > img.height) {
         drawImgW = img.height;
         drawImgH = img.width;
       }
 
-      var fit = fitImageToCanvas(drawImgW, drawImgH, CANVAS_WIDTH, CANVAS_HEIGHT);
+      var fit = fitImageToCanvas(drawImgW, drawImgH, CW, CH);
 
-      if (img.width > img.height) {
+      if (cfg.isPortraitPanel && img.width > img.height) {
         ctx.save();
         ctx.translate(fit.x + fit.w / 2, fit.y + fit.h / 2);
         ctx.rotate(Math.PI / 2);
@@ -132,9 +136,10 @@ Page({
     var processedData = filmUtils.processImageData(imageData);
     var header = filmUtils.generateFilmHeader();
 
-    var fileData = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+    var totalSize = filmUtils.getFilmFileTotalSize();
+    var fileData = new Uint8Array(totalSize);
     fileData.set(header, 0);
-    fileData.set(processedData, filmUtils.FILM_HEADER_SIZE);
+    fileData.set(processedData, FILM_HEADER_SIZE);
 
     that._sendViaBle(fileData);
   },

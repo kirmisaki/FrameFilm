@@ -3,9 +3,7 @@ var filmUtils = require('../../../utils/film-utils');
 var bleUtils = require('../../../utils/ble-utils');
 var app = getApp();
 
-var CANVAS_WIDTH = filmUtils.CANVAS_WIDTH;
-var CANVAS_HEIGHT = filmUtils.CANVAS_HEIGHT;
-var FILM_FILE_TOTAL_SIZE = filmUtils.FILM_FILE_TOTAL_SIZE;
+var FILM_HEADER_SIZE = filmUtils.FILM_HEADER_SIZE;
 var BLE_CHUNK_SIZE = bleUtils.BLE_CHUNK_SIZE;
 var BLE_CTRL_DELAY = bleUtils.BLE_CTRL_DELAY;
 var BLE_DATA_DELAY = bleUtils.BLE_DATA_DELAY;
@@ -59,12 +57,14 @@ Page({
       if (!res || !res[0] || !res[0].node) return;
       var canvas = res[0].node;
       var ctx = canvas.getContext('2d');
-      canvas.width = CANVAS_WIDTH;
-      canvas.height = CANVAS_HEIGHT;
+      var CW = filmUtils.getCanvasWidth();
+      var CH = filmUtils.getCanvasHeight();
+      canvas.width = CW;
+      canvas.height = CH;
       that._canvas = canvas;
       that._ctx = ctx;
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.fillRect(0, 0, CW, CH);
     });
   },
 
@@ -103,10 +103,21 @@ Page({
     if (!text) return;
 
     var scheme = frameColorSchemes[Math.floor(Math.random() * frameColorSchemes.length)];
-    var w = CANVAS_WIDTH;
-    var h = CANVAS_HEIGHT;
+    var CW = filmUtils.getCanvasWidth();
+    var CH = filmUtils.getCanvasHeight();
+    // 对于标准版（竖屏面板），在竖屏画布上绘制
+    // 对于Pro（横屏面板），在横屏画布上绘制
+    var cfg = filmUtils.getDeviceConfig();
+    var w, h;
+    if (cfg.isPortraitPanel) {
+      w = CW;  // 400
+      h = CH;  // 600
+    } else {
+      w = CW;  // 792
+      h = CH;  // 528
+    }
 
-    ctx.clearRect(0, 0, w, h);
+    ctx.clearRect(0, 0, CW, CH);
 
     // 纯色背景
     ctx.fillStyle = scheme.bg;
@@ -249,9 +260,10 @@ Page({
     var processedData = filmUtils.processImageData(imageData);
     var header = filmUtils.generateFilmHeader();
 
-    var fileData = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+    var totalSize = filmUtils.getFilmFileTotalSize();
+    var fileData = new Uint8Array(totalSize);
     fileData.set(header, 0);
-    fileData.set(processedData, filmUtils.FILM_HEADER_SIZE);
+    fileData.set(processedData, FILM_HEADER_SIZE);
 
     that._sendViaBle(fileData, 'quote');
   },

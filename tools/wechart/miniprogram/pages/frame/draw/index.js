@@ -3,9 +3,7 @@ var filmUtils = require('../../../utils/film-utils');
 var bleUtils = require('../../../utils/ble-utils');
 var app = getApp();
 
-var CANVAS_WIDTH = filmUtils.CANVAS_WIDTH;
-var CANVAS_HEIGHT = filmUtils.CANVAS_HEIGHT;
-var FILM_FILE_TOTAL_SIZE = filmUtils.FILM_FILE_TOTAL_SIZE;
+var FILM_HEADER_SIZE = filmUtils.FILM_HEADER_SIZE;
 var BLE_CHUNK_SIZE = bleUtils.BLE_CHUNK_SIZE;
 var BLE_CTRL_DELAY = bleUtils.BLE_CTRL_DELAY;
 var BLE_DATA_DELAY = bleUtils.BLE_DATA_DELAY;
@@ -70,14 +68,16 @@ Page({
       if (!res || !res[0] || !res[0].node) return;
       var canvas = res[0].node;
       var ctx = canvas.getContext('2d');
-      canvas.width = CANVAS_WIDTH;
-      canvas.height = CANVAS_HEIGHT;
+      var CW = filmUtils.getCanvasWidth();
+      var CH = filmUtils.getCanvasHeight();
+      canvas.width = CW;
+      canvas.height = CH;
       that._canvas = canvas;
       that._ctx = ctx;
       that._canvasCssW = res[0].width;
       that._canvasCssH = res[0].height;
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.fillRect(0, 0, CW, CH);
     });
   },
 
@@ -86,8 +86,10 @@ Page({
     if (this.data.converted) return;
     var touch = e.touches[0];
     this._isDrawing = true;
-    var scaleX = CANVAS_WIDTH / this._canvasCssW;
-    var scaleY = CANVAS_HEIGHT / this._canvasCssH;
+    var CW = filmUtils.getCanvasWidth();
+    var CH = filmUtils.getCanvasHeight();
+    var scaleX = CW / this._canvasCssW;
+    var scaleY = CH / this._canvasCssH;
     var x = touch.x * scaleX;
     var y = touch.y * scaleY;
     this._lastX = x;
@@ -103,8 +105,10 @@ Page({
   onTouchMove: function (e) {
     if (!this._isDrawing || this.data.converted) return;
     var touch = e.touches[0];
-    var scaleX = CANVAS_WIDTH / this._canvasCssW;
-    var scaleY = CANVAS_HEIGHT / this._canvasCssH;
+    var CW = filmUtils.getCanvasWidth();
+    var CH = filmUtils.getCanvasHeight();
+    var scaleX = CW / this._canvasCssW;
+    var scaleY = CH / this._canvasCssH;
     var x = touch.x * scaleX;
     var y = touch.y * scaleY;
     var ctx = this._ctx;
@@ -146,7 +150,7 @@ Page({
           var ctx = that._ctx;
           if (!ctx) return;
           ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+          ctx.fillRect(0, 0, filmUtils.getCanvasWidth(), filmUtils.getCanvasHeight());
           that.setData({ converted: false, showFileName: false });
         }
       }
@@ -250,7 +254,7 @@ Page({
       that.setData({ converted: false, showFileName: false });
     } else {
       // 保存原始数据
-      that._originalData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      that._originalData = ctx.getImageData(0, 0, filmUtils.getCanvasWidth(), filmUtils.getCanvasHeight());
       try {
         filmUtils.processAndDisplay(canvas, ctx, 'adaptive', 1.0, 1.2);
         that.setData({ converted: true, showFileName: true, customFileName: '', isEditingName: false });
@@ -285,9 +289,10 @@ Page({
     var processedData = filmUtils.processImageData(imageData);
     var header = filmUtils.generateFilmHeader();
 
-    var fileData = new Uint8Array(FILM_FILE_TOTAL_SIZE);
+    var totalSize = filmUtils.getFilmFileTotalSize();
+    var fileData = new Uint8Array(totalSize);
     fileData.set(header, 0);
-    fileData.set(processedData, filmUtils.FILM_HEADER_SIZE);
+    fileData.set(processedData, FILM_HEADER_SIZE);
 
     that._sendViaBle(fileData);
   },
