@@ -129,6 +129,7 @@
   position: relative;
   touch-action: none;
   margin: 0 auto;
+  border: 2rpx solid #e0e0e0;
 }
 
 .film-canvas {
