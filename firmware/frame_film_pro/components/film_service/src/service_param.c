@@ -117,6 +117,12 @@ static void service_param_set_default(void)
     g_service_param.sleep.sleep_mode = 1;  // 休眠模式默认开启
     g_service_param.sleep.sleep_auto = 0;  // 自动唤醒默认关闭
     g_service_param.sleep.sleep_time = 10; // 默认10分钟
+
+    // 网络参数重置
+    g_service_param.network.wifi_enable = 0; // WiFi默认关闭
+    memset(g_service_param.network.wifi_ssid, 0, sizeof(g_service_param.network.wifi_ssid));
+    memset(g_service_param.network.wifi_password, 0, sizeof(g_service_param.network.wifi_password));
+    memset(g_service_param.network.film_api_url, 0, sizeof(g_service_param.network.film_api_url));
 }
 
 /**
