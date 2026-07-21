@@ -22,6 +22,12 @@ extern "C" {
 /*********************************************************************
 * TYPEDEFS
 */
+typedef enum {
+    WIFI_DOWNLOAD_IDLE = 0,
+    WIFI_DOWNLOAD_DOWNLOADING,
+    WIFI_DOWNLOAD_DONE,
+    WIFI_DOWNLOAD_ERROR
+} wifi_download_state_t;
 
 
 /*********************************************************************
@@ -53,6 +59,10 @@ extern void service_wifi_connect(void);
 extern void service_wifi_disconnect(void);
 extern uint8_t service_wifi_get_connect_status(void);
 extern void service_wifi_clear_config(void);
+
+extern void service_wifi_download_start(void);
+extern uint8_t service_wifi_download_get_progress(void);
+extern wifi_download_state_t service_wifi_download_get_state(void);
 
 
 #ifdef __cplusplus

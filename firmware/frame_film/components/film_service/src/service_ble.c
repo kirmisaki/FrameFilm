@@ -813,6 +813,27 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             service_wifi_clear_config();
             break;
         }
+        case BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD : // 开始下载film文件
+        {
+            sys_logi(BEL_SERVICE_TAG, "Film download requested");
+            service_wifi_download_start();
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE : // 查询下载状态
+        {
+            wifi_download_state_t state = service_wifi_download_get_state();
+            uint8_t progress = service_wifi_download_get_progress();
+            sys_logi(BEL_SERVICE_TAG, "Download state: %d, progress: %d%%", state, progress);
+            uint8_t resp_buf[7];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE;
+            resp_buf[2] = 2;
+            resp_buf[3] = (uint8_t)state;
+            resp_buf[4] = progress;
+            resp_buf[5] = ble_checksum(resp_buf, 5);
+            service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
+            break;
+        }
         default :
         {
             break;

@@ -31,13 +31,17 @@
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "esp_wifi.h"
 #include "esp_event.h"
+#include "esp_http_client.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 
 #include "sys_log.h"
 #include "service_param.h"
+#include "service_file.h"
 #include "service_wifi.h"
 
 /*********************************************************************
@@ -62,6 +66,13 @@ static bool g_wifi_initialized = false;
 static bool g_wifi_connected = false;
 static bool g_wifi_netif_ready = false;
 
+static wifi_download_state_t g_download_state = WIFI_DOWNLOAD_IDLE;
+static uint8_t g_download_progress = 0;
+static int g_download_content_length = 0;
+static int g_download_received = 0;
+static char g_download_filename[256] = {0};
+static uint8_t *g_download_buffer = NULL;
+
 /*********************************************************************
  * GLOBAL VARIABLES
  */
@@ -72,6 +83,8 @@ static bool g_wifi_netif_ready = false;
  */
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data);
+static void wifi_download_task(void *pvParameters);
+static esp_err_t wifi_http_event_handler(esp_http_client_event_t *evt);
 
 
 /*********************************************************************
@@ -238,6 +251,203 @@ void service_wifi_clear_config(void)
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
+
+/**
+ * [wifi_http_event_handler HTTP事件处理]
+ */
+static esp_err_t wifi_http_event_handler(esp_http_client_event_t *evt)
+{
+    switch(evt->event_id)
+    {
+    case HTTP_EVENT_ON_CONNECTED:
+        g_download_content_length = esp_http_client_get_content_length(evt->client);
+        g_download_received = 0;
+        g_download_progress = 0;
+        if(g_download_buffer)
+        {
+            heap_caps_free(g_download_buffer);
+            g_download_buffer = NULL;
+        }
+        sys_logi(WIFI_SERVICE_TAG, "HTTP connected, content length: %d", g_download_content_length);
+        break;
+
+    case HTTP_EVENT_ON_DATA:
+        if(g_download_state != WIFI_DOWNLOAD_DOWNLOADING)
+        {
+            break;
+        }
+        if(evt->data_len > 0)
+        {
+            uint8_t *new_buf = (uint8_t *)heap_caps_realloc(g_download_buffer, g_download_received + evt->data_len, MALLOC_CAP_SPIRAM);
+            if(new_buf)
+            {
+                g_download_buffer = new_buf;
+                memcpy(g_download_buffer + g_download_received, evt->data, evt->data_len);
+                g_download_received += evt->data_len;
+                if(g_download_content_length > 0)
+                {
+                    g_download_progress = (uint8_t)(((uint32_t)g_download_received * 100) / g_download_content_length);
+                }
+            }
+            else
+            {
+                sys_loge(WIFI_SERVICE_TAG, "Download buffer realloc failed");
+                g_download_state = WIFI_DOWNLOAD_ERROR;
+            }
+        }
+        break;
+
+    case HTTP_EVENT_ON_FINISH:
+        sys_logi(WIFI_SERVICE_TAG, "HTTP download finished, received: %d bytes", g_download_received);
+        if(g_download_buffer && g_download_received > 0)
+        {
+            if(service_file_save_start(g_download_filename, g_download_received) == 0)
+            {
+                service_file_save_data(g_download_filename, g_download_received,
+                                       g_download_buffer, g_download_received);
+                service_file_save_stop();
+                /* save_data takes ownership, file task will free */
+            }
+            else
+            {
+                heap_caps_free(g_download_buffer);
+            }
+            g_download_buffer = NULL;
+            g_download_state = WIFI_DOWNLOAD_DONE;
+            g_download_progress = 100;
+        }
+        else
+        {
+            g_download_state = WIFI_DOWNLOAD_DONE;
+            g_download_progress = 100;
+        }
+        break;
+
+    case HTTP_EVENT_DISCONNECTED:
+        sys_logi(WIFI_SERVICE_TAG, "HTTP disconnected");
+        if(g_download_state == WIFI_DOWNLOAD_DOWNLOADING)
+        {
+            g_download_state = WIFI_DOWNLOAD_ERROR;
+        }
+        if(g_download_buffer)
+        {
+            heap_caps_free(g_download_buffer);
+            g_download_buffer = NULL;
+        }
+        break;
+
+    case HTTP_EVENT_ERROR:
+        sys_loge(WIFI_SERVICE_TAG, "HTTP error");
+        g_download_state = WIFI_DOWNLOAD_ERROR;
+        if(g_download_buffer)
+        {
+            heap_caps_free(g_download_buffer);
+            g_download_buffer = NULL;
+        }
+        break;
+
+    default:
+        break;
+    }
+    return ESP_OK;
+}
+
+/**
+ * [wifi_download_task 下载任务]
+ */
+static void wifi_download_task(void *pvParameters)
+{
+    const char *url = g_service_param.network.film_api_url;
+
+    if(strlen(url) == 0)
+    {
+        sys_loge(WIFI_SERVICE_TAG, "Film API URL is empty");
+        g_download_state = WIFI_DOWNLOAD_ERROR;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // 从 URL 提取文件名
+    const char *last_slash = strrchr(url, '/');
+    const char *filename = last_slash ? (last_slash + 1) : "download.film";
+    strncpy(g_download_filename, filename, sizeof(g_download_filename) - 1);
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = wifi_http_event_handler,
+        .timeout_ms = 30000,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    g_download_state = WIFI_DOWNLOAD_DOWNLOADING;
+    g_download_progress = 0;
+    g_download_content_length = 0;
+    g_download_received = 0;
+
+    sys_logi(WIFI_SERVICE_TAG, "Starting download: %s -> %s", url, g_download_filename);
+
+    esp_err_t err = esp_http_client_perform(client);
+
+    if(err != ESP_OK)
+    {
+        sys_loge(WIFI_SERVICE_TAG, "HTTP download failed: %d", err);
+        if(g_download_state == WIFI_DOWNLOAD_DOWNLOADING)
+        {
+            g_download_state = WIFI_DOWNLOAD_ERROR;
+        }
+    }
+
+    esp_http_client_cleanup(client);
+    vTaskDelete(NULL);
+}
+
+/**
+ * [service_wifi_download_start 开始下载film文件]
+ */
+void service_wifi_download_start(void)
+{
+    if(!g_wifi_connected)
+    {
+        sys_logw(WIFI_SERVICE_TAG, "WiFi not connected, cannot download");
+        return;
+    }
+
+    if(g_download_state == WIFI_DOWNLOAD_DOWNLOADING)
+    {
+        sys_logw(WIFI_SERVICE_TAG, "Download already in progress");
+        return;
+    }
+
+    if(strlen(g_service_param.network.film_api_url) == 0)
+    {
+        sys_logw(WIFI_SERVICE_TAG, "Film API URL is empty");
+        return;
+    }
+
+    // 创建下载任务
+    if(pdPASS != xTaskCreate(wifi_download_task, "wifi_dl", 4096, NULL, 5, NULL))
+    {
+        sys_loge(WIFI_SERVICE_TAG, "Failed to create download task");
+        g_download_state = WIFI_DOWNLOAD_ERROR;
+    }
+}
+
+/**
+ * [service_wifi_download_get_progress 获取下载进度]
+ */
+uint8_t service_wifi_download_get_progress(void)
+{
+    return g_download_progress;
+}
+
+/**
+ * [service_wifi_download_get_state 获取下载状态]
+ */
+wifi_download_state_t service_wifi_download_get_state(void)
+{
+    return g_download_state;
+}
 
 /**
  * [wifi_event_handler WiFi事件处理]
