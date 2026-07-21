@@ -55,6 +55,7 @@ const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE = 0x27;
 const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET = 0x28;
 const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME = 0x29;
 const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET = 0x2A;
+const BLE_FILM_TRANS_CH_CTRL_SDRESET = 0x2B;
 
 const BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE = 0x30;
 const BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET = 0x31;
@@ -684,6 +685,21 @@ async function sendBleReset() {
     }
     await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_RESET);
     showMessage('重置命令已发送，设备将重启', 'success');
+}
+
+async function sendBleSdReset() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    if (!confirm('确定要格式化SD卡吗？此操作将清除SD卡上所有数据。')) {
+        return;
+    }
+    if (!confirm('再次确认：格式化后SD卡所有数据将永久丢失，确定继续吗？')) {
+        return;
+    }
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SDRESET);
+    showMessage('格式化命令已发送，设备将重启', 'success');
 }
 
 async function sendBlePwrRead() {
