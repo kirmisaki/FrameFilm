@@ -1431,3 +1431,127 @@ h1 {
     outline: none;
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
 }
+
+/* 网络配置面板 */
+.network-section {
+    background: #000000;
+    border: 2px solid #ffffff;
+    margin: 15px 0;
+    overflow: hidden;
+}
+
+.network-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 18px;
+    background: #000000;
+    color: #ffffff;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 2px solid #ffffff;
+}
+
+.network-header i {
+    font-size: 18px;
+}
+
+.network-header .network-arrow {
+    margin-left: auto;
+}
+
+.network-content {
+    padding: 16px;
+}
+
+.network-switch-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #333333;
+}
+
+.network-label {
+    font-weight: 600;
+    color: #e0e0e0;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.network-input-group {
+    margin-bottom: 12px;
+}
+
+.network-input-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+    color: #e0e0e0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.network-input-group input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #ffffff;
+    background: #000000;
+    color: #ffffff;
+    font-size: 14px;
+    font-family: 'Courier New', Courier, monospace;
+    transition: border-color 0.2s;
+}
+
+.network-input-group input:focus {
+    outline: none;
+    background: #1a1a1a;
+}
+
+.network-btn-row {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.network-btn-row .secondary-button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.wifi-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-size: 12px;
+    color: #999;
+}
+
+.wifi-status-dot {
+    width: 10px;
+    height: 10px;
+    background: #555;
+    display: inline-block;
+}
+
+.wifi-status-dot.connected {
+    background: #ffffff;
+    box-shadow: 0 0 4px rgba(255,255,255,0.5);
+}
+
+.network-divider {
+    height: 1px;
+    background: #333333;
+    margin: 12px 0;
+}

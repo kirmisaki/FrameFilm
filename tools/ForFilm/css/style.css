@@ -1374,3 +1374,126 @@ textarea.quote-input {
     border-color: #4CAF50;
     box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
 }
+
+/* 网络配置面板 */
+.network-section {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    margin: 15px 0;
+    overflow: hidden;
+}
+
+.network-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 18px;
+    background: linear-gradient(135deg, #42a5f5, #1e88e5);
+    color: white;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.network-header i {
+    font-size: 20px;
+}
+
+.network-header .network-arrow {
+    margin-left: auto;
+}
+
+.network-content {
+    padding: 16px;
+}
+
+.network-switch-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.network-label {
+    font-weight: 600;
+    color: #555;
+    font-size: 14px;
+}
+
+.network-input-group {
+    margin-bottom: 12px;
+}
+
+.network-input-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+    color: #555;
+    font-size: 14px;
+}
+
+.network-input-group input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    background: #fafafa;
+    transition: border-color 0.2s;
+}
+
+.network-input-group input:focus {
+    outline: none;
+    border-color: #42a5f5;
+    background: white;
+}
+
+.network-btn-row {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.network-btn-row .secondary-button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.network-btn-row .secondary-button i {
+    font-size: 16px;
+}
+
+.wifi-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-size: 13px;
+    color: #666;
+}
+
+.wifi-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ccc;
+    display: inline-block;
+}
+
+.wifi-status-dot.connected {
+    background: #4CAF50;
+    box-shadow: 0 0 4px rgba(76,175,80,0.5);
+}
+
+.network-divider {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 12px 0;
+}

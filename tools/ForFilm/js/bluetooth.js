@@ -56,6 +56,19 @@ const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET = 0x28;
 const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME = 0x29;
 const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET = 0x2A;
 
+const BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE = 0x30;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET = 0x31;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_SSID = 0x32;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET = 0x33;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD = 0x34;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET = 0x35;
+const BLE_FILM_TRANS_CH_CTRL_FILM_API_URL = 0x36;
+const BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET = 0x37;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT = 0x38;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_DISCONNECT = 0x39;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET = 0x3A;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR = 0x3B;
+
 const BLE_CMD_LEN_MIN = 4;
 
 const BLE_FILM_TRANS_STATE_IDLE = 0;
@@ -185,6 +198,15 @@ function initBluetooth() {
                 sendBleSleepTimeGet();
             }, 5000);
 
+            setTimeout(() => {
+                queryWifiConfig();
+            }, 5500);
+
+            // 显示网络配置面板（默认折叠，wifi使能后自动展开）
+            var netSection = document.getElementById('network-section');
+            if (netSection) netSection.style.display = 'block';
+            collapseNetworkSection();
+
         } catch (error) {
             console.error('连接错误:', error);
             status.textContent = '连接失败: ' + error.message;
@@ -206,6 +228,8 @@ function onDisconnected(event) {
     if (deviceList) {
         deviceList.innerHTML = '<div class="no-devices">设备已断开连接</div>';
     }
+    var netSection = document.getElementById('network-section');
+    if (netSection) netSection.style.display = 'none';
 }
 
 async function disconnectDevice() {
@@ -221,6 +245,8 @@ async function disconnectDevice() {
         if (deviceList) {
             deviceList.innerHTML = '<div class="no-devices">已断开连接</div>';
         }
+        var netSection = document.getElementById('network-section');
+        if (netSection) netSection.style.display = 'none';
     }
 }
 
@@ -867,6 +893,35 @@ function setupBluetoothListener() {
             const timeMinutes = (data[3] << 8) | data[4];
             updateWakeDurationDisplay(timeMinutes);
         }
+        // WiFi 通知处理
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET && cmdLen === 1) {
+            const enable = data[3];
+            const sw = document.getElementById('wifi-enable-switch');
+            if (sw) sw.checked = (enable === 1);
+            if (enable === 0) collapseNetworkSection();
+            else expandNetworkSection(); // 使能时展开
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET) {
+            const ssid = String.fromCharCode.apply(null, data.slice(3, 3 + cmdLen)).replace(/\0.*$/, '');
+            const el = document.getElementById('wifi-ssid-input');
+            if (el) el.value = ssid;
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET) {
+            const pwd = String.fromCharCode.apply(null, data.slice(3, 3 + cmdLen)).replace(/\0.*$/, '');
+            const el = document.getElementById('wifi-password-input');
+            if (el) el.value = pwd;
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET) {
+            const url = String.fromCharCode.apply(null, data.slice(3, 3 + cmdLen)).replace(/\0.*$/, '');
+            const el = document.getElementById('film-api-url-input');
+            if (el) el.value = url;
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET && cmdLen === 1) {
+            const status = data[3];
+            updateWifiConnectStatus(status === 1);
+            updateWifiStatusText(status === 1 ? '已连接' : '未连接');
+            if (status === 1) stopWifiStatusPoll();
+        }
     });
 
     characteristic.startNotifications().then(() => {
@@ -1129,6 +1184,213 @@ async function sendBleCmdWithData(cmdType, value, dataLen = 4) {
         console.log('发送命令:', cmdType.toString(16), '数据:' + value);
         await delay(BLE_CTRL_DELAY);
     });
+}
+
+// ==================== WiFi 配网功能 ====================
+
+async function sendBleCmdString(cmdType, str, maxLen) {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+    return queueBleCmd(async () => {
+        const enc = new TextEncoder();
+        const bytes = enc.encode(str);
+        const dataLen = Math.min(bytes.length, maxLen - 1);
+        const packet = new Uint8Array(4 + dataLen);
+        packet[0] = BLE_CMD_HEAD;
+        packet[1] = cmdType;
+        packet[2] = dataLen;
+        packet.set(bytes.slice(0, dataLen), 3);
+        packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+        debugLog('sendBleCmdString: cmd=' + cmdType.toString(16) + ' str=' + str);
+        try {
+            await characteristic.writeValue(packet);
+            debugLog('BLE写入成功', 'success');
+        } catch (err) {
+            debugLog('BLE写入失败: ' + err.message, 'error');
+            throw err;
+        }
+        await delay(BLE_CTRL_DELAY);
+    });
+}
+
+async function sendBleWifiEnable(enable) {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE, enable ? 1 : 0);
+}
+
+async function sendBleWifiEnableGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET);
+}
+
+async function sendBleWifiSsidSet(ssid) {
+    await sendBleCmdString(BLE_FILM_TRANS_CH_CTRL_WIFI_SSID, ssid, 64);
+}
+
+async function sendBleWifiSsidGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET);
+}
+
+async function sendBleWifiPasswordSet(password) {
+    await sendBleCmdString(BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD, password, 64);
+}
+
+async function sendBleWifiPasswordGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET);
+}
+
+async function sendBleFilmApiUrlSet(url) {
+    await sendBleCmdString(BLE_FILM_TRANS_CH_CTRL_FILM_API_URL, url, 128);
+}
+
+async function sendBleFilmApiUrlGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET);
+}
+
+async function sendBleWifiConnect() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT);
+}
+
+async function sendBleWifiDisconnect() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_DISCONNECT);
+}
+
+async function sendBleWifiConnectGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET);
+}
+
+async function sendBleWifiClear() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR);
+}
+
+// WiFi UI 事件处理
+function toggleWifiSwitch() {
+    const sw = document.getElementById('wifi-enable-switch');
+    if (!sw) return;
+    const enable = sw.checked;
+    sendBleWifiEnable(enable).catch(err => console.error(err));
+    if (enable) {
+        updateWifiStatusText('初始化中...');
+    } else {
+        updateWifiStatusText('已关闭');
+        updateWifiConnectStatus(false);
+    }
+}
+
+function applyWifiSsid() {
+    const el = document.getElementById('wifi-ssid-input');
+    if (!el || !el.value.trim()) return;
+    sendBleWifiSsidSet(el.value.trim()).catch(err => console.error(err));
+}
+
+function applyWifiPassword() {
+    const el = document.getElementById('wifi-password-input');
+    if (!el) return;
+    sendBleWifiPasswordSet(el.value).catch(err => console.error(err));
+}
+
+function applyFilmApiUrl() {
+    const el = document.getElementById('film-api-url-input');
+    if (!el || !el.value.trim()) return;
+    sendBleFilmApiUrlSet(el.value.trim()).catch(err => console.error(err));
+}
+
+function onWifiConnect() {
+    sendBleWifiConnect().catch(err => console.error(err));
+    updateWifiStatusText('连接中...');
+    startWifiStatusPoll();
+}
+
+function onWifiDisconnect() {
+    stopWifiStatusPoll();
+    sendBleWifiDisconnect().catch(err => console.error(err));
+    updateWifiStatusText('已断开');
+    updateWifiConnectStatus(false);
+}
+
+function onWifiClear() {
+    stopWifiStatusPoll();
+    if (!confirm('确定要清除所有网络配置吗？')) return;
+    sendBleWifiClear().catch(err => console.error(err));
+    document.getElementById('wifi-ssid-input').value = '';
+    document.getElementById('wifi-password-input').value = '';
+    document.getElementById('film-api-url-input').value = '';
+    document.getElementById('wifi-enable-switch').checked = false;
+    updateWifiStatusText('已清除');
+    updateWifiConnectStatus(false);
+}
+
+var wifiStatusPollTimer = null;
+var wifiStatusPollCount = 0;
+const WIFI_STATUS_POLL_MAX = 60; // 60 * 500ms = 30s 超时
+
+function startWifiStatusPoll() {
+    stopWifiStatusPoll();
+    wifiStatusPollCount = 0;
+    wifiStatusPollTimer = setInterval(function() {
+        wifiStatusPollCount++;
+        if (wifiStatusPollCount > WIFI_STATUS_POLL_MAX) {
+            stopWifiStatusPoll();
+            updateWifiStatusText('连接超时');
+            updateWifiConnectStatus(false);
+            return;
+        }
+        sendBleWifiConnectGet().catch(function(err) { console.error(err); });
+    }, 500);
+}
+
+function stopWifiStatusPoll() {
+    if (wifiStatusPollTimer) {
+        clearInterval(wifiStatusPollTimer);
+        wifiStatusPollTimer = null;
+    }
+}
+
+function updateWifiStatusText(text) {
+    const el = document.getElementById('wifi-status-text');
+    if (el) el.textContent = text;
+}
+
+function updateWifiConnectStatus(connected) {
+    const dot = document.getElementById('wifi-status-dot');
+    if (dot) {
+        dot.className = connected ? 'wifi-status-dot connected' : 'wifi-status-dot';
+    }
+}
+
+function toggleNetworkSection() {
+    const content = document.getElementById('network-content');
+    const arrow = document.querySelector('.network-arrow');
+    if (content && arrow) {
+        const hidden = content.style.display === 'none';
+        content.style.display = hidden ? 'block' : 'none';
+        arrow.textContent = hidden ? 'expand_less' : 'expand_more';
+    }
+}
+
+function expandNetworkSection() {
+    const content = document.getElementById('network-content');
+    const arrow = document.querySelector('.network-arrow');
+    if (content && arrow) {
+        content.style.display = 'block';
+        arrow.textContent = 'expand_less';
+    }
+}
+
+function collapseNetworkSection() {
+    const content = document.getElementById('network-content');
+    const arrow = document.querySelector('.network-arrow');
+    if (content && arrow) {
+        content.style.display = 'none';
+        arrow.textContent = 'expand_more';
+    }
+}
+
+// 连接后初始化查询 WiFi 配置
+function queryWifiConfig() {
+    sendBleWifiEnableGet().catch(err => console.error(err));
+    sendBleWifiSsidGet().catch(err => console.error(err));
+    sendBleWifiConnectGet().catch(err => console.error(err));
+    sendBleFilmApiUrlGet().catch(err => console.error(err));
 }
 
 function updateFileListDisplay(fileList) {

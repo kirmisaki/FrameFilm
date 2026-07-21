@@ -22,6 +22,53 @@
                     </div>
                     <button id="scan-button" class="primary-button">扫描设备</button>
                     <div id="device-list" class="device-list"></div>
+
+                    <!-- 网络配置面板 -->
+                    <div id="network-section" class="network-section" style="display:none;">
+                        <div class="network-header" onclick="toggleNetworkSection()">
+                            <i class="material-icons">wifi</i>
+                            <span>网络配置</span>
+                            <i class="material-icons network-arrow">expand_less</i>
+                        </div>
+                        <div id="network-content" class="network-content">
+                            <div class="network-switch-row">
+                                <span class="network-label">WiFi</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="wifi-enable-switch" onchange="toggleWifiSwitch()">
+                                    <span class="slider-toggle"></span>
+                                </label>
+                            </div>
+                            <div class="network-input-group">
+                                <label class="network-label">SSID</label>
+                                <input type="text" id="wifi-ssid-input" placeholder="输入WiFi名称" onchange="applyWifiSsid()">
+                            </div>
+                            <div class="network-input-group">
+                                <label class="network-label">密码</label>
+                                <input type="password" id="wifi-password-input" placeholder="输入WiFi密码" onchange="applyWifiPassword()">
+                            </div>
+                            <div class="network-btn-row">
+                                <button class="secondary-button" onclick="onWifiConnect()">
+                                    <i class="material-icons">link</i> 连接
+                                </button>
+                                <button class="secondary-button" onclick="onWifiDisconnect()">
+                                    <i class="material-icons">link_off</i> 断开
+                                </button>
+                            </div>
+                            <div class="wifi-status-row">
+                                <span id="wifi-status-dot" class="wifi-status-dot"></span>
+                                <span id="wifi-status-text">未连接</span>
+                            </div>
+                            <div class="network-divider"></div>
+                            <div class="network-input-group">
+                                <label class="network-label">API地址</label>
+                                <input type="text" id="film-api-url-input" placeholder="http://..." onchange="applyFilmApiUrl()">
+                            </div>
+                            <button class="secondary-button danger" onclick="onWifiClear()" style="width:100%;margin-top:10px;">
+                                <i class="material-icons">delete_forever</i> 清除网络配置
+                            </button>
+                        </div>
+                    </div>
+
                     <div id="bluetooth-info" class="info">
                         <p>点击扫描按钮开始搜索FrameFilm设备</p>
                         <p class="device-hint">支持 FrameFilm 和 FrameFilm Pro</p>

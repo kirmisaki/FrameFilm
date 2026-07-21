@@ -1386,3 +1386,128 @@ h1 {
     outline: none;
     border-color: #8baf4c;
 }
+
+/* 网络配置面板 */
+.network-section {
+    background: #ffffff;
+    border: 2px solid #c4d8a0;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    margin: 15px 0;
+    overflow: hidden;
+}
+
+.network-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 18px;
+    background: #f0f7e0;
+    color: #5e8039;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 2px solid #c4d8a0;
+    font-family: 'Nunito', sans-serif;
+}
+
+.network-header i {
+    font-size: 20px;
+    color: #8baf4c;
+}
+
+.network-header .network-arrow {
+    margin-left: auto;
+}
+
+.network-content {
+    padding: 16px;
+}
+
+.network-switch-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #e8efd8;
+}
+
+.network-label {
+    font-weight: 700;
+    color: #5e8039;
+    font-size: 14px;
+}
+
+.network-input-group {
+    margin-bottom: 12px;
+}
+
+.network-input-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 700;
+    color: #5e8039;
+    font-size: 14px;
+}
+
+.network-input-group input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid #c4d8a0;
+    border-radius: 10px;
+    background: #fafdf5;
+    color: #2d3a20;
+    font-size: 14px;
+    font-family: 'Nunito', sans-serif;
+    transition: border-color 0.2s;
+}
+
+.network-input-group input:focus {
+    outline: none;
+    border-color: #8baf4c;
+    background: #ffffff;
+}
+
+.network-btn-row {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.network-btn-row .secondary-button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.wifi-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-size: 13px;
+    color: #8a9f6a;
+}
+
+.wifi-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #c4d8a0;
+    display: inline-block;
+}
+
+.wifi-status-dot.connected {
+    background: #8baf4c;
+    box-shadow: 0 0 6px rgba(139,175,76,0.5);
+}
+
+.network-divider {
+    height: 1px;
+    background: #c4d8a0;
+    margin: 12px 0;
+}
