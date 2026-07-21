@@ -46,6 +46,7 @@
 #include "service_film.h"
 #include "service_ota.h"
 #include "service_param.h"
+#include "service_wifi.h"
 
 #include "hal_bat.h"
 
@@ -651,6 +652,165 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             resp_buf[4] = g_service_param.sleep.sleep_time & 0xFF;
             resp_buf[5] = ble_checksum(resp_buf, 5);
             service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE : // WiFi开关设置
+        {
+            if(cmd->len == 1 && (cmd->pdata[0] == 0 || cmd->pdata[0] == 1))
+            {
+                uint8_t enable = cmd->pdata[0];
+                sys_logi(BEL_SERVICE_TAG, "Set WiFi enable: %s", enable ? "ON" : "OFF");
+                g_service_param.network.wifi_enable = enable;
+                service_param_save();
+                if(enable)
+                {
+                    service_wifi_init();
+                }
+                else
+                {
+                    service_wifi_disconnect();
+                    service_wifi_deinit();
+                }
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET : // WiFi开关查询
+        {
+            sys_logi(BEL_SERVICE_TAG, "WiFi enable: %s", g_service_param.network.wifi_enable ? "ON" : "OFF");
+            uint8_t resp_buf[6];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET;
+            resp_buf[2] = 1;
+            resp_buf[3] = g_service_param.network.wifi_enable & 0xFF;
+            resp_buf[4] = ble_checksum(resp_buf, 4);
+            service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_SSID : // WiFi SSID设置
+        {
+            if(cmd->len > 0 && cmd->len < sizeof(g_service_param.network.wifi_ssid))
+            {
+                memset(g_service_param.network.wifi_ssid, 0, sizeof(g_service_param.network.wifi_ssid));
+                memcpy(g_service_param.network.wifi_ssid, cmd->pdata, cmd->len);
+                sys_logi(BEL_SERVICE_TAG, "Set WiFi SSID: %s", g_service_param.network.wifi_ssid);
+                service_param_save();
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET : // WiFi SSID查询
+        {
+            uint8_t ssid_len = strlen(g_service_param.network.wifi_ssid);
+            sys_logi(BEL_SERVICE_TAG, "WiFi SSID: %s", g_service_param.network.wifi_ssid);
+            uint8_t resp_ssid_len = 4 + ssid_len; // HEAD + CH + LEN + DATA
+            uint8_t *resp_buf = pvPortMalloc(resp_ssid_len);
+            if(resp_buf)
+            {
+                resp_buf[0] = BLE_CMD_HEAD;
+                resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET;
+                resp_buf[2] = ssid_len;
+                if(ssid_len > 0)
+                {
+                    memcpy(&resp_buf[3], g_service_param.network.wifi_ssid, ssid_len);
+                }
+                resp_buf[3 + ssid_len] = ble_checksum(resp_buf, 3 + ssid_len);
+                service_ble_msg_gatts_data_send(resp_buf, resp_ssid_len, MSG_BLE_CH1_OUT_DATA);
+                vPortFree(resp_buf);
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD : // WiFi 密码设置
+        {
+            if(cmd->len > 0 && cmd->len < sizeof(g_service_param.network.wifi_password))
+            {
+                memset(g_service_param.network.wifi_password, 0, sizeof(g_service_param.network.wifi_password));
+                memcpy(g_service_param.network.wifi_password, cmd->pdata, cmd->len);
+                sys_logi(BEL_SERVICE_TAG, "Set WiFi password");
+                service_param_save();
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET : // WiFi 密码查询
+        {
+            uint8_t pwd_len = strlen(g_service_param.network.wifi_password);
+            sys_logi(BEL_SERVICE_TAG, "WiFi password query");
+            uint8_t resp_pwd_len = 4 + pwd_len;
+            uint8_t *resp_buf = pvPortMalloc(resp_pwd_len);
+            if(resp_buf)
+            {
+                resp_buf[0] = BLE_CMD_HEAD;
+                resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET;
+                resp_buf[2] = pwd_len;
+                if(pwd_len > 0)
+                {
+                    memcpy(&resp_buf[3], g_service_param.network.wifi_password, pwd_len);
+                }
+                resp_buf[3 + pwd_len] = ble_checksum(resp_buf, 3 + pwd_len);
+                service_ble_msg_gatts_data_send(resp_buf, resp_pwd_len, MSG_BLE_CH1_OUT_DATA);
+                vPortFree(resp_buf);
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_FILM_API_URL : // HTTP下载film文件的API地址设置
+        {
+            if(cmd->len > 0 && cmd->len < sizeof(g_service_param.network.film_api_url))
+            {
+                memset(g_service_param.network.film_api_url, 0, sizeof(g_service_param.network.film_api_url));
+                memcpy(g_service_param.network.film_api_url, cmd->pdata, cmd->len);
+                sys_logi(BEL_SERVICE_TAG, "Set film API URL: %s", g_service_param.network.film_api_url);
+                service_param_save();
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET : // HTTP下载film文件的API地址查询
+        {
+            uint8_t url_len = strlen(g_service_param.network.film_api_url);
+            sys_logi(BEL_SERVICE_TAG, "Film API URL: %s", g_service_param.network.film_api_url);
+            uint8_t resp_url_len = 4 + url_len;
+            uint8_t *resp_buf = pvPortMalloc(resp_url_len);
+            if(resp_buf)
+            {
+                resp_buf[0] = BLE_CMD_HEAD;
+                resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET;
+                resp_buf[2] = url_len;
+                if(url_len > 0)
+                {
+                    memcpy(&resp_buf[3], g_service_param.network.film_api_url, url_len);
+                }
+                resp_buf[3 + url_len] = ble_checksum(resp_buf, 3 + url_len);
+                service_ble_msg_gatts_data_send(resp_buf, resp_url_len, MSG_BLE_CH1_OUT_DATA);
+                vPortFree(resp_buf);
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT : // 连接WiFi
+        {
+            sys_logi(BEL_SERVICE_TAG, "WiFi connect requested");
+            service_wifi_connect();
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_DISCONNECT : // 断开WiFi连接
+        {
+            sys_logi(BEL_SERVICE_TAG, "WiFi disconnect requested");
+            service_wifi_disconnect();
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET : // 查询WiFi连接状态
+        {
+            uint8_t status = service_wifi_get_connect_status();
+            sys_logi(BEL_SERVICE_TAG, "WiFi connect status: %s", status ? "Connected" : "Disconnected");
+            uint8_t resp_buf[6];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET;
+            resp_buf[2] = 1;
+            resp_buf[3] = status;
+            resp_buf[4] = ble_checksum(resp_buf, 4);
+            service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR : // 清除网络配置信息
+        {
+            sys_logi(BEL_SERVICE_TAG, "WiFi config clear requested");
+            service_wifi_clear_config();
             break;
         }
         default :

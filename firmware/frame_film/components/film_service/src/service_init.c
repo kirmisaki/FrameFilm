@@ -34,6 +34,7 @@
 #include "service_monitor.h"
 #include "service_file.h"
 #include "service_film.h"
+#include "service_wifi.h"
 
 
 /*********************************************************************
@@ -72,10 +73,12 @@
 
 
 
-void service_init(void)
+void film_service_init(void)
 {
     // 初始化服务参数
     service_param_init();
+    // 初始化WiFi服务
+    service_wifi_init();
     // 初始化ble服务
     service_ble_init();
     // 初始化监控服务

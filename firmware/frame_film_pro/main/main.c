@@ -76,7 +76,7 @@
  */
 void app_main(void)
 {
-    sys_init();
+    film_sys_init();
 }
 
 

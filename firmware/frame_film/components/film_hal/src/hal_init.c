@@ -73,7 +73,7 @@
  */
 
 
-void hal_init(void)
+void film_hal_init(void)
 {
     // 初始化电源
     hal_pwr_init();

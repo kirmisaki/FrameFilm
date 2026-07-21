@@ -47,7 +47,7 @@ extern "C" {
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
-extern void hal_init(void);
+extern void film_hal_init(void);
 
 
 #ifdef __cplusplus

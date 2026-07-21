@@ -53,7 +53,7 @@ extern "C" {
  * 此函数用于执行服务的初始化操作，具体的初始化逻辑在对应的 .c 文件中实现。
  * 调用该函数后，服务将进入可用状态。
  */
-extern void service_init(void);
+extern void film_service_init(void);
 
 
 #ifdef __cplusplus

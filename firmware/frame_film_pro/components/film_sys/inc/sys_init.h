@@ -55,7 +55,7 @@ extern "C" {
  * 
  * @return void 该函数无返回值
  */
-extern void sys_init(void);
+extern void film_sys_init(void);
 
 
 #ifdef __cplusplus

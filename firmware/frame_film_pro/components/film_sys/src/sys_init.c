@@ -70,10 +70,10 @@
 
 
 
-void sys_init(void)
+void film_sys_init(void)
 {
     // 抽象层初始化
-    hal_init();
+    film_hal_init();
     // 服务层初始化
-    service_init();
+    film_service_init();
 }

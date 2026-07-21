@@ -6,11 +6,12 @@ set(srcs "src/service_init.c"
          "src/service_monitor.c"
          "src/service_file.c"
          "src/service_film.c"
+         "src/service_wifi.c"
          )
 
 set(public_include "inc")
 
-set(requires film_hal film_sys  bt nvs_flash app_update)
+set(requires film_hal film_sys  bt nvs_flash app_update esp_wifi esp_netif)
 
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS ${public_include}
