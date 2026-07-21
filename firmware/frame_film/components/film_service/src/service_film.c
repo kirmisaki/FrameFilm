@@ -85,6 +85,7 @@ static void film_next_event(void);
 static void film_prev_event(void);
 static void film_init_event(void);
 static void film_clear_event(void);
+static void film_download_event(void);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
@@ -124,6 +125,7 @@ static void film_task_handle(void *pvParameters)
     hal_encoder_register_cb(ENCODER_PRESS_UP, service_film_prev);
     hal_encoder_register_cb(ENCODER_PRESS_DOWN, service_film_next);
     hal_encoder_register_cb(ENCODER_PRESS_LONG, service_film_clear);
+    hal_encoder_register_cb(ENCODER_PRESS_SHORT, film_download_event);
 
     for(;;)
     {
@@ -191,9 +193,24 @@ static void film_init_event(void)
         }
         else if(g_service_param.film.play_mode == FILM_PLAY_MODE_WIFI)
         {
-            // WiFi轮播模式下，每次芯片启动后自动播放下一张照片
-            sys_logi(FILM_TAG, "WiFi play mode, displaying next image");
-            service_wifi_download_start();
+            // WiFi轮播模式下，等待WiFi连接建立（最长10s）
+            sys_logi(FILM_TAG, "WiFi play mode, waiting for WiFi connection...");
+            int retry = 0;
+            while(retry < 100 && !service_wifi_get_connect_status())
+            {
+                vTaskDelay(pdMS_TO_TICKS(100));
+                retry++;
+            }
+            if(service_wifi_get_connect_status())
+            {
+                sys_logi(FILM_TAG, "WiFi connected, starting download");
+                service_wifi_download_start();
+            }
+            else
+            {
+                sys_logw(FILM_TAG, "WiFi connection timeout, fallback to local mode");
+                film_next_event();
+            }
         }
     }
     else
@@ -331,6 +348,14 @@ static void film_prev_event(void)
     {
         // 未加载完成，更新无效
         sys_logi(FILM_TAG, "Load not complete, updating invalid");
+    }
+}
+
+static void film_download_event(void)
+{
+    if(g_service_param.film.load_complete)
+    {
+        service_wifi_download_start();
     }
 }
 

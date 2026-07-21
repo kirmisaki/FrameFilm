@@ -407,6 +407,12 @@ static void wifi_download_task(void *pvParameters)
  */
 void service_wifi_download_start(void)
 {
+    if(!g_service_param.network.wifi_enable)
+    {
+        sys_logw(WIFI_SERVICE_TAG, "WiFi disabled, cannot download");
+        return;
+    }
+
     if(!g_wifi_connected)
     {
         sys_logw(WIFI_SERVICE_TAG, "WiFi not connected, cannot download");
