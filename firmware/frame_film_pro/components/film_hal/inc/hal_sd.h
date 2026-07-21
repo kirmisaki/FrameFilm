@@ -76,6 +76,15 @@ extern int hal_sd_get_status(void);
  */
 extern void hal_sd_deinit(void);
 
+/**
+ * @brief 格式化SD卡
+ *
+ * 对SD卡执行FAT格式化操作。需在SD卡已挂载时调用。
+ *
+ * @return int 0:成功, -1:失败
+ */
+extern int hal_sd_format(void);
+
 #ifdef __cplusplus
 }
 #endif

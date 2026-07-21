@@ -49,6 +49,7 @@
 #include "service_wifi.h"
 
 #include "hal_bat.h"
+#include "hal_sd.h"
 
 /*********************************************************************
  * MACROS
@@ -652,6 +653,25 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             resp_buf[4] = g_service_param.sleep.sleep_time & 0xFF;
             resp_buf[5] = ble_checksum(resp_buf, 5);
             service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_SDRESET : // SD卡格式化
+        {
+            sys_logi(BEL_SERVICE_TAG, "SD card format requested");
+            int ret = hal_sd_format();
+            uint8_t resp_buf[6];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_SDRESET;
+            resp_buf[2] = 1;
+            resp_buf[3] = (ret == 0) ? 0 : 1;
+            resp_buf[4] = ble_checksum(resp_buf, 4);
+            service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
+            if(ret == 0)
+            {
+                sys_logi(BEL_SERVICE_TAG, "SD card formatted, rebooting...");
+                vTaskDelay(500 / portTICK_PERIOD_MS);
+                sys_reboot();
+            }
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE : // WiFi开关设置

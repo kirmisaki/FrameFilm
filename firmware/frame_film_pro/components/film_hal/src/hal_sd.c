@@ -261,3 +261,24 @@ void hal_sd_deinit(void)
     sys_logi(TF_TAG, "SD deinitialized");
 }
 
+int hal_sd_format(void)
+{
+    if (sd_mount_status != SD_MOUNT)
+    {
+        sys_loge(TF_TAG, "SD card not mounted, cannot format");
+        return -1;
+    }
+
+    sys_logi(TF_TAG, "Formatting SD card...");
+    const char mount_point[] = MOUNT_POINT;
+    esp_err_t ret = esp_vfs_fat_sdcard_format(mount_point, card);
+    if (ret != ESP_OK)
+    {
+        sys_loge(TF_TAG, "Failed to format SD card: %s", esp_err_to_name(ret));
+        return -1;
+    }
+
+    sys_logi(TF_TAG, "SD card formatted successfully");
+    return 0;
+}
+
