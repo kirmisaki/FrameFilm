@@ -132,13 +132,17 @@
                                 <span class="setting-label">照片切换模式</span>
                             </div>
                             <div class="mode-selector">
+                                <button class="mode-button" data-mode="wifi" onclick="setPhotoMode('wifi')" id="mode-wifi-btn" style="display:none;">
+                                    <i class="material-icons">wifi</i>
+                                    WiFi轮播
+                                </button>
                                 <button class="mode-button" data-mode="auto" onclick="setPhotoMode('auto')">
                                     <i class="material-icons">schedule</i>
-                                    自动
+                                    本地轮播
                                 </button>
                                 <button class="mode-button" data-mode="manual" onclick="setPhotoMode('manual')">
                                     <i class="material-icons">touch_app</i>
-                                    手动
+                                    关闭
                                 </button>
                             </div>
                         </div>

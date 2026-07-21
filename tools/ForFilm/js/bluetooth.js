@@ -823,7 +823,8 @@ async function sendBleModeSet(mode) {
     }
     try {
         await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_MODE, mode);
-        showMessage(mode === 1 ? '已切换到自动模式' : '已切换到手动模式', 'success');
+        const names = {0: '关闭', 1: '本地轮播', 2: 'WiFi轮播'};
+        showMessage('已切换到' + (names[mode] || '未知') + '模式', 'success');
     } catch (error) {
         showMessage('发送模式设置命令失败', 'error');
     }
@@ -844,15 +845,24 @@ function updatePhotoModeDisplay(mode) {
     document.querySelectorAll('.mode-button').forEach(btn => {
         btn.classList.remove('active');
     });
-    const modeStr = mode === 1 ? 'auto' : 'manual';
-    const activeBtn = document.querySelector(`.mode-button[data-mode="${modeStr}"]`);
+    var modeMap = {0: 'manual', 1: 'auto', 2: 'wifi'};
+    var modeStr = modeMap[mode] || 'manual';
+    var activeBtn = document.querySelector('.mode-button[data-mode="' + modeStr + '"]');
     if (activeBtn) {
         activeBtn.classList.add('active');
     }
 }
 
 function setPhotoMode(mode) {
-    const modeValue = mode === 'auto' ? 1 : 0;
+    var modeMap = { manual: 0, auto: 1, wifi: 2 };
+    var modeValue = modeMap[mode] || 0;
+
+    // 如果选择WiFi轮播但WiFi未启用，不允许
+    if (modeValue === 2 && !document.getElementById('wifi-enable-switch').checked) {
+        showMessage('请先启用WiFi', 'error');
+        return;
+    }
+
     sendBleModeSet(modeValue);
 }
 
@@ -916,6 +926,7 @@ function setupBluetoothListener() {
             const enable = data[3];
             const sw = document.getElementById('wifi-enable-switch');
             if (sw) sw.checked = (enable === 1);
+            updateWifiModeButton(enable === 1);
             if (enable === 0) collapseNetworkSection();
             else expandNetworkSection(); // 使能时展开
         }
@@ -1049,7 +1060,12 @@ function applyWakeDuration() {
 }
 
 function setPhotoMode(mode) {
-    const modeValue = mode === 'auto' ? 1 : 0;
+    var modeMap = { manual: 0, auto: 1, wifi: 2 };
+    var modeValue = modeMap[mode] || 0;
+    if (modeValue === 2 && !document.getElementById('wifi-enable-switch').checked) {
+        showMessage('请先启用WiFi', 'error');
+        return;
+    }
     sendBleModeSet(modeValue);
 
     document.querySelectorAll('.mode-button').forEach(btn => {
@@ -1302,9 +1318,23 @@ function toggleWifiSwitch() {
     sendBleWifiEnable(enable).catch(err => console.error(err));
     if (enable) {
         updateWifiStatusText('初始化中...');
+        updateWifiModeButton(true);
     } else {
         updateWifiStatusText('已关闭');
         updateWifiConnectStatus(false);
+        updateWifiModeButton(false);
+        // WiFi禁用时，如果当前是WiFi轮播模式，改成本地轮播
+        var activeBtn = document.querySelector('.mode-button.active');
+        if (activeBtn && activeBtn.dataset.mode === 'wifi') {
+            setPhotoMode('auto');
+        }
+    }
+}
+
+function updateWifiModeButton(wifiEnabled) {
+    var btn = document.getElementById('mode-wifi-btn');
+    if (btn) {
+        btn.style.display = wifiEnabled ? '' : 'none';
     }
 }
 
@@ -1394,6 +1424,12 @@ function onWifiClear() {
     document.getElementById('wifi-enable-switch').checked = false;
     updateWifiStatusText('已清除');
     updateWifiConnectStatus(false);
+    updateWifiModeButton(false);
+    // 如果当前是WiFi轮播模式，改成本地轮播
+    var activeBtn = document.querySelector('.mode-button.active');
+    if (activeBtn && activeBtn.dataset.mode === 'wifi') {
+        setPhotoMode('auto');
+    }
 }
 
 var wifiStatusPollTimer = null;
