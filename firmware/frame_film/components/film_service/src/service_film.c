@@ -43,6 +43,7 @@
 #include "service_file.h"
 #include "service_param.h"
 #include "service_film.h"
+#include "service_wifi.h"
 
 /*********************************************************************
  * MACROS
@@ -184,9 +185,15 @@ static void film_init_event(void)
         // 加载完成
         if(g_service_param.film.play_mode == FILM_PLAY_MODE_AUTO)
         {
-            // 自动播放模式下，每次芯片启动后自动播放下一张照片
-            sys_logi(FILM_TAG, "Auto play mode, displaying next image");
+            // 本地轮播模式下，每次芯片启动后自动播放下一张照片
+            sys_logi(FILM_TAG, " local play mode, displaying next image");
             film_next_event();
+        }
+        else if(g_service_param.film.play_mode == FILM_PLAY_MODE_WIFI)
+        {
+            // WiFi轮播模式下，每次芯片启动后自动播放下一张照片
+            sys_logi(FILM_TAG, "WiFi play mode, displaying next image");
+            service_wifi_download_start();
         }
     }
     else

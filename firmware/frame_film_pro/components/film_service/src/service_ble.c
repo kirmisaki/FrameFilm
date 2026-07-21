@@ -529,7 +529,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_CTRL_MODE : // Film模式切换
         {
-            if(cmd->len == 1 && (cmd->pdata[0] == 0 || cmd->pdata[0] == 1))
+            if(cmd->len == 1 && (cmd->pdata[0] == 0 || cmd->pdata[0] == 1 || cmd->pdata[0] == 2))
             {
                 uint8_t mode = cmd->pdata[0];
                 sys_logi(BEL_SERVICE_TAG, "Set play mode: %d", mode);

@@ -20,7 +20,8 @@ extern "C" {
 #define FILM_TAG                    "film"
 
 #define FILM_PLAY_MODE_MANUAL       (0)  // 手动播放模式
-#define FILM_PLAY_MODE_AUTO         (1)  // 自动播放模式
+#define FILM_PLAY_MODE_AUTO         (1)  // 本地轮播模式
+#define FILM_PLAY_MODE_WIFI         (2)  // WiFi轮播模式
 
 /*********************************************************************
 * TYPEDEFS
