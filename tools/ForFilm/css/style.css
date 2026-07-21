@@ -1497,3 +1497,23 @@ textarea.quote-input {
     background: #e0e0e0;
     margin: 12px 0;
 }
+
+.api-url-row {
+    display: flex;
+    gap: 8px;
+}
+
+.api-url-row input {
+    flex: 1;
+}
+
+.api-url-row .secondary-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.api-url-row .secondary-button i {
+    font-size: 16px;
+}

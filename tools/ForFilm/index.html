@@ -61,7 +61,18 @@
                             <div class="network-divider"></div>
                             <div class="network-input-group">
                                 <label class="network-label">API地址</label>
-                                <input type="text" id="film-api-url-input" placeholder="http://..." onchange="applyFilmApiUrl()">
+                                <div class="api-url-row">
+                                    <input type="text" id="film-api-url-input" placeholder="http://...">
+                                    <button class="secondary-button" onclick="applyFilmApiUrl()" style="width:auto;padding:8px 14px;">
+                                        <i class="material-icons">check</i> 设置
+                                    </button>
+                                </div>
+                            </div>
+                            <button class="secondary-button" onclick="onFilmDownload()" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:4px;">
+                                <i class="material-icons">cloud_download</i> 下载测试
+                            </button>
+                            <div class="wifi-status-row" style="margin-top:8px;">
+                                <span id="download-status-text" style="font-size:12px;color:#999;">就绪</span>
                             </div>
                             <button class="secondary-button danger" onclick="onWifiClear()" style="width:100%;margin-top:10px;">
                                 <i class="material-icons">delete_forever</i> 清除网络配置

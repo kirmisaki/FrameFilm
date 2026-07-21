@@ -68,6 +68,8 @@ const BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT = 0x38;
 const BLE_FILM_TRANS_CH_CTRL_WIFI_DISCONNECT = 0x39;
 const BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET = 0x3A;
 const BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR = 0x3B;
+const BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD = 0x3C;
+const BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE = 0x3D;
 
 const BLE_CMD_LEN_MIN = 4;
 
@@ -922,6 +924,12 @@ function setupBluetoothListener() {
             updateWifiStatusText(status === 1 ? '已连接' : '未连接');
             if (status === 1) stopWifiStatusPoll();
         }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE && cmdLen === 2) {
+            const state = data[3];
+            const progress = data[4];
+            console.log(`下载状态: state=${state}, progress=${progress}%`);
+            updateDownloadStatus(state, progress);
+        }
     });
 
     characteristic.startNotifications().then(() => {
@@ -1246,6 +1254,14 @@ async function sendBleFilmApiUrlGet() {
     await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET);
 }
 
+async function sendBleFilmDownload() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD);
+}
+
+async function sendBleFilmDownloadStateGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE);
+}
+
 async function sendBleWifiConnect() {
     await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT);
 }
@@ -1292,6 +1308,51 @@ function applyFilmApiUrl() {
     const el = document.getElementById('film-api-url-input');
     if (!el || !el.value.trim()) return;
     sendBleFilmApiUrlSet(el.value.trim()).catch(err => console.error(err));
+}
+
+let downloadPollTimer = null;
+
+function onFilmDownload() {
+    if (!device || !server || !characteristic) return;
+    sendBleFilmDownload().catch(err => console.error(err));
+    // 开始轮询下载状态
+    if (downloadPollTimer) clearInterval(downloadPollTimer);
+    updateDownloadStatusText('下载中... 0%');
+    downloadPollTimer = setInterval(() => {
+        sendBleFilmDownloadStateGet().catch(err => console.error(err));
+    }, 1000);
+}
+
+function stopDownloadPoll() {
+    if (downloadPollTimer) {
+        clearInterval(downloadPollTimer);
+        downloadPollTimer = null;
+    }
+}
+
+function updateDownloadStatus(state, progress) {
+    switch (state) {
+    case 0: // IDLE
+        updateDownloadStatusText('就绪');
+        stopDownloadPoll();
+        break;
+    case 1: // DOWNLOADING
+        updateDownloadStatusText(`下载中... ${progress}%`);
+        break;
+    case 2: // DONE
+        updateDownloadStatusText('下载完成');
+        stopDownloadPoll();
+        break;
+    case 3: // ERROR
+        updateDownloadStatusText('下载失败');
+        stopDownloadPoll();
+        break;
+    }
+}
+
+function updateDownloadStatusText(text) {
+    const el = document.getElementById('download-status-text');
+    if (el) el.textContent = text;
 }
 
 function onWifiConnect() {
