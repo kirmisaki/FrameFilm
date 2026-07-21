@@ -60,6 +60,7 @@
  */
 static bool g_wifi_initialized = false;
 static bool g_wifi_connected = false;
+static bool g_wifi_netif_ready = false;
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -94,9 +95,13 @@ void service_wifi_init(void)
         return;
     }
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+    if(!g_wifi_netif_ready)
+    {
+        ESP_ERROR_CHECK(esp_netif_init());
+        esp_event_loop_create_default();
+        esp_netif_create_default_wifi_sta();
+        g_wifi_netif_ready = true;
+    }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
