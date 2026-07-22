@@ -35,6 +35,18 @@ Page({
     wakeIndex: 5,  // 初始60分钟 = 第5个点
     wakeMaxIndex: 52,  // 最后一个点的索引
     wakeDurationText: '1小时',
+    // WiFi 网络配置
+    wifiEnable: false,
+    wifiSsid: '',
+    wifiPassword: '',
+    filmApiUrl: '',
+    wifiConnected: false,
+    wifiStatusText: '未连接',
+    networkExpanded: false,
+    // 下载
+    downloadState: 0,
+    downloadProgress: 0,
+    downloadStatusText: '',
     showDebug: false,
     debugLogs: [],
     otaFileName: '',
@@ -55,6 +67,10 @@ Page({
     this._syncFromGlobal();
     this._startSyncTimer();
     this._setupBleListener();
+    // 连接状态下查询WiFi配置
+    if (app.globalData.isConnected) {
+      this._queryWifiConfig();
+    }
   },
 
   // 分享给朋友
@@ -68,11 +84,17 @@ Page({
   onHide: function () {
     this._stopSyncTimer();
     this._removeBleListener();
+    this._stopWifiStatusPoll();
+    this._stopDownloadPoll();
+    this._stopWifiEnablePoll();
   },
 
   onUnload: function () {
     this._stopSyncTimer();
     this._removeBleListener();
+    this._stopWifiStatusPoll();
+    this._stopDownloadPoll();
+    this._stopWifiEnablePoll();
   },
 
   // 同步 globalData 状态到页面
@@ -102,6 +124,26 @@ Page({
       updates.wakeDuration = g.wakeDuration;
       updates.wakeIndex = this._durationToIndex(g.wakeDuration);
       updates.wakeDurationText = bleUtils.formatDuration(g.wakeDuration);
+    }
+    // WiFi 状态同步
+    var wEnable = !!g.wifiEnable;
+    if (this.data.wifiEnable !== wEnable) {
+      updates.wifiEnable = wEnable;
+      if (wEnable && !this.data.networkExpanded) updates.networkExpanded = true;
+    }
+    if (this.data.wifiSsid !== g.wifiSsid) updates.wifiSsid = g.wifiSsid;
+    if (this.data.wifiPassword !== g.wifiPassword) updates.wifiPassword = g.wifiPassword;
+    if (this.data.filmApiUrl !== g.filmApiUrl) updates.filmApiUrl = g.filmApiUrl;
+    var wConn = !!g.wifiConnected;
+    if (this.data.wifiConnected !== wConn) {
+      updates.wifiConnected = wConn;
+      updates.wifiStatusText = wConn ? '已连接' : '未连接';
+    }
+    // 下载状态同步
+    if (this.data.downloadState !== g.downloadState || this.data.downloadProgress !== g.downloadProgress) {
+      updates.downloadState = g.downloadState;
+      updates.downloadProgress = g.downloadProgress;
+      updates.downloadStatusText = this._getDownloadStatusText(g.downloadState, g.downloadProgress);
     }
     // fileList 同步 - 直接使用拷贝避免引用共享
     var globalList = g.fileList || [];
@@ -219,6 +261,67 @@ Page({
           });
           app.globalData.wakeDuration = minutes;
           this.debugLog('唤醒时长: ' + text, 'success');
+        }
+        break;
+
+      // WiFi 通知处理
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET: // 0x31
+        if (cmdLen >= 1) {
+          var en = !!data[3];
+          this.setData({ wifiEnable: en });
+          app.globalData.wifiEnable = data[3];
+          this.debugLog('WiFi: ' + (en ? '使能' : '禁用'), 'success');
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET: // 0x33
+        if (cmdLen > 0) {
+          var ssid = this._parseString(data, 3, cmdLen);
+          this.setData({ wifiSsid: ssid });
+          app.globalData.wifiSsid = ssid;
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET: // 0x35
+        if (cmdLen > 0) {
+          var pw = this._parseString(data, 3, cmdLen);
+          this.setData({ wifiPassword: pw });
+          app.globalData.wifiPassword = pw;
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET: // 0x37
+        if (cmdLen > 0) {
+          var furl = this._parseString(data, 3, cmdLen);
+          this.setData({ filmApiUrl: furl });
+          app.globalData.filmApiUrl = furl;
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET: // 0x3A
+        if (cmdLen >= 1) {
+          var conn = (data[3] === 1);
+          this.setData({ wifiConnected: conn, wifiStatusText: conn ? '已连接' : '未连接' });
+          app.globalData.wifiConnected = conn;
+          if (conn) this._stopWifiStatusPoll();
+          if (conn) this._stopWifiEnablePoll();
+          this.debugLog('WiFi连接状态: ' + (conn ? '已连接' : '未连接'), 'success');
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE: // 0x3D
+        if (cmdLen >= 2) {
+          var ds = data[3];
+          var dp = data[4];
+          this.setData({
+            downloadState: ds,
+            downloadProgress: dp,
+            downloadStatusText: this._getDownloadStatusText(ds, dp)
+          });
+          app.globalData.downloadState = ds;
+          app.globalData.downloadProgress = dp;
+          if (ds !== 1) this._stopDownloadPoll();
+          this.debugLog('下载状态: ' + ds + ' 进度: ' + dp + '%', 'info');
         }
         break;
     }
@@ -345,31 +448,55 @@ Page({
     });
   },
 
+  // 辅助函数：从 BLE 数据中解析字符串
+  _parseString: function (data, offset, len) {
+    var str = '';
+    for (var i = 0; i < len; i++) {
+      if (data[offset + i] === 0) break;
+      str += String.fromCharCode(data[offset + i]);
+    }
+    return str;
+  },
+
+  // 获取下载状态文本
+  _getDownloadStatusText: function (state, progress) {
+    switch (state) {
+      case 0: return '就绪';
+      case 1: return '下载中... ' + progress + '%';
+      case 2: return '下载完成';
+      case 3: return '下载失败';
+      default: return '';
+    }
+  },
+
   // 照片模式
-  setAutoMode: function () {
+  _setPhotoMode: function (modeValue, modeName) {
     var that = this;
-    that.debugLog('设置自动模式...', 'info');
-    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_MODE, 1).then(function () {
-      that.debugLog('自动模式已设置', 'success');
-      setTimeout(function () {
-        app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_MODE_GET, null);
-      }, 300);
+    // WiFi 模式检查
+    if (modeValue === 2 && !that.data.wifiEnable) {
+      wx.showToast({ title: '请先启用WiFi', icon: 'none' });
+      return;
+    }
+    that.debugLog('设置' + modeName + '模式...', 'info');
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_MODE, modeValue).then(function () {
+      that.debugLog(modeName + '模式已设置', 'success');
+      that.setData({ photoMode: modeValue });
+      app.globalData.photoMode = modeValue;
     }).catch(function (err) {
       that.debugLog('设置失败: ' + JSON.stringify(err), 'error');
     });
   },
 
+  setWifiMode: function () {
+    this._setPhotoMode(2, 'WiFi轮播');
+  },
+
+  setLocalMode: function () {
+    this._setPhotoMode(1, '本地轮播');
+  },
+
   setManualMode: function () {
-    var that = this;
-    that.debugLog('设置手动模式...', 'info');
-    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_MODE, 0).then(function () {
-      that.debugLog('手动模式已设置', 'success');
-      setTimeout(function () {
-        app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_MODE_GET, null);
-      }, 300);
-    }).catch(function (err) {
-      that.debugLog('设置失败: ' + JSON.stringify(err), 'error');
-    });
+    this._setPhotoMode(0, '关闭');
   },
 
   // 休眠设置
@@ -495,7 +622,258 @@ Page({
     this.setData({ debugLogs: logs });
   },
 
-  // OTA
+  // ==================== WiFi 网络配置 ====================
+
+  toggleNetworkSection: function () {
+    this.setData({ networkExpanded: !this.data.networkExpanded });
+  },
+
+  onWifiEnableChange: function (e) {
+    var that = this;
+    var enable = e.detail.value;
+    that.setData({ wifiEnable: enable });
+    app.globalData.wifiEnable = enable ? 1 : 0;
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE, enable ? 1 : 0).then(function () {
+      that.debugLog('WiFi: ' + (enable ? '使能' : '禁用'), 'success');
+      if (enable) {
+        that.setData({ wifiStatusText: '初始化中...' });
+        that._startWifiEnablePoll();
+      } else {
+        that._stopWifiEnablePoll();
+        that._stopWifiStatusPoll();
+        that.setData({ wifiStatusText: '已关闭', wifiConnected: false });
+        app.globalData.wifiConnected = false;
+        if (that.data.photoMode === 2) {
+          that._setPhotoMode(1, '本地轮播');
+        }
+      }
+    }).catch(function (err) {
+      that.debugLog('WiFi设置失败: ' + JSON.stringify(err), 'error');
+    });
+  },
+
+  _wifiEnablePollTimer: null,
+  _wifiEnablePollCount: 0,
+  _WIFI_ENABLE_POLL_MAX: 20, // 20 * 500ms = 10s
+
+  _startWifiEnablePoll: function () {
+    var that = this;
+    that._stopWifiEnablePoll();
+    that._wifiEnablePollCount = 0;
+    that._wifiEnablePollTimer = setInterval(function () {
+      that._wifiEnablePollCount++;
+      if (that._wifiEnablePollCount > that._WIFI_ENABLE_POLL_MAX) {
+        that._stopWifiEnablePoll();
+        if (!that.data.wifiConnected) {
+          that.setData({ wifiStatusText: '未连接' });
+        }
+        return;
+      }
+      app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET, null).catch(function () {});
+    }, 500);
+  },
+
+  _stopWifiEnablePoll: function () {
+    if (this._wifiEnablePollTimer) {
+      clearInterval(this._wifiEnablePollTimer);
+      this._wifiEnablePollTimer = null;
+    }
+  },
+
+  _queryWifiConfig: function () {
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET, null).catch(function () {});
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET, null).catch(function () {});
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET, null).catch(function () {});
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET, null).catch(function () {});
+  },
+
+  applyWifiSsid: function (e) {
+    var val = (e && e.detail && e.detail.value) ? e.detail.value.trim() : this.data.wifiSsid;
+    if (!val) return;
+    var that = this;
+    that.setData({ wifiSsid: val });
+    app.globalData.wifiSsid = val;
+    app.sendBleStringCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_SSID, val, 64).then(function () {
+      that.debugLog('SSID已设置: ' + val, 'success');
+    }).catch(function (err) {
+      that.debugLog('SSID设置失败: ' + JSON.stringify(err), 'error');
+    });
+  },
+
+  applyWifiPassword: function (e) {
+    var val = (e && e.detail && e.detail.value) || this.data.wifiPassword;
+    if (!val) return;
+    var that = this;
+    that.setData({ wifiPassword: val });
+    app.globalData.wifiPassword = val;
+    app.sendBleStringCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD, val, 64).then(function () {
+      that.debugLog('密码已设置', 'success');
+    }).catch(function (err) {
+      that.debugLog('密码设置失败: ' + JSON.stringify(err), 'error');
+    });
+  },
+
+  applyFilmApiUrl: function (e) {
+    var val = (e && e.detail && e.detail.value) ? e.detail.value.trim() : this.data.filmApiUrl;
+    if (!val) return;
+    var that = this;
+    that.setData({ filmApiUrl: val });
+    app.globalData.filmApiUrl = val;
+    app.sendBleStringCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_API_URL, val, 128).then(function () {
+      that.debugLog('API地址已设置', 'success');
+    }).catch(function (err) {
+      that.debugLog('API地址设置失败: ' + JSON.stringify(err), 'error');
+    });
+  },
+
+  onWifiConnect: function () {
+    var that = this;
+    that.debugLog('开始连接WiFi...', 'info');
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT, null).then(function () {
+      that.setData({ wifiStatusText: '连接中...' });
+      that._startWifiStatusPoll();
+    }).catch(function (err) {
+      that.debugLog('WiFi连接失败: ' + JSON.stringify(err), 'error');
+    });
+  },
+
+  onWifiDisconnect: function () {
+    var that = this;
+    that._stopWifiStatusPoll();
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_DISCONNECT, null).then(function () {
+      that.setData({ wifiStatusText: '已断开', wifiConnected: false });
+      app.globalData.wifiConnected = false;
+    }).catch(function (err) {
+      that.debugLog('WiFi断开失败: ' + JSON.stringify(err), 'error');
+    });
+  },
+
+  onWifiClear: function () {
+    var that = this;
+    wx.showModal({
+      title: '确认清除',
+      content: '确定要清除所有网络配置吗？',
+      success: function (res) {
+        if (res.confirm) {
+          that._stopWifiStatusPoll();
+          that._stopDownloadPoll();
+          app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR, null).then(function () {
+            that.setData({
+              wifiEnable: false, wifiSsid: '', wifiPassword: '',
+              filmApiUrl: '', wifiConnected: false, wifiStatusText: '已清除'
+            });
+            app.globalData.wifiEnable = 0;
+            app.globalData.wifiSsid = '';
+            app.globalData.wifiPassword = '';
+            app.globalData.filmApiUrl = '';
+            app.globalData.wifiConnected = false;
+            // WiFi模式切换到本地轮播
+            if (that.data.photoMode === 2) {
+              that._setPhotoMode(1, '本地轮播');
+            }
+            that.debugLog('网络配置已清除', 'success');
+          }).catch(function (err) {
+            that.debugLog('清除失败: ' + JSON.stringify(err), 'error');
+          });
+        }
+      }
+    });
+  },
+
+  // WiFi 状态轮询
+  _wifiPollTimer: null,
+  _wifiPollCount: 0,
+  _WIFI_POLL_MAX: 60,
+
+  _startWifiStatusPoll: function () {
+    var that = this;
+    that._stopWifiStatusPoll();
+    that._wifiPollCount = 0;
+    that._wifiPollTimer = setInterval(function () {
+      that._wifiPollCount++;
+      if (that._wifiPollCount > that._WIFI_POLL_MAX) {
+        that._stopWifiStatusPoll();
+        that.setData({ wifiStatusText: '连接超时', wifiConnected: false });
+        app.globalData.wifiConnected = false;
+        return;
+      }
+      app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET, null).catch(function (err) {
+        console.error('WiFi状态查询失败:', err);
+      });
+    }, 500);
+  },
+
+  _stopWifiStatusPoll: function () {
+    if (this._wifiPollTimer) {
+      clearInterval(this._wifiPollTimer);
+      this._wifiPollTimer = null;
+    }
+  },
+
+  // ==================== 下载功能 ====================
+
+  _downloadPollTimer: null,
+
+  onFilmDownload: function () {
+    var that = this;
+    that.debugLog('开始下载测试...', 'info');
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD, null).then(function () {
+      that.setData({ downloadStatusText: '下载中... 0%', downloadState: 1, downloadProgress: 0 });
+      that._startDownloadPoll();
+    }).catch(function (err) {
+      that.debugLog('下载请求失败: ' + JSON.stringify(err), 'error');
+    });
+  },
+
+  _startDownloadPoll: function () {
+    var that = this;
+    that._stopDownloadPoll();
+    that._downloadPollTimer = setInterval(function () {
+      app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE, null).catch(function (err) {
+        console.error('下载状态查询失败:', err);
+      });
+    }, 1000);
+  },
+
+  _stopDownloadPoll: function () {
+    if (this._downloadPollTimer) {
+      clearInterval(this._downloadPollTimer);
+      this._downloadPollTimer = null;
+    }
+  },
+
+  // ==================== SD卡格式化 ====================
+
+  sdFormat: function () {
+    var that = this;
+    wx.showModal({
+      title: '确认格式化',
+      content: '确定要格式化SD卡吗？此操作将清除SD卡上所有数据。',
+      confirmColor: '#c62828',
+      success: function (res) {
+        if (res.confirm) {
+          wx.showModal({
+            title: '再次确认',
+            content: '格式化后SD卡所有数据将永久丢失，确定继续吗？',
+            confirmColor: '#c62828',
+            success: function (res2) {
+              if (res2.confirm) {
+                that.debugLog('发送SD卡格式化命令...', 'info');
+                app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_SDRESET, null).then(function () {
+                  that.debugLog('格式化命令已发送', 'success');
+                  wx.showToast({ title: '设备正在格式化', icon: 'success' });
+                }).catch(function (err) {
+                  that.debugLog('格式化失败: ' + JSON.stringify(err), 'error');
+                });
+              }
+            }
+          });
+        }
+      }
+    });
+  },
+
+  // ==================== OTA ====================
   chooseOtaFile: function () {
     var that = this;
     wx.chooseMessageFile({

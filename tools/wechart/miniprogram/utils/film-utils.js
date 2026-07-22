@@ -619,6 +619,17 @@ function wrapText(ctx, text, fontSize, maxWidth) {
   return lines;
 }
 
+// 生成随机 Film 文件名：固定前缀 + 随机后缀
+function generateRandomFilename(prefix) {
+  prefix = prefix || 'frame';
+  var chars = '0123456789abcdef';
+  var suffix = '';
+  for (var i = 0; i < 6; i++) {
+    suffix += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return prefix + '_' + suffix + '.film';
+}
+
 module.exports = {
   CANVAS_WIDTH, CANVAS_HEIGHT,
   FILM_SCREEN_WIDTH, FILM_SCREEN_HEIGHT,
@@ -636,5 +647,6 @@ module.exports = {
   extractLandscapeData,
   processAndDisplay,
   generateFilmHeader,
-  wrapText
+  wrapText,
+  generateRandomFilename
 };

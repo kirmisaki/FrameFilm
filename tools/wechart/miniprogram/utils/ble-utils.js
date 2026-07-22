@@ -29,6 +29,22 @@ const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE = 0x27;
 const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET = 0x28;
 const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME = 0x29;
 const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET = 0x2A;
+const BLE_FILM_TRANS_CH_CTRL_SDRESET = 0x2B;
+
+const BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE = 0x30;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET = 0x31;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_SSID = 0x32;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET = 0x33;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD = 0x34;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET = 0x35;
+const BLE_FILM_TRANS_CH_CTRL_FILM_API_URL = 0x36;
+const BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET = 0x37;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT = 0x38;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_DISCONNECT = 0x39;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET = 0x3A;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR = 0x3B;
+const BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD = 0x3C;
+const BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE = 0x3D;
 
 const BLE_CHUNK_SIZE = 192;
 const BLE_CTRL_DELAY = 50;
@@ -126,6 +142,33 @@ function buildSleepTimePacket(timeMinutes) {
   return packet;
 }
 
+function buildStringPacket(cmdType, str, maxLen) {
+  var bytes = [];
+  for (var i = 0; i < str.length; i++) {
+    var code = str.charCodeAt(i);
+    if (code <= 0x7F) {
+      bytes.push(code);
+    } else if (code <= 0x7FF) {
+      bytes.push(0xC0 | (code >> 6));
+      bytes.push(0x80 | (code & 0x3F));
+    } else {
+      bytes.push(0xE0 | (code >> 12));
+      bytes.push(0x80 | ((code >> 6) & 0x3F));
+      bytes.push(0x80 | (code & 0x3F));
+    }
+  }
+  var dataLen = Math.min(bytes.length, (maxLen || 64) - 1);
+  var packet = new Uint8Array(4 + dataLen);
+  packet[0] = BLE_CMD_HEAD;
+  packet[1] = cmdType;
+  packet[2] = dataLen;
+  for (var j = 0; j < dataLen; j++) {
+    packet[3 + j] = bytes[j];
+  }
+  packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+  return packet;
+}
+
 function formatDuration(minutes) {
   if (minutes < 60) return minutes + '分钟';
   if (minutes === 60) return '1小时';
@@ -161,10 +204,18 @@ module.exports = {
   BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF, BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET,
   BLE_FILM_TRANS_CH_CTRL_SLEEPMODE, BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET,
   BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME, BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET,
+  BLE_FILM_TRANS_CH_CTRL_SDRESET,
+  BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE, BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET,
+  BLE_FILM_TRANS_CH_CTRL_WIFI_SSID, BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET,
+  BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD, BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET,
+  BLE_FILM_TRANS_CH_CTRL_FILM_API_URL, BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET,
+  BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT, BLE_FILM_TRANS_CH_CTRL_WIFI_DISCONNECT,
+  BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET, BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR,
+  BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD, BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE,
   BLE_CHUNK_SIZE, BLE_CTRL_DELAY, BLE_DATA_DELAY,
   calculateChecksum,
   buildCmdPacket, buildFileStartPacket, buildFileNamePacket,
   buildFileLenPacket, buildFileDataPacket, buildFileStopPacket,
-  buildSleepTimePacket,
+  buildSleepTimePacket, buildStringPacket,
   formatDuration, parseBleResponse
 };

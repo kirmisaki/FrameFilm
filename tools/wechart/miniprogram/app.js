@@ -13,6 +13,15 @@ App({
     sleepOnOff: 0,
     autoWakeMode: 0,
     wakeDuration: 60,
+    // WiFi 网络配置
+    wifiEnable: 0,
+    wifiSsid: '',
+    wifiPassword: '',
+    filmApiUrl: '',
+    wifiConnected: false,
+    // 下载状态
+    downloadState: 0,
+    downloadProgress: 0,
     _bleQueue: [],
     _bleProcessing: false,
     _deviceId: '',
@@ -167,6 +176,59 @@ App({
           this.globalData.wakeDuration = (data[3] << 8) | data[4];
         }
         break;
+
+      // WiFi 通知处理
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET: // 0x31
+        if (cmdLen === 1) {
+          this.globalData.wifiEnable = data[3];
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET: // 0x33
+        if (cmdLen > 0) {
+          var ssid = '';
+          for (var si = 0; si < cmdLen; si++) {
+            if (data[3 + si] === 0) break;
+            ssid += String.fromCharCode(data[3 + si]);
+          }
+          this.globalData.wifiSsid = ssid;
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET: // 0x35
+        if (cmdLen > 0) {
+          var pwd = '';
+          for (var pi = 0; pi < cmdLen; pi++) {
+            if (data[3 + pi] === 0) break;
+            pwd += String.fromCharCode(data[3 + pi]);
+          }
+          this.globalData.wifiPassword = pwd;
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET: // 0x37
+        if (cmdLen > 0) {
+          var url = '';
+          for (var ui = 0; ui < cmdLen; ui++) {
+            if (data[3 + ui] === 0) break;
+            url += String.fromCharCode(data[3 + ui]);
+          }
+          this.globalData.filmApiUrl = url;
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET: // 0x3A
+        if (cmdLen === 1) {
+          this.globalData.wifiConnected = (data[3] === 1);
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE: // 0x3D
+        if (cmdLen === 2) {
+          this.globalData.downloadState = data[3];
+          this.globalData.downloadProgress = data[4];
+        }
+        break;
     }
 
     // 通知所有页面级监听器
@@ -263,5 +325,11 @@ App({
         });
       });
     });
+  },
+
+  // 发送字符串类型 BLE 命令
+  sendBleStringCmd: function (cmdType, str, maxLen) {
+    var packet = bleUtils.buildStringPacket(cmdType, str, maxLen || 128);
+    return this.sendBlePacket(packet);
   }
 });

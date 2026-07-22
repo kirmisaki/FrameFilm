@@ -51,14 +51,65 @@
       <view class="setting-item mode-section">
         <view class="setting-label">照片模式</view>
         <view class="mode-selector">
-          <view class="mode-button {{photoMode === 0 ? 'active' : ''}}" bindtap="setManualMode">
-            <text>手动</text>
+          <view class="mode-button {{photoMode === 2 ? 'active' : ''}} {{wifiEnable ? '' : 'hidden'}}" bindtap="setWifiMode" data-mode="wifi">
+            <text>WiFi轮播</text>
           </view>
-          <view class="mode-button {{photoMode === 1 ? 'active' : ''}}" bindtap="setAutoMode">
-            <text>自动</text>
+          <view class="mode-button {{photoMode === 1 ? 'active' : ''}}" bindtap="setLocalMode" data-mode="auto">
+            <text>本地轮播</text>
+          </view>
+          <view class="mode-button {{photoMode === 0 ? 'active' : ''}}" bindtap="setManualMode" data-mode="manual">
+            <text>关闭</text>
           </view>
         </view>
       </view>
+    </view>
+  </view>
+
+  <!-- 网络配置 -->
+  <view class="settings-section">
+    <view class="section-header">
+      <text>网络配置</text>
+    </view>
+    <view class="section-content network-content">
+      <!-- WiFi 开关 -->
+      <view class="switch-row">
+        <text class="setting-label">WiFi</text>
+        <switch checked="{{wifiEnable}}" color="#4CAF50" bindchange="onWifiEnableChange" disabled="{{!isConnected}}" />
+      </view>
+      <!-- SSID -->
+      <view class="network-input-group">
+        <text class="network-label">SSID</text>
+        <input class="network-input" value="{{wifiSsid}}" placeholder="输入WiFi名称" bindblur="applyWifiSsid" disabled="{{!isConnected}}" />
+      </view>
+      <!-- 密码 -->
+      <view class="network-input-group">
+        <text class="network-label">密码</text>
+        <input class="network-input" value="{{wifiPassword}}" type="password" placeholder="输入WiFi密码" bindblur="applyWifiPassword" disabled="{{!isConnected}}" />
+      </view>
+      <!-- 连接/断开按钮 -->
+      <view class="button-row">
+        <button class="btn-secondary" bindtap="onWifiConnect" disabled="{{!isConnected}}">连接</button>
+        <button class="btn-secondary" bindtap="onWifiDisconnect" disabled="{{!isConnected}}">断开</button>
+      </view>
+      <!-- 连接状态 -->
+      <view class="wifi-status-row">
+        <view class="wifi-status-dot {{wifiConnected ? 'connected' : ''}}"></view>
+        <text class="wifi-status-text">{{wifiStatusText}}</text>
+      </view>
+      <view class="divider"></view>
+      <!-- API地址 -->
+      <view class="network-input-group">
+        <text class="network-label">API地址</text>
+        <input class="network-input" value="{{filmApiUrl}}" placeholder="http://..." bindblur="applyFilmApiUrl" disabled="{{!isConnected}}" />
+      </view>
+      <view class="button-row">
+        <button class="btn-secondary" bindtap="applyFilmApiUrl" disabled="{{!isConnected}}">设置</button>
+        <button class="btn-secondary" bindtap="onFilmDownload" disabled="{{!isConnected}}">下载测试</button>
+      </view>
+      <view class="wifi-status-row" wx:if="{{downloadStatusText}}">
+        <text class="wifi-status-text" style="font-size:12px;color:#999;">{{downloadStatusText}}</text>
+      </view>
+      <button class="btn-secondary danger" bindtap="onWifiClear" disabled="{{!isConnected}}" style="width:100%;margin-top:10px;">清除网络配置</button>
     </view>
   </view>
 
@@ -146,6 +197,7 @@
         <view class="action-controls">
           <button class="btn-secondary" bindtap="reboot">重启设备</button>
           <button class="btn-secondary danger" bindtap="reset">恢复出厂</button>
+          <button class="btn-secondary danger" bindtap="sdFormat">SD格式化</button>
         </view>
       </view>
     </view>

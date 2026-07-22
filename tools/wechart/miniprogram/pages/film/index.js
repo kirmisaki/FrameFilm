@@ -12,7 +12,7 @@ Page({
     ditherStrengthDisplay: '1.0',
     contrast: 1.2,
     contrastInt: 120,
-    fileName: 'output.film',
+    fileName: filmUtils.generateRandomFilename('output'),
     rotation: 0,
     hasImage: false,
     showStrength: false,
@@ -406,7 +406,7 @@ Page({
     fileData.set(header, 0);
     fileData.set(processedData, filmUtils.FILM_HEADER_SIZE);
 
-    const fileName = this.data.fileName || 'output.film';
+    const fileName = this.data.fileName || filmUtils.generateRandomFilename('output');
     const filePath = `${wx.env.USER_DATA_PATH}/${fileName}`;
 
     const fs = wx.getFileSystemManager();
@@ -460,7 +460,7 @@ Page({
 
     wx.hideLoading();
 
-    const fileName = this.data.fileName || 'output.film';
+    const fileName = this.data.fileName || filmUtils.generateRandomFilename('output');
     this.sendFileViaBle(fileData, fileName);
   },
 

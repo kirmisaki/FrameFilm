@@ -408,3 +408,95 @@
   margin-top: 12rpx;
   font-weight: 600;
 }
+
+/* ==================== 网络配置面板 ==================== */
+.network-toggle {
+  justify-content: space-between;
+}
+
+.network-arrow {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.network-input-group {
+  margin-bottom: 20rpx;
+}
+
+.network-content {
+  padding: 24rpx;
+}
+
+.network-label {
+  font-size: 26rpx;
+  color: #666;
+  margin-bottom: 8rpx;
+  display: block;
+}
+
+.network-input {
+  width: 100%;
+  height: 80rpx;
+  font-size: 28rpx;
+  line-height: 80rpx;
+  padding: 0 20rpx;
+  border: 2rpx solid #ddd;
+  border-radius: 12rpx;
+  background-color: #fafafa;
+  box-sizing: border-box;
+}
+
+.api-url-row {
+  display: flex;
+  gap: 12rpx;
+  align-items: center;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.btn-small {
+  padding: 14rpx 24rpx;
+  font-size: 26rpx;
+  flex: none;
+  width: auto;
+}
+
+.wifi-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 16rpx 0;
+}
+
+.wifi-status-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background-color: #999;
+}
+
+.wifi-status-dot.connected {
+  background-color: #4CAF50;
+}
+
+.wifi-status-text {
+  font-size: 26rpx;
+  color: #666;
+}
+
+.divider {
+  height: 2rpx;
+  background-color: #e0e0e0;
+  margin: 20rpx 0;
+}
+
+.mode-button.hidden {
+  display: none;
+}
+
+/* tab-bar 占位 */
+.tab-bar-spacer {
+  height: 120rpx;
+}

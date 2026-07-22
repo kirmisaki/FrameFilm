@@ -14,7 +14,7 @@
   <view wx:if="{{showFileName}}" class="filename-area">
     <view wx:if="{{!isEditingName}}" class="filename-display" bindtap="startEditName">
       <text class="filename-label">文件名</text>
-      <text class="filename-value">{{customFileName || 'camera'}}.film</text>
+      <text class="filename-value">{{customFileName || 'camera.film'}}</text>
       <text class="filename-edit">修改</text>
     </view>
     <view wx:else class="filename-edit-row">

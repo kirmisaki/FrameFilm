@@ -55,7 +55,7 @@
   <!-- 文件名输入 -->
   <view class="setting-item file-name-row">
     <view class="setting-label">文件名</view>
-    <input class="file-name-input" value="{{fileName}}" bindinput="onFileNameInput" placeholder="output.film" />
+    <input class="file-name-input" value="{{fileName}}" bindinput="onFileNameInput" placeholder="output_xxxxxx.film" />
   </view>
 
   <!-- 下载与发送按钮 -->

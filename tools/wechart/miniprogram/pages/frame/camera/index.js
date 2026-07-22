@@ -97,7 +97,7 @@ Page({
         console.error('processAndDisplay error:', e);
       }
 
-      that.setData({ sendDisabled: false, showFileName: true, customFileName: '', isEditingName: false });
+      that.setData({ sendDisabled: false, showFileName: true, customFileName: filmUtils.generateRandomFilename('camera'), isEditingName: false });
     };
     img.onerror = function () {
       wx.showToast({ title: '图片加载失败', icon: 'none' });
@@ -148,7 +148,7 @@ Page({
 
     that.setData({ showTransfer: true, transferStatus: '准备传输...', transferProgress: 0 });
 
-    var fileName = (that.data.customFileName || 'camera') + '.film';
+    var fileName = that.data.customFileName || filmUtils.generateRandomFilename('camera');
     var totalSize = fileData.length;
     var lastDisplayedPct = -1;
     var step = 0;
