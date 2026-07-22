@@ -163,6 +163,11 @@ FrameFilm 微信小程序，方便在手机端管理和传输照片：
 - [docs/blecmd/](docs/blecmd/) - BLE 通信协议文档
 - [docs/film/](docs/film/) - Film 文件格式规范
 - [docs/hardware/](docs/hardware/) - 硬件规格说明
+- [docs/wifi/](docs/wifi/) - WiFi 功能说明（Pro 版）
+
+AI 开发辅助知识库（供 Codex / OpenCode / Trae 等 AI 工具自动引用）：
+
+- [docs/knowledge/](docs/knowledge/) - 项目总览、架构设计、编码规范、BLE 命令速查
 - [docs/datasheet/](docs/datasheet/) - 芯片和模块数据手册
 
 ## 开源许可
