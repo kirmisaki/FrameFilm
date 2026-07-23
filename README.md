@@ -69,7 +69,7 @@
 
 硬件设计已在立创开源硬件平台开源：
 
-👉 [立创开源硬件平台 - FrameFilm](https://oshwhub.com/kiritro/project_ttfkoxxv)
+👉 [立创开源硬件平台 - FrameFilm](https://oshwhub.com/kiritro/project_ttfkoxxv)  
 👉 [立创开源硬件平台 - FrameFilmPro](https://oshwhub.com/kiritro/project_wgzqduhs)
 
 ## 项目结构
@@ -164,11 +164,6 @@ FrameFilm 微信小程序，方便在手机端管理和传输照片：
 - [docs/film/](docs/film/) - Film 文件格式规范
 - [docs/hardware/](docs/hardware/) - 硬件规格说明
 - [docs/wifi/](docs/wifi/) - WiFi 功能说明（Pro 版）
-
-AI 开发辅助知识库（供 Codex / OpenCode / Trae 等 AI 工具自动引用）：
-
-- [docs/knowledge/](docs/knowledge/) - 项目总览、架构设计、编码规范、BLE 命令速查
-- [docs/datasheet/](docs/datasheet/) - 芯片和模块数据手册
 
 ## 开源许可
 
