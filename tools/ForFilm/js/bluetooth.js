@@ -421,12 +421,15 @@ async function sendBleFileData(data) {
     await delay(BLE_DATA_DELAY);
 }
 
-async function sendBleFileStop() {
-    const packet = new Uint8Array(4);
+async function sendBleFileStop(silent) {
+    // silent=true 时带静默 flag（55 04 01 01 SUM），设备保存后不自动加载显示
+    const len = silent ? 1 : 0;
+    const packet = new Uint8Array(4 + len);
     packet[0] = BLE_CMD_HEAD;
     packet[1] = BLE_FILM_TRANS_CH_FILE_STOP;
-    packet[2] = 0;
-    packet[3] = calculateChecksum(packet, 3);
+    packet[2] = len;
+    if (silent) packet[3] = 0x01;
+    packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
 
     await characteristic.writeValue(packet);
     console.log('发送 FILE_STOP');
