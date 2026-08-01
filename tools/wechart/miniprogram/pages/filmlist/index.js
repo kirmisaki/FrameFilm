@@ -105,7 +105,9 @@ Page({
     var startTime = Date.now();
     function check() {
       var count = (app.globalData.fileList || []).length;
-      if (count > 0 && count === lastCount) {
+      // count 连续两轮相同即为稳定；空列表（count===0）需经过确认窗口，
+      // 避免固件对空列表不返回任何数据包导致永久等待
+      if (count === lastCount && (count > 0 || Date.now() - startTime > 1500)) {
         callback();
         return;
       }
@@ -344,11 +346,18 @@ Page({
         }
         p.then(function () {
           wx.hideLoading();
-          that.refreshFileList();
+          // 乐观更新：清空命令已全部发送，本地立即清空，后台再校准真实列表
+          that.setData({ fileList: [] });
+          app.globalData.fileList = [];
+          setTimeout(function () {
+            that.refreshFileList();
+          }, 600);
         }).catch(function (err) {
           wx.hideLoading();
           wx.showToast({ title: '删除中断：' + (err.message || err.errMsg || '未知错误'), icon: 'none' });
-          that.refreshFileList();
+          setTimeout(function () {
+            that.refreshFileList();
+          }, 600);
         });
       }
     });
@@ -377,7 +386,19 @@ Page({
         wx.showLoading({ title: '删除中...', mask: true });
         app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DELETE, fileId).then(function () {
           wx.hideLoading();
-          that.refreshFileList();
+          // 乐观更新：本地立即移除该项，后台再校准
+          var list = (app.globalData.fileList || []).slice();
+          for (var i = 0; i < list.length; i++) {
+            if (list[i].fileId === fileId) {
+              list.splice(i, 1);
+              break;
+            }
+          }
+          app.globalData.fileList = list;
+          that.setData({ fileList: list });
+          setTimeout(function () {
+            that.refreshFileList();
+          }, 600);
         }).catch(function (err) {
           wx.hideLoading();
           wx.showToast({ title: '删除失败：' + (err.message || err.errMsg || '未知错误'), icon: 'none' });
