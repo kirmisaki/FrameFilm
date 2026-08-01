@@ -37,6 +37,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
+#include "freertos/semphr.h"
 
 #include "esp_heap_caps.h"
 
@@ -94,6 +95,7 @@ static TaskHandle_t m_file_task_hdl = NULL;
 static QueueHandle_t m_file_msg_hdl = NULL;
 static TimerHandle_t m_file_timer = NULL;
 static file_service_state_t m_file_state;
+static SemaphoreHandle_t m_file_list_mutex = NULL;  // 保护 file_list/file_count 跨任务访问
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -113,6 +115,25 @@ static void file_sd_check_event(void);
 static void file_free_buffer(void);
 
 /*********************************************************************
+ * LOCAL HELPERS
+ */
+static void file_list_lock(void)
+{
+    if(m_file_list_mutex)
+    {
+        xSemaphoreTake(m_file_list_mutex, portMAX_DELAY);
+    }
+}
+
+static void file_list_unlock(void)
+{
+    if(m_file_list_mutex)
+    {
+        xSemaphoreGive(m_file_list_mutex);
+    }
+}
+
+/*********************************************************************
  * GLOBAL FUNCTIONS
  */
 
@@ -130,6 +151,11 @@ void service_file_init(void)
     m_file_state.save_file_size = 0;
     m_file_state.save_written = 0;
     m_file_state.save_auto_load = 1;
+
+    if(m_file_list_mutex == NULL)
+    {
+        m_file_list_mutex = xSemaphoreCreateMutex();
+    }
 
     if(m_file_task_hdl == NULL)
     {
@@ -184,6 +210,7 @@ static void file_task_handle(void *pvParameters)
                 break;
             case MSG_SD_UNMOUNTED:
                 file_free_buffer();
+                file_list_lock();
                 if(m_file_state.file_list)
                 {
                     free(m_file_state.file_list);
@@ -191,6 +218,7 @@ static void file_task_handle(void *pvParameters)
                 }
                 m_file_state.file_count = 0;
                 m_file_state.current_file_id = 0;
+                file_list_unlock();
                 break;
             case MSG_FILE_SAVE_START:
                 if(msg.file_size == FILE_EPD_IMGAGE_SIZE)
@@ -335,9 +363,12 @@ static void file_sd_check_event(void)
 
 static void file_list_refresh_event(void)
 {
+    file_list_lock();
+
     if(!m_file_state.sd_mounted)
     {
         sys_logw(FILE_TAG, "SD card not mounted");
+        file_list_unlock();
         return;
     }
 
@@ -358,6 +389,7 @@ static void file_list_refresh_event(void)
         if(mkdir(FILM_DIR, 0777) != 0)
         {
             sys_loge(FILE_TAG, "Create film directory failed");
+            file_list_unlock();
             return;
         }
         sys_logi(FILE_TAG, "Film directory created successfully");
@@ -366,6 +398,7 @@ static void file_list_refresh_event(void)
         if(dir == NULL)
         {
             sys_logw(FILE_TAG, "Open film directory failed");
+            file_list_unlock();
             return;
         }
     }
@@ -413,6 +446,7 @@ static void file_list_refresh_event(void)
         {
             sys_loge(FILE_TAG, "Allocate file list memory failed");
             m_file_state.file_count = 0;
+            file_list_unlock();
             return;
         }
 
@@ -424,6 +458,7 @@ static void file_list_refresh_event(void)
             free(m_file_state.file_list);
             m_file_state.file_list = NULL;
             m_file_state.file_count = 0;
+            file_list_unlock();
             return;
         }
 
@@ -475,6 +510,8 @@ static void file_list_refresh_event(void)
         sys_logi(FILE_TAG, "No film files found");
         m_file_state.current_file_id = 0;
     }
+
+    file_list_unlock();
 }
 
 static void file_free_buffer(void)
@@ -580,9 +617,15 @@ void service_file_refresh_list(void)
 
 int service_file_load(uint32_t file_id)
 {
-    if(file_id >= m_file_state.file_count)
+    uint32_t file_count;
+
+    file_list_lock();
+    file_count = m_file_state.file_count;
+    file_list_unlock();
+
+    if(file_id >= file_count)
     {
-        sys_logw(FILE_TAG, "Invalid file ID: %d, total files: %d", file_id, m_file_state.file_count);
+        sys_logw(FILE_TAG, "Invalid file ID: %d, total files: %d", file_id, file_count);
         return -1;
     }
     
@@ -659,16 +702,31 @@ void service_file_save_stop(uint8_t auto_load)
 
 uint32_t service_file_get_count(void)
 {
-    return m_file_state.file_count;
+    uint32_t count;
+
+    file_list_lock();
+    count = m_file_state.file_count;
+    file_list_unlock();
+    return count;
 }
 
-const char* service_file_get_name(uint32_t file_id)
+int service_file_get_filename_safe(uint32_t file_id, char *out, uint32_t out_size)
 {
-    if(file_id >= m_file_state.file_count)
+    if(out == NULL || out_size == 0)
     {
-        return NULL;
+        return -1;
     }
-    return m_file_state.file_list[file_id].filename;
+
+    int ret = -1;
+    file_list_lock();
+    if(m_file_state.file_list != NULL && file_id < m_file_state.file_count)
+    {
+        strncpy(out, m_file_state.file_list[file_id].filename, out_size - 1);
+        out[out_size - 1] = '\0';
+        ret = 0;
+    }
+    file_list_unlock();
+    return ret;
 }
 
 uint8_t* service_file_get_buffer(void)
@@ -693,32 +751,34 @@ uint8_t service_file_get_load_complete(void)
 
 uint32_t service_file_get_size(uint32_t file_id)
 {
-    if(file_id >= m_file_state.file_count)
-    {
-        return 0;
-    }
-    return m_file_state.file_list[file_id].file_size;
-}
+    uint32_t size = 0;
 
-const char* service_file_get_filename(uint32_t file_id)
-{
-    if(file_id >= m_file_state.file_count)
+    file_list_lock();
+    if(m_file_state.file_list != NULL && file_id < m_file_state.file_count)
     {
-        return NULL;
+        size = m_file_state.file_list[file_id].file_size;
     }
-    return m_file_state.file_list[file_id].filename;
+    file_list_unlock();
+    return size;
 }
 
 int service_file_delete(uint32_t file_id)
 {
-    if(file_id >= m_file_state.file_count)
+    char filename[256];
+
+    file_list_lock();
+    if(m_file_state.file_list == NULL || file_id >= m_file_state.file_count)
     {
+        file_list_unlock();
         sys_logw(FILE_TAG, "Invalid file id: %d", file_id);
         return -1;
     }
+    strncpy(filename, m_file_state.file_list[file_id].filename, sizeof(filename) - 1);
+    filename[sizeof(filename) - 1] = '\0';
+    file_list_unlock();
 
     char filepath[512];
-    snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, m_file_state.file_list[file_id].filename);
+    snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, filename);
 
     if(remove(filepath) == 0)
     {

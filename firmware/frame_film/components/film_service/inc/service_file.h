@@ -144,14 +144,17 @@ extern void service_file_load_next(void);
 extern uint32_t service_file_get_count(void);
 
 /**
- * @brief 获取文件名
+ * @brief 安全获取文件名
  *
- * 此函数用于获取指定ID的文件名。
+ * 此函数在锁内校验文件列表有效性后，将指定ID的文件名拷贝到调用方缓冲区，
+ * 避免跨任务并发刷新文件列表时返回悬空指针。
  *
- * @param file_id 文件ID
- * @return const char* 文件名
+ * @param file_id  文件ID
+ * @param out      输出缓冲区
+ * @param out_size 输出缓冲区大小
+ * @return int 0:成功, -1:失败（文件ID无效或列表刷新中）
  */
-extern const char* service_file_get_name(uint32_t file_id);
+extern int service_file_get_filename_safe(uint32_t file_id, char *out, uint32_t out_size);
 
 /**
  * @brief 获取PSRAM缓冲区指针
@@ -198,16 +201,6 @@ extern uint8_t service_file_get_load_complete(void);
  * @return uint32_t 文件大小
  */
 extern uint32_t service_file_get_size(uint32_t file_id);
-
-/**
- * @brief 获取文件名
- *
- * 此函数用于获取指定ID的文件名。
- *
- * @param file_id 文件ID
- * @return const char* 文件名
- */
-extern const char* service_file_get_filename(uint32_t file_id);
 
 /**
  * @brief 删除文件

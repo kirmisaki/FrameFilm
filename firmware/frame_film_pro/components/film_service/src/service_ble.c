@@ -427,7 +427,12 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             {
                 memset(cmd_buf, 0, 150);
 
-                const char *filename = service_file_get_filename(i);
+                char filename[256];
+                if(service_file_get_filename_safe(i, filename, sizeof(filename)) != 0)
+                {
+                    sys_logw(BEL_SERVICE_TAG, "File list changed during query, abort at index: %d", i);
+                    break;
+                }
                 uint8_t name_len = strlen(filename) + 1;
 
                 cmd_buf[0] = BLE_CMD_HEAD;

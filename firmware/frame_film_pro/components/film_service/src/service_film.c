@@ -262,7 +262,11 @@ static void film_display_event(uint32_t file_id)
     }
     else
     {
-        sys_logi(FILM_TAG, "File name: %s", service_file_get_name(file_id));
+        char filename[256];
+        if(service_file_get_filename_safe(file_id, filename, sizeof(filename)) == 0)
+        {
+            sys_logi(FILM_TAG, "File name: %s", filename);
+        }
     }
 
     // 等待文件加载完成（最多等待3秒）
