@@ -127,7 +127,11 @@ function buildFileDataPacket(chunk) {
   return packet;
 }
 
-function buildFileStopPacket() {
+// silent=true 时生成带静默 flag 的 STOP 包（55 04 01 01 SUM），设备保存后不自动加载显示
+function buildFileStopPacket(silent) {
+  if (silent) {
+    return buildCmdPacket(BLE_FILM_TRANS_CH_FILE_STOP, 0x01);
+  }
   return buildCmdPacket(BLE_FILM_TRANS_CH_FILE_STOP, null);
 }
 

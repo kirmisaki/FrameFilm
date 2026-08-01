@@ -325,6 +325,8 @@ Page({
         setTimeout(function () {
           that._stopDisconnectWatch();
           that.setData({ showTransfer: false });
+          // 静默上传，最后显示最后一张
+          that._displayLastBatchItem(batch[total - 1].name);
           that.refreshFileList();
         }, 1500);
         return;
@@ -336,7 +338,7 @@ Page({
       that._sendFile(fileData, item.name, function (pct) {
         var overall = Math.floor(startPct + (pct / 100) * (100 / total));
         that.setData({ transferProgress: overall });
-      }).then(function () {
+      }, true).then(function () {
         sent++;
         sendOne();
       }).catch(function (err) {
@@ -381,8 +383,36 @@ Page({
     this.setData({ showTransfer: false, transferFailed: false });
   },
 
-  // BLE 四步传输（START→NAME→LEN→DATA→STOP）
-  _sendFile: function (fileData, fileName, onProgress) {
+  // 批量发送完成后将最后一张设为显示（设备列表可能未同步，尝试两次）
+  _displayLastBatchItem: function (name) {
+    var that = this;
+    var fileList = app.globalData.fileList || [];
+    var found = null;
+    for (var i = 0; i < fileList.length; i++) {
+      if (fileList[i].name === name) { found = fileList[i]; break; }
+    }
+    if (found) {
+      app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DISPLAY, found.fileId).then(function () {
+        app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DISPLAY_GET, null);
+      }).catch(function () {});
+      return;
+    }
+    // 列表尚未同步到，等待刷新完成后再试一次
+    setTimeout(function () {
+      var list2 = app.globalData.fileList || [];
+      for (var j = 0; j < list2.length; j++) {
+        if (list2[j].name === name) {
+          app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DISPLAY, list2[j].fileId).then(function () {
+            app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DISPLAY_GET, null);
+          }).catch(function () {});
+          break;
+        }
+      }
+    }, 2500);
+  },
+
+  // BLE 四步传输（START→NAME→LEN→DATA→STOP），silent=true 时设备保存后不自动加载
+  _sendFile: function (fileData, fileName, onProgress, silent) {
     var that = this;
     var totalSize = fileData.length;
     var step = 0;
@@ -426,7 +456,7 @@ Page({
       return sendChunk();
     }).then(function () {
       step = 4; update(0);
-      return app.sendBlePacket(bleUtils.buildFileStopPacket());
+      return app.sendBlePacket(bleUtils.buildFileStopPacket(silent));
     }).then(function () {
       if (onProgress) onProgress(100);
     });
