@@ -37,6 +37,12 @@ Page({
     }
     var that = this;
     this._syncFromGlobal();
+    // 已连接时主动刷新当前显示与文件列表，保证设备框「显示中」同步
+    // （设备自动加载新文件后不会主动推送，需客户端查询）
+    if (app.globalData.isConnected) {
+      app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_LIST, null).catch(function () {});
+      app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DISPLAY_GET, null).catch(function () {});
+    }
     // 注册 BLE 监听，实时刷新电量/当前显示文件
     this._bleListener = function () {
       that._syncFromGlobal();
