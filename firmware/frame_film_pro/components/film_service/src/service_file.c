@@ -80,6 +80,7 @@ typedef struct {
     uint32_t save_file_size; // 要保存的文件大小
     uint32_t save_written;   // 已写入的字节数
     char save_filename[256]; // 当前保存的文件名
+    uint8_t save_auto_load;  // 保存完成后是否自动加载显示（0：静默，1：自动加载）
 } file_service_state_t;
 
 /*********************************************************************
@@ -128,6 +129,7 @@ void service_file_init(void)
     m_file_state.save_file_handle = NULL;
     m_file_state.save_file_size = 0;
     m_file_state.save_written = 0;
+    m_file_state.save_auto_load = 1;
 
     if(m_file_task_hdl == NULL)
     {
@@ -245,16 +247,20 @@ static void file_task_handle(void *pvParameters)
                         sys_logi(FILE_TAG, "Refreshing file list and loading new photo...");
                         // 刷新文件列表
                         file_list_refresh_event();
-                        
-                        // 查找新文件并加载
-                        for(uint32_t i = 0; i < m_file_state.file_count; i++)
+
+                        // 静默模式（批量上传）不自动加载显示，仅保存
+                        if(m_file_state.save_auto_load)
                         {
-                            if(strcmp(m_file_state.file_list[i].filename, m_file_state.save_filename) == 0)
+                            // 查找新文件并加载
+                            for(uint32_t i = 0; i < m_file_state.file_count; i++)
                             {
-                                sys_logi(FILE_TAG, "Found new file at index %d, loading...", i);
-                                m_file_state.current_file_id = i;
-                                service_film_display(i);
-                                break;
+                                if(strcmp(m_file_state.file_list[i].filename, m_file_state.save_filename) == 0)
+                                {
+                                    sys_logi(FILE_TAG, "Found new file at index %d, loading...", i);
+                                    m_file_state.current_file_id = i;
+                                    service_film_display(i);
+                                    break;
+                                }
                             }
                         }
                     }
@@ -643,8 +649,9 @@ int service_file_save_start(const char *pfilename, uint32_t file_size)
     return 0;
 }
 
-void service_file_save_stop(void)
+void service_file_save_stop(uint8_t auto_load)
 {
+    m_file_state.save_auto_load = auto_load ? 1 : 0;
     file_msg_t msg = {0};
     msg.ID = MSG_FILE_SAVE_STOP;
     file_msg_send(&msg, 0);

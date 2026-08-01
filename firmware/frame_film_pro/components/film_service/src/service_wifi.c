@@ -305,7 +305,7 @@ static esp_err_t wifi_http_event_handler(esp_http_client_event_t *evt)
             {
                 service_file_save_data(g_download_filename, g_download_received,
                                        g_download_buffer, g_download_received);
-                service_file_save_stop();
+                service_file_save_stop(1);
                 /* save_data takes ownership, file task will free */
             }
             else

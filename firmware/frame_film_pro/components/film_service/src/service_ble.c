@@ -389,7 +389,13 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         {
             if(m_film_trans_state == BLE_FILM_TRANS_RECV_DATA)
             {
-                service_file_save_stop();
+                // 静默保存 flag：0x04 LEN=1 DATA=[0x01] 时保存后不自动加载（批量上传用）
+                uint8_t auto_load = 1;
+                if(cmd->len == 1 && cmd->pdata[0] == 0x01)
+                {
+                    auto_load = 0;
+                }
+                service_file_save_stop(auto_load);
                 sys_logi(BEL_SERVICE_TAG, "Film transfer stopped, received: %d/%d bytes", m_film_trans_received, m_film_trans_file_size);
                 m_film_trans_state = BLE_FILM_TRANS_STOPPED;
             }

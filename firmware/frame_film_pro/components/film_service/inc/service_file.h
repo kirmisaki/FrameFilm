@@ -115,7 +115,7 @@ extern int service_file_save_start(const char *pfilename, uint32_t file_size);
  *
  * 此函数用于完成BLE文件传输，关闭文件句柄。
  */
-extern void service_file_save_stop(void);
+extern void service_file_save_stop(uint8_t auto_load);
 
 /**
  * @brief 加载指定文件
