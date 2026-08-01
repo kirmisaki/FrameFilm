@@ -1,0 +1,84 @@
+<view class="container">
+  <!-- 设备上的照片 -->
+  <view class="panel-c">
+    <view class="panel-head">
+      <text>设备上的照片</text>
+      <view class="cnt" bindtap="refreshFileList">刷新 · {{fileList.length}} 张</view>
+    </view>
+    <block wx:if="{{fileList.length > 0}}">
+      <view class="list-row" wx:for="{{fileList}}" wx:key="fileId" bindtap="onFileSelect" data-file-id="{{item.fileId}}">
+        <view class="lr-thumb">#{{item.fileId}}</view>
+        <view class="lr-info">
+          <view class="lr-name">{{item.name}}</view>
+          <view class="lr-meta">#{{item.fileId}} · film</view>
+        </view>
+        <view class="lr-tag {{item.fileId === currentDisplayFileId ? 'on' : ''}}">{{item.fileId === currentDisplayFileId ? '显示中' : '点击显示'}}</view>
+      </view>
+    </block>
+    <view wx:else class="empty-state">设备上没有照片</view>
+  </view>
+
+  <!-- WiFi 轮播（Pro） -->
+  <view class="panel-c" wx:if="{{isPro}}">
+    <view class="panel-head">
+      <text>WiFi 轮播</text>
+      <view class="cnt">Pro</view>
+    </view>
+    <view class="list-row">
+      <view class="lr-info">
+        <view class="lr-name">轮播{{photoMode === 2 ? '已开启' : '已关闭'}}</view>
+        <view class="lr-meta">开启后设备按序轮播网络片单</view>
+      </view>
+      <switch checked="{{photoMode === 2}}" color="#4ECDC4" bindchange="toggleCarousel" />
+    </view>
+  </view>
+
+  <!-- 批量片单 -->
+  <view class="panel-c">
+    <view class="panel-head">
+      <text>批量片单</text>
+      <view class="cnt" bindtap="chooseImages">+ 选图 · {{batch.length}} 张</view>
+    </view>
+    <block wx:if="{{batch.length > 0}}">
+      <view class="list-row" wx:for="{{batch}}" wx:key="name" bindtap="onBatchItemTap" data-index="{{index}}">
+        <image wx:if="{{item.thumb}}" class="lr-img" src="{{item.thumb}}" mode="aspectFill"></image>
+        <view wx:else class="lr-thumb">▤</view>
+        <view class="lr-info">
+          <view class="lr-name">{{item.name}}</view>
+          <view class="lr-meta">{{item.time}} · 点击预览</view>
+        </view>
+        <view class="lr-tag" catchtap="removeBatchItem" data-index="{{index}}">移除</view>
+      </view>
+    </block>
+    <view wx:else class="empty-state">还没有片单，点右上角「+ 选图」添加（一次最多 9 张，可多次选择追加）</view>
+  </view>
+
+  <!-- 批量发送 -->
+  <view class="cta cta-teal" bindtap="batchSend">
+    <text>批量发送</text>
+    <text class="cta-hint">将片单中的照片逐个上传到设备</text>
+  </view>
+
+  <!-- 片单大图预览 -->
+  <view wx:if="{{preview}}" class="preview-overlay" bindtap="closePreview">
+    <view class="preview-modal" catchtap="noop">
+      <image class="preview-img" src="{{previewImage}}" mode="aspectFit"></image>
+      <view class="preview-name">{{previewName}}</view>
+      <view class="preview-close" bindtap="closePreview">关闭</view>
+    </view>
+  </view>
+
+  <!-- 批量传输进度 -->
+  <view wx:if="{{showTransfer}}" class="transfer-overlay">
+    <view class="transfer-modal">
+      <view class="transfer-percent">{{transferProgress}}%</view>
+      <view class="transfer-msg">{{transferStatus}}</view>
+      <view class="modal-progress-bar">
+        <view class="modal-progress-fill" style="width: {{transferProgress}}%"></view>
+      </view>
+      <view wx:if="{{transferFailed}}" class="transfer-exit" bindtap="closeTransfer">退出</view>
+    </view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>

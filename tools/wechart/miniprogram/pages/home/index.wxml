@@ -1,0 +1,93 @@
+<view class="container">
+  <!-- 横幅 -->
+  <view class="banner-strip" bindtap="goBluetooth">
+    <view class="bn-t">把照片挂上墙</view>
+    <view class="bn-s">选一张照片，剩下的交给我们</view>
+    <view class="bn-chip">
+      <view class="bn-dot {{isConnected ? 'on' : ''}}"></view>
+      <text>{{isConnected ? (deviceName || 'FrameFilm') + ' 已连接' : '点击连接设备'}}</text>
+    </view>
+  </view>
+
+  <!-- 设备卡 -->
+  <view class="device-row" bindtap="goBluetooth">
+    <view class="dev-thumb">
+      <image wx:if="{{devThumb}}" src="{{devThumb}}" mode="aspectFill"></image>
+      <image wx:elif="{{isConnected}}" src="/images/icons/list.svg" mode="aspectFit"></image>
+      <text wx:else>EPD</text>
+    </view>
+    <view class="dev-info">
+      <view class="dev-name">
+        <text>{{isConnected ? deviceName : deviceTypeText}}</text>
+        <view class="dot {{isConnected ? '' : 'off'}}"></view>
+      </view>
+      <view class="dev-meta">
+        <text wx:if="{{isConnected}}">显示中：《{{currentFile || '—'}}》</text>
+        <text wx:else>未连接 · 点击连接设备</text>
+      </view>
+    </view>
+    <view class="dev-batt">
+      <view class="num">{{isConnected ? batteryLevel + '%' : '--'}}</view>
+      <view class="t">电量</view>
+    </view>
+  </view>
+
+  <!-- 双 CTA -->
+  <view class="cta-row">
+    <view class="cta cta-half" bindtap="goCamera">
+      <text class="cta-t">拍一张</text>
+      <text class="cta-sub">相机直传</text>
+    </view>
+    <view class="cta cta-half cta-teal" bindtap="sendPhoto">
+      <text class="cta-t">传照片</text>
+      <text class="cta-sub">从相册挑选</text>
+    </view>
+  </view>
+
+  <!-- 今日模板 -->
+  <view class="label">今日模板<text class="pill">超简单</text></view>
+  <view class="tpl-row">
+    <view class="tpl" bindtap="goToTemplate">
+      <view class="t-ic"><image src="/images/icons/template.svg" mode="aspectFit"></image></view>
+      <view class="t-name">八月日历</view>
+    </view>
+    <view class="tpl" bindtap="goToTemplate">
+      <view class="t-ic"><image src="/images/icons/countdown.svg" mode="aspectFit"></image></view>
+      <view class="t-name">纪念日倒数</view>
+    </view>
+    <view class="tpl" bindtap="goToTemplate">
+      <view class="t-ic"><image src="/images/icons/pet.svg" mode="aspectFit"></image></view>
+      <view class="t-name">宠物时光</view>
+    </view>
+  </view>
+
+  <!-- 最近上墙 -->
+  <view class="label-row">
+    <view class="label">最近上墙</view>
+    <view class="clear-recent" wx:if="{{recentList.length > 0}}" bindtap="clearRecent">清除</view>
+  </view>
+  <view class="recent-row" wx:if="{{recentList.length > 0}}">
+    <view class="recent" wx:for="{{recentList}}" wx:key="name" bindtap="tapRecent" data-index="{{index}}">
+      <view class="r-img">
+        <image wx:if="{{item.thumb}}" src="{{item.thumb}}" mode="aspectFill"></image>
+        <image wx:else src="/images/icons/list.svg" mode="aspectFit"></image>
+      </view>
+      <view class="r-name">{{item.name}}</view>
+      <view class="r-time">{{item.time}}</view>
+    </view>
+  </view>
+  <view wx:else class="info-text">还没有发送记录</view>
+
+  <!-- 重新上墙传输弹窗 -->
+  <view wx:if="{{showTransfer}}" class="transfer-overlay">
+    <view class="transfer-modal">
+      <view class="transfer-percent">{{transferProgress}}%</view>
+      <view class="transfer-msg">{{transferStatus}}</view>
+      <view class="modal-progress-bar">
+        <view class="modal-progress-fill" style="width: {{transferProgress}}%"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>

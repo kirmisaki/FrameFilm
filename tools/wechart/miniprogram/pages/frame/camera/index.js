@@ -1,6 +1,7 @@
 // 定影 - 拍照上传
 var filmUtils = require('../../../utils/film-utils');
 var bleUtils = require('../../../utils/ble-utils');
+var recentUtils = require('../../../utils/recent-utils');
 var app = getApp();
 
 var FILM_HEADER_SIZE = filmUtils.FILM_HEADER_SIZE;
@@ -201,6 +202,8 @@ Page({
       return app.sendBlePacket(bleUtils.buildFileStopPacket());
     }).then(function () {
       that.setData({ transferStatus: '传输完成！', transferProgress: 100 });
+      // 记录最近使用（首页最近上墙）
+      recentUtils.addRecent(fileName, fileData);
       setTimeout(function () { that.setData({ showTransfer: false }); }, 1500);
     }).catch(function (err) {
       that.setData({ transferStatus: '传输失败：' + (err.errMsg || err.message || '未知错误') });

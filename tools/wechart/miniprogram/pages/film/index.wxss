@@ -106,9 +106,9 @@
 }
 
 .btn-group .btn-secondary.active {
-  background-color: #f0f0f0;
-  border-color: #000;
-  color: #000;
+  background-color: #EAF9F8;
+  border-color: #4ECDC4;
+  color: #2EB6AC;
 }
 
 /* Canvas 容器（宝丽来风格） */
@@ -172,7 +172,8 @@
 }
 
 .btn-bluetooth {
-  background-color: #000 !important;
+  background: linear-gradient(135deg, #4ECDC4, #2EB6AC) !important;
+  box-shadow: 0 8rpx 18rpx rgba(78, 205, 196, 0.28);
 }
 
 .btn-bluetooth[disabled] {
@@ -206,7 +207,7 @@
 
 .progress-fill {
   height: 100%;
-  background: #000;
+  background: linear-gradient(90deg, #4ECDC4, #2EB6AC);
   transition: width 0.3s ease;
   border-radius: 16rpx;
 }

@@ -1,52 +1,51 @@
 <view class="container">
-  <view class="feature-list">
-    <view class="feature-card" bindtap="goToUpload">
-      <view class="feature-icon-area">
-        <view class="feature-icon-circle upload-bg">
-          <view class="icon-album">
-            <view class="album-body"></view>
-            <view class="album-mountain"></view>
-            <view class="album-sun"></view>
-          </view>
-        </view>
-      </view>
-      <view class="feature-name">拾光</view>
-      <view class="feature-arrow">›</view>
+  <view class="create-grid">
+    <view class="m-card c-red" bindtap="goToUpload">
+      <view class="m-ic"><image src="/images/icons/white/album.svg" mode="aspectFit"></image></view>
+      <view class="m-name">相册</view>
+      <view class="m-sub">从手机相册挑选</view>
+      <view class="cc-emo">🌅</view>
     </view>
-    <view class="feature-card" bindtap="goToCamera">
-      <view class="feature-icon-area">
-        <view class="feature-icon-circle camera-bg">
-          <view class="icon-camera">
-            <view class="cam-body"></view>
-            <view class="cam-lens"></view>
-            <view class="cam-flash"></view>
-          </view>
-        </view>
-      </view>
-      <view class="feature-name">定影</view>
-      <view class="feature-arrow">›</view>
+    <view class="m-card c-teal" bindtap="goToCamera">
+      <view class="m-ic"><image src="/images/icons/white/camera.svg" mode="aspectFit"></image></view>
+      <view class="m-name">拍照</view>
+      <view class="m-sub">拍一张直接上屏</view>
+      <view class="cc-emo">📸</view>
     </view>
-    <view class="feature-card" bindtap="goToQuote">
-      <view class="feature-icon-area">
-        <view class="feature-icon-circle quote-bg">
-          <view class="icon-quote">
-            <view class="quote-mark">"</view>
-          </view>
-        </view>
-      </view>
-      <view class="feature-name">一言</view>
-      <view class="feature-arrow">›</view>
+    <view class="m-card c-purple" bindtap="goToQuote">
+      <view class="m-ic"><image src="/images/icons/white/quote.svg" mode="aspectFit"></image></view>
+      <view class="m-name">一言</view>
+      <view class="m-sub">名言金句每日换</view>
+      <view class="cc-emo">💬</view>
     </view>
-    <view class="feature-card" bindtap="goToDraw">
-      <view class="feature-icon-area">
-        <view class="feature-icon-circle draw-bg">
-          <view class="icon-draw">
-            <view class="draw-pen">✎</view>
-          </view>
-        </view>
-      </view>
-      <view class="feature-name">绘梦</view>
-      <view class="feature-arrow">›</view>
+    <view class="m-card c-blue" bindtap="goToDraw">
+      <view class="m-ic"><image src="/images/icons/white/draw.svg" mode="aspectFit"></image></view>
+      <view class="m-name">绘梦</view>
+      <view class="m-sub">手绘也能上墙</view>
+      <view class="cc-emo">🎨</view>
+    </view>
+    <view class="m-card c-yellow m-badge" bindtap="goToTemplate">
+      <view class="m-ic"><image src="/images/icons/white/template.svg" mode="aspectFit"></image></view>
+      <view class="m-name">模板</view>
+      <view class="m-sub">日历 · 倒计时 · 天气</view>
+      <view class="cc-emo">✨</view>
+    </view>
+    <view class="m-card c-pink" bindtap="goToBatch">
+      <view class="m-ic"><image src="/images/icons/white/batch.svg" mode="aspectFit"></image></view>
+      <view class="m-name">批量片单</view>
+      <view class="m-sub">一组照片自动轮播</view>
+      <view class="cc-emo">🎞</view>
     </view>
   </view>
+
+  <view class="adv-row" bindtap="goToFilm">
+    <view class="m-ic"><image src="/images/icons/advanced.svg" mode="aspectFit"></image></view>
+    <view>
+      <view class="m-name">高级转换</view>
+      <view class="m-sub">抖动 · 对比度 · 手动调参</view>
+    </view>
+    <view class="adv-a">›</view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
 </view>

@@ -27,8 +27,8 @@ Page({
     batteryFillWidth: 0, // 电池填充宽度 rpx (最大42rpx)
     fileList: [],
     currentDisplayFileId: -1,
-    selectedFileId: -1,
     photoMode: 0,
+    photoModeText: '关闭',
     sleepOnOff: false,
     autoWakeMode: false,
     wakeDuration: 60,
@@ -58,7 +58,6 @@ Page({
   },
 
   _syncTimer: null,
-  _fileListBuffer: [],
 
   onShow: function () {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
@@ -117,7 +116,10 @@ Page({
       updates.batteryFillWidth = Math.round((g.batteryLevel / 100) * 46);
     }
     if (this.data.currentDisplayFileId !== g.currentDisplayFileId) updates.currentDisplayFileId = g.currentDisplayFileId;
-    if (this.data.photoMode !== g.photoMode) updates.photoMode = g.photoMode;
+    if (this.data.photoMode !== g.photoMode) {
+      updates.photoMode = g.photoMode;
+      updates.photoModeText = this._photoModeText(g.photoMode);
+    }
     if (this.data.sleepOnOff !== g.sleepOnOff) updates.sleepOnOff = !!g.sleepOnOff;
     if (this.data.autoWakeMode !== g.autoWakeMode) updates.autoWakeMode = !!g.autoWakeMode;
     if (this.data.wakeDuration !== g.wakeDuration) {
@@ -203,10 +205,6 @@ Page({
           app.globalData.batteryLevel = level;
           this.debugLog('电池电量: ' + level + '%', 'success');
         }
-        break;
-
-      case bleUtils.BLE_FILM_TRANS_CH_FILE_LIST: // 0x06 文件列表
-        this._handleFileListEntry(data, cmdLen);
         break;
 
       case bleUtils.BLE_FILM_TRANS_CH_FILE_DISPLAY_GET: // 0x08 当前显示文件
@@ -327,124 +325,11 @@ Page({
     }
   },
 
-  _handleFileListEntry: function (data, cmdLen) {
-    if (cmdLen < 3) return;
-    var fileId = data[3];
-    var nameLen = data[4];
-    if (nameLen <= 0 || 5 + nameLen > data.length) return;
-    var nameBytes = data.slice(5, 5 + nameLen);
-    var name = '';
-    for (var i = 0; i < nameBytes.length; i++) {
-      if (nameBytes[i] === 0) break;
-      name += String.fromCharCode(nameBytes[i]);
-    }
-
-    // 检查是否已存在
-    var found = false;
-    for (var i = 0; i < this._fileListBuffer.length; i++) {
-      if (this._fileListBuffer[i].fileId === fileId) {
-        this._fileListBuffer[i].name = name;
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      this._fileListBuffer.push({ fileId: fileId, name: name });
-    }
-
-    // 更新到页面和 globalData
-    this._fileListBuffer.sort(function (a, b) { return a.fileId - b.fileId; });
-    this.setData({ fileList: this._fileListBuffer.slice() });
-    app.globalData.fileList = this._fileListBuffer.slice();
-    this.debugLog('文件: #' + fileId + ' ' + name, 'info');
-  },
-
-  // 文件管理
-  refreshFileList: function () {
-    var that = this;
-    that.debugLog('刷新文件列表...', 'info');
-    app.globalData.fileList = [];
-    that.setData({ fileList: [] });
-    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_LIST, null).then(function () {
-      that.debugLog('文件列表请求已发送', 'success');
-      // 防抖：等待文件列表接收完成后再查询显示状态
-      that._waitForFileListDone(function () {
-        app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DISPLAY_GET, null);
-      });
-    }).catch(function (err) {
-      that.debugLog('请求失败: ' + JSON.stringify(err), 'error');
-    });
-  },
-
   // 点击电量图标刷新
   refreshBattery: function () {
     this.debugLog('刷新电量...', 'info');
     app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_PWRREAD, null).catch(function (e) {
       console.error('refreshBattery fail', e);
-    });
-  },
-
-  // 防抖等待文件列表接收完成
-  _waitForFileListDone: function (callback) {
-    var lastCount = -1;
-    var maxWait = 30000;
-    var startTime = Date.now();
-    function check() {
-      var currentCount = (app.globalData.fileList || []).length;
-      if (currentCount > 0 && currentCount === lastCount) {
-        callback();
-        return;
-      }
-      if (Date.now() - startTime > maxWait) {
-        callback();
-        return;
-      }
-      lastCount = currentCount;
-      setTimeout(check, 1000);
-    }
-    check();
-  },
-
-  onFileSelect: function (e) {
-    var fileId = e.currentTarget.dataset.fileId;
-    this.setData({ selectedFileId: fileId });
-    this.debugLog('选中文件 #' + fileId, 'info');
-  },
-
-  deleteSelectedFile: function () {
-    var that = this;
-    var fileId = that.data.selectedFileId;
-    if (fileId < 0) return;
-    wx.showModal({
-      title: '确认删除',
-      content: '确定要删除文件 #' + fileId + ' 吗？',
-      success: function (res) {
-        if (res.confirm) {
-          that.debugLog('删除文件 #' + fileId + '...', 'info');
-          app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DELETE, fileId).then(function () {
-            that.debugLog('删除命令已发送', 'success');
-            that.setData({ selectedFileId: -1 });
-            setTimeout(function () { that.refreshFileList(); }, 500);
-          }).catch(function (err) {
-            that.debugLog('删除失败: ' + JSON.stringify(err), 'error');
-          });
-        }
-      }
-    });
-  },
-
-  selectDisplayFile: function () {
-    var that = this;
-    var fileId = that.data.selectedFileId;
-    if (fileId < 0) return;
-    that.debugLog('设置显示文件 #' + fileId + '...', 'info');
-    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DISPLAY, fileId).then(function () {
-      that.debugLog('显示命令已发送', 'success');
-      setTimeout(function () {
-        app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DISPLAY_GET, null);
-      }, 500);
-    }).catch(function (err) {
-      that.debugLog('显示失败: ' + JSON.stringify(err), 'error');
     });
   },
 
@@ -470,6 +355,12 @@ Page({
   },
 
   // 照片模式
+  _photoModeText: function (mode) {
+    if (mode === 2) return 'WiFi轮播';
+    if (mode === 1) return '本地轮播';
+    return '关闭';
+  },
+
   _setPhotoMode: function (modeValue, modeName) {
     var that = this;
     // WiFi 模式检查
@@ -480,7 +371,7 @@ Page({
     that.debugLog('设置' + modeName + '模式...', 'info');
     app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_MODE, modeValue).then(function () {
       that.debugLog(modeName + '模式已设置', 'success');
-      that.setData({ photoMode: modeValue });
+      that.setData({ photoMode: modeValue, photoModeText: modeName });
       app.globalData.photoMode = modeValue;
     }).catch(function (err) {
       that.debugLog('设置失败: ' + JSON.stringify(err), 'error');
@@ -609,6 +500,29 @@ Page({
 
   toggleDebug: function () {
     this.setData({ showDebug: !this.data.showDebug });
+  },
+
+  // 跳转到片单页管理设备照片
+  goFilmlist: function () {
+    wx.switchTab({ url: '/pages/filmlist/index' });
+  },
+
+  showHelp: function () {
+    wx.showModal({
+      title: '帮助与反馈',
+      content: '使用中遇到问题，请查看 docs/knowledge 目录下的使用文档，或通过 GitHub Issues 反馈。',
+      showCancel: false,
+      confirmText: '知道了'
+    });
+  },
+
+  showAbout: function () {
+    wx.showModal({
+      title: '关于 FrameFilm',
+      content: 'FrameFilm v2.0\n开源彩色电子纸冰箱贴 · GPL-3.0\nBLE 传照片 · 本地草稿 · 批量上屏',
+      showCancel: false,
+      confirmText: '知道了'
+    });
   },
 
   debugLog: function (text, type) {

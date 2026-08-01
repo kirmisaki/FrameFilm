@@ -26,7 +26,7 @@
     </view>
     <view class="size-row">
       <text class="size-label">粗细</text>
-      <slider class="size-slider" min="1" max="50" step="1" value="{{brushSize}}" activeColor="#7a8594" bindchanging="onSizeChanging" bindchange="onSizeChange" />
+      <slider class="size-slider" min="1" max="50" step="1" value="{{brushSize}}" activeColor="#4ECDC4" bindchanging="onSizeChanging" bindchange="onSizeChange" />
       <text class="size-value">{{brushSize}}</text>
     </view>
   </view>

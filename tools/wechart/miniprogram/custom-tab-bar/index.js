@@ -3,28 +3,28 @@ Component({
     selected: 0,
     list: [
       {
-        pagePath: "/pages/bluetooth/index",
-        text: "蓝牙",
-        iconPath: "/images/icons/bluetooth.png",
-        selectedIconPath: "/images/icons/bluetooth-active.png"
+        pagePath: "/pages/home/index",
+        text: "首页",
+        iconPath: "/images/icons/home.svg",
+        selectedIconPath: "/images/icons/home-active.svg"
       },
       {
         pagePath: "/pages/frame/index",
-        text: "Frame",
-        iconPath: "/images/icons/frame.png",
-        selectedIconPath: "/images/icons/frame-active.png"
+        text: "创作",
+        iconPath: "/images/icons/create.svg",
+        selectedIconPath: "/images/icons/create-active.svg"
       },
       {
-        pagePath: "/pages/film/index",
-        text: "Film",
-        iconPath: "/images/icons/film.png",
-        selectedIconPath: "/images/icons/film-active.png"
+        pagePath: "/pages/filmlist/index",
+        text: "片单",
+        iconPath: "/images/icons/list.svg",
+        selectedIconPath: "/images/icons/list-active.svg"
       },
       {
         pagePath: "/pages/settings/index",
         text: "设置",
-        iconPath: "/images/icons/setting.png",
-        selectedIconPath: "/images/icons/setting-active.png"
+        iconPath: "/images/icons/settings.svg",
+        selectedIconPath: "/images/icons/settings-active.svg"
       }
     ]
   },

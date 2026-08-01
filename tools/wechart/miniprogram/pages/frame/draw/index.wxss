@@ -55,7 +55,7 @@
 }
 
 .tool-btn.active {
-  background: #111;
+  background: #4ECDC4;
 }
 
 .tool-btn.active .tool-label {
@@ -156,14 +156,15 @@
 
 .button-row .btn-primary {
   flex: 1;
-  background-color: #000;
+  background: linear-gradient(135deg, #FF6B6B, #FF9F6B);
   color: #fff;
   padding: 20rpx 32rpx;
   border: none;
-  border-radius: 14rpx;
+  border-radius: 32rpx;
   font-size: 28rpx;
   font-weight: 600;
   margin: 0;
+  box-shadow: 0 8rpx 18rpx rgba(255, 107, 107, 0.28);
 }
 
 .btn-primary[disabled] {
@@ -264,7 +265,7 @@
 
 .airplane {
   font-size: 72rpx;
-  color: #7a8594;
+  color: #FF6B6B;
   position: absolute;
   top: 0;
   animation: flyAcross 2s linear infinite;
@@ -285,7 +286,7 @@
 .transfer-percent {
   font-size: 44rpx;
   font-weight: 700;
-  color: #111;
+  color: #FF6B6B;
   margin-bottom: 8rpx;
 }
 
@@ -298,14 +299,14 @@
 .modal-progress-bar {
   width: 100%;
   height: 16rpx;
-  background-color: #f0f0f0;
+  background-color: #F0E4DE;
   border-radius: 8rpx;
   overflow: hidden;
 }
 
 .modal-progress-fill {
   height: 100%;
-  background: #7a8594;
+  background: linear-gradient(90deg, #FF6B6B, #FF9F6B);
   transition: width 0.3s ease;
   border-radius: 8rpx;
 }
@@ -440,7 +441,7 @@
 }
 
 .btn-confirm {
-  background: #000;
+  background: linear-gradient(135deg, #FF6B6B, #FF9F6B);
   color: #fff;
   border: none;
 }

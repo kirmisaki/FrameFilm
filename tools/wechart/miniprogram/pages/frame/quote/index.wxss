@@ -3,23 +3,24 @@
 }
 
 .btn-primary {
-  background-color: #000;
+  background: linear-gradient(135deg, #845EC2, #6B45A6);
   color: white;
   padding: 24rpx 48rpx;
   border: none;
-  border-radius: 16rpx;
+  border-radius: 32rpx;
   font-size: 30rpx;
   font-weight: 600;
   width: 100%;
   margin: 0;
+  box-shadow: 0 10rpx 22rpx rgba(132, 94, 194, 0.3);
 }
 
 .btn-secondary {
-  background-color: #f0f0f0;
-  color: #333;
+  background-color: #ffffff;
+  color: #845EC2;
   padding: 16rpx 32rpx;
-  border: 2rpx solid #ddd;
-  border-radius: 12rpx;
+  border: 2rpx solid #E8DCF2;
+  border-radius: 32rpx;
   font-size: 28rpx;
   flex: 1;
 }
@@ -130,7 +131,7 @@
 
 .airplane {
   font-size: 72rpx;
-  color: #7a8594;
+  color: #845EC2;
   position: absolute;
   top: 0;
   animation: flyAcross 2s linear infinite;
@@ -153,7 +154,7 @@
 .transfer-percent {
   font-size: 44rpx;
   font-weight: 700;
-  color: #111;
+  color: #845EC2;
   margin-bottom: 8rpx;
   letter-spacing: 2rpx;
 }
@@ -167,14 +168,14 @@
 .modal-progress-bar {
   width: 100%;
   height: 16rpx;
-  background-color: #f0f0f0;
+  background-color: #EEE4F5;
   border-radius: 8rpx;
   overflow: hidden;
 }
 
 .modal-progress-fill {
   height: 100%;
-  background: #7a8594;
+  background: linear-gradient(90deg, #845EC2, #6B45A6);
   transition: width 0.3s ease;
   border-radius: 8rpx;
 }

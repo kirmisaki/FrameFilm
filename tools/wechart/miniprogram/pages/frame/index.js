@@ -1,4 +1,4 @@
-// frame/index.js - 功能入口页面
+// frame/index.js - 创作页
 Page({
   data: {},
 
@@ -11,7 +11,7 @@ Page({
   // 分享给朋友
   onShareAppMessage: function () {
     return {
-      title: 'FrameFilm - Frame',
+      title: 'FrameFilm - 创作',
       path: '/pages/frame/index'
     };
   },
@@ -31,4 +31,19 @@ Page({
   goToDraw: function () {
     wx.navigateTo({ url: '/pages/frame/draw/index' });
   },
+
+  // 模板：占位功能
+  goToTemplate: function () {
+    wx.showToast({ title: '模板即将上线', icon: 'none' });
+  },
+
+  // 批量片单 → 片单页
+  goToBatch: function () {
+    wx.switchTab({ url: '/pages/filmlist/index' });
+  },
+
+  // 高级转换 → Film 工具页
+  goToFilm: function () {
+    wx.navigateTo({ url: '/pages/film/index' });
+  }
 });

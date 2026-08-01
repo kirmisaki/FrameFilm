@@ -1,51 +1,45 @@
 {
   "pages": [
-    "pages/bluetooth/index",
+    "pages/home/index",
     "pages/frame/index",
     "pages/frame/upload/index",
     "pages/frame/camera/index",
     "pages/frame/quote/index",
     "pages/frame/draw/index",
+    "pages/filmlist/index",
     "pages/film/index",
-    "pages/settings/index"
+    "pages/settings/index",
+    "pages/bluetooth/index"
   ],
   "window": {
-    "backgroundColor": "#f5f5f5",
-    "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#000000",
+    "backgroundColor": "#FFF6EE",
+    "backgroundTextStyle": "dark",
+    "navigationBarBackgroundColor": "#FFF6EE",
     "navigationBarTitleText": "FrameFilm",
-    "navigationBarTextStyle": "white"
+    "navigationBarTextStyle": "black"
   },
   "tabBar": {
     "custom": true,
-    "color": "#999999",
-    "selectedColor": "#000000",
-    "backgroundColor": "#ffffff",
-    "borderStyle": "black",
+    "color": "#9A9AA2",
+    "selectedColor": "#FF6B6B",
+    "backgroundColor": "#FFF6EE",
+    "borderStyle": "white",
     "list": [
       {
-        "pagePath": "pages/bluetooth/index",
-        "text": "蓝牙",
-        "iconPath": "images/icons/bluetooth.png",
-        "selectedIconPath": "images/icons/bluetooth-active.png"
+        "pagePath": "pages/home/index",
+        "text": "首页"
       },
       {
         "pagePath": "pages/frame/index",
-        "text": "Frame",
-        "iconPath": "images/icons/frame.png",
-        "selectedIconPath": "images/icons/frame-active.png"
+        "text": "创作"
       },
       {
-        "pagePath": "pages/film/index",
-        "text": "Film",
-        "iconPath": "images/icons/film.png",
-        "selectedIconPath": "images/icons/film-active.png"
+        "pagePath": "pages/filmlist/index",
+        "text": "片单"
       },
       {
         "pagePath": "pages/settings/index",
-        "text": "设置",
-        "iconPath": "images/icons/setting.png",
-        "selectedIconPath": "images/icons/setting-active.png"
+        "text": "设置"
       }
     ]
   },

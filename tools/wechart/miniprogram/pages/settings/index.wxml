@@ -13,68 +13,48 @@
     </view>
   </view>
 
-  <!-- FILM设置 -->
-  <view class="settings-section">
-    <view class="section-header">FILM设置</view>
-    <view class="section-content">
-      <!-- 文件列表 -->
-      <view class="setting-item">
-        <view class="setting-label">
-          文件列表
-          <text class="refresh-btn" bindtap="refreshFileList">刷新</text>
-        </view>
-        <view class="file-list">
-          <block wx:if="{{fileList.length > 0}}">
-            <view
-              class="file-item {{item.fileId === currentDisplayFileId ? 'displaying' : ''}} {{item.fileId === selectedFileId ? 'selected' : ''}}"
-              wx:for="{{fileList}}"
-              wx:key="fileId"
-              bindtap="onFileSelect"
-              data-file-id="{{item.fileId}}"
-            >
-              <text class="file-id">#{{item.fileId}}</text>
-              <text class="file-name">{{item.name}}</text>
-              <text class="file-tag" wx:if="{{item.fileId === currentDisplayFileId}}">显示中</text>
-            </view>
-          </block>
-          <view wx:else class="empty-state">暂无文件</view>
-        </view>
+  <!-- 组1 FILM 设备 -->
+  <view class="set-group">
+    <!-- 设备照片：跳转片单 -->
+    <view class="set-row" bindtap="goFilmlist">
+      <view class="set-ic sc-red"><image src="/images/icons/white/photo-file.svg" mode="aspectFit"></image></view>
+      <view class="set-t">设备照片
+        <text class="set-d">{{fileList.length > 0 ? fileList.length + ' 张' : '前往片单管理'}}</text>
       </view>
+      <view class="set-a">›</view>
+    </view>
 
-      <!-- 文件操作按钮 -->
-      <view class="button-row">
-        <button class="btn-secondary danger" bindtap="deleteSelectedFile" disabled="{{selectedFileId < 0}}">删除文件</button>
-        <button class="btn-primary" bindtap="selectDisplayFile" disabled="{{selectedFileId < 0}}">选择显示</button>
+    <!-- 照片模式 -->
+    <view class="set-row">
+      <view class="set-ic sc-teal"><image src="/images/icons/white/photo-mode.svg" mode="aspectFit"></image></view>
+      <view class="set-t">照片模式
+        <text class="set-d">{{photoModeText}}</text>
       </view>
-
-      <!-- 照片模式 -->
-      <view class="setting-item mode-section">
-        <view class="setting-label">照片模式</view>
-        <view class="mode-selector">
-          <view class="mode-button {{photoMode === 2 ? 'active' : ''}} {{wifiEnable ? '' : 'hidden'}}" bindtap="setWifiMode" data-mode="wifi">
-            <text>WiFi轮播</text>
-          </view>
-          <view class="mode-button {{photoMode === 1 ? 'active' : ''}}" bindtap="setLocalMode" data-mode="auto">
-            <text>本地轮播</text>
-          </view>
-          <view class="mode-button {{photoMode === 0 ? 'active' : ''}}" bindtap="setManualMode" data-mode="manual">
-            <text>关闭</text>
-          </view>
-        </view>
+    </view>
+    <view class="set-panel">
+      <view class="mode-selector">
+        <view class="mode-button {{photoMode === 2 ? 'active' : ''}} {{wifiEnable ? '' : 'hidden'}}" bindtap="setWifiMode" data-mode="wifi">WiFi轮播</view>
+        <view class="mode-button {{photoMode === 1 ? 'active' : ''}}" bindtap="setLocalMode" data-mode="auto">本地轮播</view>
+        <view class="mode-button {{photoMode === 0 ? 'active' : ''}}" bindtap="setManualMode" data-mode="manual">关闭</view>
       </view>
     </view>
   </view>
 
-  <!-- 网络配置 -->
-  <view class="settings-section">
-    <view class="section-header">
-      <text>网络配置</text>
+  <!-- 组2 网络配置 -->
+  <view class="set-group">
+    <view class="set-row">
+      <view class="set-ic sc-purple"><image src="/images/icons/white/network.svg" mode="aspectFit"></image></view>
+      <view class="set-t">网络配置
+        <text class="set-d">{{wifiStatusText}}</text>
+      </view>
+      <view class="set-a" bindtap="toggleNetworkSection">{{networkExpanded ? '−' : '＋'}}</view>
     </view>
-    <view class="section-content network-content">
+
+    <view class="set-panel" wx:if="{{networkExpanded}}">
       <!-- WiFi 开关 -->
       <view class="switch-row">
         <text class="setting-label">WiFi</text>
-        <switch checked="{{wifiEnable}}" color="#4CAF50" bindchange="onWifiEnableChange" disabled="{{!isConnected}}" />
+        <switch checked="{{wifiEnable}}" color="#4ECDC4" bindchange="onWifiEnableChange" disabled="{{!isConnected}}" />
       </view>
       <!-- SSID -->
       <view class="network-input-group">
@@ -107,80 +87,61 @@
         <button class="btn-secondary" bindtap="onFilmDownload" disabled="{{!isConnected}}">下载测试</button>
       </view>
       <view class="wifi-status-row" wx:if="{{downloadStatusText}}">
-        <text class="wifi-status-text" style="font-size:12px;color:#999;">{{downloadStatusText}}</text>
+        <text class="wifi-status-text download-text">{{downloadStatusText}}</text>
       </view>
-      <button class="btn-secondary danger" bindtap="onWifiClear" disabled="{{!isConnected}}" style="width:100%;margin-top:10px;">清除网络配置</button>
+      <button class="btn-secondary danger wide-btn" bindtap="onWifiClear" disabled="{{!isConnected}}">清除网络配置</button>
     </view>
   </view>
 
-  <!-- 休眠设置 -->
-  <view class="settings-section">
-    <view class="section-header">休眠设置</view>
-    <view class="section-content">
-      <view class="switch-row">
-        <text class="setting-label">休眠开关</text>
-        <switch checked="{{sleepOnOff}}" color="#4CAF50" bindchange="onSleepSwitchChange" />
-      </view>
-      <view class="switch-row">
-        <text class="setting-label">自动唤醒</text>
-        <switch checked="{{autoWakeMode}}" color="#4CAF50" bindchange="onAutoWakeSwitchChange" />
-      </view>
-      <view class="setting-item wake-duration-item">
-        <view class="setting-label">唤醒时长: <text class="setting-value">{{wakeDurationText}}</text></view>
-        <view class="wake-slider-row">
-          <text class="wake-min">10分钟</text>
-          <slider
-            min="0"
-            max="{{wakeMaxIndex}}"
-            step="1"
-            value="{{wakeIndex}}"
-            activeColor="#4CAF50"
-            bindchanging="onWakeChanging"
-            bindchange="onWakeChange"
-          />
-          <text class="wake-max">48小时</text>
-        </view>
+  <!-- 组3 设备 -->
+  <view class="set-group">
+    <!-- 休眠 -->
+    <view class="set-row">
+      <view class="set-ic sc-blue"><image src="/images/icons/white/sleep.svg" mode="aspectFit"></image></view>
+      <view class="set-t">休眠开关</view>
+      <switch checked="{{sleepOnOff}}" color="#4ECDC4" bindchange="onSleepSwitchChange" />
+    </view>
+    <view class="set-row">
+      <view class="set-ic sc-yellow"><image src="/images/icons/white/auto-wake.svg" mode="aspectFit"></image></view>
+      <view class="set-t">自动唤醒</view>
+      <switch checked="{{autoWakeMode}}" color="#4ECDC4" bindchange="onAutoWakeSwitchChange" />
+    </view>
+    <view class="set-row">
+      <view class="set-ic sc-pink"><image src="/images/icons/white/wake-time.svg" mode="aspectFit"></image></view>
+      <view class="set-t">唤醒时长
+        <text class="set-d">{{wakeDurationText}}</text>
       </view>
     </view>
-  </view>
-
-  <!-- 设备控制 -->
-  <view class="settings-section">
-    <view class="section-header">设备控制</view>
-    <view class="section-content">
-      <!-- 调试 -->
-      <view class="action-item">
-        <view class="action-header">
-          <text>调试模式</text>
-        </view>
-        <view class="action-controls">
-          <button class="btn-secondary" bindtap="toggleDebug">{{showDebug ? '隐藏日志' : '显示日志'}}</button>
-        </view>
+    <view class="set-panel">
+      <view class="wake-slider-row">
+        <text class="wake-min">10分钟</text>
+        <slider
+          min="0"
+          max="{{wakeMaxIndex}}"
+          step="1"
+          value="{{wakeIndex}}"
+          activeColor="#4ECDC4"
+          block-color="#4ECDC4"
+          bindchanging="onWakeChanging"
+          bindchange="onWakeChange"
+        />
+        <text class="wake-max">48小时</text>
       </view>
+    </view>
 
-      <!-- 调试日志 -->
-      <view class="debug-log" wx:if="{{showDebug}}">
-        <view class="debug-entry {{item.type}}" wx:for="{{debugLogs}}" wx:key="index">
-          {{item.text}}
-        </view>
-        <view class="debug-entry info" wx:if="{{debugLogs.length === 0}}">暂无日志</view>
+    <!-- OTA 升级 -->
+    <view class="set-row">
+      <view class="set-ic sc-red"><image src="/images/icons/white/ota.svg" mode="aspectFit"></image></view>
+      <view class="set-t">OTA 升级</view>
+    </view>
+    <view class="set-panel">
+      <view class="action-controls">
+        <button class="btn-secondary" bindtap="chooseOtaFile">选择固件</button>
+        <text class="file-size-text" wx:if="{{otaFileName}}">{{otaFileName}} ({{otaFileSize}} 字节)</text>
       </view>
-
-      <!-- OTA升级 -->
-      <view class="action-item">
-        <view class="action-header">
-          <text>OTA 升级</text>
-        </view>
-        <view class="action-controls">
-          <button class="btn-secondary" bindtap="chooseOtaFile">选择固件</button>
-          <text class="file-size-text" wx:if="{{otaFileName}}">{{otaFileName}} ({{otaFileSize}} 字节)</text>
-        </view>
-        <view class="button-row" wx:if="{{otaFileData}}">
-          <button class="btn-primary" bindtap="startOtaUpgrade" disabled="{{showOtaTransfer}}">开始升级</button>
-        </view>
+      <view class="button-row" wx:if="{{otaFileData}}">
+        <button class="btn-primary" bindtap="startOtaUpgrade" disabled="{{showOtaTransfer}}">开始升级</button>
       </view>
-
-      <!-- OTA传输进度 -->
       <view class="transfer-container" wx:if="{{showOtaTransfer}}">
         <view class="transfer-status">{{otaTransferStatus}}</view>
         <view class="progress-bar">
@@ -188,18 +149,50 @@
         </view>
         <view class="transfer-progress">{{otaTransferProgress}}%</view>
       </view>
+    </view>
 
-      <!-- 设备管理 -->
-      <view class="action-item">
-        <view class="action-header">
-          <text>设备管理</text>
+    <!-- 调试日志 -->
+    <view class="set-row" bindtap="toggleDebug">
+      <view class="set-ic sc-teal"><image src="/images/icons/white/debug.svg" mode="aspectFit"></image></view>
+      <view class="set-t">调试日志</view>
+      <view class="set-a">{{showDebug ? '−' : '＋'}}</view>
+    </view>
+    <view class="set-panel" wx:if="{{showDebug}}">
+      <view class="debug-log">
+        <view class="debug-entry {{item.type}}" wx:for="{{debugLogs}}" wx:key="index">
+          {{item.text}}
         </view>
-        <view class="action-controls">
-          <button class="btn-secondary" bindtap="reboot">重启设备</button>
-          <button class="btn-secondary danger" bindtap="reset">恢复出厂</button>
-          <button class="btn-secondary danger" bindtap="sdFormat">SD格式化</button>
-        </view>
+        <view class="debug-entry info" wx:if="{{debugLogs.length === 0}}">暂无日志</view>
       </view>
+    </view>
+
+    <!-- 设备管理 -->
+    <view class="set-row">
+      <view class="set-ic sc-purple"><image src="/images/icons/white/device.svg" mode="aspectFit"></image></view>
+      <view class="set-t">设备管理</view>
+    </view>
+    <view class="set-panel">
+      <view class="action-controls">
+        <button class="btn-secondary" bindtap="reboot">重启设备</button>
+        <button class="btn-secondary danger" bindtap="reset">恢复出厂</button>
+        <button class="btn-secondary danger" bindtap="sdFormat">SD格式化</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 组4 关于 -->
+  <view class="set-group">
+    <view class="set-row" bindtap="showHelp">
+      <view class="set-ic sc-blue"><image src="/images/icons/white/help.svg" mode="aspectFit"></image></view>
+      <view class="set-t">帮助与反馈</view>
+      <view class="set-a">›</view>
+    </view>
+    <view class="set-row" bindtap="showAbout">
+      <view class="set-ic sc-yellow"><image src="/images/icons/white/about.svg" mode="aspectFit"></image></view>
+      <view class="set-t">关于 FrameFilm
+        <text class="set-d">v2.0</text>
+      </view>
+      <view class="set-a">›</view>
     </view>
   </view>
 

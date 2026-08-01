@@ -630,6 +630,123 @@ function generateRandomFilename(prefix) {
   return prefix + '_' + suffix + '.film';
 }
 
+// 从 film 文件数据解析像素（自包含，不依赖当前设备配置）
+// fileData: Uint8Array，返回 { data: RGBA, width, height, portrait }；失败返回 null
+function decodeFilmFile(fileData) {
+  if (!fileData || fileData.length <= FILM_HEADER_SIZE) return null;
+  var sw = fileData[4] | (fileData[5] << 8);
+  var sh = fileData[6] | (fileData[7] << 8);
+  if (!sw || !sh) return null;
+  // 标准版(600x400)为列优先翻转布局，Pro(792x528)为行优先
+  var portrait = (sw === 600 && sh === 400);
+  var pixelData = fileData.subarray(FILM_HEADER_SIZE);
+  var pixels = new Uint8ClampedArray(sw * sh * 4);
+  for (var y = 0; y < sh; y++) {
+    for (var x = 0; x < sw; x++) {
+      var newIndex = portrait ? (x * sh) + (sh - 1 - y) : (y * sw) + x;
+      var byteIndex = newIndex >> 1;
+      var byte = byteIndex < pixelData.length ? pixelData[byteIndex] : 0;
+      var code = (newIndex % 2 === 0) ? (byte >> 4) & 0x0F : byte & 0x0F;
+      var color = rgbPalette.find(function (c) { return c.code === code; }) || rgbPalette[1];
+      var idx = (y * sw + x) * 4;
+      pixels[idx] = color.r;
+      pixels[idx + 1] = color.g;
+      pixels[idx + 2] = color.b;
+      pixels[idx + 3] = 255;
+    }
+  }
+  return { data: pixels, width: sw, height: sh, portrait: portrait };
+}
+
+// 渲染 film 文件缩略图并导出临时图片路径
+// callback(path)：path 为临时图片路径，失败时传空字符串；maxSize 控制最长边（默认 150）
+function renderFilmThumbnail(fileData, callback, maxSize) {
+  var decoded = decodeFilmFile(fileData);
+  if (!decoded) { callback(''); return; }
+  try {
+    var sw = decoded.width;
+    var sh = decoded.height;
+    // 按展示方向渲染完整画面（标准版竖屏旋转 90°，Pro 横屏直出）
+    var dispW = decoded.portrait ? sh : sw;
+    var dispH = decoded.portrait ? sw : sh;
+    var srcCanvas = wx.createOffscreenCanvas({ type: '2d', width: sw, height: sh });
+    var srcCtx = srcCanvas.getContext('2d');
+    var imgData = srcCtx.createImageData(sw, sh);
+    imgData.data.set(decoded.data);
+    srcCtx.putImageData(imgData, 0, 0);
+    var dispCanvas = wx.createOffscreenCanvas({ type: '2d', width: dispW, height: dispH });
+    var dispCtx = dispCanvas.getContext('2d');
+    if (decoded.portrait) {
+      dispCtx.translate(dispW, 0);
+      dispCtx.rotate(Math.PI / 2);
+      dispCtx.drawImage(srcCanvas, 0, 0, sw, sh, 0, 0, sw, sh);
+    } else {
+      dispCtx.drawImage(srcCanvas, 0, 0, sw, sh, 0, 0, dispW, dispH);
+    }
+    // 缩略图缩放（最长边上限 maxSize，防止比例过大）
+    var maxSide = maxSize || 150;
+    var thumbW = maxSide;
+    var thumbH = Math.round(thumbW * dispH / dispW);
+    if (thumbH > maxSide) {
+      thumbH = maxSide;
+      thumbW = Math.round(thumbH * dispW / dispH);
+    }
+    var thumbCanvas = wx.createOffscreenCanvas({ type: '2d', width: thumbW, height: thumbH });
+    var ctx = thumbCanvas.getContext('2d');
+    ctx.drawImage(dispCanvas, 0, 0, dispW, dispH, 0, 0, thumbW, thumbH);
+    wx.canvasToTempFilePath({
+      canvas: thumbCanvas,
+      success: function (res) { callback(res.tempFilePath || ''); },
+      fail: function () { callback(''); }
+    });
+  } catch (e) {
+    callback('');
+  }
+}
+
+// 本地图片 → film 文件数据（按当前设备类型转换，自适应抖动）
+// src: 本地图片路径; callback(fileData)：成功返回 Uint8Array，失败传 null
+function imageToFilmData(src, callback) {
+  wx.getImageInfo({
+    src: src,
+    success: function (info) {
+      try {
+        var cfg = getDeviceConfig();
+        var cw = cfg.canvasWidth;
+        var ch = cfg.canvasHeight;
+        var sw = cfg.screenWidth;
+        var sh = cfg.screenHeight;
+        var canvas = wx.createOffscreenCanvas({ type: '2d', width: cw, height: ch });
+        var ctx = canvas.getContext('2d');
+        var img = canvas.createImage();
+        img.onload = function () {
+          try {
+            // cover 等比缩放居中填充
+            var scale = Math.max(cw / img.width, ch / img.height);
+            var dw = img.width * scale;
+            var dh = img.height * scale;
+            ctx.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+            var landscapeData = extractLandscapeData(canvas);
+            var dithered = adaptiveDither(landscapeData);
+            var processedData = processImageData(dithered);
+            var fileData = new Uint8Array(getFilmFileTotalSize());
+            fileData.set(generateFilmHeader(), 0);
+            fileData.set(processedData, FILM_HEADER_SIZE);
+            callback(fileData);
+          } catch (e) {
+            callback(null);
+          }
+        };
+        img.onerror = function () { callback(null); };
+        img.src = src;
+      } catch (e) {
+        callback(null);
+      }
+    },
+    fail: function () { callback(null); }
+  });
+}
+
 module.exports = {
   CANVAS_WIDTH, CANVAS_HEIGHT,
   FILM_SCREEN_WIDTH, FILM_SCREEN_HEIGHT,
@@ -648,5 +765,8 @@ module.exports = {
   processAndDisplay,
   generateFilmHeader,
   wrapText,
-  generateRandomFilename
+  generateRandomFilename,
+  decodeFilmFile,
+  renderFilmThumbnail,
+  imageToFilmData
 };

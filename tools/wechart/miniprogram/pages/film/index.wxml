@@ -17,14 +17,14 @@
       <!-- 抖动强度滑块（非自适应时显示） -->
       <view class="slider-row" wx:if="{{showStrength}}">
         <text class="slider-label">抖动强度</text>
-        <slider min="0" max="5" step="0.1" value="{{ditherStrength}}" bindchanging="onDitherStrengthChanging" bindchange="onDitherStrengthChange" activeColor="#4CAF50" />
+        <slider min="0" max="5" step="0.1" value="{{ditherStrength}}" bindchanging="onDitherStrengthChanging" bindchange="onDitherStrengthChange" activeColor="#4ECDC4" />
         <text class="slider-value">{{ditherStrengthDisplay}}</text>
       </view>
 
       <!-- 对比度滑块 -->
       <view class="slider-row">
         <text class="slider-label">对比度</text>
-        <slider min="50" max="200" step="10" value="{{contrastInt}}" bindchanging="onContrastChanging" bindchange="onContrastChange" activeColor="#4CAF50" />
+        <slider min="50" max="200" step="10" value="{{contrastInt}}" bindchanging="onContrastChanging" bindchange="onContrastChange" activeColor="#4ECDC4" />
         <text class="slider-value">{{contrast}}</text>
       </view>
     </view>

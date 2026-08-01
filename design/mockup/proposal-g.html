@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>方案G · 极简留白 × 多巴胺点缀（C+E 融合）</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  /* ===== 主题变量 ===== */
+  .phone.theme-g {
+    --accent: #FF5C5C;   /* 主色：珊瑚红 */
+    --teal: #2EC4B6;
+    --purple: #7C6FF0;
+    --yellow: #FFC94D;
+    --blue: #4D96FF;
+    --pink: #FF8FC7;
+    --green: #34C759;
+    --bg: #FFFFFF;
+    --card: #FFFFFF;
+    --line: #EFEFF1;
+    --ink: #17171A;
+    --sub: #9B9BA3;
+    background: var(--bg);
+  }
+  .theme-g .statusbar { color: var(--ink); background: #fff; }
+  .theme-g .navbar { background: #fff; color: var(--ink); font-size: 17px; font-weight: 800; letter-spacing: 1px; }
+  .theme-g .navbar.sub { font-size: 15px; }
+  .theme-g .tabbar { background: rgba(255,255,255,.94); backdrop-filter: blur(20px); border-top: 1px solid var(--line); }
+  .theme-g .tab { font-size: 10px; color: #C2C2C9; }
+  .theme-g .tab.active { color: var(--accent); }
+  .theme-g .tab.active .t-icon { filter: drop-shadow(0 2px 6px rgba(255,92,92,.4)); }
+  .theme-g .content { background: #fff; color: var(--ink); }
+  .theme-g .scroll { padding: 22px 24px 10px; overflow: hidden; }
+
+  /* 小标（C 的血统：克制排版） */
+  .label { font-size: 11px; font-weight: 800; letter-spacing: 3px; color: #B9B9C1; margin: 26px 2px 14px; text-transform: uppercase; }
+  .label:first-child { margin-top: 4px; }
+
+  /* 设备卡（C 骨架） */
+  .device-row { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 18px; background: #FBFBFD; }
+  .dev-thumb { width: 74px; height: 58px; border-radius: 12px; overflow: hidden; flex-shrink: 0; }
+  .dev-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .dev-info { flex: 1; min-width: 0; }
+  .dev-name { font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 7px; }
+  .dev-name .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(52,199,89,.15); }
+  .dev-meta { font-size: 11.5px; color: var(--sub); margin-top: 4px; }
+  .dev-batt { display: flex; align-items: center; gap: 6px; background: #F2FFF9; border: 1px solid #D8F5E6; color: #1FA85C; font-size: 12px; font-weight: 800; padding: 5px 11px; border-radius: 999px; }
+
+  /* CTA 按钮（E 的色彩） */
+  .btn.cta { background: linear-gradient(135deg,#FF6B6B,#FF5C8A); color: #fff; height: 54px; border-radius: 16px; font-size: 15px; font-weight: 800; letter-spacing: 1px; box-shadow: 0 10px 24px rgba(255,92,92,.32); margin-top: 16px; }
+  .btn.ghost { background: #fff; border: 1.5px solid #BDE9E4; color: var(--teal); height: 54px; border-radius: 16px; font-size: 14px; font-weight: 800; }
+  .btn-row2 { display: flex; gap: 12px; margin-top: 14px; }
+  .btn-row2 .btn { flex: 1; }
+
+  /* 今日灵感（E 的彩色小卡，收敛为淡彩） */
+  .tpl-row { display: flex; gap: 10px; }
+  .tpl { flex: 1; border-radius: 16px; padding: 12px 10px 10px; }
+  .tpl .t-img { height: 56px; border-radius: 10px; overflow: hidden; margin-bottom: 8px; }
+  .tpl .t-img img { width: 100%; height: 100%; object-fit: cover; }
+  .tpl .t-name { font-size: 10.5px; font-weight: 800; display: flex; align-items: center; gap: 4px; }
+  .tpl .t-name .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .bg-yellow { background: #FFF6DC; } .t-y { color: #D9A300; }
+  .bg-purple { background: #F1EFFF; } .t-p { color: #6B5FE0; }
+  .bg-pink { background: #FFF0F7; } .t-k { color: #E86EA8; }
+
+  /* 最近上墙 */
+  .recent-row { display: flex; gap: 10px; }
+  .recent { flex: 1; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
+  .recent .r-img { height: 80px; overflow: hidden; }
+  .recent .r-img img { width: 100%; height: 100%; object-fit: cover; }
+  .recent .r-name { font-size: 11px; font-weight: 700; padding: 8px 9px 9px; display: flex; align-items: center; gap: 5px; }
+  .recent .r-name i { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* 创作页：白卡 + 彩色图标 */
+  .create-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+  .c-card { border: 1px solid var(--line); border-radius: 18px; padding: 16px 15px; background: #fff; }
+  .cc-ic { width: 40px; height: 40px; border-radius: 13px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; color: #fff; }
+  .cc-name { font-size: 14.5px; font-weight: 800; }
+  .cc-sub { font-size: 10.5px; color: var(--sub); margin-top: 3px; }
+  .cc-tag { display: inline-block; font-size: 9.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; margin-top: 8px; }
+  .adv-row { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 16px 16px; border: 1px solid #E9E6FF; border-radius: 18px; background: #FBF9FF; }
+  .adv-row .m-ic { background: var(--purple); }
+  .adv-a { margin-left: auto; color: var(--purple); }
+
+  /* 片单页 */
+  .panel-c { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 4px 16px; margin-bottom: 16px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 2px; font-size: 13px; font-weight: 800; }
+  .panel-head .cnt { font-size: 11px; color: var(--sub); font-weight: 600; }
+  .list-row { display: flex; align-items: center; gap: 13px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+  .list-row:last-child { border-bottom: none; }
+  .lr-thumb { width: 50px; height: 50px; border-radius: 12px; overflow: hidden; flex-shrink: 0; }
+  .lr-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .lr-info { flex: 1; min-width: 0; }
+  .lr-name { font-size: 14px; font-weight: 800; }
+  .lr-meta { font-size: 10.5px; color: var(--sub); margin-top: 2px; }
+  .lr-tag { font-size: 10px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
+  .tag-red { background: #FFEEEE; color: #E5484D; }
+  .tag-teal { background: #E6F8F6; color: #1FA99C; }
+  .tag-gray { background: #F2F2F4; color: #9B9BA3; }
+  .switch { width: 42px; height: 26px; border-radius: 999px; background: var(--teal); position: relative; flex-shrink: 0; }
+  .switch::after { content: ""; position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+
+  /* 我的页 */
+  .profile { display: flex; align-items: center; gap: 14px; background: #FBFBFD; border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+  .avatar { width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg,#FF6B6B,#FF8FC7); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 900; font-size: 20px; box-shadow: 0 6px 16px rgba(255,92,138,.35); }
+  .pn { font-size: 16px; font-weight: 800; }
+  .pd { font-size: 11px; color: var(--sub); margin-top: 3px; }
+  .set-group { background: #fff; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; margin-bottom: 16px; }
+  .set-row { display: flex; align-items: center; gap: 13px; padding: 16px 18px; border-top: 1px solid #F4F4F6; }
+  .set-row:first-child { border-top: none; }
+  .set-ic { width: 34px; height: 34px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #fff; }
+  .set-t { flex: 1; font-size: 14.5px; font-weight: 700; }
+  .set-d { font-size: 11px; color: var(--sub); margin-left: 8px; font-weight: 500; }
+  .set-a { color: #D5D5DB; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <a class="back" href="index.html">← 返回总览</a>
+  <h1>方案 G · 极简留白 × 多巴胺点缀（C + E 融合）</h1>
+  <p>取 C 的骨架（大留白 · 克制的排版 · 细边框）＋ E 的色彩（珊瑚主色 · 淡彩卡片 · 圆角按钮），白底上的彩色只出现在"该被注意的地方"。</p>
+</div>
+
+<div class="stage">
+
+  <!-- ============ 首页 ============ -->
+  <div class="screen-item">
+    <div class="phone theme-g">
+      <div class="statusbar">
+        <span>9:41</span>
+        <div class="sb-right">
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="#17171A"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2" width="3" height="10" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#17171A" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 4a10 10 0 0 1 13 0"/><path d="M4 7a6.2 6.2 0 0 1 8 0"/><path d="M6.5 10a2.2 2.2 0 0 1 3 0"/></svg>
+          <svg width="22" height="12" viewBox="0 0 22 12" fill="none" stroke="#17171A" stroke-width="1.4"><rect x="0.7" y="0.7" width="17.6" height="10.6" rx="3"/><rect x="2.4" y="2.4" width="12" height="7.2" rx="1.6" fill="#17171A" stroke="none"/><path d="M20 4v4" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+      <div class="navbar">FrameFilm</div>
+      <div class="content">
+        <div class="scroll">
+          <div class="device-row">
+            <div class="dev-thumb"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=photorealistic%20landscape%20photo%20of%20a%20mountain%20lake%20at%20sunset%2C%20warm%20orange%20and%20pink%20sky%2C%20misty%20mountains%2C%20reflection%20on%20water%2C%20film%20photography&image_size=landscape_4_3"></div>
+            <div class="dev-info">
+              <div class="dev-name">FrameFilm Pro <span class="dot"></span></div>
+              <div class="dev-meta">已连接 · 显示中：《傍晚的山》</div>
+            </div>
+            <div class="dev-batt">78%</div>
+          </div>
+
+          <div class="btn cta">发送照片</div>
+          <div class="btn-row2">
+            <div class="btn ghost">拍一张</div>
+            <div class="btn ghost">每日一言</div>
+          </div>
+
+          <div class="label">今日灵感</div>
+          <div class="tpl-row">
+            <div class="tpl bg-yellow">
+              <div class="t-img"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=minimal%20wall%20calendar%20illustration%2C%20beige%20and%20warm%20brown%20tones%2C%20flat%20design&image_size=portrait_4_3"></div>
+              <div class="t-name t-y"><span class="dot" style="background:#FFC94D;"></span>八月日历</div>
+            </div>
+            <div class="tpl bg-purple">
+              <div class="t-img"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=serene%20misty%20mountains%20at%20dawn%2C%20muted%20blue%20gray%20tones%2C%20minimal%20atmosphere&image_size=landscape_4_3"></div>
+              <div class="t-name t-p"><span class="dot" style="background:#7C6FF0;"></span>纪念日倒数</div>
+            </div>
+            <div class="tpl bg-pink">
+              <div class="t-img"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cute%20orange%20cat%20sitting%20on%20a%20windowsill%20in%20warm%20afternoon%20sunlight%2C%20photorealistic&image_size=portrait_4_3"></div>
+              <div class="t-name t-k"><span class="dot" style="background:#FF8FC7;"></span>宠物时光</div>
+            </div>
+          </div>
+
+          <div class="label">最近上墙</div>
+          <div class="recent-row">
+            <div class="recent">
+              <div class="r-img"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=golden%20retriever%20dog%20in%20a%20sunny%20park%2C%20photorealistic&image_size=portrait_4_3"></div>
+              <div class="r-name"><i style="background:#FF6B6B;"></i>家里的狗</div>
+            </div>
+            <div class="recent">
+              <div class="r-img"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=black%20and%20white%20portrait%20photograph%20of%20a%20young%20woman%20smiling%2C%20soft%20window%20light%2C%20analog%20film%20grain&image_size=portrait_4_3"></div>
+              <div class="r-name"><i style="background:#2EC4B6;"></i>人像练习</div>
+            </div>
+            <div class="recent">
+              <div class="r-img"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cute%20orange%20cat%20sitting%20on%20a%20windowsill%20in%20warm%20afternoon%20sunlight%2C%20photorealistic&image_size=portrait_4_3"></div>
+              <div class="r-name"><i style="background:#7C6FF0;"></i>窗台的猫</div>
+            </div>
+          </div>
+          <div class="space"></div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tab active"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/></svg></span>首页</div>
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8.2 7l1.4-2.8h4.8L15.8 7"/></svg></span>创作</div>
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15.5l-4.5-4.5L9 18.5"/></svg></span>片单</div>
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span>我的</div>
+      </div>
+    </div>
+    <div class="phone-label">首页 · 留白骨架 + 珊瑚 CTA + 淡彩灵感卡</div>
+  </div>
+
+  <!-- ============ 创作 ============ -->
+  <div class="screen-item">
+    <div class="phone theme-g">
+      <div class="statusbar">
+        <span>9:41</span>
+        <div class="sb-right">
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="#17171A"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2" width="3" height="10" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#17171A" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 4a10 10 0 0 1 13 0"/><path d="M4 7a6.2 6.2 0 0 1 8 0"/><path d="M6.5 10a2.2 2.2 0 0 1 3 0"/></svg>
+          <svg width="22" height="12" viewBox="0 0 22 12" fill="none" stroke="#17171A" stroke-width="1.4"><rect x="0.7" y="0.7" width="17.6" height="10.6" rx="3"/><rect x="2.4" y="2.4" width="12" height="7.2" rx="1.6" fill="#17171A" stroke="none"/><path d="M20 4v4" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+      <div class="navbar sub">创作</div>
+      <div class="content">
+        <div class="scroll">
+          <div class="create-grid">
+            <div class="c-card">
+              <div class="cc-ic" style="background:linear-gradient(135deg,#FF6B6B,#FF5C8A);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l3-3h4l3 3h6v15H4V6z"/><circle cx="12" cy="12.5" r="4.5"/></svg></div>
+              <div class="cc-name">相册</div>
+              <div class="cc-sub">从手机相册挑选</div>
+              <span class="cc-tag" style="background:#FFEEEE;color:#E5484D;">照片</span>
+            </div>
+            <div class="c-card">
+              <div class="cc-ic" style="background:linear-gradient(135deg,#2EC4B6,#1FA99C);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8.2 7l1.4-2.8h4.8L15.8 7"/></svg></div>
+              <div class="cc-name">拍照</div>
+              <div class="cc-sub">拍一张直接上屏</div>
+              <span class="cc-tag" style="background:#E6F8F6;color:#1FA99C;">照片</span>
+            </div>
+            <div class="c-card">
+              <div class="cc-ic" style="background:linear-gradient(135deg,#7C6FF0,#6B5FE0);"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M10 7H6a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2v2a2 2 0 0 1-2 2H5v2h1a4 4 0 0 0 4-4V9a2 2 0 0 0-2-2zM20 7h-4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2v2a2 2 0 0 1-2 2h-1v2h1a4 4 0 0 0 4-4V9a2 2 0 0 0-2-2z"/></svg></div>
+              <div class="cc-name">一言</div>
+              <div class="cc-sub">名言金句每日换</div>
+              <span class="cc-tag" style="background:#F1EFFF;color:#6B5FE0;">文字</span>
+            </div>
+            <div class="c-card">
+              <div class="cc-ic" style="background:linear-gradient(135deg,#4D96FF,#2F6FD8);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7a4.2 4.2 0 0 0-6-6l-7 7v6h6z"/><path d="M9 10l4 4"/></svg></div>
+              <div class="cc-name">绘梦</div>
+              <div class="cc-sub">手绘也能上墙</div>
+              <span class="cc-tag" style="background:#EAF2FF;color:#2F6FD8;">涂鸦</span>
+            </div>
+            <div class="c-card">
+              <div class="cc-ic" style="background:linear-gradient(135deg,#FFC94D,#FFB03D);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+              <div class="cc-name">模板</div>
+              <div class="cc-sub">日历 · 倒计时 · 天气</div>
+              <span class="cc-tag" style="background:#FFF6DC;color:#D9A300;">新</span>
+            </div>
+            <div class="c-card">
+              <div class="cc-ic" style="background:linear-gradient(135deg,#FF8FC7,#E86EA8);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15.5l-4.5-4.5L9 18.5"/></svg></div>
+              <div class="cc-name">批量片单</div>
+              <div class="cc-sub">一组照片自动轮播</div>
+              <span class="cc-tag" style="background:#FFF0F7;color:#E86EA8;">多图</span>
+            </div>
+          </div>
+
+          <div class="adv-row">
+            <div class="cc-ic" style="width:38px;height:38px;margin-bottom:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2M4.9 4.9l1.4 1.4M2 12h2M4.9 19.1l1.4-1.4M12 20v2M19.1 19.1l-1.4-1.4M20 12h2M19.1 4.9l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg></div>
+            <div>
+              <div class="cc-name">高级转换</div>
+              <div class="cc-sub">抖动 · 对比度 · 手动调参</div>
+            </div>
+            <span class="adv-a"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+          </div>
+          <div class="space"></div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/></svg></span>首页</div>
+        <div class="tab active"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8.2 7l1.4-2.8h4.8L15.8 7"/></svg></span>创作</div>
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15.5l-4.5-4.5L9 18.5"/></svg></span>片单</div>
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span>我的</div>
+      </div>
+    </div>
+    <div class="phone-label">创作 · 白卡 + 彩色图标 + 淡彩标签</div>
+  </div>
+
+  <!-- ============ 片单 ============ -->
+  <div class="screen-item">
+    <div class="phone theme-g">
+      <div class="statusbar">
+        <span>9:41</span>
+        <div class="sb-right">
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="#17171A"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2" width="3" height="10" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#17171A" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 4a10 10 0 0 1 13 0"/><path d="M4 7a6.2 6.2 0 0 1 8 0"/><path d="M6.5 10a2.2 2.2 0 0 1 3 0"/></svg>
+          <svg width="22" height="12" viewBox="0 0 22 12" fill="none" stroke="#17171A" stroke-width="1.4"><rect x="0.7" y="0.7" width="17.6" height="10.6" rx="3"/><rect x="2.4" y="2.4" width="12" height="7.2" rx="1.6" fill="#17171A" stroke="none"/><path d="M20 4v4" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+      <div class="navbar sub">片单</div>
+      <div class="content">
+        <div class="scroll">
+          <div class="panel-c">
+            <div class="panel-head">设备上的照片 <span class="cnt">3 张</span></div>
+            <div class="list-row">
+              <div class="lr-thumb"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=photorealistic%20landscape%20photo%20of%20a%20mountain%20lake%20at%20sunset%2C%20warm%20orange%20and%20pink%20sky%2C%20misty%20mountains%2C%20reflection%20on%20water%2C%20film%20photography&image_size=landscape_4_3"></div>
+              <div class="lr-info"><div class="lr-name">傍晚的山</div><div class="lr-meta">#1 · 120 KB</div></div>
+              <span class="lr-tag tag-red">显示中</span>
+            </div>
+            <div class="list-row">
+              <div class="lr-thumb"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=golden%20retriever%20dog%20in%20a%20sunny%20park%2C%20photorealistic&image_size=portrait_4_3"></div>
+              <div class="lr-info"><div class="lr-name">家里的狗</div><div class="lr-meta">#2 · 120 KB</div></div>
+              <span class="lr-tag tag-teal">待播放</span>
+            </div>
+            <div class="list-row">
+              <div class="lr-thumb"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cute%20orange%20cat%20sitting%20on%20a%20windowsill%20in%20warm%20afternoon%20sunlight%2C%20photorealistic&image_size=portrait_4_3"></div>
+              <div class="lr-info"><div class="lr-name">窗台的猫</div><div class="lr-meta">#3 · 120 KB</div></div>
+              <span class="lr-tag tag-teal">待播放</span>
+            </div>
+          </div>
+
+          <div class="panel-c">
+            <div class="panel-head">WiFi 轮播 <span class="cnt">Pro</span></div>
+            <div class="list-row">
+              <div class="lr-info"><div class="lr-name">轮播已开启</div><div class="lr-meta">每 30 秒切换 · #1 → #2 → #3</div></div>
+              <div class="switch"></div>
+            </div>
+          </div>
+
+          <div class="panel-c">
+            <div class="panel-head">本地草稿 <span class="cnt">2 份</span></div>
+            <div class="list-row">
+              <div class="lr-thumb"><img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=black%20and%20white%20portrait%20photograph%20of%20a%20young%20woman%20smiling%2C%20soft%20window%20light%2C%20analog%20film%20grain&image_size=portrait_4_3"></div>
+              <div class="lr-info"><div class="lr-name">人像练习</div><div class="lr-meta">未发送 · 草稿</div></div>
+              <span class="lr-tag tag-gray">草稿</span>
+            </div>
+          </div>
+
+          <div class="btn cta" style="height:52px;font-size:15px;margin-top:4px;">批量发送</div>
+          <div class="space"></div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/></svg></span>首页</div>
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8.2 7l1.4-2.8h4.8L15.8 7"/></svg></span>创作</div>
+        <div class="tab active"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15.5l-4.5-4.5L9 18.5"/></svg></span>片单</div>
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span>我的</div>
+      </div>
+    </div>
+    <div class="phone-label">片单 · 彩色状态标签 + 青色开关</div>
+  </div>
+
+  <!-- ============ 我的 ============ -->
+  <div class="screen-item">
+    <div class="phone theme-g">
+      <div class="statusbar">
+        <span>9:41</span>
+        <div class="sb-right">
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="#17171A"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2" width="3" height="10" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="#17171A" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 4a10 10 0 0 1 13 0"/><path d="M4 7a6.2 6.2 0 0 1 8 0"/><path d="M6.5 10a2.2 2.2 0 0 1 3 0"/></svg>
+          <svg width="22" height="12" viewBox="0 0 22 12" fill="none" stroke="#17171A" stroke-width="1.4"><rect x="0.7" y="0.7" width="17.6" height="10.6" rx="3"/><rect x="2.4" y="2.4" width="12" height="7.2" rx="1.6" fill="#17171A" stroke="none"/><path d="M20 4v4" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+      <div class="navbar sub">我的</div>
+      <div class="content">
+        <div class="scroll">
+          <div class="profile">
+            <div class="avatar">G</div>
+            <div>
+              <div class="pn">快乐收藏家</div>
+              <div class="pd">1 台设备 · FrameFilm Pro</div>
+            </div>
+          </div>
+
+          <div class="label" style="margin-top:22px;">设备管理</div>
+          <div class="set-group">
+            <div class="set-row">
+              <div class="set-ic" style="background:linear-gradient(135deg,#FF6B6B,#FF5C8A);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15.5l-4.5-4.5L9 18.5"/></svg></div>
+              <div class="set-t">设备照片 <span class="set-d">3 张</span></div>
+              <span class="set-a">›</span>
+            </div>
+            <div class="set-row">
+              <div class="set-ic" style="background:linear-gradient(135deg,#2EC4B6,#1FA99C);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M2.5 8.5a16 16 0 0 1 19 0M5.5 12a11 11 0 0 1 13 0M8.5 15.5a6 6 0 0 1 7 0"/><circle cx="12" cy="19" r="1.4" fill="#fff" stroke="none"/></svg></div>
+              <div class="set-t">WiFi 轮播 <span class="set-d">Pro</span></div>
+              <span class="set-a">›</span>
+            </div>
+            <div class="set-row">
+              <div class="set-ic" style="background:linear-gradient(135deg,#7C6FF0,#6B5FE0);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></div>
+              <div class="set-t">休眠与唤醒 <span class="set-d">10 分钟</span></div>
+              <span class="set-a">›</span>
+            </div>
+          </div>
+
+          <div class="label">系统</div>
+          <div class="set-group">
+            <div class="set-row">
+              <div class="set-ic" style="background:linear-gradient(135deg,#4D96FF,#2F6FD8);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10M7 9l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
+              <div class="set-t">OTA 升级</div>
+              <span class="set-a">›</span>
+            </div>
+            <div class="set-row">
+              <div class="set-ic" style="background:linear-gradient(135deg,#FFC94D,#FFB03D);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.5a2.8 2.8 0 0 1 5.5.9c0 1.9-2.7 2.3-2.7 4"/><circle cx="12" cy="17.2" r="1" fill="#fff" stroke="none"/></svg></div>
+              <div class="set-t">帮助与反馈</div>
+              <span class="set-a">›</span>
+            </div>
+            <div class="set-row">
+              <div class="set-ic" style="background:linear-gradient(135deg,#FF8FC7,#E86EA8);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="8" r="1" fill="#fff" stroke="none"/></svg></div>
+              <div class="set-t">关于 FrameFilm <span class="set-d">v2.0</span></div>
+              <span class="set-a">›</span>
+            </div>
+          </div>
+          <div class="space"></div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/></svg></span>首页</div>
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8.2 7l1.4-2.8h4.8L15.8 7"/></svg></span>创作</div>
+        <div class="tab"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15.5l-4.5-4.5L9 18.5"/></svg></span>片单</div>
+        <div class="tab active"><span class="t-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span>我的</div>
+      </div>
+    </div>
+    <div class="phone-label">我的 · 彩色图标菜单</div>
+  </div>
+
+</div>
+</body>
+</html>

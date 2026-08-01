@@ -1,0 +1,225 @@
+/* 首页样式 - 方案E布局 × 多巴胺彩色 */
+page {
+  background: #FFF6EE;
+}
+
+/* 横幅 */
+.banner-strip {
+  background: linear-gradient(135deg, #FF6B6B, #FF9F6B);
+  border-radius: 36rpx;
+  padding: 48rpx 40rpx 40rpx;
+  margin-bottom: 28rpx;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 14rpx 30rpx rgba(255, 107, 107, 0.3);
+}
+.banner-strip::after {
+  content: '';
+  position: absolute;
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  right: -70rpx;
+  top: -70rpx;
+}
+.banner-strip::before {
+  content: '';
+  position: absolute;
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  left: 40%;
+  bottom: -60rpx;
+}
+.bn-t {
+  color: #ffffff;
+  font-size: 44rpx;
+  font-weight: 800;
+  letter-spacing: 3rpx;
+}
+.bn-s {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 24rpx;
+  margin-top: 12rpx;
+  letter-spacing: 1rpx;
+}
+.bn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 30rpx;
+  padding: 12rpx 26rpx;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999rpx;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 22rpx;
+  letter-spacing: 1rpx;
+}
+.bn-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #6B6B73;
+}
+.bn-dot.on {
+  background: #2ECC71;
+}
+
+/* 双 CTA */
+.cta-row {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 28rpx;
+}
+.cta-half {
+  flex: 1;
+  margin-top: 0;
+  height: 116rpx;
+  border-radius: 32rpx;
+}
+.cta-teal {
+  background: linear-gradient(135deg, #4ECDC4, #2EB6AC);
+  box-shadow: 0 10rpx 22rpx rgba(78, 205, 196, 0.3);
+}
+.cta-t {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 3rpx;
+}
+.cta-sub {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 8rpx;
+  letter-spacing: 1rpx;
+}
+
+/* 今日模板 */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 16rpx;
+  padding: 4rpx 18rpx;
+  background: #FFD93D;
+  color: #6B5B00;
+  font-size: 20rpx;
+  font-weight: 800;
+  border-radius: 999rpx;
+  vertical-align: middle;
+}
+.tpl-row {
+  display: flex;
+  gap: 18rpx;
+  margin-top: 20rpx;
+}
+.tpl {
+  flex: 1;
+  background: #ffffff;
+  border: 2rpx solid transparent;
+  border-radius: 24rpx;
+  padding: 28rpx 0 22rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 8rpx 18rpx rgba(132, 94, 194, 0.1);
+}
+.t-ic {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 22rpx;
+  background: #FBF5F0;
+  border: 2rpx solid #F5E8DC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.t-ic image {
+  width: 40rpx;
+  height: 40rpx;
+}
+.t-name {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #3A3A44;
+  margin-top: 18rpx;
+  letter-spacing: 1rpx;
+}
+
+/* 最近上墙标题行 */
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 52rpx 4rpx 28rpx;
+}
+.label-row .label {
+  margin: 0;
+}
+.clear-recent {
+  font-size: 20rpx;
+  color: #C4BCC8;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(196, 188, 200, 0.12);
+}
+
+/* 重新上墙传输弹窗 */
+.transfer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(17, 17, 17, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transfer-modal {
+  width: 560rpx;
+  background: #ffffff;
+  border-radius: 40rpx;
+  padding: 56rpx 48rpx;
+  text-align: center;
+  animation: scaleIn 0.3s ease;
+}
+
+.transfer-percent {
+  font-size: 48rpx;
+  font-weight: 800;
+  color: #FF6B6B;
+  letter-spacing: 2rpx;
+}
+
+.transfer-msg {
+  font-size: 26rpx;
+  color: #9A9AA2;
+  margin: 16rpx 0 32rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-progress-bar {
+  width: 100%;
+  height: 12rpx;
+  background-color: #F0E4DE;
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+
+.modal-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #FF6B6B, #FF9F6B);
+  transition: width 0.3s ease;
+  border-radius: 999rpx;
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
