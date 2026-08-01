@@ -32,9 +32,9 @@ Page({
     wx.navigateTo({ url: '/pages/frame/draw/index' });
   },
 
-  // 模板：占位功能
+  // 模板：模板中心
   goToTemplate: function () {
-    wx.showToast({ title: '模板即将上线', icon: 'none' });
+    wx.navigateTo({ url: '/pages/template/index' });
   },
 
   // 批量片单 → 片单页

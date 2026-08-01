@@ -49,15 +49,15 @@
   <view class="tpl-row">
     <view class="tpl" bindtap="goToTemplate">
       <view class="t-ic"><image src="/images/icons/template.svg" mode="aspectFit"></image></view>
-      <view class="t-name">八月日历</view>
+      <view class="t-name">{{monthName}}</view>
     </view>
     <view class="tpl" bindtap="goToTemplate">
       <view class="t-ic"><image src="/images/icons/countdown.svg" mode="aspectFit"></image></view>
       <view class="t-name">纪念日倒数</view>
     </view>
     <view class="tpl" bindtap="goToTemplate">
-      <view class="t-ic"><image src="/images/icons/pet.svg" mode="aspectFit"></image></view>
-      <view class="t-name">宠物时光</view>
+      <view class="t-ic"><image src="/images/icons/quote.svg" mode="aspectFit"></image></view>
+      <view class="t-name">每日一签</view>
     </view>
   </view>
 

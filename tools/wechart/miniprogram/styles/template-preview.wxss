@@ -1,0 +1,242 @@
+/* template-preview.wxss - 模板详情页公共样式（canvas 容器 + 控制条 + 传输弹层） */
+
+.container {
+  padding: 20rpx 30rpx;
+}
+
+/* 工具条 */
+.tpl-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-bottom: 16rpx;
+}
+
+.tpl-btn {
+  background-color: #ffffff;
+  color: #845EC2;
+  border: 2rpx solid #E8DCF2;
+  border-radius: 28rpx;
+  font-size: 26rpx;
+  padding: 14rpx 20rpx;
+  flex: 1;
+  text-align: center;
+}
+
+/* 换肤胶囊 */
+.scheme-row {
+  display: flex;
+  gap: 14rpx;
+  justify-content: center;
+  margin-bottom: 16rpx;
+}
+
+.scheme-pill {
+  padding: 10rpx 26rpx;
+  border-radius: 24rpx;
+  background-color: #fff;
+  border: 2rpx solid #E8DCF2;
+  font-size: 24rpx;
+  color: #845EC2;
+}
+
+.scheme-pill.active {
+  background: linear-gradient(135deg, #845EC2, #6B45A6);
+  color: #fff;
+  border-color: #845EC2;
+}
+
+/* 预览画布容器 */
+.canvas-container {
+  background: #fff;
+  padding: 40rpx 40rpx 80rpx 40rpx;
+  border-radius: 28rpx;
+  border: 2rpx solid #E8DCF2;
+  box-shadow: 0 12rpx 36rpx rgba(132, 94, 194, 0.16), 0 2rpx 8rpx rgba(132, 94, 194, 0.08);
+  margin: 8rpx auto 16rpx;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.canvas-wrap {
+  width: 600rpx;
+  height: 900rpx;
+  overflow: hidden;
+  position: relative;
+  border: 2rpx solid #E8DCF2;
+  border-radius: 8rpx;
+}
+
+.preview-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #845EC2, #6B45A6);
+  color: white;
+  padding: 24rpx 48rpx;
+  border: none;
+  border-radius: 32rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  width: 100%;
+  margin: 0;
+  box-shadow: 0 10rpx 22rpx rgba(132, 94, 194, 0.3);
+}
+
+/* 传输弹窗（复用一言页样式） */
+.transfer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+.transfer-modal {
+  width: 560rpx;
+  background: #fff;
+  border-radius: 28rpx;
+  padding: 48rpx 40rpx 36rpx;
+  text-align: center;
+  animation: scaleIn 0.3s ease;
+}
+
+.flight-area {
+  height: 110rpx;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 24rpx;
+}
+
+/* 卡片弧线抛掷动画 */
+.airplane {
+  width: 64rpx;
+  height: 84rpx;
+  position: absolute;
+  left: -12%;
+  top: 26rpx;
+  background: #fff;
+  border: 3rpx solid #845EC2;
+  border-radius: 14rpx;
+  box-shadow: 0 8rpx 18rpx rgba(132, 94, 194, 0.24);
+  overflow: hidden;
+  animation: cardFlyX 1.6s linear infinite, cardFlyY 1.6s ease-in-out infinite;
+}
+
+.airplane::before {
+  content: '';
+  position: absolute;
+  left: 6rpx;
+  right: 6rpx;
+  top: 6rpx;
+  bottom: 22rpx;
+  border-radius: 8rpx;
+  background: linear-gradient(160deg, #845EC2 0%, rgba(255, 255, 255, 0.9) 130%);
+  opacity: 0.9;
+}
+
+.airplane::after {
+  content: '';
+  position: absolute;
+  left: 6rpx;
+  right: 6rpx;
+  bottom: 6rpx;
+  height: 10rpx;
+  border-radius: 4rpx;
+  background: #F6EFEA;
+}
+
+.airplane-done {
+  animation: cardDone 0.7s ease forwards;
+}
+
+.flight-trail {
+  position: absolute;
+  bottom: 8rpx;
+  left: 8rpx;
+  right: 8rpx;
+  height: 6rpx;
+  border-radius: 3rpx;
+  background: linear-gradient(90deg, #FF6B6B, #FFD93D, #4ECDC4, #4D96FF, #845EC2, #FF8FC7);
+  background-size: 200% 100%;
+  animation: trailPulse 1.5s ease-in-out infinite, trailFlow 2.5s linear infinite;
+}
+
+.transfer-percent {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #845EC2;
+  margin-bottom: 8rpx;
+  letter-spacing: 2rpx;
+}
+
+.transfer-msg {
+  font-size: 24rpx;
+  color: #999;
+  margin-bottom: 28rpx;
+}
+
+.modal-progress-bar {
+  width: 100%;
+  height: 16rpx;
+  background-color: #EEE4F5;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+
+.modal-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #845EC2, #6B45A6);
+  transition: width 0.3s ease;
+  border-radius: 8rpx;
+}
+
+@keyframes cardFlyX {
+  0% { left: -12%; transform: rotate(-8deg); }
+  50% { transform: rotate(7deg); }
+  100% { left: 108%; transform: rotate(-8deg); }
+}
+
+@keyframes cardFlyY {
+  0%, 100% { top: 26rpx; }
+  50% { top: 2rpx; }
+}
+
+@keyframes cardDone {
+  0% { left: 108%; top: 26rpx; transform: rotate(-8deg) scale(1); opacity: 1; }
+  40% { left: 50%; top: 34rpx; transform: translateX(-50%) rotate(0) scale(1.25); opacity: 1; }
+  70% { left: 50%; top: 34rpx; transform: translateX(-50%) rotate(0) scale(1.1); opacity: 1; }
+  100% { left: 50%; top: 34rpx; transform: translateX(-50%) rotate(0) scale(1.5); opacity: 0; }
+}
+
+@keyframes trailFlow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes trailPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+
+.tab-bar-spacer {
+  height: 160rpx;
+}

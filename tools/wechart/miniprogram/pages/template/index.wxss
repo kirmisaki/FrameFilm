@@ -1,0 +1,87 @@
+page {
+  background: #FFF6EE;
+}
+
+.container {
+  padding: 30rpx;
+}
+
+.header {
+  padding: 20rpx 8rpx 30rpx;
+}
+
+.title {
+  display: block;
+  font-size: 44rpx;
+  font-weight: 800;
+  color: #3A3A44;
+  letter-spacing: 2rpx;
+}
+
+.subtitle {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 26rpx;
+  color: #9B93A4;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 26rpx;
+}
+
+.tpl-card {
+  border-radius: 32rpx;
+  padding: 40rpx 36rpx;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 14rpx 34rpx rgba(90, 60, 140, 0.18);
+}
+
+.tpl-card::after {
+  content: '';
+  position: absolute;
+  right: -60rpx;
+  top: -60rpx;
+  width: 220rpx;
+  height: 220rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.tpl-emoji {
+  display: block;
+  font-size: 72rpx;
+  line-height: 1.2;
+}
+
+.tpl-name {
+  display: block;
+  margin-top: 20rpx;
+  font-size: 40rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+}
+
+.tpl-desc {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 26rpx;
+  opacity: 0.92;
+}
+
+.tpl-go {
+  display: inline-block;
+  margin-top: 26rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.26);
+  border-radius: 30rpx;
+  padding: 12rpx 30rpx;
+}
+
+.tab-bar-spacer {
+  height: 160rpx;
+}

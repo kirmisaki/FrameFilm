@@ -1,0 +1,41 @@
+<view class="container">
+  <!-- 设置卡：名称 + 日期 -->
+  <view class="set-card">
+    <input class="set-input" placeholder="纪念日名称，如：在一起" value="{{name}}" bindinput="onInputName" maxlength="8" />
+    <picker mode="date" value="{{dateStr}}" bindchange="onPickDate">
+      <view class="set-picker">
+        <text class="set-picker-icon">📅</text>
+        <text>{{dateStr}}</text>
+      </view>
+    </picker>
+  </view>
+
+  <view class="scheme-row">
+    <view class="scheme-pill {{schemeIndex === index ? 'active' : ''}}"
+          wx:for="{{schemes}}" wx:key="name" data-idx="{{index}}" bindtap="selectScheme">{{item.name}}</view>
+  </view>
+
+  <view class="canvas-container">
+    <view class="canvas-wrap">
+      <canvas type="2d" id="canvas-tpl" class="preview-canvas"></canvas>
+    </view>
+  </view>
+
+  <button class="btn-primary" bindtap="sendToDevice">发送到设备</button>
+
+  <view wx:if="{{showTransfer}}" class="transfer-overlay">
+    <view class="transfer-modal">
+      <view class="flight-area">
+        <view class="airplane {{transferProgress >= 100 ? 'airplane-done' : ''}}"></view>
+        <view class="flight-trail"></view>
+      </view>
+      <view class="transfer-percent">{{transferProgress}}%</view>
+      <view class="transfer-msg">{{transferStatus}}</view>
+      <view class="modal-progress-bar">
+        <view class="modal-progress-fill" style="width: {{transferProgress}}%"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>

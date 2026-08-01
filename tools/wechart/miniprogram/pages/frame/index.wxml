@@ -27,7 +27,7 @@
     <view class="m-card c-yellow m-badge" bindtap="goToTemplate">
       <view class="m-ic"><image src="/images/icons/white/template.svg" mode="aspectFit"></image></view>
       <view class="m-name">模板</view>
-      <view class="m-sub">日历 · 倒计时 · 天气</view>
+      <view class="m-sub">日历 · 一签 · 天气</view>
       <view class="cc-emo">✨</view>
     </view>
     <view class="m-card c-pink" bindtap="goToBatch">

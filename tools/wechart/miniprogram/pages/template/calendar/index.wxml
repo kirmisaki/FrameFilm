@@ -1,0 +1,36 @@
+<view class="container">
+  <view class="tpl-toolbar">
+    <view class="tpl-btn" bindtap="prevMonth">◀ 上月</view>
+    <view class="tpl-btn" bindtap="backToday">{{monthLabel}}</view>
+    <view class="tpl-btn" bindtap="nextMonth">下月 ▶</view>
+  </view>
+
+  <view class="scheme-row">
+    <view class="scheme-pill {{schemeIndex === index ? 'active' : ''}}"
+          wx:for="{{schemes}}" wx:key="name" data-idx="{{index}}" bindtap="selectScheme">{{item.name}}</view>
+  </view>
+
+  <view class="canvas-container">
+    <view class="canvas-wrap">
+      <canvas type="2d" id="canvas-tpl" class="preview-canvas"></canvas>
+    </view>
+  </view>
+
+  <button class="btn-primary" bindtap="sendToDevice">发送到设备</button>
+
+  <view wx:if="{{showTransfer}}" class="transfer-overlay">
+    <view class="transfer-modal">
+      <view class="flight-area">
+        <view class="airplane {{transferProgress >= 100 ? 'airplane-done' : ''}}"></view>
+        <view class="flight-trail"></view>
+      </view>
+      <view class="transfer-percent">{{transferProgress}}%</view>
+      <view class="transfer-msg">{{transferStatus}}</view>
+      <view class="modal-progress-bar">
+        <view class="modal-progress-fill" style="width: {{transferProgress}}%"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>

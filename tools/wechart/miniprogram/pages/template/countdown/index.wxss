@@ -1,0 +1,39 @@
+@import "../../../styles/template-preview.wxss";
+
+page {
+  background: #FFF6EE;
+}
+
+/* 设置卡 */
+.set-card {
+  background: #fff;
+  border: 2rpx solid #E8DCF2;
+  border-radius: 24rpx;
+  padding: 8rpx 24rpx;
+  margin-bottom: 16rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.set-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #3A3A44;
+  padding: 20rpx 0;
+}
+
+.set-picker {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 26rpx;
+  color: #845EC2;
+  background: #F6F0FA;
+  border-radius: 20rpx;
+  padding: 12rpx 22rpx;
+}
+
+.set-picker-icon {
+  font-size: 26rpx;
+}

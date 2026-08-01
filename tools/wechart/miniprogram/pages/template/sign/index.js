@@ -1,0 +1,92 @@
+// 模板 - 每日一签
+var filmUtils = require('../../../utils/film-utils');
+var tplSign = require('../../../utils/tpl-sign');
+var sender = require('../../../utils/template-sender');
+var app = getApp();
+
+Page({
+  data: {
+    schemes: tplSign.SCHEMES,
+    schemeIndex: 0,
+    showTransfer: false,
+    transferStatus: '',
+    transferProgress: 0
+  },
+
+  _canvas: null,
+  _ctx: null,
+  _sign: null,
+
+  onReady: function () {
+    this._initCanvas();
+  },
+
+  onShow: function () {
+    var that = this;
+    if (!that._sign) {
+      that._sign = tplSign.getRandomSign();
+    }
+    if (!that._canvas) {
+      setTimeout(function () { that._initCanvas(); }, 100);
+    }
+  },
+
+  _initCanvas: function () {
+    var that = this;
+    if (that._canvas) return;
+    var query = wx.createSelectorQuery();
+    query.select('#canvas-tpl').fields({ node: true, size: true }).exec(function (res) {
+      if (!res || !res[0] || !res[0].node) return;
+      var canvas = res[0].node;
+      var ctx = canvas.getContext('2d');
+      canvas.width = filmUtils.getCanvasWidth();
+      canvas.height = filmUtils.getCanvasHeight();
+      that._canvas = canvas;
+      that._ctx = ctx;
+      that._render();
+    });
+  },
+
+  _render: function () {
+    var that = this;
+    if (!that._canvas || !that._ctx || !that._sign) return;
+    var canvas = that._canvas;
+    var ctx = that._ctx;
+    tplSign.render(ctx, canvas.width, canvas.height, that._sign, that.data.schemes[that.data.schemeIndex]);
+    filmUtils.processAndDisplay(canvas, ctx, 'adaptive', 1.0, null);
+  },
+
+  refreshSign: function () {
+    this._sign = tplSign.getRandomSign();
+    this._render();
+  },
+
+  selectScheme: function (e) {
+    this.setData({ schemeIndex: Number(e.currentTarget.dataset.idx) });
+    this._render();
+  },
+
+  sendToDevice: function () {
+    var that = this;
+    if (!that._canvas) {
+      wx.showToast({ title: '画布未就绪', icon: 'none' });
+      return;
+    }
+    that.setData({ showTransfer: true, transferStatus: '准备传输...', transferProgress: 0 });
+    var fileData = sender.canvasToFilmData(that._canvas);
+    sender.sendToDevice(fileData, 'tpl-sign', function (status, pct) {
+      if (pct === 100) {
+        that.setData({ transferProgress: 100, transferStatus: status });
+        setTimeout(function () { that.setData({ showTransfer: false }); }, 1500);
+      } else if (pct === -1) {
+        that.setData({ transferStatus: status });
+        setTimeout(function () { that.setData({ showTransfer: false }); }, 2000);
+      } else {
+        that.setData({ transferProgress: pct });
+        if (status) { that.setData({ transferStatus: status }); }
+      }
+    }).catch(function () {
+      setTimeout(function () { that.setData({ showTransfer: false }); }, 2000);
+    });
+  }
+});

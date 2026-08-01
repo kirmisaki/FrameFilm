@@ -19,6 +19,7 @@ Page({
     batteryLevel: 0,
     currentFile: '',
     devThumb: '',
+    monthName: '',
     recentList: [],
     showTransfer: false,
     transferStatus: '',
@@ -99,6 +100,7 @@ Page({
       batteryLevel: g.batteryLevel,
       currentFile: currentFile,
       devThumb: devThumb,
+      monthName: (new Date().getMonth() + 1) + '月日历',
       recentList: recentList
     });
     this._renderRecentThumbs(recentRaw);
@@ -187,9 +189,9 @@ Page({
     wx.navigateTo({ url: '/pages/frame/camera/index' });
   },
 
-  // 模板卡 → 即将上线
+  // 模板卡 → 模板中心
   goToTemplate: function () {
-    wx.showToast({ title: '模板即将上线', icon: 'none' });
+    wx.navigateTo({ url: '/pages/template/index' });
   },
 
   // 最近上墙点击：设备有同名文件直接切换显示，否则上传这一张

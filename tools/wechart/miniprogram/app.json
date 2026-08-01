@@ -8,6 +8,11 @@
     "pages/frame/draw/index",
     "pages/filmlist/index",
     "pages/film/index",
+    "pages/template/index",
+    "pages/template/calendar/index",
+    "pages/template/sign/index",
+    "pages/template/weather/index",
+    "pages/template/countdown/index",
     "pages/settings/index",
     "pages/bluetooth/index"
   ],

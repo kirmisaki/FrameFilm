@@ -1,0 +1,18 @@
+<view class="container">
+  <view class="header">
+    <text class="title">模板中心</text>
+    <text class="subtitle">日历、一签、天气、纪念日，画上墙每天换一种心情</text>
+  </view>
+
+  <view class="grid">
+    <view class="tpl-card" wx:for="{{templates}}" wx:key="id"
+          data-id="{{item.id}}" bindtap="goTemplate" style="background: {{item.gradient}};">
+      <text class="tpl-emoji">{{item.emoji}}</text>
+      <text class="tpl-name">{{item.name}}</text>
+      <text class="tpl-desc">{{item.desc}}</text>
+      <text class="tpl-go">去看看 →</text>
+    </view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>
