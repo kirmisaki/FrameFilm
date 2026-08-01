@@ -96,7 +96,8 @@ Page({
                   list.push({
                     name: name,
                     deviceId: d.deviceId,
-                    RSSI: d.RSSI
+                    RSSI: d.RSSI,
+                    isPro: name.toUpperCase().indexOf('PRO') !== -1
                   });
                 }
               }

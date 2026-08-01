@@ -3,16 +3,22 @@
   <view class="panel-c">
     <view class="panel-head">
       <text>设备上的照片</text>
-      <view class="cnt" bindtap="refreshFileList">刷新 · {{fileList.length}} 张</view>
+      <view class="head-actions">
+        <view class="cnt" bindtap="refreshFileList">刷新 · {{fileList.length}} 张</view>
+        <view class="del" wx:if="{{fileList.length > 0}}" bindtap="clearDeviceFiles">清空</view>
+      </view>
     </view>
     <block wx:if="{{fileList.length > 0}}">
-      <view class="list-row" wx:for="{{fileList}}" wx:key="fileId" bindtap="onFileSelect" data-file-id="{{item.fileId}}">
-        <view class="lr-thumb">#{{item.fileId}}</view>
+      <view class="list-row file-row {{item.fileId === currentDisplayFileId ? 'cur' : ''}}" wx:for="{{fileList}}" wx:key="fileId" bindtap="onFileSelect" data-file-id="{{item.fileId}}">
+        <view class="lr-thumb {{item.fileId === currentDisplayFileId ? 'cur' : ''}}">
+          #{{item.fileId}}
+          <view class="cur-badge" wx:if="{{item.fileId === currentDisplayFileId}}">显示中</view>
+        </view>
         <view class="lr-info">
           <view class="lr-name">{{item.name}}</view>
-          <view class="lr-meta">#{{item.fileId}} · film</view>
+          <view class="lr-meta">#{{item.fileId}} · film · 点击显示</view>
         </view>
-        <view class="lr-tag {{item.fileId === currentDisplayFileId ? 'on' : ''}}">{{item.fileId === currentDisplayFileId ? '显示中' : '点击显示'}}</view>
+        <view class="lr-del" catchtap="deleteDeviceFile" data-file-id="{{item.fileId}}">删除</view>
       </view>
     </block>
     <view wx:else class="empty-state">设备上没有照片</view>
@@ -37,7 +43,10 @@
   <view class="panel-c">
     <view class="panel-head">
       <text>批量片单</text>
-      <view class="cnt" bindtap="chooseImages">+ 选图 · {{batch.length}} 张</view>
+      <view class="head-actions">
+        <view class="cnt" bindtap="chooseImages">+ 选图 · {{batch.length}} 张</view>
+        <view class="del" wx:if="{{batch.length > 0}}" bindtap="clearBatch">清空</view>
+      </view>
     </view>
     <block wx:if="{{batch.length > 0}}">
       <view class="list-row" wx:for="{{batch}}" wx:key="name" bindtap="onBatchItemTap" data-index="{{index}}">
@@ -71,6 +80,22 @@
   <!-- 批量传输进度 -->
   <view wx:if="{{showTransfer}}" class="transfer-overlay">
     <view class="transfer-modal">
+      <scroll-view
+        wx:if="{{batchCards.length > 0}}"
+        class="batch-cards {{allDone ? 'celebrate' : ''}}"
+        scroll-x
+        enable-flex
+        scroll-left="{{batchScrollLeft}}"
+        scroll-with-animation="true">
+        <view
+          class="b-card {{index < batchDone ? 'done' : ''}} {{index === batchCurrent ? 'active' : ''}}"
+          wx:for="{{batchCards}}" wx:key="id">
+          <image wx:if="{{item.thumb}}" class="bc-photo" src="{{item.thumb}}" mode="aspectFill"></image>
+          <view wx:else class="bc-photo bc-photo-empty">▤</view>
+          <view class="bc-shine"></view>
+          <view class="bc-badge" wx:if="{{index < batchDone}}">✓</view>
+        </view>
+      </scroll-view>
       <view class="transfer-percent">{{transferProgress}}%</view>
       <view class="transfer-msg">{{transferStatus}}</view>
       <view class="modal-progress-bar">

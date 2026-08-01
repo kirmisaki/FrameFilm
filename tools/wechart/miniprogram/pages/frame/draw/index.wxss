@@ -263,24 +263,60 @@
   margin-bottom: 24rpx;
 }
 
+/* 照片卡弧线抛掷动画（方案 E） */
 .airplane {
-  font-size: 72rpx;
-  color: #FF6B6B;
+  width: 64rpx;
+  height: 84rpx;
   position: absolute;
-  top: 0;
-  animation: flyAcross 2s linear infinite;
+  left: -12%;
+  top: 26rpx;
+  background: #fff;
+  border: 3rpx solid currentColor; /* 跟随页面主题色 */
+  border-radius: 14rpx;
+  box-shadow: 0 8rpx 18rpx rgba(255, 107, 107, 0.22);
+  overflow: hidden;
+  animation: cardFlyX 1.6s linear infinite, cardFlyY 1.6s ease-in-out infinite;
+}
+
+/* 卡片内模拟照片内容 */
+.airplane::before {
+  content: '';
+  position: absolute;
+  left: 6rpx;
+  right: 6rpx;
+  top: 6rpx;
+  bottom: 22rpx;
+  border-radius: 8rpx;
+  background: linear-gradient(160deg, currentColor 0%, rgba(255, 255, 255, 0.9) 130%);
+  opacity: 0.9;
+}
+
+.airplane::after {
+  content: '';
+  position: absolute;
+  left: 6rpx;
+  right: 6rpx;
+  bottom: 6rpx;
+  height: 10rpx;
+  border-radius: 4rpx;
+  background: #F6EFEA;
 }
 
 .airplane-done {
-  animation: flyOut 0.6s ease forwards;
+  animation: cardDone 0.7s ease forwards;
 }
 
+/* 彩虹流光轨道 */
 .flight-trail {
   position: absolute;
-  bottom: 8rpx; left: 0; right: 0;
-  height: 4rpx;
-  background: linear-gradient(90deg, transparent, #ddd 20%, #ddd 80%, transparent);
-  animation: trailPulse 1.5s ease-in-out infinite;
+  bottom: 8rpx;
+  left: 8rpx;
+  right: 8rpx;
+  height: 6rpx;
+  border-radius: 3rpx;
+  background: linear-gradient(90deg, #FF6B6B, #FFD93D, #4ECDC4, #4D96FF, #845EC2, #FF8FC7);
+  background-size: 200% 100%;
+  animation: trailPulse 1.5s ease-in-out infinite, trailFlow 2.5s linear infinite;
 }
 
 .transfer-percent {
@@ -447,14 +483,28 @@
 }
 
 /* 动画 */
-@keyframes flyAcross {
-  0% { left: -10%; }
-  100% { left: 100%; }
+/* 照片卡动画 */
+@keyframes cardFlyX {
+  0% { left: -12%; transform: rotate(-8deg); }
+  50% { transform: rotate(7deg); }
+  100% { left: 108%; transform: rotate(-8deg); }
 }
 
-@keyframes flyOut {
-  0% { left: 50%; opacity: 1; }
-  100% { left: 120%; opacity: 0; }
+@keyframes cardFlyY {
+  0%, 100% { top: 26rpx; }
+  50% { top: 2rpx; }
+}
+
+@keyframes cardDone {
+  0% { left: 108%; top: 26rpx; transform: rotate(-8deg) scale(1); opacity: 1; }
+  40% { left: 50%; top: 34rpx; transform: translateX(-50%) rotate(0) scale(1.25); opacity: 1; }
+  70% { left: 50%; top: 34rpx; transform: translateX(-50%) rotate(0) scale(1.1); opacity: 1; }
+  100% { left: 50%; top: 34rpx; transform: translateX(-50%) rotate(0) scale(1.5); opacity: 0; }
+}
+
+@keyframes trailFlow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
 }
 
 @keyframes fadeIn {

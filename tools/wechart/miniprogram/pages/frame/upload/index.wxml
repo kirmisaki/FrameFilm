@@ -6,7 +6,7 @@
   </view>
 
   <view class="button-row">
-    <button class="btn-primary" bindtap="chooseImage">从相册选择</button>
+    <button class="btn-secondary" bindtap="chooseImage">从相册选择</button>
     <button class="btn-primary btn-send" disabled="{{sendDisabled}}" bindtap="sendToDevice">发送到设备</button>
   </view>
 
@@ -27,7 +27,7 @@
   <view wx:if="{{showTransfer}}" class="transfer-overlay">
     <view class="transfer-modal">
       <view class="flight-area">
-        <view class="airplane {{transferProgress >= 100 ? 'airplane-done' : ''}}">✈</view>
+        <view class="airplane {{transferProgress >= 100 ? 'airplane-done' : ''}}"></view>
         <view class="flight-trail"></view>
       </view>
       <view class="transfer-percent">{{transferProgress}}%</view>

@@ -178,11 +178,14 @@ page {
 /* ---------- 最近使用 ---------- */
 .recent-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 24rpx;
 }
 .recent {
-  flex: 1;
+  flex: none;
+  width: calc((100% - 48rpx) / 3);
   min-width: 0;
+  box-sizing: border-box;
   background: #ffffff;
   border-radius: 26rpx;
   overflow: hidden;

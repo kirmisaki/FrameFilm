@@ -20,6 +20,22 @@
   color: #999;
 }
 
+.btn-secondary {
+  background-color: #fff;
+  color: #FF6B6B;
+  padding: 24rpx 48rpx;
+  border: 3rpx solid #FFC7B8;
+  border-radius: 32rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  width: 100%;
+  margin: 0;
+}
+
+.btn-secondary[disabled] {
+  opacity: 0.5;
+}
+
 .button-row {
   display: flex;
   gap: 16rpx;
@@ -27,15 +43,17 @@
   margin: 40rpx auto 0;
 }
 
-.button-row .btn-primary {
+.button-row .btn-primary,
+.button-row .btn-secondary {
   flex: 1;
 }
 
 .canvas-container {
   background: #fff;
   padding: 60rpx 40rpx 100rpx 40rpx;
-  border-radius: 6rpx;
-  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.12), 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
+  border-radius: 28rpx;
+  border: 2rpx solid #FFE3D8;
+  box-shadow: 0 12rpx 36rpx rgba(255, 107, 107, 0.14), 0 2rpx 8rpx rgba(255, 107, 107, 0.08);
   margin: 16rpx auto;
   width: fit-content;
   max-width: 100%;
@@ -46,7 +64,8 @@
   height: 900rpx;
   overflow: hidden;
   position: relative;
-  border: 2rpx solid #e0e0e0;
+  border: 2rpx solid #FFE3D8;
+  border-radius: 8rpx;
 }
 
 .preview-canvas {
@@ -85,26 +104,60 @@
   margin-bottom: 24rpx;
 }
 
+/* 照片卡弧线抛掷动画（方案 E） */
 .airplane {
-  font-size: 72rpx;
-  color: #FF6B6B;
+  width: 64rpx;
+  height: 84rpx;
   position: absolute;
-  top: 0;
-  animation: flyAcross 2s linear infinite;
+  left: -12%;
+  top: 26rpx;
+  background: #fff;
+  border: 3rpx solid currentColor; /* 跟随页面主题色 */
+  border-radius: 14rpx;
+  box-shadow: 0 8rpx 18rpx rgba(255, 107, 107, 0.22);
+  overflow: hidden;
+  animation: cardFlyX 1.6s linear infinite, cardFlyY 1.6s ease-in-out infinite;
+}
+
+/* 卡片内模拟照片内容 */
+.airplane::before {
+  content: '';
+  position: absolute;
+  left: 6rpx;
+  right: 6rpx;
+  top: 6rpx;
+  bottom: 22rpx;
+  border-radius: 8rpx;
+  background: linear-gradient(160deg, currentColor 0%, rgba(255, 255, 255, 0.9) 130%);
+  opacity: 0.9;
+}
+
+.airplane::after {
+  content: '';
+  position: absolute;
+  left: 6rpx;
+  right: 6rpx;
+  bottom: 6rpx;
+  height: 10rpx;
+  border-radius: 4rpx;
+  background: #F6EFEA;
 }
 
 .airplane-done {
-  animation: flyOut 0.6s ease forwards;
+  animation: cardDone 0.7s ease forwards;
 }
 
+/* 彩虹流光轨道 */
 .flight-trail {
   position: absolute;
   bottom: 8rpx;
-  left: 0;
-  right: 0;
-  height: 4rpx;
-  background: linear-gradient(90deg, transparent, #ddd 20%, #ddd 80%, transparent);
-  animation: trailPulse 1.5s ease-in-out infinite;
+  left: 8rpx;
+  right: 8rpx;
+  height: 6rpx;
+  border-radius: 3rpx;
+  background: linear-gradient(90deg, #FF6B6B, #FFD93D, #4ECDC4, #4D96FF, #845EC2, #FF8FC7);
+  background-size: 200% 100%;
+  animation: trailPulse 1.5s ease-in-out infinite, trailFlow 2.5s linear infinite;
 }
 
 .transfer-percent {
@@ -136,14 +189,28 @@
   border-radius: 8rpx;
 }
 
-@keyframes flyAcross {
-  0% { left: -10%; }
-  100% { left: 100%; }
+/* 照片卡动画 */
+@keyframes cardFlyX {
+  0% { left: -12%; transform: rotate(-8deg); }
+  50% { transform: rotate(7deg); }
+  100% { left: 108%; transform: rotate(-8deg); }
 }
 
-@keyframes flyOut {
-  0% { left: 50%; opacity: 1; }
-  100% { left: 120%; opacity: 0; }
+@keyframes cardFlyY {
+  0%, 100% { top: 26rpx; }
+  50% { top: 2rpx; }
+}
+
+@keyframes cardDone {
+  0% { left: 108%; top: 26rpx; transform: rotate(-8deg) scale(1); opacity: 1; }
+  40% { left: 50%; top: 34rpx; transform: translateX(-50%) rotate(0) scale(1.25); opacity: 1; }
+  70% { left: 50%; top: 34rpx; transform: translateX(-50%) rotate(0) scale(1.1); opacity: 1; }
+  100% { left: 50%; top: 34rpx; transform: translateX(-50%) rotate(0) scale(1.5); opacity: 0; }
+}
+
+@keyframes trailFlow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
 }
 
 @keyframes fadeIn {
@@ -176,8 +243,9 @@
   align-items: center;
   gap: 12rpx;
   padding: 12rpx 20rpx;
-  background-color: #f8f8f8;
-  border-radius: 12rpx;
+  background-color: #fff;
+  border: 2rpx solid #F0E4DE;
+  border-radius: 16rpx;
 }
 
 .filename-label {
@@ -189,15 +257,15 @@
 .filename-value {
   flex: 1;
   font-size: 24rpx;
-  color: #999;
+  color: #666;
 }
 
 .filename-edit {
   font-size: 22rpx;
-  color: #aaa;
+  color: #FF6B6B;
   padding: 4rpx 16rpx;
-  border: 2rpx solid #e0e0e0;
-  border-radius: 8rpx;
+  border: 2rpx solid #FFC7B8;
+  border-radius: 10rpx;
   flex-shrink: 0;
 }
 
@@ -206,8 +274,9 @@
   align-items: center;
   gap: 12rpx;
   padding: 12rpx 20rpx;
-  background-color: #f8f8f8;
-  border-radius: 12rpx;
+  background-color: #fff;
+  border: 2rpx solid #F0E4DE;
+  border-radius: 16rpx;
 }
 
 .filename-input {
@@ -215,8 +284,8 @@
   font-size: 24rpx;
   color: #666;
   background: #fff;
-  border: 2rpx solid #e0e0e0;
-  border-radius: 8rpx;
+  border: 2rpx solid #F0E4DE;
+  border-radius: 10rpx;
   padding: 8rpx 12rpx;
   min-width: 0;
 }

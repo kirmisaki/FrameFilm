@@ -81,7 +81,7 @@ Page({
     if (g.isConnected && currentFile && !devThumb) {
       this._renderDevThumb(currentFile);
     }
-    var recentRaw = recentUtils.getRecent().slice(0, 3);
+    var recentRaw = recentUtils.getRecent().slice(0, 6);
     this._recentRaw = recentRaw;
     var recentList = [];
     for (var j = 0; j < recentRaw.length; j++) {

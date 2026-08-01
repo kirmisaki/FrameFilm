@@ -22,7 +22,14 @@ Page({
     transferFailed: false,
     preview: false,
     previewImage: '',
-    previewName: ''
+    previewName: '',
+    // 批量传输卡位队列（完整展示所有片单，超宽自动右滑）
+    batchCards: [],
+    batchTotal: 0,
+    batchDone: 0,
+    batchCurrent: -1,
+    batchScrollLeft: 0,
+    allDone: false
   },
 
   _bleListener: null,
@@ -289,6 +296,96 @@ Page({
     });
   },
 
+  // 清空片单（需确认）
+  clearBatch: function () {
+    var that = this;
+    if (!that.data.batch.length) return;
+    wx.showModal({
+      title: '清空片单',
+      content: '确定清空片单中的 ' + that.data.batch.length + ' 张照片吗？',
+      confirmColor: '#C62828',
+      success: function (res) {
+        if (!res.confirm) return;
+        recentUtils.clearBatch();
+        that._batchThumbCache = {};
+        that.setData({ batch: [] });
+        wx.showToast({ title: '已清空片单', icon: 'success' });
+      }
+    });
+  },
+
+  // 清空设备上的照片（按 id 逆序逐个发送删除，全部完成后刷新列表）
+  clearDeviceFiles: function () {
+    var that = this;
+    var list = that.data.fileList;
+    if (!list.length) {
+      wx.showToast({ title: '设备上没有照片', icon: 'none' });
+      return;
+    }
+    wx.showModal({
+      title: '清空设备照片',
+      content: '将删除设备上的 ' + list.length + ' 张照片，删除后不可恢复。确定清空吗？',
+      confirmColor: '#C62828',
+      success: function (res) {
+        if (!res.confirm) return;
+        // 按 id 升序排列后逆序逐个删除
+        var ids = list.map(function (f) { return f.fileId; }).sort(function (a, b) { return a - b; });
+        var total = ids.length;
+        wx.showLoading({ title: '清空中 0/' + total, mask: true });
+        var p = Promise.resolve();
+        for (var i = total - 1; i >= 0; i--) {
+          (function (id, idx) {
+            p = p.then(function () {
+              return app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DELETE, id).then(function () {
+                wx.showLoading({ title: '清空中 ' + (total - idx) + '/' + total, mask: true });
+              });
+            });
+          })(ids[i], i);
+        }
+        p.then(function () {
+          wx.hideLoading();
+          that.refreshFileList();
+        }).catch(function (err) {
+          wx.hideLoading();
+          wx.showToast({ title: '删除中断：' + (err.message || err.errMsg || '未知错误'), icon: 'none' });
+          that.refreshFileList();
+        });
+      }
+    });
+  },
+
+  // 删除设备上的单张照片（需确认）
+  deleteDeviceFile: function (e) {
+    var that = this;
+    var fileId = e.currentTarget.dataset.fileId;
+    var list = that.data.fileList;
+    var item = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].fileId === fileId) { item = list[i]; break; }
+    }
+    if (!item) return;
+    if (!app.globalData.isConnected) {
+      wx.showToast({ title: '请先连接设备', icon: 'none' });
+      return;
+    }
+    wx.showModal({
+      title: '删除照片',
+      content: '确定删除《' + item.name + '》吗？删除后不可恢复。',
+      confirmColor: '#C62828',
+      success: function (res) {
+        if (!res.confirm) return;
+        wx.showLoading({ title: '删除中...', mask: true });
+        app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_FILE_DELETE, fileId).then(function () {
+          wx.hideLoading();
+          that.refreshFileList();
+        }).catch(function (err) {
+          wx.hideLoading();
+          wx.showToast({ title: '删除失败：' + (err.message || err.errMsg || '未知错误'), icon: 'none' });
+        });
+      }
+    });
+  },
+
   closePreview: function () {
     this.setData({ preview: false, previewImage: '', previewName: '' });
   },
@@ -314,19 +411,46 @@ Page({
       return;
     }
 
-    that.setData({ showTransfer: true, transferStatus: '准备发送...', transferProgress: 0, transferFailed: false });
-    that._watchDisconnect();
+    // 卡位队列：完整展示所有片单（复用片单的真实照片缩略图）
     var total = batch.length;
+    var cards = [];
+    for (var i = 0; i < total; i++) {
+      cards.push({ id: i, thumb: batch[i].thumb || '' });
+    }
+    that.setData({
+      showTransfer: true,
+      transferStatus: '准备发送...',
+      transferProgress: 0,
+      transferFailed: false,
+      batchCards: cards,
+      batchTotal: total,
+      batchDone: 0,
+      batchCurrent: -1,
+      batchScrollLeft: 0,
+      allDone: false
+    });
+    that._watchDisconnect();
     var sent = 0;
 
     function sendOne() {
       if (sent >= total) {
-        that.setData({ transferStatus: '全部发送完成', transferProgress: 100 });
+        that.setData({
+          transferStatus: '全部发送完成',
+          transferProgress: 100,
+          batchDone: total,
+          batchCurrent: -1,
+          allDone: true
+        });
         setTimeout(function () {
           that._stopDisconnectWatch();
           that.setData({ showTransfer: false });
           // 静默上传，最后显示最后一张
           that._displayLastBatchItem(batch[total - 1].name);
+          // 最后一张上墙后记入首页「最近上墙」
+          try {
+            var lastData = new Uint8Array(wx.base64ToArrayBuffer(batch[total - 1].data));
+            recentUtils.addRecent(batch[total - 1].name, lastData);
+          } catch (e) {}
           that.refreshFileList();
         }, 1500);
         return;
@@ -334,12 +458,17 @@ Page({
       var item = batch[sent];
       var fileData = new Uint8Array(wx.base64ToArrayBuffer(item.data));
       var startPct = Math.floor((sent / total) * 100);
-      that.setData({ transferStatus: '发送 ' + (sent + 1) + '/' + total + ' ' + item.name });
+      that.setData({
+        transferStatus: '发送 ' + (sent + 1) + '/' + total + ' ' + item.name,
+        batchCurrent: sent,
+        batchScrollLeft: that._batchScrollLeft(sent)
+      });
       that._sendFile(fileData, item.name, function (pct) {
         var overall = Math.floor(startPct + (pct / 100) * (100 / total));
         that.setData({ transferProgress: overall });
       }, true).then(function () {
         sent++;
+        that.setData({ batchDone: sent, batchCurrent: -1 });
         sendOne();
       }).catch(function (err) {
         that._stopDisconnectWatch();
@@ -351,6 +480,20 @@ Page({
     }
 
     sendOne();
+  },
+
+  // 计算当前卡位的横向滚动位置：卡片超出可视区时自动右滑，当前卡对齐最左
+  _batchScrollLeft: function (index) {
+    var sys = wx.getSystemInfoSync();
+    var rpx2px = sys.windowWidth / 750;
+    var pitch = 66 * rpx2px;      // 卡宽 56rpx + 间距 10rpx
+    var card = 56 * rpx2px;
+    var viewport = 568 * rpx2px;  // 弹窗 640rpx - 左右 padding 36rpx × 2
+    var target = index * pitch;
+    if (target + card > viewport) {
+      return target;
+    }
+    return this.data.batchScrollLeft;
   },
 
   // 发送期间轮询设备连接状态，断联时自动关闭弹窗

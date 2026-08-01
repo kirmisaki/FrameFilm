@@ -68,7 +68,7 @@
   <view wx:if="{{showTransfer}}" class="transfer-overlay">
     <view class="transfer-modal">
       <view class="flight-area">
-        <view class="airplane {{transferProgress >= 100 ? 'airplane-done' : ''}}">✈</view>
+        <view class="airplane {{transferProgress >= 100 ? 'airplane-done' : ''}}"></view>
         <view class="flight-trail"></view>
       </view>
       <view class="transfer-percent">{{transferProgress}}%</view>

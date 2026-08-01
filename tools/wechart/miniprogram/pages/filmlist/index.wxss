@@ -15,10 +15,10 @@
 }
 
 .transfer-modal {
-  width: 560rpx;
+  width: 640rpx;
   background: #ffffff;
   border-radius: 40rpx;
-  padding: 56rpx 48rpx;
+  padding: 48rpx 36rpx 40rpx;
   text-align: center;
   animation: scaleIn 0.3s ease;
 }
@@ -67,6 +67,133 @@
   box-shadow: 0 8rpx 18rpx rgba(255, 107, 107, 0.28);
 }
 
+/* 批量发送照片条（完整展示所有片单，超宽自动右滑） */
+.batch-cards {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin: 8rpx 0 30rpx;
+  min-height: 80rpx;
+  padding: 0 6rpx;
+}
+
+.b-card {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 14rpx;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #F0E4DE;
+  transition: transform 0.35s ease, opacity 0.35s ease;
+}
+
+.bc-photo {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.bc-photo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #D8B79A;
+  font-size: 20rpx;
+  height: 100%;
+}
+
+/* 发送中：放大 + 青绿光圈呼吸 + 流光扫过 */
+.b-card:not(.done):not(.active) {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+/* 发送中：放大 + 青绿光圈呼吸 + 流光扫过 */
+.b-card.active {
+  transform: scale(1.15);
+  z-index: 2;
+  opacity: 1;
+  filter: none;
+  animation: breathe 1.1s ease-in-out infinite;
+}
+
+.bc-shine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -80%;
+  width: 60%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: skewX(-20deg);
+}
+
+.b-card.active .bc-shine {
+  animation: shine 1.1s linear infinite;
+}
+
+/* 已完成：恢复彩色 + ✓ 徽章淡入 */
+.b-card.done {
+  opacity: 1;
+  filter: none;
+}
+
+.bc-badge {
+  position: absolute;
+  right: -2rpx;
+  bottom: -2rpx;
+  width: 26rpx;
+  height: 26rpx;
+  border-radius: 50%;
+  background: #2EB6AC;
+  border: 2rpx solid #ffffff;
+  color: #ffffff;
+  font-size: 16rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: popIn 0.3s ease;
+}
+
+@keyframes breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 4rpx rgba(78, 205, 196, 0.35), 0 6rpx 14rpx rgba(78, 205, 196, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 10rpx rgba(78, 205, 196, 0.08), 0 10rpx 22rpx rgba(78, 205, 196, 0.5);
+  }
+}
+
+@keyframes shine {
+  0% { left: -80%; }
+  100% { left: 130%; }
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* 全部完成：整排弹性跳动庆祝 */
+.batch-cards.celebrate .b-card {
+  animation: bounceAll 0.6s ease both;
+}
+.batch-cards.celebrate .b-card:nth-child(2) { animation-delay: 0.05s; }
+.batch-cards.celebrate .b-card:nth-child(3) { animation-delay: 0.1s; }
+.batch-cards.celebrate .b-card:nth-child(4) { animation-delay: 0.15s; }
+.batch-cards.celebrate .b-card:nth-child(5) { animation-delay: 0.2s; }
+.batch-cards.celebrate .b-card:nth-child(6) { animation-delay: 0.25s; }
+.batch-cards.celebrate .b-card:nth-child(7) { animation-delay: 0.3s; }
+.batch-cards.celebrate .b-card:nth-child(8) { animation-delay: 0.35s; }
+
+@keyframes bounceAll {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.2) translateY(-6rpx); }
+  60% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
 /* 批量发送青绿 CTA */
 .cta-teal {
   background: linear-gradient(135deg, #4ECDC4, #2EB6AC);
@@ -74,11 +201,26 @@
 }
 
 /* 面板头部可点按钮（选图/刷新） */
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
 .panel-head .cnt {
   color: #2EB6AC;
   padding: 8rpx 20rpx;
   background: rgba(78, 205, 196, 0.12);
   border-radius: 999rpx;
+}
+
+/* 面板头部不显眼的清空按钮 */
+.panel-head .del {
+  color: #C98B8B;
+  padding: 8rpx 18rpx;
+  background: rgba(255, 107, 107, 0.08);
+  border-radius: 999rpx;
+  font-size: 20rpx;
 }
 
 /* 片单缩略图 */
@@ -88,6 +230,47 @@
   border-radius: 24rpx;
   flex-shrink: 0;
   background: #F6EFEA;
+}
+
+/* 设备照片单张删除（不显眼的浅红胶囊） */
+.lr-del {
+  font-size: 20rpx;
+  color: #C98B8B;
+  background: rgba(255, 107, 107, 0.08);
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* 设备照片行：当前显示状态（行高亮 + 缩略图角标） */
+.file-row.cur {
+  background: rgba(78, 205, 196, 0.06);
+  border-radius: 24rpx;
+}
+
+.lr-thumb {
+  position: relative;
+}
+
+.lr-thumb.cur {
+  border: 4rpx solid #4ECDC4;
+  background: #E8FAF8;
+  color: #2EB6AC;
+}
+
+.cur-badge {
+  position: absolute;
+  bottom: 4rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 14rpx;
+  font-weight: 800;
+  color: #ffffff;
+  background: linear-gradient(135deg, #4ECDC4, #2EB6AC);
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
 }
 
 /* 片单大图预览弹窗 */

@@ -98,31 +98,73 @@ function removeDraft(name) {
 }
 
 // ---------- 批量片单（本地多选图片转换后的 film 文件）----------
+// 注意：film 文件 base64 约 156KB/张，若全部塞进 ff_batch 单 key 会触发微信
+// 单个 key 1MB 上限，第 7 张起写入被 try/catch 静默吞掉，片单卡在 6 张。
+// 因此每张的数据单独存一个 key，ff_batch 只存轻量元数据。
 var BATCH_KEY = 'ff_batch';
+var BATCH_DATA_PREFIX = 'ff_batch_data_';
 var MAX_BATCH = 30;
+
+function batchDataKey(name) {
+  return BATCH_DATA_PREFIX + name;
+}
 
 // 片单列表，item 结构：{ name, time, data(film base64) }
 function getBatch() {
-  return getStorage(BATCH_KEY);
+  var list = getStorage(BATCH_KEY);
+  var result = [];
+  for (var i = 0; i < list.length; i++) {
+    var meta = list[i];
+    var data = meta.data || '';
+    try {
+      data = wx.getStorageSync(batchDataKey(meta.name)) || data;
+    } catch (e) {}
+    if (data) result.push({ name: meta.name, time: meta.time, data: data });
+  }
+  return result;
 }
 
-// 追加一个片单项
+// 追加一个片单项（数据入独立 key，元数据入列表）
 function addBatchItem(item) {
-  var list = getBatch();
-  list.push(item);
-  if (list.length > MAX_BATCH) list = list.slice(list.length - MAX_BATCH);
+  var list = getStorage(BATCH_KEY);
+  try {
+    wx.setStorageSync(batchDataKey(item.name), item.data);
+  } catch (e) {
+    return list;
+  }
+  list.push({ name: item.name, time: item.time });
+  if (list.length > MAX_BATCH) {
+    var removed = list.splice(0, list.length - MAX_BATCH);
+    for (var i = 0; i < removed.length; i++) {
+      try { wx.removeStorageSync(batchDataKey(removed[i].name)); } catch (e2) {}
+    }
+  }
   setStorage(BATCH_KEY, list);
-  return list;
+  return getBatch();
 }
 
 // 按文件名删除片单项
 function removeBatchItem(name) {
-  var list = getBatch();
+  var list = getStorage(BATCH_KEY);
   for (var i = list.length - 1; i >= 0; i--) {
-    if (list[i].name === name) list.splice(i, 1);
+    if (list[i].name === name) {
+      list.splice(i, 1);
+      try { wx.removeStorageSync(batchDataKey(name)); } catch (e) {}
+      break;
+    }
   }
   setStorage(BATCH_KEY, list);
-  return list;
+  return getBatch();
+}
+
+// 清空片单
+function clearBatch() {
+  var list = getStorage(BATCH_KEY);
+  for (var i = 0; i < list.length; i++) {
+    try { wx.removeStorageSync(batchDataKey(list[i].name)); } catch (e) {}
+  }
+  setStorage(BATCH_KEY, []);
+  return [];
 }
 
 module.exports = {
@@ -134,5 +176,6 @@ module.exports = {
   removeDraft: removeDraft,
   getBatch: getBatch,
   addBatchItem: addBatchItem,
-  removeBatchItem: removeBatchItem
+  removeBatchItem: removeBatchItem,
+  clearBatch: clearBatch
 };
