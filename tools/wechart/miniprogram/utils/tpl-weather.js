@@ -3,32 +3,6 @@
 // 渲染使用任意设计色，上屏时由模板发送管线做自适应抖动转为 6 色网点质感
 var core = require('./template-core');
 
-// WMO 天气代码 -> 中文描述 / 图标类型
-function codeToCond(code) {
-  if (code === 0) return '晴';
-  if (code === 1 || code === 2) return '多云';
-  if (code === 3) return '阴';
-  if (code >= 45 && code <= 48) return '雾';
-  if (code >= 51 && code <= 67) return '雨';
-  if (code >= 71 && code <= 77) return '雪';
-  if (code >= 80 && code <= 82) return '阵雨';
-  if (code >= 95) return '雷雨';
-  return '多云';
-}
-
-// 0=晴 1=多云 2=阴 3=雨 4=阵雨/雷雨 5=雪
-function codeToIcon(code) {
-  if (code === 0) return 0;
-  if (code === 1 || code === 2) return 1;
-  if (code === 3) return 2;
-  if (code >= 45 && code <= 48) return 2;
-  if (code >= 51 && code <= 67) return 3;
-  if (code >= 80 && code <= 82) return 4;
-  if (code >= 95) return 4;
-  if (code >= 71 && code <= 77) return 5;
-  return 1;
-}
-
 // ============ 内置演示数据（无网/未授权时兜底） ============
 function getDemoData() {
   var now = new Date();
@@ -47,52 +21,6 @@ function getDemoData() {
       { name: weekNames[(now.getDay() + 3) % 7], icon: 1, hi: 30, lo: 20 }
     ]
   };
-}
-
-// 通过 Open-Meteo（免费、无需 key）拉取真实天气
-function fetchWeather(callback) {
-  wx.getLocation({
-    type: 'gcj02',
-    success: function (loc) {
-      var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + loc.latitude +
-        '&longitude=' + loc.longitude +
-        '&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=3&timezone=auto';
-      wx.request({
-        url: url,
-        success: function (res) {
-          if (res.data && res.data.current) {
-            var cur = res.data.current;
-            var daily = res.data.daily;
-            var weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-            var days = [];
-            for (var i = 0; i < daily.time.length; i++) {
-              var d = new Date(daily.time[i] + 'T00:00:00');
-              days.push({
-                name: i === 0 ? '今日' : weekNames[d.getDay()],
-                icon: codeToIcon(daily.weather_code[i]),
-                hi: Math.round(daily.temperature_2m_max[i]),
-                lo: Math.round(daily.temperature_2m_min[i])
-              });
-            }
-            callback({
-              city: '当前位置',
-              cond: codeToCond(cur.weather_code),
-              icon: codeToIcon(cur.weather_code),
-              temp: Math.round(cur.temperature_2m),
-              hi: days.length > 0 ? days[0].hi : 0,
-              lo: days.length > 0 ? days[0].lo : 0,
-              updated: '实时',
-              days: days
-            });
-          } else {
-            callback(getDemoData());
-          }
-        },
-        fail: function () { callback(getDemoData()); }
-      });
-    },
-    fail: function () { callback(getDemoData()); }
-  });
 }
 
 // ============ 配色方案（浅色纸张风） ============
@@ -276,6 +204,5 @@ function render(ctx, W, H, data, scheme) {
 module.exports = {
   SCHEMES: SCHEMES,
   getDemoData: getDemoData,
-  fetchWeather: fetchWeather,
   render: render
 };

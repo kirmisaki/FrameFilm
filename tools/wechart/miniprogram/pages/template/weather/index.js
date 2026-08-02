@@ -60,18 +60,6 @@ Page({
     });
   },
 
-  // 定位获取真实天气（Open-Meteo 免费 API）
-  refreshLocation: function () {
-    var that = this;
-    wx.showLoading({ title: '定位中...' });
-    tplWeather.fetchWeather(function (data) {
-      wx.hideLoading();
-      that._data = data;
-      that.setData({ cityLabel: data.city });
-      that._render();
-    });
-  },
-
   useDemo: function () {
     var that = this;
     that._data = tplWeather.getDemoData();

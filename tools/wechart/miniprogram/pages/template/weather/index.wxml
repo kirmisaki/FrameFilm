@@ -1,6 +1,5 @@
 <view class="container">
   <view class="tpl-toolbar">
-    <view class="tpl-btn" bindtap="refreshLocation">📍 定位更新</view>
     <view class="tpl-btn">{{cityLabel}}</view>
     <view class="tpl-btn" bindtap="useDemo">演示数据</view>
   </view>
