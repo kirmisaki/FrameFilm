@@ -131,7 +131,7 @@ function render(ctx, W, H, data, scheme) {
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'middle';
   // 顶部：品牌（左）+ 今日（右）
-  ctx.fillStyle = s.sub; ctx.font = Math.round(W * 0.028) + 'px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = s.sub; ctx.font = Math.round(W * 0.033) + 'px sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('FRAME FILM · 幸福倒数', margin, Math.round(H * 0.05));
   ctx.fillStyle = s.sub; ctx.textAlign = 'right';
   ctx.fillText(data.todayStr, W - margin, Math.round(H * 0.05));

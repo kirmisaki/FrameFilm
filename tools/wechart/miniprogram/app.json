@@ -13,6 +13,7 @@
     "pages/template/sign/index",
     "pages/template/weather/index",
     "pages/template/countdown/index",
+    "pages/template/memo/index",
     "pages/settings/index",
     "pages/bluetooth/index"
   ],

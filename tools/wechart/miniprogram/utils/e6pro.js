@@ -352,6 +352,7 @@ function makeRecorder(W, H) {
     fillStyle: '#000000', strokeStyle: '#000000',
     font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic',
     lineWidth: 1, lineCap: 'butt', lineJoin: 'miter',
+    globalAlpha: 1,
     tfs: []
   };
   var saveStack = [];
@@ -361,6 +362,7 @@ function makeRecorder(W, H) {
     if (!isGrad(state.strokeStyle)) ctx.strokeStyle = state.strokeStyle;
     ctx.font = state.font; ctx.textAlign = state.textAlign; ctx.textBaseline = state.textBaseline;
     ctx.lineWidth = state.lineWidth; ctx.lineCap = state.lineCap; ctx.lineJoin = state.lineJoin;
+    ctx.globalAlpha = state.globalAlpha;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     for (var i = 0; i < state.tfs.length; i++) {
       var t = state.tfs[i];
@@ -427,7 +429,7 @@ function makeRecorder(W, H) {
 
   var rec = {};
 
-  ['fillStyle', 'strokeStyle', 'font', 'textAlign', 'textBaseline', 'lineWidth', 'lineCap', 'lineJoin'].forEach(function (p) {
+  ['fillStyle', 'strokeStyle', 'font', 'textAlign', 'textBaseline', 'lineWidth', 'lineCap', 'lineJoin', 'globalAlpha'].forEach(function (p) {
     Object.defineProperty(rec, p, {
       get: function () { return state[p]; },
       set: function (v) {

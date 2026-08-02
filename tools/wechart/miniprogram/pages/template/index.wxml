@@ -1,7 +1,7 @@
 <view class="container">
   <view class="header">
     <text class="title">模板中心</text>
-    <text class="subtitle">日历、一签、天气、纪念日，画上墙每天换一种心情</text>
+    <text class="subtitle">日历、一签、天气、纪念日、备忘录，画上墙每天换一种心情</text>
   </view>
 
   <view class="grid">

@@ -1,0 +1,120 @@
+@import "../../../styles/template-preview.wxss";
+
+page {
+  background: #FFF6EE;
+}
+
+/* 设置卡：输入 + 添加 */
+.set-card {
+  background: #fff;
+  border: 2rpx solid #E8DCF2;
+  border-radius: 24rpx;
+  padding: 8rpx 16rpx 8rpx 24rpx;
+  margin-bottom: 16rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.set-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #3A3A44;
+  padding: 20rpx 0;
+}
+
+.add-btn {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #FF6B6B, #FF9F6B);
+  border-radius: 20rpx;
+  padding: 12rpx 24rpx;
+}
+
+/* 条目列表 */
+.memo-list {
+  background: #fff;
+  border: 2rpx solid #E8DCF2;
+  border-radius: 24rpx;
+  padding: 8rpx 24rpx;
+  margin-bottom: 16rpx;
+}
+
+.memo-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx 0;
+  border-bottom: 2rpx solid #F2EAF8;
+}
+
+.memo-item:last-of-type {
+  border-bottom: none;
+}
+
+.memo-check {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  border: 3rpx solid #9B93A4;
+  border-radius: 10rpx;
+}
+
+.memo-check.done {
+  background: linear-gradient(135deg, #FF6B6B, #FF9F6B);
+  border-color: transparent;
+  position: relative;
+}
+
+.memo-check.done::after {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -2rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #fff;
+  font-weight: 700;
+}
+
+.memo-text {
+  flex: 1;
+  font-size: 28rpx;
+  color: #3A3A44;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memo-text.done {
+  color: #9B93A4;
+  text-decoration: line-through;
+}
+
+.memo-del {
+  flex-shrink: 0;
+  font-size: 28rpx;
+  color: #9B93A4;
+  padding: 8rpx 4rpx;
+}
+
+.memo-clear {
+  text-align: center;
+  font-size: 26rpx;
+  color: #9B93A4;
+  padding: 18rpx 0 14rpx;
+}
+
+.memo-empty {
+  text-align: center;
+  font-size: 26rpx;
+  color: #9B93A4;
+  background: #fff;
+  border: 2rpx dashed #E8DCF2;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  margin-bottom: 16rpx;
+}

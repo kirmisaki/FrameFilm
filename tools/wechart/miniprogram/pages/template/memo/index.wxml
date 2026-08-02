@@ -1,0 +1,48 @@
+<view class="container">
+  <!-- 设置卡：输入 + 添加 -->
+  <view class="set-card">
+    <input class="set-input" placeholder="输入备忘内容…" value="{{inputText}}"
+           bindinput="onInput" bindconfirm="addItem" confirm-type="done" maxlength="14" />
+    <view class="add-btn" bindtap="addItem">＋ 添加</view>
+  </view>
+
+  <!-- 条目列表 -->
+  <view class="memo-list" wx:if="{{items.length > 0}}">
+    <view class="memo-item" wx:for="{{items}}" wx:key="index">
+      <view class="memo-check {{item.done ? 'done' : ''}}" data-idx="{{index}}" bindtap="toggleItem"></view>
+      <text class="memo-text {{item.done ? 'done' : ''}}">{{item.text}}</text>
+      <view class="memo-del" data-idx="{{index}}" catchtap="removeItem">✕</view>
+    </view>
+    <view class="memo-clear" bindtap="clearAll">🗑 清空</view>
+  </view>
+  <view class="memo-empty" wx:else>暂无备忘，输入内容点「添加」</view>
+
+  <view class="scheme-row">
+    <view class="scheme-pill {{schemeIndex === index ? 'active' : ''}}"
+          wx:for="{{schemes}}" wx:key="name" data-idx="{{index}}" bindtap="selectScheme">{{item.name}}</view>
+  </view>
+
+  <view class="canvas-container">
+    <view class="canvas-wrap">
+      <canvas type="2d" id="canvas-tpl" class="preview-canvas"></canvas>
+    </view>
+  </view>
+
+  <button class="btn-primary" bindtap="sendToDevice">发送到设备</button>
+
+  <view wx:if="{{showTransfer}}" class="transfer-overlay">
+    <view class="transfer-modal">
+      <view class="flight-area">
+        <view class="airplane {{transferProgress >= 100 ? 'airplane-done' : ''}}"></view>
+        <view class="flight-trail"></view>
+      </view>
+      <view class="transfer-percent">{{transferProgress}}%</view>
+      <view class="transfer-msg">{{transferStatus}}</view>
+      <view class="modal-progress-bar">
+        <view class="modal-progress-fill" style="width: {{transferProgress}}%"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tab-bar-spacer"></view>
+</view>

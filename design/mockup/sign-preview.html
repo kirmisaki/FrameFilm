@@ -145,7 +145,7 @@ function render(ctx, W, H, data, scheme) {
   drawCorner(ctx, margin, Math.round(H * 0.955), 1, -1, cl);
   drawCorner(ctx, W - margin, Math.round(H * 0.955), -1, -1, cl);
   // 顶部：品牌（左）+ 日期（右）
-  ctx.fillStyle = s.sub; ctx.font = Math.round(W * 0.028) + 'px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = s.sub; ctx.font = Math.round(W * 0.033) + 'px sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('FRAME FILM · 今日一签', margin, Math.round(H * 0.055));
   var now = new Date();
   var dateStr = now.getFullYear() + '.' + pad(now.getMonth() + 1) + '.' + pad(now.getDate());

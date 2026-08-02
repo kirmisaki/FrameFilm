@@ -45,6 +45,14 @@ var TEMPLATE_LIST = [
     desc: '大日子倒数 · 爱心天数',
     gradient: 'linear-gradient(135deg, #FF8FC7, #FF6B6B)',
     accent: '#FF6B6B'
+  },
+  {
+    id: 'memo',
+    name: '备忘录',
+    emoji: '📝',
+    desc: '今日备忘 · 勾选完成',
+    gradient: 'linear-gradient(135deg, #4ECDC4, #2EB6AC)',
+    accent: '#2EB6AC'
   }
 ];
 
