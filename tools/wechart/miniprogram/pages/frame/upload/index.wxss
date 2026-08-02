@@ -46,6 +46,32 @@
 .button-row .btn-primary,
 .button-row .btn-secondary {
   flex: 1;
+  padding: 20rpx 8rpx;
+  font-size: 26rpx;
+  white-space: nowrap;
+}
+
+/* 调节按钮开启态 */
+.btn-adjust-on {
+  background: linear-gradient(135deg, #FF6B6B, #FF9F6B);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* 调节模式提示（浮于画布底部） */
+.adjust-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12rpx;
+  width: 88%;
+  margin: 0 auto;
+  text-align: center;
+  font-size: 22rpx;
+  color: #fff;
+  background: rgba(255, 107, 107, 0.85);
+  border-radius: 999rpx;
+  padding: 8rpx 0;
 }
 
 .canvas-container {

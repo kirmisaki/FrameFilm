@@ -1,7 +1,7 @@
 // 最近使用 & 本地草稿记录工具（本地存储）
 var RECENT_KEY = 'ff_recent_list';
 var DRAFT_KEY = 'ff_drafts';
-var MAX_RECENT = 6;
+var MAX_RECENT = 9;
 var MAX_DRAFT = 4;
 
 function nowText() {

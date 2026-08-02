@@ -1,12 +1,16 @@
 <view class="container">
   <view class="canvas-container">
     <view class="canvas-wrap">
-      <canvas type="2d" id="canvas-upload" class="preview-canvas"></canvas>
+      <canvas type="2d" id="canvas-upload" class="preview-canvas"
+              bindtouchstart="onTouchStart" catchtouchmove="onTouchMove"
+              bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd"></canvas>
+      <view wx:if="{{showAdjustHint}}" class="adjust-hint">双指缩放 · 单指拖动 · 松手 1s 后刷新</view>
     </view>
   </view>
 
   <view class="button-row">
     <button class="btn-secondary" bindtap="chooseImage">从相册选择</button>
+    <button class="btn-secondary {{adjustOn ? 'btn-adjust-on' : ''}}" bindtap="toggleAdjust">{{adjustOn ? '✓ 调节中' : '调节'}}</button>
     <button class="btn-primary btn-send" disabled="{{sendDisabled}}" bindtap="sendToDevice">发送到设备</button>
   </view>
 
