@@ -54,8 +54,25 @@
 #define SYS_OS_SIZE_MONITOR_TASK                 (4096)
 #define SYS_OS_NAME_MONITOR_TASK                 "monitor_task"
 
-#define MONITOR_TIMER_BASE_INTERVAL_MS           (100)
+// LED管理参数
+#define MONITOR_LED_UPDATE_INTERVAL_MS           (500)    // LED状态更新间隔 500ms
+#define MONITOR_LED_BLINK_ON_TICKS               (1)      // LED闪烁点亮tick数 (1 * 500ms = 500ms亮)
+#define MONITOR_LED_BLINK_OFF_TICKS              (3)      // LED闪烁熄灭tick数 (3 * 500ms = 1500ms灭)
+// 电池管理参数     
+#define MONITOR_BAT_CHECK_INTERVAL_MS            (30000)  // 电池检测间隔 30s
+#define MONITOR_BAT_LOW_THRESHOLD                (10)     // 低电量阈值 10%
+#define MONITOR_BAT_CRITICAL_THRESHOLD           (5)      // 极低电量阈值 5%
+// 自动休眠管理参数     
+#define MONITOR_SLEEP_CHECK_INTERVAL_MS          (200)    // 休眠检测间隔 200ms
+#define MONITOR_AUTO_SLEEP_TIMEOUT_SEC           (60)     // 自动休眠超时时间(手动唤醒) 1min (60s)
+#if FRAMEFILM_STD == 1
+#define MONITOR_AUTO_SLEEP_TIMEOUT_SEC_LOW       (20)     // 自动休眠超时时间(自动唤醒) 20s (20s)
+#endif
+#if FRAMEFILM_PRO == 1
+#define MONITOR_AUTO_SLEEP_TIMEOUT_SEC_LOW       (30)     // 自动休眠超时时间(自动唤醒) 30s (30s)
+#endif
 
+#define MONITOR_TIMER_BASE_INTERVAL_MS           (100)
 #define MONITOR_LED_TICK_COUNT                   (MONITOR_LED_UPDATE_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
 #define MONITOR_BAT_TICK_COUNT                   (MONITOR_BAT_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
 #define MONITOR_SLEEP_TICK_COUNT                 (MONITOR_SLEEP_CHECK_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
