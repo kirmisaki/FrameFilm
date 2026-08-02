@@ -7,6 +7,7 @@
 #include "esp_system.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "sys_log.h"
 
 /*********************************************************************
  * CPPMIX
@@ -20,6 +21,33 @@ extern "C" {
  */
 #define EPD_TAG                        "HAL_EPD"
 
+#if FRAMEFILM_STD == 1
+#define EPD_SELECT_E6_3_68_792_528  0
+#define EPD_SELECT_E6_3_70_720_480  0
+#define EPD_SELECT_E6_3_60_600_400  1
+#define EPD_SELECT_E6_1_54_240_240  0
+#endif
+#if FRAMEFILM_PRO == 1
+#define EPD_SELECT_E6_3_68_792_528  1
+#define EPD_SELECT_E6_3_70_720_480  0
+#define EPD_SELECT_E6_3_60_600_400  0
+#define EPD_SELECT_E6_1_54_240_240  0
+#endif
+
+#if EPD_SELECT_E6_3_68_792_528 == 1
+#define EPD_WIDTH                      792
+#define EPD_HEIGHT                     528
+#elif EPD_SELECT_E6_3_70_720_480 == 1
+#define EPD_WIDTH                      720
+#define EPD_HEIGHT                     480
+#elif EPD_SELECT_E6_3_60_600_400 == 1
+#define EPD_WIDTH                      600
+#define EPD_HEIGHT                     400
+#elif EPD_SELECT_E6_1_54_240_240 == 1
+#define EPD_WIDTH                      240
+#define EPD_HEIGHT                     240
+#endif
+
 //IO settings
 //SCK--GPIO12(SCLK)
 //SDIN---GPIO11(MOSI)
@@ -30,33 +58,15 @@ extern "C" {
 #define EPD_DC_PIN   GPIO_NUM_13  //DC
 #define EPD_CS_PIN   GPIO_NUM_14  //CS
 
-#define isEPD_W21_BUSY gpio_get_level(EPD_BUSY_PIN)
-#define EPD_W21_RST_0 gpio_set_level(EPD_RST_PIN, 0)
-#define EPD_W21_RST_1 gpio_set_level(EPD_RST_PIN, 1)
-#define EPD_W21_DC_0  gpio_set_level(EPD_DC_PIN, 0)
-#define EPD_W21_DC_1  gpio_set_level(EPD_DC_PIN, 1)
-#define EPD_W21_CS_0 gpio_set_level(EPD_CS_PIN, 0)
-#define EPD_W21_CS_1 gpio_set_level(EPD_CS_PIN, 1)
+#define EPD_SPI_HOST SPI2_HOST
 
-#define PSR         0x00
-#define PWR         0x01
-#define POF         0x02
-#define POFS        0x03
-#define PON         0x04
-#define BTST1       0x05
-#define BTST2       0x06
-#define DSLP        0x07
-#define BTST3       0x08
-#define DTM         0x10
-#define DRF         0x12
-#define PLL         0x30
-#define CDI         0x50
-#define TCON        0x60
-#define TRES        0x61
-#define REV         0x70
-#define VDCS        0x82
-#define T_VDCS      0x84
-#define PWS         0xE3
+#define isEPD_W21_BUSY gpio_get_level(EPD_BUSY_PIN)
+#define EPD_W21_RST_0  gpio_set_level(EPD_RST_PIN, 0)
+#define EPD_W21_RST_1  gpio_set_level(EPD_RST_PIN, 1)
+#define EPD_W21_DC_0   gpio_set_level(EPD_DC_PIN,  0)
+#define EPD_W21_DC_1   gpio_set_level(EPD_DC_PIN,  1)
+#define EPD_W21_CS_0   gpio_set_level(EPD_CS_PIN,  0)
+#define EPD_W21_CS_1   gpio_set_level(EPD_CS_PIN,  1)
 
 #define EPD_COLOR_BLACK   0x00  
 #define EPD_COLOR_WHITE   0x11  

@@ -28,19 +28,17 @@
 /*********************************************************************
  * INCLUDES
  */
+#include "hal_epd.h"
+#if EPD_SELECT_E6_3_60_600_400 == 1
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
 
-#include "hal_epd.h"
 #include "sys_log.h"
 
 /*********************************************************************
  * MACROS
  */
-#define EPD_WIDTH                         (600)
-#define EPD_HEIGHT                        (400)
-
 #define FILM_HEADER_SIZE                  (32)
 #define FILM_COLOR_TABLE_SIZE             (16)
 #define FILM_OFFSET_FILESIZE              (0x00)
@@ -49,6 +47,26 @@
 #define FILM_OFFSET_COLORCOUNT            (0x08)
 #define FILM_OFFSET_RESERVED              (0x09)
 #define FILM_OFFSET_COLORTABLE            (0x10)
+
+#define PSR         0x00
+#define PWR         0x01
+#define POF         0x02
+#define POFS        0x03
+#define PON         0x04
+#define BTST1       0x05
+#define BTST2       0x06
+#define DSLP        0x07
+#define BTST3       0x08
+#define DTM         0x10
+#define DRF         0x12
+#define PLL         0x30
+#define CDI         0x50
+#define TCON        0x60
+#define TRES        0x61
+#define REV         0x70
+#define VDCS        0x82
+#define T_VDCS      0x84
+#define PWS         0xE3
 
 /*********************************************************************
 * TYPEDEFS
@@ -644,3 +662,4 @@ void hal_epd_deinit(void)
 
     sys_logi(EPD_TAG, "EPD power off, SPI and GPIO released");
 }
+#endif
