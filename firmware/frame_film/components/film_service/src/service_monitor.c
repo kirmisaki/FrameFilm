@@ -37,13 +37,7 @@
 #include "freertos/task.h"
 
 #include "sys_log.h"
-
 #include "hal_api.h"
-#include "hal_led.h"
-#include "hal_bat.h"
-#include "hal_encoder.h"
-#include "hal_epd.h"
-#include "hal_pwr.h"
 #include "service_ble_gatts.h"
 #include "service_monitor.h"
 #include "service_param.h"
@@ -152,11 +146,11 @@ void service_monitor_init(void)
     }
     xTimerStart(m_monitor_timer, 0);
 
-    // 注册编码器回调，用于重置休眠计数器
-    hal_encoder_register_cb(ENCODER_PRESS_SHORT, monitor_encoder_activity_cb);
-    hal_encoder_register_cb(ENCODER_PRESS_LONG, monitor_encoder_activity_cb);
-    hal_encoder_register_cb(ENCODER_PRESS_UP, monitor_encoder_activity_cb);
-    hal_encoder_register_cb(ENCODER_PRESS_DOWN, monitor_encoder_activity_cb);
+    // 注册输入回调，用于重置休眠计数器
+    hal_input_register_cb(INPUT_PRESS_SHORT, monitor_encoder_activity_cb);
+    hal_input_register_cb(INPUT_PRESS_LONG, monitor_encoder_activity_cb);
+    hal_input_register_cb(INPUT_PRESS_UP, monitor_encoder_activity_cb);
+    hal_input_register_cb(INPUT_PRESS_DOWN, monitor_encoder_activity_cb);
 }
 
 static void monitor_task_handle(void *pvParameters)
@@ -313,7 +307,7 @@ static void monitor_enter_low_power(void)
     hal_bat_deinit();
     hal_sd_deinit();
     hal_epd_deinit();
-    hal_encoder_deinit();
+    hal_input_deinit();
 
     // 关闭外设供电并进入休眠
     hal_pwr_enter_sleep();

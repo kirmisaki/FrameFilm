@@ -38,8 +38,7 @@
 #include "freertos/timers.h"
 
 #include "sys_log.h"
-#include "hal_epd.h"
-#include "hal_encoder.h"
+#include "hal_api.h"
 #include "service_file.h"
 #include "service_param.h"
 #include "service_film.h"
@@ -121,11 +120,11 @@ static void film_task_handle(void *pvParameters)
     film_msg_send(&msg, 0);
 
     // 注册编码器回调
-    // hal_encoder_register_cb(ENCODER_PRESS_SHORT, service_film_next);
-    hal_encoder_register_cb(ENCODER_PRESS_UP, service_film_prev);
-    hal_encoder_register_cb(ENCODER_PRESS_DOWN, service_film_next);
-    hal_encoder_register_cb(ENCODER_PRESS_LONG, service_film_clear);
-    hal_encoder_register_cb(ENCODER_PRESS_SHORT, film_download_event);
+    // hal_input_register_cb(INPUT_PRESS_SHORT, service_film_next);
+    hal_input_register_cb(INPUT_PRESS_UP, service_film_prev);
+    hal_input_register_cb(INPUT_PRESS_DOWN, service_film_next);
+    hal_input_register_cb(INPUT_PRESS_LONG, service_film_clear);
+    hal_input_register_cb(INPUT_PRESS_SHORT, film_download_event);
 
     for(;;)
     {

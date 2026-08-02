@@ -33,7 +33,7 @@
 #include "hal_led.h"
 #include "hal_pwr.h"
 #include "hal_epd.h"
-#include "hal_encoder.h"
+#include "hal_input.h"
 #include "hal_init.h"
 
 #include "sys_log.h"
@@ -83,8 +83,8 @@ void film_hal_init(void)
     hal_led_init();
     // 初始化SD卡
     hal_sd_init();
-    // 初始化旋转编码器
-    hal_encoder_init();
+    // 初始化输入设备
+    hal_input_init();
     // 初始化EPD
     hal_epd_init();
 }

@@ -28,13 +28,13 @@
 /*********************************************************************
  * INCLUDES
  */
+#include "sys_log.h"
+#if FRAMEFILM_STD == 1
 #include <string.h>
 #include "encoder.h"
 #include "driver/gpio.h"
 
-#include "sys_log.h"
 #include "hal_api.h"
-#include "hal_encoder.h"
 
 /*********************************************************************
  * MACROS
@@ -59,8 +59,8 @@ typedef struct
     rotary_encoder_handle_t handle;
     bool initialized;
     bool button_pressed;
-    encoder_callback_t cbs[ENCODER_PRESS_MAX][ENCODER_MAX_CALLBACKS];
-    int cb_counts[ENCODER_PRESS_MAX];
+    input_callback_t cbs[INPUT_PRESS_MAX][ENCODER_MAX_CALLBACKS];
+    int cb_counts[INPUT_PRESS_MAX];
 } encoder_t;
 
 /*********************************************************************
@@ -82,13 +82,13 @@ static encoder_t m_encoder;
  * LOCAL FUNCTIONS
  */
 static void encoder_event_cb(const rotary_encoder_event_t *event, void *ctx);
-static encoder_press_type_t map_event_to_press(rotary_encoder_event_type_t type);
+static input_press_type_t map_event_to_press(rotary_encoder_event_type_t type);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
 
-void hal_encoder_init(void)
+void hal_input_init(void)
 {
     if (m_encoder.initialized)
     {
@@ -120,7 +120,7 @@ void hal_encoder_init(void)
     sys_logi(ENCODER_TAG, "encoder initialized (esp-idf-lib)");
 }
 
-void hal_encoder_deinit(void)
+void hal_input_deinit(void)
 {
     if (!m_encoder.initialized)
     {
@@ -149,47 +149,47 @@ static void encoder_event_cb(const rotary_encoder_event_t *event, void *ctx)
 {
     encoder_t *enc = (encoder_t *)ctx;
 
-    encoder_press_type_t type = map_event_to_press(event->type);
-    if (type == ENCODER_PRESS_NONE)
+    input_press_type_t type = map_event_to_press(event->type);
+    if (type == INPUT_PRESS_NONE)
     {
         return;
     }
 
     // 按钮按下时，忽略编码器旋转事件（防止误触发方向变化）
-    if (type == ENCODER_PRESS_PRESSED)
+    if (type == INPUT_PRESS_PRESSED)
     {
         enc->button_pressed = true;
     }
-    else if (type == ENCODER_PRESS_SHORT || type == ENCODER_PRESS_LONG)
+    else if (type == INPUT_PRESS_SHORT || type == INPUT_PRESS_LONG)
     {
         // 按钮释放后的点击事件
         enc->button_pressed = false;
     }
 
-    if ((type == ENCODER_PRESS_UP || type == ENCODER_PRESS_DOWN) && enc->button_pressed)
+    if ((type == INPUT_PRESS_UP || type == INPUT_PRESS_DOWN) && enc->button_pressed)
     {
         return;  // 按住按钮时忽略旋转
     }
 
-    if (type == ENCODER_PRESS_UP || type == ENCODER_PRESS_DOWN)
+    if (type == INPUT_PRESS_UP || type == INPUT_PRESS_DOWN)
     {
         if (event->diff > 0)
         {
-            type = ENCODER_PRESS_UP;
+            type = INPUT_PRESS_UP;
             sys_logi(ENCODER_TAG, "ENCODER DIFF+");
         }
         else
         {
-            type = ENCODER_PRESS_DOWN;
+            type = INPUT_PRESS_DOWN;
             sys_logi(ENCODER_TAG, "ENCODER DIFF-");
         }
     }
 
-    if (type == ENCODER_PRESS_SHORT)
+    if (type == INPUT_PRESS_SHORT)
     {
         sys_logi(ENCODER_TAG, "ENCODER SHORT PUSH");
     }
-    else if (type == ENCODER_PRESS_LONG)
+    else if (type == INPUT_PRESS_LONG)
     {
         sys_logi(ENCODER_TAG, "ENCODER LONG PUSH");
     }
@@ -203,36 +203,36 @@ static void encoder_event_cb(const rotary_encoder_event_t *event, void *ctx)
     }
 }
 
-static encoder_press_type_t map_event_to_press(rotary_encoder_event_type_t type)
+static input_press_type_t map_event_to_press(rotary_encoder_event_type_t type)
 {
     switch (type)
     {
     case RE_ET_CHANGED:
-        return ENCODER_PRESS_DOWN;  // 方向在回调中判断
+        return INPUT_PRESS_DOWN;  // 方向在回调中判断
     case RE_ET_BTN_CLICKED:
-        return ENCODER_PRESS_SHORT;
+        return INPUT_PRESS_SHORT;
     case RE_ET_BTN_LONG_PRESSED:
-        return ENCODER_PRESS_LONG;
+        return INPUT_PRESS_LONG;
     case RE_ET_BTN_PRESSED:
-        return ENCODER_PRESS_PRESSED;
+        return INPUT_PRESS_PRESSED;
     default:
-        return ENCODER_PRESS_NONE;
+        return INPUT_PRESS_NONE;
     }
 }
 
-int hal_encoder_register_cb(encoder_press_type_t type, encoder_callback_t cb)
+int hal_input_register_cb(input_press_type_t type, input_callback_t cb)
 {
     if (!cb) return -1;
-    if (type < 0 || type >= ENCODER_PRESS_MAX) return -4;
+    if (type < 0 || type >= INPUT_PRESS_MAX) return -4;
     if (m_encoder.cb_counts[type] >= ENCODER_MAX_CALLBACKS) return -2;
     m_encoder.cbs[type][m_encoder.cb_counts[type]++] = cb;
     return 0;
 }
 
-int hal_encoder_unregister_cb(encoder_press_type_t type, encoder_callback_t cb)
+int hal_input_unregister_cb(input_press_type_t type, input_callback_t cb)
 {
     if (!cb) return -1;
-    if (type < 0 || type >= ENCODER_PRESS_MAX) return -4;
+    if (type < 0 || type >= INPUT_PRESS_MAX) return -4;
     for (int i = 0; i < m_encoder.cb_counts[type]; i++)
     {
         if (m_encoder.cbs[type][i] == cb)
@@ -248,3 +248,4 @@ int hal_encoder_unregister_cb(encoder_press_type_t type, encoder_callback_t cb)
     }
     return -3;
 }
+#endif

@@ -30,6 +30,19 @@ extern "C" {
 // spiffs
 #define BACE_PATH                      "/spiffs"
 
+// 机型二选一
+// #define FRAMEFILM_STD        1          // 基础版（默认）
+#define FRAMEFILM_PRO        1          // Pro 版
+#ifndef FRAMEFILM_STD
+#define FRAMEFILM_STD        0
+#endif
+#ifndef FRAMEFILM_PRO
+#define FRAMEFILM_PRO        0
+#endif
+#if (FRAMEFILM_STD + FRAMEFILM_PRO) != 1
+#error "机型配置错误：只能选择一个机型"
+#endif
+
 
 /*********************************************************************
 * TYPEDEFS
