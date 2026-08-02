@@ -31,8 +31,8 @@ extern "C" {
 #define BACE_PATH                      "/spiffs"
 
 // 机型二选一
-// #define FRAMEFILM_STD        1          // 基础版（默认）
-#define FRAMEFILM_PRO        1          // Pro 版
+#define FRAMEFILM_STD        1          // 基础版（默认）
+// #define FRAMEFILM_PRO        1          // Pro 版
 #ifndef FRAMEFILM_STD
 #define FRAMEFILM_STD        0
 #endif
