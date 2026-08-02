@@ -14,8 +14,28 @@ extern "C" {
  * MACROS
  */
 // SYS CONFIG
+// 机型二选一
+#define FRAMEFILM_STD        1          // 基础版（默认）
+// #define FRAMEFILM_PRO        1          // Pro 版
+#ifndef FRAMEFILM_STD
+#define FRAMEFILM_STD        0
+#endif
+#ifndef FRAMEFILM_PRO
+#define FRAMEFILM_PRO        0
+#endif
+#if (FRAMEFILM_STD + FRAMEFILM_PRO) != 1
+#error "机型配置错误：只能选择一个机型"
+#endif
+
+#if FRAMEFILM_STD == 1
 #define SYS_DEVICE_NAME                "FRAMEFILM"
 #define SYS_MANUFACTURER_NAME          "FRAMEFILM"
+#endif
+#if FRAMEFILM_PRO == 1
+#define SYS_DEVICE_NAME                "FRAMEFILMPRO"
+#define SYS_MANUFACTURER_NAME          "FRAMEFILMPRO"
+#endif
+
 #define SYS_MODEL_NUMBER               "M1.0"
 #define SYS_SERIAL_NUMBER              "FILM000001"             //SN号
 #define SYS_HAREWARE_VERSION           "H1.0"                   //硬件版本号
@@ -29,19 +49,6 @@ extern "C" {
 
 // spiffs
 #define BACE_PATH                      "/spiffs"
-
-// 机型二选一
-#define FRAMEFILM_STD        1          // 基础版（默认）
-// #define FRAMEFILM_PRO        1          // Pro 版
-#ifndef FRAMEFILM_STD
-#define FRAMEFILM_STD        0
-#endif
-#ifndef FRAMEFILM_PRO
-#define FRAMEFILM_PRO        0
-#endif
-#if (FRAMEFILM_STD + FRAMEFILM_PRO) != 1
-#error "机型配置错误：只能选择一个机型"
-#endif
 
 
 /*********************************************************************
