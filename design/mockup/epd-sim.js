@@ -427,5 +427,5 @@
     ctx.imageSmoothingEnabled = wasSmooth;
   }
 
-  window.EPDSim = { simulateFromCanvas: simulateFromCanvas, applyTo: applyTo };
+  window.EPDSim = { simulateFromCanvas: simulateFromCanvas, applyTo: applyTo, adaptiveDither: adaptiveDither };
 })();

@@ -107,13 +107,13 @@ function getLunarFestival(lm, ld) {
 }
 
 // ============ 配色方案（浅色纸张风；上屏经抖动呈现） ============
-// 文字/描边只用深色系（映射为 EPD 黑色，保证清晰），颜色由 accent/week 饱和色承担
+// 文字/描边只用深色系（映射为 EPD 黑色，保证清晰），颜色由 accent 饱和色承担
 var SCHEMES = [
-  { name: '米杏', bg1: '#fdf8f1', bg2: '#f4e8d8', text: '#3a3631', sub: '#4a443c', sub2: '#5a5448', accent: '#e8553d', week: '#d98a12', card: '#ffffff' },
-  { name: '雾蓝', bg1: '#f3f9ff', bg2: '#e0edf9', text: '#2c3a4d', sub: '#33455c', sub2: '#47586e', accent: '#2f6fd8', week: '#e8553d', card: '#ffffff' },
-  { name: '薄荷', bg1: '#f2faf6', bg2: '#def0e6', text: '#2c4438', sub: '#33503f', sub2: '#46604f', accent: '#1fa86c', week: '#d98a12', card: '#ffffff' },
-  { name: '奶油', bg1: '#fdf6ef', bg2: '#f6e3dc', text: '#453a38', sub: '#4a3c3a', sub2: '#5e4a46', accent: '#e8557a', week: '#2f6fd8', card: '#ffffff' },
-  { name: '杏黄', bg1: '#fdf9ef', bg2: '#f5e9cf', text: '#453b28', sub: '#4a402c', sub2: '#5c503a', accent: '#d94a2a', week: '#d98a12', card: '#ffffff' }
+  { name: '米杏', text: '#3a3631', sub: '#4a443c', sub2: '#5a5448', accent: '#e8553d', card: '#ffffff' },
+  { name: '雾蓝', text: '#2c3a4d', sub: '#33455c', sub2: '#47586e', accent: '#2f6fd8', card: '#ffffff' },
+  { name: '薄荷', text: '#2c4438', sub: '#33503f', sub2: '#46604f', accent: '#1fa86c', card: '#ffffff' },
+  { name: '奶油', text: '#453a38', sub: '#4a3c3a', sub2: '#5e4a46', accent: '#e8557a', card: '#ffffff' },
+  { name: '杏黄', text: '#453b28', sub: '#4a402c', sub2: '#5c503a', accent: '#d94a2a', card: '#ffffff' }
 ];
 
 // ============ 数据构建 ============
@@ -173,11 +173,8 @@ function render(ctx, W, H, data, scheme) {
   var s = scheme || SCHEMES[0];
   var margin = Math.round(W * 0.06);
 
-  // ---- 深色背景渐变 ----
-  var bg = ctx.createLinearGradient(0, 0, W, H);
-  bg.addColorStop(0, s.bg1);
-  bg.addColorStop(1, s.bg2);
-  ctx.fillStyle = bg;
+  // ---- 纯白背景 ----
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'middle';
 
@@ -250,7 +247,7 @@ function render(ctx, W, H, data, scheme) {
 
     // 日期数字
     ctx.font = 'bold ' + Math.round(cellW * 0.36) + 'px sans-serif';
-    ctx.fillStyle = cell.isToday ? '#ffffff' : (cell.isWeekend ? s.week : s.text);
+    ctx.fillStyle = cell.isToday ? '#ffffff' : s.text;
     ctx.fillText(String(cell.day), cx, Math.round(cy - cellH * 0.1));
 
     // 小字标注（农历/节气/节日），今日用白色

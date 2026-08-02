@@ -6,10 +6,10 @@ var core = require('./template-core');
 // ============ 配色方案（浅色纸张风） ============
 // 文字/描边只用深色系（映射为 EPD 黑色，保证清晰），颜色由 accent 饱和色承担
 var SCHEMES = [
-  { name: '蜜桃', bg1: '#fff6f1', bg2: '#ffe6da', accent: '#ff5f7f', text: '#3a2a2e', sub: '#3a2a2e', num: '#3a2a2e' },
-  { name: '湖蓝', bg1: '#f1f8ff', bg2: '#dcecf9', accent: '#3d7bff', text: '#23364e', sub: '#23364e', num: '#23364e' },
-  { name: '抹茶', bg1: '#f2faf4', bg2: '#ddf0e2', accent: '#1fb573', text: '#2a4636', sub: '#2a4636', num: '#2a4636' },
-  { name: '赤金', bg1: '#fdf9f2', bg2: '#f5e9d8', accent: '#c44a1f', text: '#463a2c', sub: '#463a2c', num: '#463a2c' }
+  { name: '蜜桃', accent: '#ff5f7f', text: '#3a2a2e', sub: '#3a2a2e', num: '#3a2a2e' },
+  { name: '湖蓝', accent: '#3d7bff', text: '#23364e', sub: '#23364e', num: '#23364e' },
+  { name: '抹茶', accent: '#1fb573', text: '#2a4636', sub: '#2a4636', num: '#2a4636' },
+  { name: '赤金', accent: '#c44a1f', text: '#463a2c', sub: '#463a2c', num: '#463a2c' }
 ];
 
 // 构造渲染数据：name=纪念日名称, dateStr='YYYY-MM-DD'
@@ -23,7 +23,7 @@ function buildData(name, dateStr) {
   var mode = diff >= 0 ? 'countdown' : 'passed';
   var nowStr = now.getFullYear() + '.' + core.pad(now.getMonth() + 1) + '.' + core.pad(now.getDate());
   return {
-    name: name || '纪念日',
+    name: name,
     dateStr: dateStr,
     days: Math.abs(diff),
     mode: mode,
@@ -55,11 +55,8 @@ function render(ctx, W, H, data, scheme) {
   var s = scheme || SCHEMES[0];
   var margin = Math.round(W * 0.07);
 
-  // ---- 深色背景渐变 ----
-  var bg = ctx.createLinearGradient(0, 0, W, H);
-  bg.addColorStop(0, s.bg1);
-  bg.addColorStop(1, s.bg2);
-  ctx.fillStyle = bg;
+  // ---- 纯白背景 ----
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'middle';
 
@@ -119,13 +116,19 @@ function render(ctx, W, H, data, scheme) {
   ctx.font = 'bold ' + Math.round(W * 0.042) + 'px sans-serif';
   ctx.fillText('DAYS', W / 2, y0 + cardH * 0.78);
 
-  // ---- 纪念日名称（卡片下方） ----
+  // ---- 纪念日名称（卡片下方；可能含 emoji，走 fillTextAdaptive 独立层做自适应抖动） ----
   var name = data.name;
-  if (name.length > 8) name = name.slice(0, 8);
-  ctx.fillStyle = s.text;
-  ctx.font = 'bold ' + Math.round(W * 0.082) + 'px serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(name, W / 2, Math.round(H * 0.66));
+  if (name) {
+    if (name.length > 8) name = name.slice(0, 8);
+    ctx.fillStyle = s.text;
+    ctx.font = 'bold ' + Math.round(W * 0.082) + 'px serif';
+    ctx.textAlign = 'center';
+    if (ctx.fillTextAdaptive) {
+      ctx.fillTextAdaptive(name, W / 2, Math.round(H * 0.66));
+    } else {
+      ctx.fillText(name, W / 2, Math.round(H * 0.66));
+    }
+  }
 
   // ---- 状态行：倒计时中 / 已纪念 ----
   ctx.fillStyle = s.accent;

@@ -46,15 +46,17 @@
             <button class="act" onclick="shiftMonth(-1)">◀ 上月</button>
             <button class="act primary" onclick="shiftMonth(1)">下月 ▶</button>
             <button class="act" id="epdBtn" onclick="toggleEPD()">👁 EPD 效果</button>
+            <button class="act" id="stratBtn" onclick="toggleStrategy()">🖌 层:v3</button>
           </div>
           <div class="schemes" id="schemes"></div>
-          <div class="tip">切上下月看月份联动 · 点色块换主题色<br>「EPD 效果」模拟上屏后的 6 色网点质感（与小程序一致），所见即所得</div>
+          <div class="tip">切上下月看月份联动 · 点色块换主题色<br>「EPD 效果」= 现小程序抖动，「E6Pro 效果」= 全局新算法，「分层渲染」= 文字/纯色零抖动+渐变/图片半色调逐层合成，连点按钮循环切换</div>
         </div>
       </div>
     </div>
   </div>
 
-<script src="epd-sim.js"></script>
+<script src="epd-sim.js?v=2"></script>
+<script src="e6pro.js?v=8"></script>
 <script>
 // ===== 与 miniprogram/utils/tpl-calendar.js 同步 =====
 var lunarInfo = [
@@ -266,7 +268,7 @@ var ctx = canvas.getContext('2d');
 ctx.scale(scale, scale);
 
 var schemeIdx = 0;
-var epdMode = false;
+var viewMode = 'design';
 var now = new Date();
 var viewYear = now.getFullYear();
 var viewMonth = now.getMonth(); // 0-based
@@ -287,8 +289,15 @@ function syncSw() {
 }
 function draw() {
   var d = new Date(viewYear, viewMonth, Math.min(todayDay, new Date(viewYear, viewMonth + 1, 0).getDate()));
-  render(ctx, CW, CH, buildData(d), SCHEMES[schemeIdx]);
-  if (epdMode) EPDSim.applyTo(ctx, canvas, CW, CH);
+  var dta = buildData(d);
+  render(ctx, CW, CH, dta, SCHEMES[schemeIdx]);
+  if (viewMode === 'epd') EPDSim.applyTo(ctx, canvas, CW, CH);
+  else if (viewMode === 'e6') E6Pro.applyTo(ctx, canvas, CW, CH);
+  else if (viewMode === 'layer') {
+    var rec = E6Pro.makeRecorder(CW, CH);
+    render(rec, CW, CH, dta, SCHEMES[schemeIdx]);
+    rec.finish(canvas, E6Pro.DEFAULTS);
+  }
 }
 function shiftMonth(delta) {
   viewMonth += delta;
@@ -297,11 +306,19 @@ function shiftMonth(delta) {
   draw();
 }
 function toggleEPD() {
-  epdMode = !epdMode;
+  var order = ['design', 'epd', 'e6', 'layer'];
+  viewMode = order[(order.indexOf(viewMode) + 1) % order.length];
   var b = document.getElementById('epdBtn');
-  b.textContent = epdMode ? '🎨 设计原色' : '👁 EPD 效果';
-  b.classList.toggle('primary', epdMode);
+  b.textContent = viewMode === 'design' ? '👁 EPD 效果' : (viewMode === 'epd' ? '✨ E6Pro 效果' : (viewMode === 'e6' ? '🧩 分层渲染' : '🎨 设计原色'));
+  b.classList.toggle('primary', viewMode !== 'design');
   draw();
+}
+function toggleStrategy() {
+  var cur = E6Pro.DEFAULTS.gradStrategy === 'adaptive' ? 'v3' : 'adaptive';
+  E6Pro.DEFAULTS.gradStrategy = cur;
+  E6Pro.DEFAULTS.imgStrategy = cur;
+  document.getElementById('stratBtn').textContent = '🖌 层:' + (cur === 'adaptive' ? '自适应' : 'v3');
+  if (viewMode === 'layer') draw();
 }
 draw();
 </script>

@@ -2,6 +2,7 @@
 var filmUtils = require('../../../utils/film-utils');
 var tplSign = require('../../../utils/tpl-sign');
 var sender = require('../../../utils/template-sender');
+var e6pro = require('../../../utils/e6pro');
 var app = getApp();
 
 Page({
@@ -52,8 +53,10 @@ Page({
     if (!that._canvas || !that._ctx || !that._sign) return;
     var canvas = that._canvas;
     var ctx = that._ctx;
-    tplSign.render(ctx, canvas.width, canvas.height, that._sign, that.data.schemes[that.data.schemeIndex]);
-    filmUtils.processAndDisplay(canvas, ctx, 'adaptive', 1.0, null);
+    // imgStrategy='adaptive'：印章条走自适应抖动（保留主题色网点质感），文字层保持清晰
+    e6pro.processTemplate(canvas, ctx, function (rec, W, H) {
+      tplSign.render(rec, W, H, that._sign, that.data.schemes[that.data.schemeIndex]);
+    }, { imgStrategy: 'adaptive' });
   },
 
   refreshSign: function () {
@@ -73,7 +76,7 @@ Page({
       return;
     }
     that.setData({ showTransfer: true, transferStatus: '准备传输...', transferProgress: 0 });
-    var fileData = sender.canvasToFilmData(that._canvas);
+    var fileData = e6pro.canvasToFilmData(that._canvas);
     sender.sendToDevice(fileData, 'tpl-sign', function (status, pct) {
       if (pct === 100) {
         that.setData({ transferProgress: 100, transferStatus: status });

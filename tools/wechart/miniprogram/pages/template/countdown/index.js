@@ -2,6 +2,7 @@
 var filmUtils = require('../../../utils/film-utils');
 var tplCountdown = require('../../../utils/tpl-countdown');
 var sender = require('../../../utils/template-sender');
+var e6pro = require('../../../utils/e6pro');
 var app = getApp();
 
 var STORAGE_KEY = 'ff_tpl_countdown';
@@ -40,7 +41,7 @@ Page({
     var saved = null;
     try { saved = wx.getStorageSync(STORAGE_KEY); } catch (e) {}
     if (!saved || !saved.dateStr) {
-      saved = { name: '在一起', dateStr: defaultDateStr() };
+      saved = { name: '', dateStr: defaultDateStr() };
       try { wx.setStorageSync(STORAGE_KEY, saved); } catch (e) {}
     }
     if (that.data.dateStr !== saved.dateStr || that.data.name !== saved.name) {
@@ -74,9 +75,11 @@ Page({
     if (!that._canvas || !that._ctx || !that.data.dateStr) return;
     var canvas = that._canvas;
     var ctx = that._ctx;
-    var data = tplCountdown.buildData(that.data.name, that.data.dateStr);
-    tplCountdown.render(ctx, canvas.width, canvas.height, data, that.data.schemes[that.data.schemeIndex]);
-    filmUtils.processAndDisplay(canvas, ctx, 'adaptive', 1.0, null);
+    // imgStrategy='adaptive'：用户输入的名称（可能含 emoji）走自适应抖动独立层
+    e6pro.processTemplate(canvas, ctx, function (rec, W, H) {
+      var data = tplCountdown.buildData(that.data.name, that.data.dateStr);
+      tplCountdown.render(rec, W, H, data, that.data.schemes[that.data.schemeIndex]);
+    }, { imgStrategy: 'adaptive' });
   },
 
   _save: function () {
@@ -110,7 +113,7 @@ Page({
       return;
     }
     that.setData({ showTransfer: true, transferStatus: '准备传输...', transferProgress: 0 });
-    var fileData = sender.canvasToFilmData(that._canvas);
+    var fileData = e6pro.canvasToFilmData(that._canvas);
     sender.sendToDevice(fileData, 'tpl-countdown', function (status, pct) {
       if (pct === 100) {
         that.setData({ transferProgress: 100, transferStatus: status });

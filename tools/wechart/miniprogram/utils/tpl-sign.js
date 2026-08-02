@@ -56,10 +56,10 @@ var LUCKY_COLOR_NAMES = ['红', '蓝', '绿', '黄'];
 // ============ 配色方案（浅色纸张风；上屏经抖动呈现） ============
 // 文字颜色只用深色系（映射为 EPD 黑色，保证清晰），颜色由 accent 饱和色承担
 var SCHEMES = [
-  { name: '朱砂', bg1: '#fff7f3', bg2: '#ffe7dc', accent: '#e8553d', text: '#4a2f2a', sub: '#3a2f2a' },
-  { name: '天青', bg1: '#f1f8ff', bg2: '#dcebf8', accent: '#2f6fd8', text: '#26384e', sub: '#2a3a52' },
-  { name: '竹绿', bg1: '#f2faf4', bg2: '#ddf0e2', accent: '#1fa86c', text: '#2a4636', sub: '#2e4438' },
-  { name: '赤金', bg1: '#fdf9f0', bg2: '#f6ecd8', accent: '#c44a1f', text: '#4a3d28', sub: '#4a3f2c' }
+  { name: '朱砂', accent: '#e8553d', text: '#4a2f2a', sub: '#3a2f2a' },
+  { name: '天青', accent: '#2f6fd8', text: '#26384e', sub: '#2a3a52' },
+  { name: '竹绿', accent: '#1fa86c', text: '#2a4636', sub: '#2e4438' },
+  { name: '赤金', accent: '#c44a1f', text: '#4a3d28', sub: '#4a3f2c' }
 ];
 
 // 抽一签
@@ -101,11 +101,8 @@ function render(ctx, W, H, data, scheme) {
   var s = scheme || SCHEMES[0];
   var margin = Math.round(W * 0.08);
 
-  // ---- 深色背景渐变 ----
-  var bg = ctx.createLinearGradient(0, 0, W, H);
-  bg.addColorStop(0, s.bg1);
-  bg.addColorStop(1, s.bg2);
-  ctx.fillStyle = bg;
+  // ---- 纯白背景 ----
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'middle';
 
@@ -128,18 +125,26 @@ function render(ctx, W, H, data, scheme) {
   ctx.textAlign = 'right';
   ctx.fillText(dateStr, W - margin, Math.round(H * 0.055));
 
-  // ---- 等级印章（accent 圆角方块，内白字等级全称） ----
-  var sealW = Math.round(W * 0.2);
+  // ---- 等级印章（accent 主题色底，内白字等级全称；宽度按文字实测自适应） ----
+  ctx.font = 'bold ' + Math.round(W * 0.042) + 'px serif';
+  ctx.textAlign = 'center';
+  var sealText = '第 ' + data.signNum + ' 签 · ' + data.grade;
   var sealH = Math.round(W * 0.085);
+  var sealPad = Math.round(W * 0.022);
+  var sealW = Math.round(ctx.measureText(sealText).width + sealPad * 2);
   var sealX = W / 2 - sealW / 2;
   var sealY = Math.round(H * 0.17);
-  core.roundRect(ctx, sealX, sealY, sealW, sealH, sealH / 2);
-  ctx.fillStyle = s.accent;
-  ctx.fill();
+  if (ctx.roundRectAdaptive) {
+    // E6Pro 录制器：印章底走独立 adaptive 层（主题色网点质感），白字在 text 层保持清晰
+    ctx.fillStyle = s.accent;
+    ctx.roundRectAdaptive(sealX, sealY, sealW, sealH, sealH / 2);
+  } else {
+    core.roundRect(ctx, sealX, sealY, sealW, sealH, sealH / 2);
+    ctx.fillStyle = s.accent;
+    ctx.fill();
+  }
   ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'center';
-  ctx.font = 'bold ' + Math.round(W * 0.042) + 'px serif';
-  ctx.fillText('第 ' + data.signNum + ' 签 · ' + data.grade, W / 2, sealY + sealH / 2);
+  ctx.fillText(sealText, W / 2, sealY + sealH / 2);
 
   // ---- 中央书法大字 ----
   var bigChar = gradeChar(data.grade);

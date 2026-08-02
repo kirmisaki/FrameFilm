@@ -2,6 +2,7 @@
 var filmUtils = require('../../../utils/film-utils');
 var tplWeather = require('../../../utils/tpl-weather');
 var sender = require('../../../utils/template-sender');
+var e6pro = require('../../../utils/e6pro');
 var app = getApp();
 
 Page({
@@ -54,8 +55,9 @@ Page({
     if (!that._canvas || !that._ctx || !that._data) return;
     var canvas = that._canvas;
     var ctx = that._ctx;
-    tplWeather.render(ctx, canvas.width, canvas.height, that._data, that.data.schemes[that.data.schemeIndex]);
-    filmUtils.processAndDisplay(canvas, ctx, 'adaptive', 1.0, null);
+    e6pro.processTemplate(canvas, ctx, function (rec, W, H) {
+      tplWeather.render(rec, W, H, that._data, that.data.schemes[that.data.schemeIndex]);
+    });
   },
 
   // 定位获取真实天气（Open-Meteo 免费 API）
@@ -89,7 +91,7 @@ Page({
       return;
     }
     that.setData({ showTransfer: true, transferStatus: '准备传输...', transferProgress: 0 });
-    var fileData = sender.canvasToFilmData(that._canvas);
+    var fileData = e6pro.canvasToFilmData(that._canvas);
     sender.sendToDevice(fileData, 'tpl-weather', function (status, pct) {
       if (pct === 100) {
         that.setData({ transferProgress: 100, transferStatus: status });

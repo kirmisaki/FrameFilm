@@ -2,6 +2,7 @@
 var filmUtils = require('../../../utils/film-utils');
 var tplCalendar = require('../../../utils/tpl-calendar');
 var sender = require('../../../utils/template-sender');
+var e6pro = require('../../../utils/e6pro');
 var app = getApp();
 
 Page({
@@ -58,9 +59,10 @@ Page({
     if (!that._canvas || !that._ctx || !that._date) return;
     var canvas = that._canvas;
     var ctx = that._ctx;
-    var data = tplCalendar.buildData(that._date);
-    tplCalendar.render(ctx, canvas.width, canvas.height, data, that.data.schemes[that.data.schemeIndex]);
-    filmUtils.processAndDisplay(canvas, ctx, 'adaptive', 1.0, null);
+    e6pro.processTemplate(canvas, ctx, function (rec, W, H) {
+      var data = tplCalendar.buildData(that._date);
+      tplCalendar.render(rec, W, H, data, that.data.schemes[that.data.schemeIndex]);
+    });
   },
 
   prevMonth: function () {
@@ -96,7 +98,7 @@ Page({
       return;
     }
     that.setData({ showTransfer: true, transferStatus: '准备传输...', transferProgress: 0 });
-    var fileData = sender.canvasToFilmData(that._canvas);
+    var fileData = e6pro.canvasToFilmData(that._canvas);
     sender.sendToDevice(fileData, 'tpl-calendar', function (status, pct) {
       if (pct === 100) {
         that.setData({ transferProgress: 100, transferStatus: status });

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E6 转换算法实验台 · 色阶+抖动</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #F4EFE9; color: #3A3A44; padding: 20px; }
+  .head { max-width: 1180px; margin: 0 auto 16px; }
+  .head h1 { font-size: 22px; }
+  .head p { color: #8a8290; font-size: 13px; margin-top: 6px; line-height: 1.7; }
+  .head a { color: #e8553d; text-decoration: none; font-size: 13px; }
+  .grid { max-width: 1500px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .col { background: #fff; border-radius: 14px; padding: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+  .col h3 { font-size: 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .col h3 .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; color: #fff; }
+  .t-orig { background: #9B93A4; }
+  .t-old { background: #e8762c; }
+  .t-new { background: #1fa86c; }
+  .t-layer { background: #6b45a6; }
+  .box { width: 100%; border-radius: 10px; overflow: hidden; background: #eee; }
+  canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+  .panel { max-width: 1180px; margin: 16px auto 0; background: #fff; border-radius: 14px; padding: 16px 20px; box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+  .panel h2 { font-size: 15px; margin-bottom: 12px; }
+  .param { display: inline-flex; align-items: center; gap: 10px; margin: 0 22px 10px 0; font-size: 13px; }
+  .param label { min-width: 130px; }
+  .param input[type=range] { width: 130px; }
+  .param output { min-width: 48px; color: #e8553d; font-weight: 700; }
+  .param input[type=checkbox] { width: 16px; height: 16px; }
+  .row { border-bottom: 1px dashed #eee; padding: 4px 0 8px; margin-bottom: 8px; }
+  .row:last-child { border-bottom: none; margin-bottom: 0; }
+  .btns { display: flex; gap: 10px; margin: 10px 0; }
+  .btn { border: none; border-radius: 999px; padding: 9px 20px; font-size: 13px; font-weight: 700; cursor: pointer; background: #fff; color: #3A3A44; box-shadow: 0 3px 10px rgba(0,0,0,.12); }
+  .btn.primary { background: linear-gradient(135deg, #FF6B6B, #FF9F6B); color: #fff; }
+  .btn.ghost { background: #f4efe9; box-shadow: none; }
+  .stats { max-width: 1180px; margin: 14px auto 0; font-size: 12px; color: #5a5260; line-height: 1.8; background: #fff; border-radius: 14px; padding: 12px 20px; box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+  .stats b { color: #e8553d; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>E6 转换算法实验台 · 色阶+抖动（双色相混合 v3 + 分层区域 v4）</h1>
+  <p>目标：<b>字迹清晰</b>（文字/边缘零抖动直接最近色）+ <b>颜色丰富</b>（双色相网点混合：橙=红黄、紫=蓝红、青=蓝绿、浅彩=彩+白）+ <b>颗粒感少</b>（规整周期网点 + 端点硬切）。对比「设计原色 / 旧自适应抖动 / E6Pro 全局 / <b>E6Pro 分层区域</b>（文字=纯色零抖动、纯色块=实心、渐变/图片=半色调，逐层合成）」四路效果，拖动参数实时重算。</p>
+  <p><a href="index.html">← 返回设计稿</a></p>
+</div>
+
+<div class="grid">
+  <div class="col"><h3><span class="tag t-orig">原</span>设计原色</h3><div class="box"><canvas id="c-orig" width="800" height="1200"></canvas></div></div>
+  <div class="col"><h3><span class="tag t-old">旧</span>EPD 现状 · 自适应抖动</h3><div class="box"><canvas id="c-old" width="800" height="1200"></canvas></div></div>
+  <div class="col"><h3><span class="tag t-new">新</span>E6Pro · 全局边缘保护半色调</h3><div class="box"><canvas id="c-new" width="800" height="1200"></canvas></div></div>
+  <div class="col"><h3><span class="tag t-layer">层</span>E6Pro · 分层区域处理</h3><div class="box"><canvas id="c-layer" width="800" height="1200"></canvas></div></div>
+</div>
+
+<div class="panel">
+  <h2>参数面板</h2>
+  <div class="btns">
+    <button class="btn primary" onclick="rerender()">重新渲染全部</button>
+    <button class="btn ghost" onclick="loadTemplate('sign')">场景：每日一签</button>
+    <button class="btn ghost" onclick="loadTemplate('cal')">场景：日历</button>
+    <button class="btn ghost" onclick="loadTemplate('wx')">场景：天气</button>
+    <button class="btn ghost" onclick="loadTemplate('test')">场景：综合测试图</button>
+  </div>
+  <div class="row">
+    <span class="param"><label>① 边缘保护开关</label><input type="checkbox" id="edgeProtect" checked><output id="edgeProtectV">开</output></span>
+    <span class="param"><label>② 边缘梯度阈值</label><input type="range" id="edgeGradT" min="10" max="100" step="1" value="35"><output id="edgeGradTV"></output></span>
+    <span class="param"><label>③ 文字暗度阈值</label><input type="range" id="darkT" min="0.20" max="0.50" step="0.01" value="0.35"><output id="darkTV"></output></span>
+    <span class="param"><label>④ 文字对比增强</label><input type="range" id="contrastK" min="1.0" max="1.8" step="0.05" value="1.25"><output id="contrastKV"></output></span>
+  </div>
+  <div class="row">
+    <span class="param"><label>⑤ Bayer 尺寸</label><select id="bayerSize"><option value="4">4×4（网点大）</option><option value="8" selected>8×8（网点细）</option></select></span>
+    <span class="param"><label>⑥ 亮度调制系数</label><input type="range" id="brightK" min="0.5" max="1.5" step="0.05" value="1.0"><output id="brightKV"></output></span>
+    <span class="param"><label>⑦ 彩色最低色度</label><input type="range" id="colorMinSat" min="0.05" max="0.30" step="0.01" value="0.12"><output id="colorMinSatV"></output></span>
+    <span class="param"><label>⑧ 端点硬切带</label><input type="range" id="band" min="0" max="0.15" step="0.01" value="0.08"><output id="bandV"></output></span>
+    <span class="param"><label>⑨ 实心色阈值</label><input type="range" id="paletteNearT" min="5" max="40" step="1" value="18"><output id="paletteNearTV"></output></span>
+  </div>
+  <div class="row">
+    <span class="param"><label>⑩ 渐变层策略</label><select id="gradStrategy"><option value="v3" selected>v3 双色相混合</option><option value="adaptive">自适应抖动</option></select></span>
+    <span class="param"><label>⑪ 图片层策略</label><select id="imgStrategy"><option value="v3" selected>v3 双色相混合</option><option value="adaptive">自适应抖动</option></select></span>
+    <span class="param" style="color:#6b45a6">※ 渐变/图片策略只影响「E6Pro · 分层区域」列；文字/纯色块恒为零抖动最近色</span>
+  </div>
+  <div class="row">
+    <span class="param"><label>⑫ 文字抗锯齿</label><input type="checkbox" id="textAA"><output id="textAAV">关</output></span>
+    <span class="param" style="color:#6b45a6">※ 默认关=清晰硬切（EPD 可读性最好）；开启后文字边缘像素按 4×4 Bayer 覆盖度半色调，边缘带颗粒（对比用）</span>
+  </div>
+</div>
+
+<div class="stats" id="stats">统计：—</div>
+
+<script src="epd-sim.js?v=2"></script>
+<script src="e6pro.js?v=8"></script>
+<script>
+var CW = 400, CH = 600, scale = 2;
+var canvases = {};
+['c-orig', 'c-old', 'c-new', 'c-layer'].forEach(function (id) {
+  var c = document.getElementById(id);
+  c.style.aspectRatio = '2 / 3';
+  var ctx = c.getContext('2d');
+  ctx.scale(scale, scale);
+  canvases[id] = { c: c, ctx: ctx };
+});
+
+var CUR = 'test';
+var timer = null;
+
+function getOpts() {
+  return {
+    edgeProtect: document.getElementById('edgeProtect').checked,
+    edgeGradT: +document.getElementById('edgeGradT').value,
+    darkT: +document.getElementById('darkT').value,
+    contrastK: +document.getElementById('contrastK').value,
+    bayerSize: +document.getElementById('bayerSize').value,
+    brightK: +document.getElementById('brightK').value,
+    colorMinSat: +document.getElementById('colorMinSat').value,
+    band: +document.getElementById('band').value,
+    paletteNearT: +document.getElementById('paletteNearT').value,
+    gradStrategy: document.getElementById('gradStrategy').value,
+    imgStrategy: document.getElementById('imgStrategy').value,
+    textAA: document.getElementById('textAA').checked
+  };
+}
+
+// ============ 测试图案：综合场景 ============
+function drawTest(ctx, W, H) {
+  ctx.textBaseline = 'middle';
+  var bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#fffaf6'); bg.addColorStop(1, '#ffe7da');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  ctx.font = '12px sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#5a4a42';
+  ctx.fillText('FRAME FILM · E6 转换实验台', 24, 20);
+
+  ctx.fillStyle = '#3a2f2a'; ctx.font = 'bold 34px serif';
+  ctx.fillText('色阶与抖动', 24, 64);
+  ctx.fillStyle = '#e8553d'; ctx.font = 'bold 24px serif';
+  ctx.fillText('E6 转换实验', 24, 96);
+
+  // 红→白渐变带（单色减饱和）
+  var grad = ctx.createLinearGradient(24, 0, W - 24, 0);
+  grad.addColorStop(0, '#e8553d'); grad.addColorStop(1, '#ffffff');
+  ctx.fillStyle = grad; ctx.fillRect(24, 116, W - 48, 26);
+
+  // 彩色块（纯 + 浅变体）
+  var bw = (W - 48 - 24) / 4, by = 156, bh = 34;
+  var cols = [['#e8553d', '#ffb3a5'], ['#2f6fd8', '#b8d4f5'], ['#1fa86c', '#b8e8cf'], ['#d98a12', '#f4ddb0']];
+  for (var i = 0; i < 4; i++) {
+    ctx.fillStyle = cols[i][0]; ctx.fillRect(24 + i * (bw + 8), by, bw, bh);
+    ctx.fillStyle = cols[i][1]; ctx.fillRect(24 + i * (bw + 8), by + bh + 5, bw, 18);
+  }
+
+  // 正文（不同字号/深浅）
+  ctx.fillStyle = '#3a2f2a'; ctx.font = 'bold 17px serif';
+  ctx.fillText('文字清晰测试：粗体正文一行', 24, 230);
+  ctx.font = '14px serif'; ctx.fillStyle = '#4a3f3a';
+  ctx.fillText('细体正文，用于验证小字号可读性。', 24, 254);
+
+  // 彩色图形：accent 圆 + 深描边方 + 彩色大字
+  ctx.beginPath(); ctx.arc(66, 292, 22, 0, Math.PI * 2); ctx.fillStyle = '#e8553d'; ctx.fill();
+  ctx.strokeStyle = '#5a5448'; ctx.lineWidth = 2; ctx.strokeRect(104, 272, 40, 40);
+  ctx.fillStyle = '#2f6fd8'; ctx.font = 'bold 26px serif';
+  ctx.fillText('吉', 172, 292);
+
+  // 色相渐变条组：双色混合（橙/黄绿/青/紫/浅蓝/浅绿）
+  ctx.fillStyle = '#3a2f2a'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('双色相混合（橙·黄绿·青·紫·浅蓝·浅绿）', 24, 326);
+  var strips = [
+    ['#ff0000', '#ffff00', '橙'],
+    ['#ffff00', '#29cc14', '黄绿'],
+    ['#29cc14', '#0000ff', '青'],
+    ['#0000ff', '#ff0000', '紫'],
+    ['#0000ff', '#ffffff', '浅蓝'],
+    ['#1fa86c', '#ffffff', '浅绿']
+  ];
+  for (var s = 0; s < strips.length; s++) {
+    var sy = 338 + s * 27;
+    var g2 = ctx.createLinearGradient(24, 0, W - 24, 0);
+    g2.addColorStop(0, strips[s][0]); g2.addColorStop(1, strips[s][1]);
+    ctx.fillStyle = g2; ctx.fillRect(24, sy, W - 48, 20);
+    ctx.fillStyle = '#3a2f2a'; ctx.font = '11px sans-serif';
+    ctx.fillText(strips[s][2], 24, sy - 2);
+  }
+
+  // 底部小字
+  ctx.fillStyle = '#4a443c'; ctx.font = '12px sans-serif';
+  ctx.fillText('底部说明小字 · 渐变底 · 彩色块 · 色相渐变', 24, 570);
+}
+
+// ============ 场景：每日一签（简化，复刻浅色纸张风） ============
+function drawSign(ctx, W, H) {
+  ctx.textBaseline = 'middle';
+  var bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#fff7f3'); bg.addColorStop(1, '#ffe7dc');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#3a2f2a'; ctx.font = '13px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('FRAME FILM · 今日一签', 30, 32);
+  ctx.textAlign = 'right';
+  ctx.fillText('2026.8.1', W - 30, 32);
+
+  // 印章
+  ctx.fillStyle = '#e8553d';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W / 2 - 40, 100, 80, 36, 18) : ctx.rect(W / 2 - 40, 100, 80, 36);
+  ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 16px serif'; ctx.textAlign = 'center';
+  ctx.fillText('第 8 签 · 吉', W / 2, 118);
+
+  // 中央书法大字
+  ctx.fillStyle = '#4a2f2a'; ctx.font = 'bold 150px serif';
+  ctx.fillText('吉', W / 2, 300);
+
+  // 签文
+  ctx.fillStyle = '#4a2f2a'; ctx.font = 'bold 20px serif';
+  ctx.fillText('今天的心情开了倍速', W / 2, 390);
+  ctx.fillText('好运直接冲到你面前', W / 2, 422);
+
+  // 幸运信息
+  ctx.fillStyle = '#e8553d'; ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('宜 大笑', W / 2 - 120, 480);
+  ctx.fillStyle = '#4a2f2a'; ctx.font = '14px sans-serif';
+  ctx.fillText('忌 皱眉', W / 2 - 30, 480);
+  ctx.beginPath(); ctx.arc(W / 2 + 40, 480, 7, 0, Math.PI * 2); ctx.fillStyle = '#ff0000'; ctx.fill();
+  ctx.fillStyle = '#4a2f2a';
+  ctx.fillText('幸运数字 6', W / 2 + 90, 480);
+
+  ctx.strokeStyle = '#e8553d'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(W / 2 - 24, 540); ctx.lineTo(W / 2 + 24, 540); ctx.stroke();
+}
+
+// ============ 场景：日历月历（浅色纸张风，复刻 calendar-preview） ============
+function drawCalendar(ctx, W, H) {
+  ctx.textBaseline = 'middle';
+  var bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#fdf8f1'); bg.addColorStop(1, '#f4e8d8');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#3a3631'; ctx.font = 'bold 38px serif';
+  ctx.fillText('8月', 24, 34);
+  ctx.fillStyle = '#4a443c'; ctx.font = '14px sans-serif';
+  ctx.fillText('AUG · 2026', 96, 34);
+  ctx.textAlign = 'right'; ctx.fillStyle = '#e8553d'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('今日 六月初七', W - 24, 34);
+  ctx.strokeStyle = '#e8553d'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(24, 80); ctx.lineTo(W - 24, 80); ctx.stroke();
+  // 星期行
+  var week = ['一', '二', '三', '四', '五', '六', '日'];
+  var cellW = (W - 48) / 7;
+  ctx.textAlign = 'center'; ctx.fillStyle = '#4a443c'; ctx.font = '13px sans-serif';
+  for (var i = 0; i < 7; i++) ctx.fillText(week[i], 24 + cellW * i + cellW / 2, 102);
+  // 日期卡片网格（7列6行，部分含农历/节气）
+  var notes = ['', '初一', '初二', '初三', '初四', '', '', '初七', '立秋', '初九', '', '', '十二', '十三', '十四', '', '', '十七', '十八', '十九', '二十', '廿一', '', '廿三', '廿四', '廿五', '廿六', '廿七', '廿八', '', '三十', '八月初一', '', '', '初四', '初五', '', '', '', '初九', '初十'];
+  for (var idx = 0; idx < 42; idx++) {
+    var row = Math.floor(idx / 7), col = idx % 7;
+    var cx = 24 + col * cellW + cellW / 2;
+    var cy = 128 + row * 66 + 33;
+    var isToday = idx === 30; // 模拟今天
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(cx - cellW / 2 + 2, cy - 28, cellW - 4, 56, 5) : ctx.rect(cx - cellW / 2 + 2, cy - 28, cellW - 4, 56);
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.strokeStyle = '#5a5448'; ctx.lineWidth = 1; ctx.stroke();
+    var dayNum = idx - 5; // 让 30 对齐 idx 30
+    if (dayNum < 1 || dayNum > 31) continue;
+    if (isToday) {
+      ctx.beginPath(); ctx.arc(cx, cy - 10, cellW * 0.3, 0, Math.PI * 2); ctx.fillStyle = '#e8553d'; ctx.fill();
+    }
+    ctx.font = 'bold ' + Math.round(cellW * 0.34) + 'px sans-serif';
+    ctx.fillStyle = isToday ? '#ffffff' : (col >= 5 ? '#d98a12' : '#3a3631');
+    ctx.fillText(String(dayNum), cx, cy - 8);
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = isToday ? '#ffffff' : '#5a5448';
+    ctx.fillText(notes[idx] || '', cx, cy + 16);
+  }
+  // 底部进度条
+  ctx.strokeStyle = '#e8553d'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(24, 530); ctx.lineTo(W - 24, 530); ctx.stroke();
+  ctx.fillStyle = '#e8553d'; ctx.fillRect(24, 527, Math.round((W - 48) * 0.3), 6);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#4a443c'; ctx.font = '12px sans-serif';
+  ctx.fillText('本月已过 30% · 距月底还有 21 天', W / 2, 555);
+}
+
+// ============ 场景：天气氛围卡（复刻 weather-preview） ============
+function drawWeather(ctx, W, H) {
+  ctx.textBaseline = 'middle';
+  var bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#f2f9ff'); bg.addColorStop(1, '#dceefb');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1f3a5a'; ctx.font = 'bold 20px serif'; ctx.textAlign = 'left';
+  ctx.fillText('深圳', 28, 36);
+  ctx.fillStyle = '#2f6fd8'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W - 88, 24, 60, 24, 12) : ctx.rect(W - 88, 24, 60, 24);
+  ctx.fillStyle = '#2f6fd8'; ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.fillText('10:30 更新', W - 58, 36);
+  // 太阳图标（accent 蓝）
+  ctx.strokeStyle = '#2f6fd8'; ctx.fillStyle = '#2f6fd8'; ctx.lineCap = 'round'; ctx.lineWidth = 3;
+  for (var i = 0; i < 8; i++) {
+    var a = Math.PI / 4 * i;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + Math.cos(a) * 52, 150 + Math.sin(a) * 52);
+    ctx.lineTo(W / 2 + Math.cos(a) * 72, 150 + Math.sin(a) * 72);
+    ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(W / 2, 150, 36, 0, Math.PI * 2); ctx.fill();
+  // 大温度
+  ctx.fillStyle = '#1f3a5a'; ctx.font = 'bold 58px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('28°', W / 2, 250);
+  ctx.fillStyle = '#2c4a6a'; ctx.font = '16px sans-serif';
+  ctx.fillText('多云 · 最高 32° · 最低 21°', W / 2, 288);
+  // 未来三天白色卡片
+  var days = [['周三', '晴', 32, 22], ['周四', '雨', 29, 21], ['周五', '多云', 30, 20]];
+  for (var d = 0; d < 3; d++) {
+    var cx2 = 28 + d * (W - 56) / 3 + (W - 56) / 6;
+    var cy2 = 360;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(cx2 - (W - 56) / 6 + 3, cy2 - 70, (W - 56) / 3 - 6, 140, 10) : ctx.rect(cx2 - (W - 56) / 6 + 3, cy2 - 70, (W - 56) / 3 - 6, 140);
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.strokeStyle = '#3a5a78'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#2c4a6a'; ctx.font = 'bold 13px sans-serif';
+    ctx.fillText(days[d][0], cx2, cy2 - 48);
+    ctx.beginPath(); ctx.arc(cx2, cy2 - 10, 14, 0, Math.PI * 2); ctx.fillStyle = '#2f6fd8'; ctx.fill();
+    ctx.fillStyle = '#1f3a5a'; ctx.font = 'bold 16px sans-serif';
+    ctx.fillText(days[d][1], cx2, cy2 + 24);
+    ctx.fillStyle = '#3a5a78'; ctx.font = '12px sans-serif';
+    ctx.fillText(days[d][2] + '° / ' + days[d][3] + '°', cx2, cy2 + 50);
+  }
+}
+
+// ============ 渲染流程 ============
+function renderCanvas(id, fn) {
+  var o = canvases[id];
+  var ctx = o.ctx;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.clearRect(0, 0, CW, CH);
+  fn(ctx, CW, CH);
+}
+
+var SCENES = { sign: drawSign, test: drawTest, cal: drawCalendar, wx: drawWeather };
+function drawOrig() { renderCanvas('c-orig', SCENES[CUR]); }
+function drawOld() {
+  renderCanvas('c-old', SCENES[CUR]);
+  EPDSim.applyTo(canvases['c-old'].ctx, canvases['c-old'].c, CW, CH);
+}
+function drawNew() {
+  renderCanvas('c-new', SCENES[CUR]);
+  var opts = getOpts();
+  var res = E6Pro.applyTo(canvases['c-new'].ctx, canvases['c-new'].c, opts);
+  renderStats(res, opts);
+}
+function drawLayer() {
+  var rec = E6Pro.makeRecorder(CW, CH);
+  SCENES[CUR](rec, CW, CH);
+  var c = canvases['c-layer'].c;
+  rec.finish(c, getOpts());
+  var res = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+  renderStats(res, getOpts(), '分层');
+}
+
+function renderStats(res, opts, label) {
+  var counts = {}, uniq = {};
+  var n = res.width * res.height;
+  for (var i = 0; i < res.data.length; i += 4) {
+    var r = res.data[i], g = res.data[i + 1], b = res.data[i + 2];
+    var key = (r << 16) | (g << 8) | b;
+    counts[key] = (counts[key] || 0) + 1;
+    uniq[key] = 1;
+  }
+  var names = { 0: '黑', 16777215: '白', 16776960: '黄', 16711680: '红', 255: '蓝', 2739220: '绿' };
+  var parts = [];
+  for (var k2 in counts) {
+    if (names[k2]) parts.push(names[k2] + ' ' + (counts[k2] / n * 100).toFixed(1) + '%');
+  }
+  var pref = label ? '【' + label + '】' : '';
+  document.getElementById('stats').innerHTML = pref +
+    ' 输出：' + parts.join(' · ') + ' ｜ 唯一色数 <b>' + Object.keys(uniq).length + '</b>（抖动前设计稿一般 < 200）' +
+    ' ｜ 边缘保护 ' + (opts.edgeProtect ? '<b>开</b>' : '关') +
+    ' ｜ Bayer ' + opts.bayerSize + '×' + opts.bayerSize +
+    ' ｜ 阈值 ' + opts.edgeGradT + ' / 暗度 ' + opts.darkT +
+    ' ｜ 对比增强 ×' + opts.contrastK +
+    ' ｜ 调制 ' + opts.brightK + ' ｜ 彩饱和下限 ' + opts.colorMinSat + ' ｜ 硬切带 ' + opts.band +
+    ' ｜ 实心阈值 ' + opts.paletteNearT +
+    ' ｜ 文字AA ' + (opts.textAA ? '<b>开</b>' : '关');
+}
+
+function rerender() {
+  drawOrig(); drawOld(); drawNew(); drawLayer();
+}
+
+function loadTemplate(t) {
+  CUR = t;
+  rerender();
+}
+
+// 参数实时联动
+function bindParam(id, outId, fmt) {
+  var el = document.getElementById(id);
+  var out = document.getElementById(outId);
+  function upd() {
+    var v = el.type === 'checkbox' ? (el.checked ? '开' : '关') : (fmt ? fmt(el.value) : el.value);
+    out.textContent = v;
+  }
+  el.addEventListener('input', function () {
+    upd();
+    if (el.type === 'checkbox') { rerender(); return; }
+    clearTimeout(timer);
+    timer = setTimeout(redrawAlgos, 250);
+  });
+  upd();
+}
+function redrawAlgos() { drawNew(); drawLayer(); }
+bindParam('edgeProtect', 'edgeProtectV');
+bindParam('edgeGradT', 'edgeGradTV', function (v) { return v; });
+bindParam('darkT', 'darkTV', function (v) { return v; });
+bindParam('contrastK', 'contrastKV', function (v) { return v; });
+var bs = document.getElementById('bayerSize');
+bs.addEventListener('change', function () { clearTimeout(timer); timer = setTimeout(redrawAlgos, 250); });
+bindParam('brightK', 'brightKV', function (v) { return v; });
+bindParam('colorMinSat', 'colorMinSatV', function (v) { return v; });
+bindParam('band', 'bandV', function (v) { return v; });
+bindParam('paletteNearT', 'paletteNearTV', function (v) { return v; });
+bindParam('textAA', 'textAAV');
+['gradStrategy', 'imgStrategy'].forEach(function (id) {
+  var el = document.getElementById(id);
+  el.addEventListener('change', function () { clearTimeout(timer); timer = setTimeout(redrawAlgos, 250); });
+});
+
+rerender();
+</script>
+</body>
+</html>

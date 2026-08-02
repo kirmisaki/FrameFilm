@@ -98,10 +98,10 @@ function fetchWeather(callback) {
 // ============ 配色方案（浅色纸张风） ============
 // 文字/描边只用深色系（映射为 EPD 黑色，保证清晰），颜色由 accent 饱和色承担
 var SCHEMES = [
-  { name: '晴蓝', bg1: '#f2f9ff', bg2: '#dceefb', accent: '#2f6fd8', text: '#1f3a5a', sub: '#2c4a6a', sub2: '#3a5a78', card: '#ffffff' },
-  { name: '霞橙', bg1: '#fff6ef', bg2: '#ffe7d6', accent: '#e8762c', text: '#4a3020', sub: '#4a3324', sub2: '#5a3f2c', card: '#ffffff' },
-  { name: '浅翠', bg1: '#f2faf4', bg2: '#ddf0e4', accent: '#1fa86c', text: '#23402f', sub: '#26443a', sub2: '#3a5848', card: '#ffffff' },
-  { name: '靛蓝', bg1: '#f4f5fc', bg2: '#e2e4f2', accent: '#4450b8', text: '#2e3350', sub: '#2e3350', sub2: '#454a66', card: '#ffffff' }
+  { name: '晴蓝', accent: '#2f6fd8', text: '#1f3a5a', sub: '#2c4a6a', sub2: '#3a5a78', card: '#ffffff' },
+  { name: '霞橙', accent: '#e8762c', text: '#4a3020', sub: '#4a3324', sub2: '#5a3f2c', card: '#ffffff' },
+  { name: '浅翠', accent: '#1fa86c', text: '#23402f', sub: '#26443a', sub2: '#3a5848', card: '#ffffff' },
+  { name: '靛蓝', accent: '#4450b8', text: '#2e3350', sub: '#2e3350', sub2: '#454a66', card: '#ffffff' }
 ];
 
 // ============ 几何天气图标（浅色主题，跟随配色） ============
@@ -185,11 +185,8 @@ function render(ctx, W, H, data, scheme) {
   var s = scheme || SCHEMES[0];
   var margin = Math.round(W * 0.07);
 
-  // ---- 深色背景渐变 ----
-  var bg = ctx.createLinearGradient(0, 0, W, H);
-  bg.addColorStop(0, s.bg1);
-  bg.addColorStop(1, s.bg2);
-  ctx.fillStyle = bg;
+  // ---- 纯白背景 ----
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'middle';
 
