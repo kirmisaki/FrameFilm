@@ -532,6 +532,30 @@ function labDistance(lab1, lab2) {
     return Math.sqrt(dl * dl + da * da + db * db);
 }
 
+// sRGB <-> 线性空间转换表（gamma 感知抖动用，参考 Caster degamma.v）
+var SRGB_TO_LINEAR_LUT = new Float32Array(256);
+var LINEAR_TO_SRGB_LUT = new Uint8Array(256);
+(function() {
+    for (var i = 0; i < 256; i++) {
+        var v = i / 255;
+        SRGB_TO_LINEAR_LUT[i] = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    }
+    for (var i = 0; i < 256; i++) {
+        var v = i / 255;
+        var srgb = v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+        LINEAR_TO_SRGB_LUT[i] = Math.round(srgb * 255);
+    }
+})();
+
+function srgbToLinear(c) {
+    return SRGB_TO_LINEAR_LUT[c];
+}
+
+function linearToSrgb(c) {
+    var clamped = Math.max(0, Math.min(1, c));
+    return LINEAR_TO_SRGB_LUT[Math.round(clamped * 255)];
+}
+
 function rgbToHsl(r, g, b) {
     r /= 255; g /= 255; b /= 255;
     const max = Math.max(r, g, b);
@@ -941,6 +965,102 @@ function jarvisDither(imageData, strength) {
     return imageData;
 }
 
+// Gamma 感知 Floyd-Steinberg 误差扩散（在线性空间扩散误差，参考 Caster error_diffusion_kernel.v）
+// 量化仍用感知化的 findClosestColor，但误差按线性空间计算与累积
+function gammaFloydSteinbergDither(imageData, strength) {
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = imageData.data;
+    // 工作缓冲：线性空间，每像素 3 通道浮点
+    const linData = new Float32Array(width * height * 3);
+    for (let i = 0; i < data.length; i += 4) {
+        const p = (i / 4) * 3;
+        linData[p] = srgbToLinear(data[i]);
+        linData[p + 1] = srgbToLinear(data[i + 1]);
+        linData[p + 2] = srgbToLinear(data[i + 2]);
+    }
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const p = (y * width + x) * 3;
+            const r = linData[p];
+            const g = linData[p + 1];
+            const b = linData[p + 2];
+
+            // 转回 sRGB 交给感知量化器选最近色
+            const closest = findClosestColor(linearToSrgb(r), linearToSrgb(g), linearToSrgb(b));
+
+            const idx = (y * width + x) * 4;
+            data[idx] = closest.r;
+            data[idx + 1] = closest.g;
+            data[idx + 2] = closest.b;
+
+            // 在线性空间计算误差（关键：误差值按物理亮度计）
+            const errR = (r - srgbToLinear(closest.r)) * strength;
+            const errG = (g - srgbToLinear(closest.g)) * strength;
+            const errB = (b - srgbToLinear(closest.b)) * strength;
+
+            if (x + 1 < width) {
+                const np = p + 3;
+                linData[np] += errR * 7 / 16;
+                linData[np + 1] += errG * 7 / 16;
+                linData[np + 2] += errB * 7 / 16;
+            }
+            if (y + 1 < height) {
+                if (x > 0) {
+                    const np = p + width * 3 - 3;
+                    linData[np] += errR * 3 / 16;
+                    linData[np + 1] += errG * 3 / 16;
+                    linData[np + 2] += errB * 3 / 16;
+                }
+                const np = p + width * 3;
+                linData[np] += errR * 5 / 16;
+                linData[np + 1] += errG * 5 / 16;
+                linData[np + 2] += errB * 5 / 16;
+                if (x + 1 < width) {
+                    const np = p + width * 3 + 3;
+                    linData[np] += errR * 1 / 16;
+                    linData[np + 1] += errG * 1 / 16;
+                    linData[np + 2] += errB * 1 / 16;
+                }
+            }
+        }
+    }
+
+    return imageData;
+}
+
+// 4×4 Bayer 有序抖动（参考 Caster bayer_dithering.v MONO：标准矩阵中心化到 -8..7）
+var BAYER_MATRIX = [
+    [0, 8, 2, 10],
+    [12, 4, 14, 6],
+    [3, 11, 1, 9],
+    [15, 7, 13, 5]
+];
+
+function bayerDither(imageData, strength) {
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = imageData.data;
+
+    for (let y = 0; y < height; y++) {
+        const row = BAYER_MATRIX[y & 3];
+        for (let x = 0; x < width; x++) {
+            const bias = (row[x & 3] - 8) * strength;
+            const idx = (y * width + x) * 4;
+            const r = Math.min(255, Math.max(0, data[idx] + bias));
+            const g = Math.min(255, Math.max(0, data[idx + 1] + bias));
+            const b = Math.min(255, Math.max(0, data[idx + 2] + bias));
+            const closest = findClosestColor(r, g, b);
+            data[idx] = closest.r;
+            data[idx + 1] = closest.g;
+            data[idx + 2] = closest.b;
+        }
+    }
+
+    return imageData;
+}
+
 function computeEdgeMap(data, width, height) {
     const edges = new Float32Array(width * height);
     for (let y = 1; y < height - 1; y++) {
@@ -1091,6 +1211,8 @@ function applyDitherByType(imageData, type, strength) {
         case 'atkinson': return atkinsonDither(imageData, strength);
         case 'stucki': return stuckiDither(imageData, strength);
         case 'jarvis': return jarvisDither(imageData, strength);
+        case 'gammaFloydSteinberg': return gammaFloydSteinbergDither(imageData, strength);
+        case 'bayer': return bayerDither(imageData, strength);
         default: return imageData;
     }
 }
@@ -1142,6 +1264,10 @@ function ditherImage(imageData) {
             return stuckiDither(imageData, ditherStrength);
         case 'jarvis':
             return jarvisDither(imageData, ditherStrength);
+        case 'gammaFloydSteinberg':
+            return gammaFloydSteinbergDither(imageData, ditherStrength);
+        case 'bayer':
+            return bayerDither(imageData, ditherStrength);
         default:
             return imageData;
     }
