@@ -120,9 +120,14 @@ static void service_param_set_default(void)
 
     // 网络参数重置
     g_service_param.network.wifi_enable = 0; // WiFi默认关闭
+    g_service_param.network.film_heartbeat_interval = 5; // 默认5秒心跳间隔
     memset(g_service_param.network.wifi_ssid, 0, sizeof(g_service_param.network.wifi_ssid));
     memset(g_service_param.network.wifi_password, 0, sizeof(g_service_param.network.wifi_password));
     memset(g_service_param.network.film_api_url, 0, sizeof(g_service_param.network.film_api_url));
+
+    // BLE参数重置
+    g_service_param.ble.ble_enable = 1; // BLE默认开启
+    g_service_param.ble.ble_mode = 0; // BLE默认常开
 }
 
 /**

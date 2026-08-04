@@ -39,11 +39,18 @@ typedef struct
 typedef struct
 {
     uint8_t wifi_enable;       // WiFi开关 0：关闭 1：开启
+    uint8_t film_heartbeat_interval; // 心跳间隔（单位秒 5s - 180s）
     char wifi_ssid[64];        // WiFi SSID（最大63字符）
     char wifi_password[64];    // WiFi 密码（最大63字符）
     char film_api_url[128];    // HTTP下载film文件的API地址
+    char film_heartbeat_url[128]; // HTTP心跳地址，用于检查服务是否正常以及是否发起film下载
 } ServiceNetwork_Def_t;
 
+typedef struct
+{
+    uint8_t ble_enable;       // BLE开关 0：关闭 1：开启
+    uint8_t ble_mode;         // BLE模式 0：常开 1：手动打开（休眠按键双击）
+} ServiceBle_Def_t;
 
 #pragma pack(4)
 typedef struct
@@ -52,6 +59,7 @@ typedef struct
     ServiceFilm_Def_t film;
     ServiceSleep_Def_t sleep;
     ServiceNetwork_Def_t network;
+    ServiceBle_Def_t ble;
 } ServiceParam_Def_t; /*服务参数*/
 #pragma pack()
 
