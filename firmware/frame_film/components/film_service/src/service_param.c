@@ -124,6 +124,7 @@ static void service_param_set_default(void)
     memset(g_service_param.network.wifi_ssid, 0, sizeof(g_service_param.network.wifi_ssid));
     memset(g_service_param.network.wifi_password, 0, sizeof(g_service_param.network.wifi_password));
     memset(g_service_param.network.film_api_url, 0, sizeof(g_service_param.network.film_api_url));
+    memset(g_service_param.network.film_heartbeat_url, 0, sizeof(g_service_param.network.film_heartbeat_url));
 
     // BLE参数重置
     g_service_param.ble.ble_enable = 1; // BLE默认开启
