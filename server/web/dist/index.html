@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="0;url=login.html">
+<title>film-hub</title>
+</head>
+<body>
+<script>
+  // 已登录直接进仪表盘，否则去登录页
+  if (localStorage.getItem('fh_token')) {
+    location.replace('dashboard.html');
+  } else {
+    location.replace('login.html');
+  }
+</script>
+</body>
+</html>

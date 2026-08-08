@@ -1,0 +1,167 @@
+"""轮播流管理 API"""
+import datetime as dt
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from ..db import get_db
+from ..models import Stream, StreamItem, Template, User
+from ..schemas.stream import (
+    StreamCreate,
+    StreamItemCreate,
+    StreamItemOut,
+    StreamItemSortRequest,
+    StreamItemUpdate,
+    StreamOut,
+    StreamUpdate,
+)
+from ..services.scheduler import build_timeline
+from .deps import get_current_user
+
+router = APIRouter(prefix="/api/v1/admin/streams", tags=["streams"])
+
+
+def _item_out(i: StreamItem) -> StreamItemOut:
+    tname = ""
+    if i.template is not None:
+        tname = i.template.name
+    return StreamItemOut(
+        id=i.id, template_id=i.template_id, template_name=tname,
+        position=i.position, schedule_type=i.schedule_type,
+        duration_sec=i.duration_sec, start_at=i.start_at, enabled=i.enabled,
+    )
+
+
+def _stream_out(s: Stream) -> StreamOut:
+    return StreamOut(
+        id=s.id, name=s.name, mode=s.mode, enabled=s.enabled,
+        created_at=s.created_at, items=[_item_out(i) for i in s.items],
+    )
+
+
+def _get_stream(db: Session, stream_id: int) -> Stream:
+    s = db.get(Stream, stream_id)
+    if s is None:
+        raise HTTPException(404, "轮播流不存在")
+    return s
+
+
+@router.get("", response_model=list[StreamOut])
+def list_streams(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    return [_stream_out(s) for s in db.query(Stream).order_by(Stream.id).all()]
+
+
+@router.post("", response_model=StreamOut)
+def create_stream(body: StreamCreate, db: Session = Depends(get_db),
+                  _: User = Depends(get_current_user)):
+    s = Stream(name=body.name, mode=body.mode, enabled=body.enabled)
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return _stream_out(s)
+
+
+@router.get("/{stream_id}", response_model=StreamOut)
+def get_stream(stream_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    return _stream_out(_get_stream(db, stream_id))
+
+
+@router.put("/{stream_id}", response_model=StreamOut)
+def update_stream(stream_id: int, body: StreamUpdate, db: Session = Depends(get_db),
+                  _: User = Depends(get_current_user)):
+    s = _get_stream(db, stream_id)
+    data = body.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(s, k, v)
+    db.commit()
+    db.refresh(s)
+    return _stream_out(s)
+
+
+@router.delete("/{stream_id}")
+def delete_stream(stream_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    s = _get_stream(db, stream_id)
+    db.delete(s)
+    db.commit()
+    return {"msg": "已删除轮播流"}
+
+
+@router.post("/{stream_id}/items", response_model=StreamItemOut)
+def add_item(stream_id: int, body: StreamItemCreate, db: Session = Depends(get_db),
+             _: User = Depends(get_current_user)):
+    s = _get_stream(db, stream_id)
+    if db.get(Template, body.template_id) is None:
+        raise HTTPException(404, "模板不存在")
+    pos = max((i.position for i in s.items), default=-1) + 1
+    it = StreamItem(
+        stream_id=stream_id, template_id=body.template_id, position=pos,
+        schedule_type=body.schedule_type, duration_sec=body.duration_sec,
+        start_at=body.start_at, enabled=body.enabled,
+    )
+    db.add(it)
+    db.commit()
+    db.refresh(it)
+    return _item_out(it)
+
+
+@router.put("/{stream_id}/items/{item_id}", response_model=StreamItemOut)
+def update_item(stream_id: int, item_id: int, body: StreamItemUpdate,
+                db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    s = _get_stream(db, stream_id)
+    it = db.get(StreamItem, item_id)
+    if it is None or it.stream_id != s.id:
+        raise HTTPException(404, "条目不存在")
+    data = body.model_dump(exclude_unset=True)
+    if "template_id" in data and db.get(Template, data["template_id"]) is None:
+        raise HTTPException(404, "模板不存在")
+    if "start_at" in data and data["start_at"] is not None:
+        data["start_at"] = data["start_at"].replace(
+            year=2000, month=1, day=1)  # 绝对条目只存时刻（date 固定为当日）
+    for k, v in data.items():
+        setattr(it, k, v)
+    db.commit()
+    db.refresh(it)
+    return _item_out(it)
+
+
+@router.delete("/{stream_id}/items/{item_id}")
+def delete_item(stream_id: int, item_id: int, db: Session = Depends(get_db),
+                _: User = Depends(get_current_user)):
+    s = _get_stream(db, stream_id)
+    it = db.get(StreamItem, item_id)
+    if it is None or it.stream_id != s.id:
+        raise HTTPException(404, "条目不存在")
+    db.delete(it)
+    db.commit()
+    return {"msg": "已删除条目"}
+
+
+@router.post("/{stream_id}/items/sort")
+def sort_items(stream_id: int, body: StreamItemSortRequest, db: Session = Depends(get_db),
+               _: User = Depends(get_current_user)):
+    s = _get_stream(db, stream_id)
+    by_id = {i.id: i for i in s.items}
+    for pos, iid in enumerate(body.item_ids):
+        if iid in by_id:
+            by_id[iid].position = pos
+    db.commit()
+    return {"msg": "排序已更新"}
+
+
+@router.get("/{stream_id}/timeline")
+def timeline(stream_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    """当日时间轴预览：[(start_sec, duration_sec, item_id, template_name)]"""
+    s = _get_stream(db, stream_id)
+    now = dt.datetime.now()
+    segs = build_timeline(s, now)
+    names = {t.id: t.name for t in db.query(Template).all()}
+    return [
+        {
+            "start_sec": st, "duration_sec": d,
+            "start_time": f"{st // 3600:02d}:{st % 3600 // 60:02d}",
+            "item_id": it.id, "template_id": it.template_id,
+            "template_name": names.get(it.template_id, ""),
+            "schedule_type": it.schedule_type,
+        }
+        for st, d, it in segs
+    ]

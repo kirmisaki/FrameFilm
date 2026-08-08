@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 创作 · film-hub</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .ai-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 1100px) { .ai-grid { grid-template-columns: 1fr; } }
+
+  .ai-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .ai-card h3 { font-size: 15px; margin-bottom: 4px; }
+  .ai-card .desc { font-size: 12px; color: var(--gray); margin-bottom: 16px; }
+  .ai-card .prompt { min-height: 74px; }
+  .hint-bad { background: #fff4f4; border: 1px solid #f0c0c0; color: var(--red); font-size: 12px; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .hint-bad a { text-decoration: underline; white-space: nowrap; }
+
+  /* 灵感骰子：摇一摇换提示词 */
+  .dice { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--gray); font-size: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: #fff; transition: all .15s; }
+  .dice:hover { color: var(--ink); border-color: var(--ink); }
+  .dice.shake svg { animation: diceShake .5s ease; }
+  @keyframes diceShake {
+    0% { transform: rotate(0); } 25% { transform: rotate(-18deg); }
+    50% { transform: rotate(16deg); } 75% { transform: rotate(-8deg); } 100% { transform: rotate(0); }
+  }
+
+  /* 生成结果 */
+  .gen-result { border: 1px solid var(--line); border-radius: 10px; margin-top: 16px; padding: 14px; background: #FBFBF9; display: none; }
+  .gen-result.show { display: block; animation: popIn .4s cubic-bezier(.2,.9,.3,1.2); }
+  .gen-result .gen-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 12px; color: var(--gray); gap: 8px; flex-wrap: wrap; }
+  .gen-result .gen-head b { color: var(--ink); font-size: 13px; }
+  .thumb-row { display: flex; gap: 14px; align-items: flex-start; }
+  .pv-frame { background: var(--ink); padding: 8px; border-radius: 8px; flex-shrink: 0; }
+  .pv-screen { width: 84px; height: 126px; background: #fff; position: relative; overflow: hidden; display: grid; place-items: center; }
+  .pv-screen img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .pv-screen .ph { font-size: 10px; color: var(--gray); text-align: center; line-height: 1.8; padding: 6px; }
+  .gen-meta { flex: 1; font-size: 11px; color: var(--gray); line-height: 2; min-width: 0; }
+  .gen-meta .rc-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+  .gen-meta .rc-chips span { border: 1px solid var(--line); border-radius: 4px; padding: 1px 7px; font-size: 10px; color: var(--gray); background: #fff; }
+  .gen-result .ops { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+
+  /* AI 生图 */
+  .ai-img { width: 100%; border: 1px solid var(--line); border-radius: 10px; position: relative; overflow: hidden; background: #fff; }
+  .ai-img img { display: block; width: 100%; height: 260px; object-fit: cover; }
+  .ai-img .scan { position: absolute; top: 0; bottom: 0; left: -30%; width: 30%; background: linear-gradient(105deg, transparent, rgba(255,255,255,.55), transparent); animation: imgSweep 1.1s ease-out forwards; }
+  @keyframes imgSweep { to { left: 130%; } }
+  .style-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .style-chips span { font-size: 11px; border: 1px solid var(--line); border-radius: 20px; padding: 4px 12px; cursor: pointer; color: var(--gray); background: #fff; transition: transform .15s, border-color .15s; }
+  .style-chips span:hover { transform: translateY(-2px); }
+  .style-chips span.on { border-color: var(--ink); color: var(--ink); animation: pickPop .35s cubic-bezier(.2,.9,.3,1.4); }
+
+  /* 查看 JSON */
+  .json-view { margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; background: #111; color: #9fe08f; font-family: var(--mono); font-size: 10.5px; padding: 10px; max-height: 180px; overflow: auto; white-space: pre; display: none; }
+
+  /* ===== 趣味动效：卡片入场 ===== */
+  .ai-card { animation: riseIn .5s cubic-bezier(.2,.9,.3,1.1) both; }
+  .ai-card:nth-child(1) { animation-delay: .05s; }
+  .ai-card:nth-child(2) { animation-delay: .18s; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topnav">
+    <div class="inner">
+      <div class="brand">
+        <span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span>
+        <b>film-hub</b>
+      </div>
+      <nav class="nav">
+        <a href="dashboard.html"><span class="ico ico-dash"></span>仪表盘</a>
+        <a href="devices.html"><span class="ico ico-dev"></span>设备管理</a>
+        <a href="templates.html"><span class="ico ico-tpl"></span>模板库</a>
+        <a href="streams.html"><span class="ico ico-stream"></span>轮播流</a>
+        <a href="albums.html"><span class="ico ico-album"></span>相册</a>
+        <a class="on" href="ai.html"><span class="ico ico-ai"></span>AI 创作</a>
+        <a href="settings.html"><span class="ico ico-set"></span>设置</a>
+      </nav>
+      <div class="top-right">
+        <a class="gh" href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener" title="GitHub 仓库"><svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        <span class="status"><span class="dot dot-pulse"></span>连接中…</span>
+        <div class="avatar">管</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>AI 创作</h1>
+        <div class="sub">用自然语言创建自定义模板 · 生图后自动保存为相册照片</div>
+      </div>
+      <div class="right"><a href="settings.html"><button class="btn"><span class="ico ico-set ico-sm"></span> AI 设置</button></a></div>
+    </div>
+
+    <div class="hint-bad" id="hintBad" style="display:none">
+      <span class="ico ico-warn"></span>
+      <span id="hintText">AI 服务尚未配置。配置 OpenAI 兼容接口（DeepSeek / Kimi / 通义千问）后即可使用。</span>
+      <a href="settings.html"><button class="btn btn-sm btn-danger" style="margin-left:auto">去配置</button></a>
+    </div>
+
+    <div class="ai-grid">
+      <!-- AI 创建模板 -->
+      <div class="ai-card">
+        <h3><span class="ico ico-ai" style="vertical-align:-3px"></span> AI 创建模板</h3>
+        <div class="desc">描述你想要的布局，AI 生成模板定义 JSON 并渲染预览</div>
+        <textarea class="input prompt" id="tplPrompt" placeholder="例如：白底，顶部大字标题「今日天气」，左侧显示温度 26℃，右侧放一张相册照片，底部一行备忘录文字"></textarea>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="dice" onclick="rollIdea('tpl')" title="随机灵感"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.4" fill="#fff"/><circle cx="15.5" cy="8.5" r="1.4" fill="#fff"/><circle cx="12" cy="12" r="1.4" fill="#fff"/><circle cx="8.5" cy="15.5" r="1.4" fill="#fff"/><circle cx="15.5" cy="15.5" r="1.4" fill="#fff"/></svg> 灵感一掷</button>
+          <button class="btn btn-primary" style="margin-left:auto" id="genTplBtn" onclick="genTemplate()"><span class="ico ico-ai ico-sm"></span> 生成模板</button>
+        </div>
+        <div class="gen-result" id="tplResult"></div>
+      </div>
+
+      <!-- AI 生图 -->
+      <div class="ai-card">
+        <h3><span class="ico ico-ai" style="vertical-align:-3px"></span> AI 生图</h3>
+        <div class="desc">生成装饰插画或照片，自动保存到相册供模板 / 轮播使用</div>
+        <textarea class="input prompt" id="imgPrompt" placeholder="描述画面内容，如：傍晚的海边，一只橘猫坐在木栈道上"></textarea>
+        <div class="style-chips" id="styleChips">
+          <span class="on">插画</span><span>扁平</span><span>水彩</span><span>像素</span><span>极简线稿</span><span>水墨</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="dice" onclick="rollIdea('img')" title="随机灵感"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.4" fill="#fff"/><circle cx="15.5" cy="8.5" r="1.4" fill="#fff"/><circle cx="12" cy="12" r="1.4" fill="#fff"/><circle cx="8.5" cy="15.5" r="1.4" fill="#fff"/><circle cx="15.5" cy="15.5" r="1.4" fill="#fff"/></svg> 灵感一掷</button>
+          <select class="select" id="imgSize" style="width:150px">
+            <option value="1024x1024">1024×1024</option>
+            <option value="1024x1792">1024×1792 竖版</option>
+            <option value="1792x1024">1792×1024 横版</option>
+          </select>
+          <select class="select" id="imgAlbum" style="width:170px"></select>
+          <button class="btn btn-primary" style="margin-left:auto" id="genImgBtn" onclick="genImage()"><span class="ico ico-ai ico-sm"></span> 生成图片</button>
+        </div>
+        <div class="gen-result" id="imgResult"></div>
+      </div>
+    </div>
+
+    <div class="foot-note">
+      <span>模板与图片生成后自动保存 · 可随时在模板库 / 相册中继续编辑</span>
+      <span>生成耗时取决于 AI 服务响应速度</span>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <div class="f-about">
+        <div class="f-brand"><span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span><b>film-hub</b></div>
+        <p>FrameFilm 彩色电子纸冰箱贴的局域网后端与管理工具：模板编排、服务端渲染、轮播时间轴与 OTA 推送。</p>
+      </div>
+      <div class="f-col">
+        <h4>链接</h4>
+        <a href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener">GitHub 仓库</a>
+        <a href="/docs" target="_blank">后端 API 文档</a>
+      </div>
+      <div class="f-col">
+        <h4>技术栈</h4>
+        <span>ESP32-S3 + 彩色电子纸</span>
+        <span>Python FastAPI 后端</span>
+        <span>微信小程序 / Web 工具</span>
+      </div>
+    </div>
+    <div class="f-bottom">© 2026 FrameFilm · GPL-3.0 · 开源彩色电子纸冰箱贴</div>
+  </footer>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  FH.guard();
+  FH.setupNavRefresh();
+  FH.refreshStatus();
+
+  let cfg = null;       // {base_url, model, image_model, api_key_set}
+  let albums = [];
+
+  const TPL_IDEAS = [
+    '白底，顶部大字标题「今日天气」，左侧显示温度 26℃，右侧放一张相册照片，底部一行备忘录文字',
+    '简约风格：上方日期 + 星期，中间一张相册照片，下方三行待办事项',
+    '黑底白字「每日一言」，中间一行大号名言，底部小字日期',
+    '左侧竖排大数字倒计时「距离春节还有 32 天」，右侧红字提示',
+    '相册九宫格风格：3×3 排列相册照片，每张之间留 2px 白边',
+    '备忘录风格：顶部标题「买菜清单」，下方 6 行清单，每行前一个小方框',
+    '极简时钟：居中超大时间数字，右上角星期，底部日期',
+    '运势卡片：顶部「今日运势」，中间星座符号，下方三个指标（财运/爱情/事业）',
+  ];
+  const IMG_IDEAS = [
+    '傍晚的海边，一只橘猫坐在木栈道上，背景是橙紫色的晚霞',
+    '一杯冒热气的咖啡放在木质窗台上，窗外是雪景',
+    '春天的樱花树下，一辆复古自行车停靠在路边',
+    '蓝色鲸鱼在星空中游弋，身体上画着星座线条',
+    '一只柴犬戴着红色围巾，站在金黄的银杏叶中',
+    '深夜的书桌上，台灯下摊开一本手绘地图，旁边一杯茶',
+    '热带雨林中的小木屋，藤蔓缠绕，阳光透过树叶洒下',
+    '复古收音机放在窗台上，窗外是一座欧洲小城黄昏',
+  ];
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  function openModal(n) { document.getElementById('modal-' + n).classList.add('show'); }
+  function closeModal(n) { document.getElementById('modal-' + n).classList.remove('show'); }
+
+  /* 灵感骰子：打字机输入随机提示词 */
+  function rollIdea(which) {
+    const ta = document.getElementById(which === 'tpl' ? 'tplPrompt' : 'imgPrompt');
+    const pool = which === 'tpl' ? TPL_IDEAS : IMG_IDEAS;
+    const text = pool[Math.floor(Math.random() * pool.length)];
+    ta.value = '';
+    let i = 0;
+    const t = setInterval(() => {
+      ta.value = text.slice(0, i + 1);
+      i++;
+      if (i >= text.length) clearInterval(t);
+    }, 18);
+  }
+
+  /* 风格标签：点击切换 */
+  document.querySelectorAll('#styleChips span').forEach(chip => {
+    chip.addEventListener('click', () => {
+      chip.parentElement.querySelectorAll('span').forEach(s => s.classList.remove('on'));
+      chip.classList.add('on');
+    });
+  });
+
+  /* ===== 配置状态 ===== */
+  async function loadCfg() {
+    try {
+      cfg = await API.get('/settings/ai');
+    } catch (e) { cfg = null; }
+    const okTpl = cfg && cfg.api_key_set && cfg.model;
+    const okImg = cfg && cfg.api_key_set && cfg.image_model;
+    document.getElementById('hintBad').style.display = okTpl && okImg ? 'none' : 'flex';
+    const parts = [];
+    if (!okTpl) parts.push('对话模型未配置');
+    if (!okImg) parts.push('绘图模型未配置');
+    document.getElementById('hintText').textContent = parts.join('、') + '，AI 功能暂不可用。请在设置中填写 OpenAI 兼容接口配置。';
+    document.getElementById('genTplBtn').disabled = !okTpl;
+    document.getElementById('genImgBtn').disabled = !okImg;
+  }
+
+  /* ===== 相册选择器 ===== */
+  async function loadAlbums() {
+    try {
+      albums = await API.get('/albums');
+    } catch (e) { albums = []; }
+    document.getElementById('imgAlbum').innerHTML =
+      '<option value="">＋ 自动新建相册</option>' +
+      albums.map(a => '<option value="' + a.id + '">保存到 · ' + esc(a.name) + '</option>').join('');
+  }
+
+  /* ===== AI 生成模板 ===== */
+  async function genTemplate() {
+    const prompt = document.getElementById('tplPrompt').value.trim();
+    if (!prompt) { FH.toast('请先描述想要的模板布局', 'err'); return; }
+    const btn = document.getElementById('genTplBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ico ico-refresh spin ico-sm"></span> AI 生成中…';
+    const box = document.getElementById('tplResult');
+    box.classList.remove('show');
+    box.innerHTML = '<div class="gen-head"><span><span class="ico ico-refresh spin ico-sm"></span> AI 正在设计模板…</span></div>' +
+      '<div class="thumb-row"><div class="pv-frame"><div class="pv-screen"><div class="ph">生成中…</div></div></div>' +
+      '<div class="gen-meta">· 布局推理中<br>· 图层生成中<br>· 校验中</div></div>';
+    try {
+      const t = await API.post('/ai/template', { prompt });
+      renderTplResult(t);
+    } catch (e) {
+      box.innerHTML = '<div class="gen-head"><span style="color:var(--red)">生成失败：' + esc(e.message) + '</span></div>';
+      box.classList.add('show');
+      FH.toast(e.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="ico ico-ai ico-sm"></span> 生成模板';
+    }
+  }
+
+  async function renderTplResult(t) {
+    const box = document.getElementById('tplResult');
+    const layers = (t.definition && t.definition.layers) || [];
+    const rc = t.render_config || {};
+    const chips = [
+      (rc.dither_type === 'none' ? '无抖动' : '抖动 ' + (rc.dither_type || 'floyd_steinberg')),
+      '强度 ' + (rc.dither_strength != null ? rc.dither_strength : 80) + '%',
+      '对比 ' + (rc.contrast != null ? rc.contrast : 100),
+    ].filter(Boolean);
+    box.innerHTML =
+      '<div class="gen-head"><b>' + esc(t.name) + '</b><span class="tag green"><span class="ico ico-check ico-sm" style="vertical-align:-2px"></span> 已保存到模板库</span></div>' +
+      '<div class="thumb-row">' +
+      '<div class="pv-frame"><div class="pv-screen" id="tplPv"><div class="ph">渲染中…</div></div></div>' +
+      '<div class="gen-meta">· 图层 ' + layers.length + ' 个：' +
+      layers.slice(0, 5).map(l => esc(l.type)).join(' / ') + '<br>' +
+      '· 数据源：' + (t.definition && t.definition.data ? Object.keys(t.definition.data).map(k => esc(k)).join('、') || '无' : '无') + '<br>' +
+      '· 渲染算法：' + (rc.dither_type === 'none' ? '无抖动' : 'Floyd-Steinberg') +
+      '<div class="rc-chips">' + chips.map(c => '<span>' + esc(c) + '</span>').join('') + '</div></div>' +
+      '</div>' +
+      '<div class="json-view" id="tplJson"></div>' +
+      '<div class="ops">' +
+      '<button class="btn btn-sm btn-primary" onclick="location.href=\'template-editor.html?id=' + t.id + '\'">去编辑器精修 <span class="ico ico-arrow-r ico-sm"></span></button>' +
+      '<button class="btn btn-sm" onclick="genTemplate()">再生成一次</button>' +
+      '<button class="btn btn-sm" onclick="toggleJson()">查看 JSON</button>' +
+      '</div>';
+    box.classList.add('show');
+    // 预览图（需鉴权）
+    FH.authImg('/api/v1/admin/templates/' + t.id + '/preview?device_type=basic&refresh=true').then(url => {
+      document.getElementById('tplPv').innerHTML = '<img src="' + url + '" alt="">';
+    }).catch(() => {
+      document.getElementById('tplPv').innerHTML = '<div class="ph">预览失败</div>';
+    });
+    document.getElementById('tplJson').textContent = JSON.stringify(t.definition, null, 2);
+  }
+
+  function toggleJson() {
+    const el = document.getElementById('tplJson');
+    el.style.display = el.style.display === 'block' ? 'none' : 'block';
+  }
+
+  /* ===== AI 生图 ===== */
+  async function genImage() {
+    const prompt = document.getElementById('imgPrompt').value.trim();
+    if (!prompt) { FH.toast('请先描述画面内容', 'err'); return; }
+    const style = (document.querySelector('#styleChips span.on') || {}).textContent || '';
+    const size = document.getElementById('imgSize').value;
+    const sel = document.getElementById('imgAlbum');
+    const albumId = sel.value ? parseInt(sel.value, 10) : null;
+    const btn = document.getElementById('genImgBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ico ico-refresh spin ico-sm"></span> 生成中…';
+    const box = document.getElementById('imgResult');
+    box.classList.remove('show');
+    box.innerHTML = '<div class="gen-head"><span><span class="ico ico-refresh spin ico-sm"></span> AI 正在绘画…</span></div>' +
+      '<div class="ai-img"><div style="height:260px;display:grid;place-items:center;color:var(--gray);font-size:12px">' +
+      '<span><span class="ico ico-refresh spin ico-sm" style="vertical-align:-2px"></span> 生成中…</span></div></div>';
+    try {
+      const fullPrompt = style && style !== '插画' ? prompt + '，' + style : prompt;
+      const res = await API.post('/ai/image', { prompt: fullPrompt, size, album_id: albumId });
+      renderImgResult(res, albumId);
+    } catch (e) {
+      box.innerHTML = '<div class="gen-head"><span style="color:var(--red)">生成失败：' + esc(e.message) + '</span></div>';
+      box.classList.add('show');
+      FH.toast(e.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="ico ico-ai ico-sm"></span> 生成图片';
+    }
+  }
+
+  async function renderImgResult(res, albumId) {
+    const box = document.getElementById('imgResult');
+    let albumName;
+    if (albumId) {
+      albumName = (albums.find(a => a.id === albumId) || {}).name || '相册';
+    } else {
+      // 后端自动新建相册，名称为「AI 生成 + 提示词前 20 字」
+      await loadAlbums();
+      const created = albums[albums.length - 1];
+      albumName = created ? created.name : 'AI 生成相册';
+    }
+    box.innerHTML =
+      '<div class="gen-head"><b>' + res.width + '×' + res.height + '</b><span class="tag green"><span class="ico ico-check ico-sm" style="vertical-align:-2px"></span> 已保存到相册</span></div>' +
+      '<div class="ai-img"><img id="imgResImg" src="' + res.thumb_url + '" alt=""><div class="scan"></div></div>' +
+      '<div class="gen-meta" style="margin-top:10px">已保存到：' + albumName + '</div>' +
+      '<div class="ops">' +
+      '<button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="location.href=\'albums.html?album=' + res.album_id + '\'">去相册查看 <span class="ico ico-arrow-r ico-sm"></span></button>' +
+      '<button class="btn btn-sm" onclick="genImage()">再生成</button>' +
+      '</div>';
+    box.classList.add('show');
+  }
+
+  /* ===== 初始化 ===== */
+  loadCfg();
+  loadAlbums();
+</script>
+</body>
+</html>

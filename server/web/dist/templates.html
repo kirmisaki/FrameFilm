@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模板库 · film-hub</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* ===== 模板卡片（横屏 3:2 小卡片 · 独立信息条） ===== */
+  .tpls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  @media (max-width: 1100px) { .tpls { grid-template-columns: repeat(4, 1fr); } }
+  @media (max-width: 850px) { .tpls { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 620px) { .tpls { grid-template-columns: repeat(2, 1fr); } }
+
+  .tpl {
+    position: relative; border-radius: 12px; overflow: hidden; cursor: pointer;
+    background: var(--card); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(26,26,26,.04);
+    transition: transform .18s, box-shadow .18s, border-color .15s;
+  }
+  .tpl:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(26,26,26,.13); border-color: var(--line-d); }
+  .tpl .cov { position: relative; aspect-ratio: 2/3; background: #fff; overflow: hidden; }
+  .tpl .cov img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .45s; background: #fff; }
+  .tpl:hover .cov img { transform: scale(1.05); }
+  .tpl .cov .ph { display: grid; place-items: center; height: 100%; color: var(--gray); font-size: 11px; text-align: center; line-height: 1.8; padding: 10px; }
+  /* 左上角类型徽标 */
+  .tpl .kind-tag {
+    position: absolute; top: 8px; left: 8px; z-index: 1;
+    font-size: 10px; font-weight: 600; letter-spacing: .5px;
+    background: rgba(255,255,255,.9); color: #555; border-radius: 5px; padding: 2px 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  }
+  /* 底部悬停快捷操作 */
+  .tpl .quick {
+    position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%) translateY(4px); z-index: 1;
+    display: flex; gap: 6px;
+    opacity: 0; transition: opacity .18s, transform .18s;
+  }
+  .tpl:hover .quick { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .tpl .quick span {
+    font-size: 11px; color: #fff; background: rgba(0,0,0,.58);
+    border-radius: 20px; padding: 4px 12px; cursor: pointer; backdrop-filter: blur(2px);
+    white-space: nowrap; transition: background .15s;
+  }
+  .tpl .quick span:hover { background: var(--ink); }
+  /* 右上操作按钮 */
+  .tpl .ops { position: absolute; top: 8px; right: 8px; display: none; gap: 6px; z-index: 2; }
+  .tpl:hover .ops { display: flex; }
+  .tpl .ops span {
+    width: 25px; height: 25px; display: grid; place-items: center; cursor: pointer;
+    background: rgba(0,0,0,.45); color: #fff; border-radius: 7px;
+    backdrop-filter: blur(2px); transition: background .15s, transform .15s;
+  }
+  .tpl .ops span:hover { background: var(--ink); transform: scale(1.08); }
+  .tpl .ops span.del:hover { background: var(--red); }
+  .tpl .ops .ico { width: 13px; height: 13px; }
+  /* 信息条（独立白底，不压图） */
+  .tpl .meta { padding: 9px 11px 10px; border-top: 1px solid var(--line); }
+  .tpl .meta .name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; letter-spacing: .3px; }
+  .tpl .meta .name b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tpl .meta .sub { margin-top: 2px; font-size: 11px; color: var(--gray); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tpl .meta .badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; flex: none; }
+  .tpl .meta .badge.builtin { background: #FDF3CE; color: #8a6d00; }
+  .tpl .meta .badge.custom { background: #EFEFED; color: #666; }
+  /* 新建卡片 */
+  .tpl.add {
+    display: grid; place-items: center; border-style: dashed; border-color: var(--line-d);
+    background: transparent; box-shadow: none; color: var(--gray); aspect-ratio: 2/3;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .tpl.add:hover { color: var(--ink); border-color: var(--ink); background: #FBFBF9; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  .toolbar .search { flex: 0 0 260px; }
+  .toolbar .search input { border: none; outline: none; background: transparent; flex: 1; font-size: 13px; min-width: 0; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter { font-size: 12px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 20px; cursor: pointer; color: var(--gray); background: #fff; transition: all .15s; }
+  .filter.on { border-color: var(--ink); color: var(--ink); font-weight: 600; background: #FBFBF9; }
+
+  /* ===== 应用态弹窗（预览 + 动态表单） ===== */
+  .ap-modal {
+    width: 880px; max-width: calc(100vw - 40px); height: min(640px, calc(100vh - 80px));
+    background: var(--card); border: 1px solid var(--ink); border-radius: 16px;
+    box-shadow: var(--shadow-lg); overflow: hidden; display: flex; flex-direction: column;
+    animation: popIn .3s cubic-bezier(.2,.9,.3,1.2);
+  }
+  .ap-top { display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-bottom: 1px solid var(--line); }
+  .ap-top b { font-size: 14px; letter-spacing: .5px; }
+  .ap-top .tag { font-size: 11px; }
+  .ap-top .x { margin-left: auto; color: var(--gray); cursor: pointer; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; }
+  .ap-top .x:hover { color: var(--ink); background: var(--line); }
+  .ap-body { display: flex; flex: 1; min-height: 0; }
+  /* 左：电子纸画框预览 */
+  .ap-stage {
+    flex: 0 0 340px; padding: 26px 20px; background: var(--paper);
+    background-image: radial-gradient(rgba(26,26,26,.05) 1px, transparent 1px);
+    background-size: 16px 16px;
+    display: grid; place-items: center; position: relative; overflow: hidden;
+  }
+  .ap-stage::before {
+    content: ""; position: absolute; width: 90px; height: 90px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(252,208,0,.14), transparent 70%);
+    top: -30px; right: -20px;
+  }
+  .ap-frame {
+    background: #3A3A37; padding: 13px 13px 28px; border-radius: 8px;
+    box-shadow: 0 18px 34px rgba(26,26,26,.28); transform: rotate(-1deg); transition: transform .3s;
+  }
+  .ap-device:hover .ap-frame { transform: rotate(0); }
+  /* 渲染倍率切换 */
+  .ap-scale {
+    position: absolute; top: 14px; left: 14px; z-index: 2;
+    display: flex; gap: 2px; background: #fff; border: 1px solid var(--line);
+    border-radius: 20px; padding: 2px; box-shadow: 0 2px 6px rgba(26,26,26,.08);
+  }
+  .ap-scale span {
+    font-size: 11px; padding: 3px 11px; border-radius: 16px; cursor: pointer;
+    color: var(--gray); transition: all .15s; white-space: nowrap;
+  }
+  .ap-scale span:hover { color: var(--ink); }
+  .ap-scale span.on { background: var(--ink); color: var(--paper); font-weight: 600; }
+  .ap-screen {
+    width: 200px; height: 300px; background: #fff; position: relative; overflow: hidden;
+    display: grid; place-items: center;
+  }
+  .ap-screen img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #fff; }
+  .ap-screen .ph { font-size: 10px; color: var(--gray); text-align: center; line-height: 1.9; padding: 8px; }
+  .ap-seal { position: absolute; right: 6px; bottom: 6px; font-size: 7px; letter-spacing: 1px; color: rgba(26,26,26,.35); background: rgba(255,255,255,.8); border-radius: 2px; padding: 1px 4px; }
+  /* 右：动态表单 */
+  .ap-form { flex: 1; min-width: 0; overflow-y: auto; padding: 16px 18px; }
+  .ap-form .f { margin-bottom: 14px; }
+  .ap-form label { display: block; font-size: 12px; font-weight: 600; color: #444; margin-bottom: 6px; letter-spacing: .3px; }
+  .ap-form label small { font-weight: 400; color: var(--gray); }
+  .ap-form .hint { font-size: 11px; color: var(--gray); margin-top: 4px; line-height: 1.6; }
+  .ap-empty { padding: 30px 10px; text-align: center; color: var(--gray); font-size: 12px; line-height: 1.9; }
+  /* 配色 pill 色卡 */
+  .schemes { display: flex; flex-wrap: wrap; gap: 8px; }
+  .scheme-pill {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 12px 6px 8px;
+    border: 1px solid var(--line); border-radius: 20px; cursor: pointer; color: #555; background: #fff;
+    transition: all .15s;
+  }
+  .scheme-pill i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,.12); flex: none; }
+  .scheme-pill:hover { border-color: var(--ink); }
+  .scheme-pill.on { border-color: var(--ink); background: #FBFBF9; color: var(--ink); font-weight: 600; }
+  /* radio pill */
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    font-size: 12px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 20px;
+    cursor: pointer; color: #555; background: #fff; transition: all .15s;
+  }
+  .pill:hover { border-color: var(--ink); }
+  .pill.on { border-color: var(--ink); background: var(--ink); color: var(--paper); font-weight: 600; }
+  .ap-foot { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
+  .ap-foot .sp { flex: 1; }
+  .ap-foot .stat { font-size: 11px; color: var(--gray); }
+
+  /* ===== 趣味动效 ===== */
+  .tpls .tpl { animation: riseIn .5s cubic-bezier(.2,.9,.3,1.1) both; }
+  .tpls .tpl:nth-child(1) { animation-delay: .03s; }
+  .tpls .tpl:nth-child(2) { animation-delay: .1s; }
+  .tpls .tpl:nth-child(3) { animation-delay: .17s; }
+  .tpls .tpl:nth-child(4) { animation-delay: .24s; }
+  .tpls .tpl:nth-child(5) { animation-delay: .31s; }
+  .tpls .tpl:nth-child(6) { animation-delay: .38s; }
+  .tpls .tpl:nth-child(7) { animation-delay: .45s; }
+  .tpls .tpl:nth-child(8) { animation-delay: .52s; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topnav">
+    <div class="inner">
+      <div class="brand">
+        <span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span>
+        <b>film-hub</b>
+      </div>
+      <nav class="nav">
+        <a href="dashboard.html"><span class="ico ico-dash"></span>仪表盘</a>
+        <a href="devices.html"><span class="ico ico-dev"></span>设备管理</a>
+        <a class="on" href="templates.html"><span class="ico ico-tpl"></span>模板库</a>
+        <a href="streams.html"><span class="ico ico-stream"></span>轮播流</a>
+        <a href="albums.html"><span class="ico ico-album"></span>相册</a>
+        <a href="ai.html"><span class="ico ico-ai"></span>AI 创作</a>
+        <a href="settings.html"><span class="ico ico-set"></span>设置</a>
+      </nav>
+      <div class="top-right">
+        <a class="gh" href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener" title="GitHub 仓库"><svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        <span class="status"><span class="dot dot-pulse"></span>连接中…</span>
+        <div class="avatar">管</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>模板库</h1>
+        <div class="sub">设计态定义结构与风格 · 应用态配置内容与参数 · 点击卡片即可配置</div>
+      </div>
+      <div class="right">
+        <a href="ai.html"><button class="btn"><span class="ico ico-ai ico-sm"></span> AI 创建模板</button></a>
+        <a href="template-editor.html"><button class="btn btn-primary">+ 新建自定义模板</button></a>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search"><span class="ico ico-search"></span><input id="searchInput" placeholder="搜索模板名称…" oninput="render()"></div>
+      <div class="filters" id="filters">
+        <span class="filter on" data-f="all">全部</span>
+        <span class="filter" data-f="builtin">内置</span>
+        <span class="filter" data-f="custom">自定义</span>
+        <span class="filter" data-f="album">相册类</span>
+        <span class="filter" data-f="info">信息类</span>
+      </div>
+      <span class="tag" style="margin-left:auto" id="countTag">—</span>
+    </div>
+
+    <div class="tpls" id="tpls"></div>
+
+    <div class="foot-note">
+      <span>点击卡片打开应用配置（参数实时预览） · 自定义模板可编辑结构</span>
+      <span>应用参数随模板保存，轮播流引用时自动生效</span>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <div class="f-about">
+        <div class="f-brand"><span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span><b>film-hub</b></div>
+        <p>FrameFilm 彩色电子纸冰箱贴的局域网后端与管理工具：模板编排、服务端渲染、轮播时间轴与 OTA 推送。</p>
+      </div>
+      <div class="f-col">
+        <h4>链接</h4>
+        <a href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener">GitHub 仓库</a>
+        <a href="/docs" target="_blank">后端 API 文档</a>
+      </div>
+      <div class="f-col">
+        <h4>技术栈</h4>
+        <span>ESP32-S3 + 彩色电子纸</span>
+        <span>Python FastAPI 后端</span>
+        <span>微信小程序 / Web 工具</span>
+      </div>
+    </div>
+    <div class="f-bottom">© 2026 FrameFilm · GPL-3.0 · 开源彩色电子纸冰箱贴</div>
+  </footer>
+</div>
+
+<!-- ===== 应用态配置弹窗 ===== -->
+<div class="modal-mask" id="modal-app">
+  <div class="ap-modal">
+    <div class="ap-top">
+      <b id="apName">—</b>
+      <span class="tag" id="apKind"></span>
+      <span class="x" onclick="closeApp()" title="关闭"><span class="ico ico-close"></span></span>
+    </div>
+    <div class="ap-body">
+      <div class="ap-stage">
+        <div class="ap-scale"><span data-s="fast" onclick="setScale('fast')">快速</span><span data-s="full" class="on" onclick="setScale('full')">设备分辨率</span></div>
+        <div class="ap-device">
+          <div class="ap-frame">
+            <div class="ap-screen" id="apScreen">
+              <img id="apImg" src="" alt="">
+              <span class="ph" id="apPh" style="display:none">渲染中…</span>
+              <span class="ap-seal">FILM-HUB</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ap-form" id="apForm"></div>
+      <div class="ap-form" id="apRender" style="border-top:1px solid var(--line);padding-top:14px"></div>
+    </div>
+    <div class="ap-foot">
+      <button class="btn btn-sm" id="apEditBtn" style="display:none" onclick="openEditor(appTpl.id)"><span class="ico ico-edit ico-sm"></span> 编辑结构</button>
+      <span class="sp"></span>
+      <span class="stat" id="apStat">—</span>
+      <button class="btn" onclick="closeApp()">取消</button>
+      <button class="btn btn-primary" onclick="saveApp()">保存应用参数 <span class="ico ico-check ico-sm"></span></button>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  FH.guard();
+  FH.setupNavRefresh();
+  FH.refreshStatus();
+
+  const KIND_CN = {
+    album: '相册', calendar: '日历', memo: '备忘录', weather: '天气',
+    fridge: '冰箱食材', fortune: '今日运势', countdown: '倒计时', quote: '每日一言', custom: '自定义',
+  };
+  const INFO_KINDS = ['calendar', 'memo', 'weather', 'fridge', 'fortune', 'countdown', 'quote'];
+  const DITHER_OPTIONS = [
+    ['none', '无'], ['floyd_steinberg', 'Floyd-Steinberg'], ['atkinson', 'Atkinson'],
+    ['stucki', 'Stucki'], ['jarvis', 'Jarvis-Judice-Ninke'],
+    ['gamma_floyd_steinberg', 'Gamma 感知 FS'], ['bayer', 'Bayer 4×4'],
+    ['adaptive', '自适应（推荐）'],
+  ];
+
+  let templates = [];
+  let albums = [];
+  let query = '';
+  let filter = 'all';
+  let appTpl = null;   // 弹窗当前模板
+  let appPvTimer = null; // 实时预览防抖
+  let appPvUrl = null; // 当前预览 objectURL
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  /* ===== 卡片列表 ===== */
+  function paramSummary(t) {
+    // 从 data.params 与 params 定义生成一行摘要，如「跟随当前时间 · 米杏」
+    const defs = t.definition.params || [];
+    const vals = (t.definition.data || {}).params || {};
+    if (!defs.length) return '无可配置参数';
+    const parts = [];
+    for (const d of defs) {
+      if (d.type === 'scheme') {
+        const s = (t.definition.schemes || [])[vals.scheme != null ? vals.scheme : d.default];
+        if (s) parts.push(s.name);
+      } else if (d.type === 'radio' && vals[d.key] != null) {
+        const o = (d.options || []).find(x => x.value === vals[d.key]);
+        parts.push(o ? o.label : vals[d.key]);
+      } else if (vals[d.key] != null && vals[d.key] !== '' && vals[d.key] !== null) {
+        const v = Array.isArray(vals[d.key]) ? vals[d.key].length + ' 条' : String(vals[d.key]);
+        parts.push(v);
+      }
+    }
+    return parts.join(' · ') || '默认配置';
+  }
+
+  function render() {
+    query = document.getElementById('searchInput').value.trim().toLowerCase();
+    const rows = templates.filter(t => {
+      if (filter === 'builtin' && !t.is_builtin) return false;
+      if (filter === 'custom' && t.is_builtin) return false;
+      if (filter === 'album' && t.kind !== 'album') return false;
+      if (filter === 'info' && INFO_KINDS.indexOf(t.kind) < 0) return false;
+      if (query && (t.name || '').toLowerCase().indexOf(query) < 0) return false;
+      return true;
+    });
+
+    document.getElementById('countTag').textContent =
+      '共 ' + templates.length + ' 个模板 · 内置 ' + templates.filter(t => t.is_builtin).length + ' · 自定义 ' + templates.filter(t => !t.is_builtin).length;
+
+    const box = document.getElementById('tpls');
+    if (!rows.length) {
+      box.innerHTML = '<div class="card card-pad" style="grid-column:1/-1;text-align:center;color:var(--gray)">没有匹配的模板</div>';
+      return;
+    }
+    box.innerHTML = rows.map((t, i) => {
+      const badge = t.is_builtin ? '<span class="badge builtin">内置</span>' : '<span class="badge custom">自定义</span>';
+      const ops = '<div class="ops">' +
+        '<span title="重新渲染预览" onclick="event.stopPropagation();refreshPreview(' + t.id + ')"><span class="ico ico-refresh"></span></span>' +
+        (!t.is_builtin ? '<span class="del" title="删除模板" onclick="event.stopPropagation();delTpl(' + t.id + ')"><span class="ico ico-trash"></span></span>' : '') +
+        '</div>';
+      const quick = '<div class="quick">' +
+        '<span onclick="event.stopPropagation();openApp(' + t.id + ')">✦ 应用配置</span>' +
+        (!t.is_builtin ? '<span onclick="event.stopPropagation();openEditor(' + t.id + ')">结构编辑</span>' : '') +
+        '</div>';
+      return '<div class="tpl" style="animation-delay:' + (i * 0.07) + 's" onclick="openApp(' + t.id + ')">' + ops + quick +
+        '<div class="cov"><img data-auth="' + t.id + '" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=ph>预览未生成</div>\'">' +
+        '<div class="kind-tag">' + esc(KIND_CN[t.kind] || t.kind) + '</div></div>' +
+        '<div class="meta"><div class="name"><b>' + esc(t.name) + '</b>' + badge + '</div>' +
+        '<div class="sub">' + esc(paramSummary(t)) + '</div></div>' +
+        '</div>';
+    }).join('') +
+      '<div class="tpl add" onclick="location.href=\'template-editor.html\'"><div style="text-align:center"><div style="font-size:26px;line-height:1">+</div><div style="font-size:12px;margin-top:8px">新建模板</div></div></div>';
+    fillAuthThumbs();
+  }
+
+  /* 缩略图：统一走鉴权 preview 接口（e-ink 效果图，GET 有磁盘缓存） */
+  function fillAuthThumbs() {
+    document.querySelectorAll('#tpls [data-auth]').forEach(async el => {
+      const id = el.dataset.auth;
+      if (el.complete && el.naturalWidth) return;
+      try {
+        const url = await FH.authImg(previewUrl(id));
+        el.src = url;
+      } catch (e) { /* 保留空白占位 */ }
+    });
+  }
+
+  function openEditor(id) { location.href = 'template-editor.html' + (id ? '?id=' + id : ''); }
+
+  async function refreshPreview(id) {
+    try {
+      await fetch(previewUrl(id, true), {
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('fh_token') || '') },
+      });
+      FH.toast('预览已重新渲染', 'ok');
+      render();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function delTpl(id) {
+    const t = templates.find(x => x.id === id);
+    if (!t) return;
+    const ok = await FH.confirmBox('确定删除模板「' + t.name + '」？已引用的轮播流条目将失效。');
+    if (!ok) return;
+    try {
+      await API.del('/templates/' + id);
+      FH.toast('模板已删除', 'ok');
+      load();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  document.getElementById('filters').addEventListener('click', e => {
+    const f = e.target.closest('.filter');
+    if (!f) return;
+    document.querySelectorAll('#filters .filter').forEach(x => x.classList.remove('on'));
+    f.classList.add('on');
+    filter = f.dataset.f;
+    render();
+  });
+
+  /* ===== 应用态配置弹窗 ===== */
+  function openApp(id) {
+    const t = templates.find(x => x.id === id);
+    if (!t) return;
+    appTpl = t;
+    if (appPvUrl) URL.revokeObjectURL(appPvUrl);
+    appPvUrl = null;
+    document.getElementById('apName').textContent = t.name;
+    document.getElementById('apKind').textContent = KIND_CN[t.kind] || t.kind;
+    document.getElementById('apEditBtn').style.display = t.is_builtin ? 'none' : 'inline-flex';
+    buildAppForm(t);
+    schedulePreview(true);
+    document.getElementById('modal-app').classList.add('show');
+  }
+
+  function closeApp() {
+    document.getElementById('modal-app').classList.remove('show');
+    appTpl = null;
+    if (appPvTimer) { clearTimeout(appPvTimer); appPvTimer = null; }
+  }
+
+  /* 动态表单 */
+  function buildAppForm(t) {
+    const defs = t.definition.params || [];
+    const vals = Object.assign({}, (t.definition.data || {}).params || {});
+    const wrap = document.getElementById('apForm');
+    if (!defs.length) {
+      wrap.innerHTML = '<div class="ap-empty">该模板没有可配置的应用参数。<br>点击「编辑结构」在设计态中定义参数，或在 JSON 编辑器中添加。</div>';
+      buildRenderForm(t);
+      return;
+    }
+    wrap.innerHTML = defs.map(d => {
+      const key = d.key;
+      const cur = vals[key] != null ? vals[key] : d.default;
+      const val = cur == null ? '' : cur;
+      const label = '<label>' + esc(d.label || key) + (d.type === 'list' ? ' <small>（每行一条）</small>' : '') + '</label>';
+      let ctl = '';
+      if (d.type === 'radio') {
+        ctl = '<div class="pills" id="ctl-' + key + '">' + (d.options || []).map(o =>
+          '<span class="pill' + (String(val) === String(o.value) ? ' on' : '') + '" data-v="' + esc(o.value) + '">' + esc(o.label) + '</span>'
+        ).join('') + '</div>';
+      } else if (d.type === 'scheme') {
+        ctl = '<div class="schemes" id="ctl-' + key + '">' + (t.definition.schemes || []).map((s, i) =>
+          '<span class="scheme-pill' + (Number(val) === i ? ' on' : '') + '" data-v="' + i + '"><i style="background:' + (s.accent || '#888') + '"></i>' + esc(s.name) + '</span>'
+        ).join('') + '</div>';
+      } else if (d.type === 'list') {
+        const listVal = Array.isArray(val) ? val.join('\n') : '';
+        ctl = '<textarea class="textarea" id="ctl-' + key + '" rows="4" style="min-height:84px">' + esc(listVal) + '</textarea>';
+      } else if (d.type === 'month') {
+        ctl = '<input class="input" id="ctl-' + key + '" type="month" value="' + esc(val) + '">';
+      } else if (d.type === 'date') {
+        ctl = '<input class="input" id="ctl-' + key + '" type="date" value="' + esc(val) + '">';
+      } else if (d.type === 'number') {
+        ctl = '<input class="input" id="ctl-' + key + '" type="number" value="' + esc(val) + '"' +
+          (d.min != null ? ' min="' + d.min + '"' : '') + (d.max != null ? ' max="' + d.max + '"' : '') + '>';
+      } else if (d.type === 'textarea') {
+        ctl = '<textarea class="textarea" id="ctl-' + key + '" rows="2">' + esc(val) + '</textarea>';
+      } else if (d.type === 'album') {
+        ctl = '<select class="select" id="ctl-' + key + '">' +
+          '<option value="">— 不绑定相册 —</option>' +
+          albums.map(a => '<option value="' + a.id + '"' + (String(val) === String(a.id) ? ' selected' : '') + '>' + esc(a.name) + '（' + a.photo_count + ' 张）</option>').join('') +
+          '</select>';
+      } else { /* text 默认 */
+        ctl = '<input class="input" id="ctl-' + key + '" type="text" value="' + esc(val) + '"' +
+          (d.maxlength ? ' maxlength="' + d.maxlength + '"' : '') + '>';
+      }
+      return '<div class="f">' + label + ctl + '</div>';
+    }).join('');
+
+    // 绑定事件
+    defs.forEach(d => {
+      const el = document.getElementById('ctl-' + d.key);
+      if (!el) return;
+      if (d.type === 'radio') {
+        el.addEventListener('click', e => {
+          const p = e.target.closest('.pill');
+          if (!p) return;
+          el.querySelectorAll('.pill').forEach(x => x.classList.remove('on'));
+          p.classList.add('on');
+          schedulePreview();
+        });
+      } else if (d.type === 'scheme') {
+        el.addEventListener('click', e => {
+          const p = e.target.closest('.scheme-pill');
+          if (!p) return;
+          el.querySelectorAll('.scheme-pill').forEach(x => x.classList.remove('on'));
+          p.classList.add('on');
+          schedulePreview();
+        });
+      } else {
+        el.addEventListener('input', schedulePreview);
+        el.addEventListener('change', schedulePreview);
+      }
+    });
+    // 月份 radio 联动禁用 fixed_month
+    syncFixedMonth();
+    document.getElementById('ctl-month_mode')?.addEventListener('click', syncFixedMonth);
+    buildRenderForm(t);
+  }
+
+  /* 渲染算法（e-ink 抖动 + 色调调整）区块 */
+  function buildRenderForm(t) {
+    const rc = t.render_config || {};
+    const dt = rc.dither_type || 'adaptive';
+    const st = rc.dither_strength != null ? rc.dither_strength : 80;
+    const co = rc.contrast != null ? rc.contrast : 100;
+    const sa = rc.saturation != null ? rc.saturation : 100;
+    document.getElementById('apRender').innerHTML =
+      '<div class="f"><label>渲染算法 <small>（e-ink 预览抖动）</small></label>' +
+      '<select class="select" id="rcDither">' + DITHER_OPTIONS.map(o =>
+        '<option value="' + o[0] + '"' + (dt === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'
+      ).join('') + '</select></div>' +
+      '<div class="f"><label>抖动强度 <span id="rcStrV" style="font-family:var(--mono)">' + st + '</span></label>' +
+      '<input class="range" type="range" id="rcStrength" min="0" max="100" value="' + st +
+      '" oninput="document.getElementById(\'rcStrV\').textContent=this.value"></div>' +
+      '<div class="f"><label>对比度 <span id="rcContV" style="font-family:var(--mono)">' + co + '</span></label>' +
+      '<input class="range" type="range" id="rcContrast" min="50" max="150" value="' + co +
+      '" oninput="document.getElementById(\'rcContV\').textContent=this.value"></div>' +
+      '<div class="f"><label>饱和度 <span id="rcSatV" style="font-family:var(--mono)">' + sa + '</span></label>' +
+      '<input class="range" type="range" id="rcSaturation" min="50" max="150" value="' + sa +
+      '" oninput="document.getElementById(\'rcSatV\').textContent=this.value"></div>' +
+      '<div class="hint">修改后按新算法实时渲染预览，保存后随模板生效。</div>';
+    ['rcDither', 'rcStrength', 'rcContrast', 'rcSaturation'].forEach(id => {
+      document.getElementById(id).addEventListener(id === 'rcDither' ? 'change' : 'input', schedulePreview);
+    });
+  }
+
+  function collectRender() {
+    const rc = Object.assign({}, appTpl.render_config || {});
+    rc.dither_type = document.getElementById('rcDither').value;
+    rc.dither_strength = parseInt(document.getElementById('rcStrength').value, 10);
+    rc.contrast = parseInt(document.getElementById('rcContrast').value, 10);
+    rc.saturation = parseInt(document.getElementById('rcSaturation').value, 10);
+    return rc;
+  }
+
+  function syncFixedMonth() {
+    const mm = document.querySelector('#ctl-month_mode .pill.on');
+    const fm = document.getElementById('ctl-fixed_month');
+    if (!fm) return;
+    const fixed = !!(mm && mm.dataset.v === 'fixed');
+    if (!fixed) {
+      // 跟随当前时间时重置固定月份为当前月，避免残留值进入摘要/保存
+      const now = new Date();
+      fm.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    }
+    fm.disabled = !fixed;
+    fm.style.opacity = fixed ? 1 : .45;
+  }
+
+  /* 收集控件值 -> params dict */
+  function collectParams(t) {
+    const defs = t.definition.params || [];
+    const vals = {};
+    defs.forEach(d => {
+      const el = document.getElementById('ctl-' + d.key);
+      if (!el || el.disabled) return;
+      if (d.type === 'radio') {
+        const on = el.querySelector('.pill.on');
+        vals[d.key] = on ? on.dataset.v : d.default;
+      } else if (d.type === 'scheme') {
+        const on = el.querySelector('.scheme-pill.on');
+        vals[d.key] = on != null ? parseInt(on.dataset.v, 10) : d.default;
+      } else if (d.type === 'list') {
+        vals[d.key] = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+      } else if (d.type === 'number') {
+        vals[d.key] = el.value === '' ? null : parseInt(el.value, 10);
+      } else if (d.type === 'album') {
+        vals[d.key] = el.value === '' ? null : parseInt(el.value, 10);
+      } else {
+        vals[d.key] = el.value;
+      }
+    });
+    return vals;
+  }
+
+  /* 实时预览（防抖，POST 临时参数，不落库） */
+  let appScale = null;  // 'fast' 快速(0.5x) | 'full' 设备实际分辨率(1.0)，启动时从设置加载
+  function setScale(s) {
+    appScale = s;
+    document.querySelectorAll('.ap-scale span').forEach(x => x.classList.toggle('on', x.dataset.s === s));
+    API.put('/settings/ui', { tpl_preview_scale: s === 'full' ? 1.0 : 0.8 }).catch(() => {});
+    schedulePreview(true);
+  }
+  /* 封面/刷新统一走 GET preview，带当前倍率 scale（设备分辨率档封面用 1.0 全分辨率） */
+  function previewUrl(id, refresh) {
+    return '/api/v1/admin/templates/' + id + '/preview?device_type=basic&scale=' +
+      (appScale === 'full' ? 1.0 : 0.8) + (refresh ? '&refresh=true' : '');
+  }
+
+  function schedulePreview(immediate) {
+    if (!appTpl) return;
+    if (appPvTimer) clearTimeout(appPvTimer);
+    appPvTimer = setTimeout(async () => {
+      appPvTimer = null;
+      await doPreview();
+    }, immediate ? 0 : 320);
+  }
+
+  async function doPreview() {
+    if (!appTpl) return;
+    const img = document.getElementById('apImg');
+    const ph = document.getElementById('apPh');
+    document.getElementById('apStat').textContent = '渲染中…';
+    ph.style.display = 'grid';
+    img.style.opacity = .35;
+    try {
+      const params = collectParams(appTpl);
+      const body = { params: params, render_config: collectRender(), device_type: 'basic', preview_scale: appScale === 'full' ? 1.0 : 0.5 };
+      const token = localStorage.getItem('fh_token') || '';
+      const res = await fetch('/api/v1/admin/templates/' + appTpl.id + '/preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('渲染失败 (' + res.status + ')');
+      const blob = await res.blob();
+      if (appPvUrl) URL.revokeObjectURL(appPvUrl);
+      appPvUrl = URL.createObjectURL(blob);
+      img.src = appPvUrl;
+      img.style.opacity = 1;
+      ph.style.display = 'none';
+      document.getElementById('apStat').textContent = '实时预览';
+    } catch (e) {
+      ph.style.display = 'grid';
+      ph.textContent = '渲染失败：' + e.message;
+      document.getElementById('apStat').textContent = '—';
+    }
+  }
+
+  /* 保存应用参数（随模板保存） */
+  async function saveApp() {
+    if (!appTpl) return;
+    const params = collectParams(appTpl);
+    const def = JSON.parse(JSON.stringify(appTpl.definition));
+    def.data = def.data || {};
+    def.data.params = params;
+    try {
+      await API.put('/templates/' + appTpl.id, { definition: def, render_config: collectRender() });
+      // 强制重渲染 GET 缓存缩略图，保证卡片图反映新参数（按当前倍率档位）
+      await fetch(previewUrl(appTpl.id, true), {
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('fh_token') || '') },
+      }).catch(() => {});
+      FH.toast('应用参数已保存', 'ok');
+      closeApp();
+      load();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  /* ===== 加载 ===== */
+  async function load() {
+    try {
+      const [ts, als, ui] = await Promise.all([
+        API.get('/templates'),
+        API.get('/albums').catch(() => []),
+        API.get('/settings/ui').catch(() => ({})),
+      ]);
+      templates = ts;
+      albums = als;
+      // 渲染倍率档位（持久化：设备分辨率 -> 封面也用全分辨率）
+      appScale = (ui.tpl_preview_scale || 0.8) >= 1 ? 'full' : 'fast';
+      document.querySelectorAll('.ap-scale span').forEach(x => x.classList.toggle('on', x.dataset.s === appScale));
+      render();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+  load();
+</script>
+</body>
+</html>

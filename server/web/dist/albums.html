@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>相册 · film-hub</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* 相册列表（横版卡片：封面 3:2 叠字风格） */
+  .albums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-bottom: 26px; }
+  @media (max-width: 1100px) { .albums { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 700px) { .albums { grid-template-columns: repeat(2, 1fr); } }
+  .alb {
+    position: relative; border-radius: 14px; overflow: hidden; cursor: pointer;
+    background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
+    transition: transform .18s, box-shadow .18s, border-color .15s;
+  }
+  .alb:hover { transform: translateY(-4px); box-shadow: 0 14px 30px rgba(26,26,26,.14); border-color: var(--line-d); }
+  .alb.on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink), 0 14px 30px rgba(26,26,26,.14); }
+  /* 相册选中角标（左上角墨黑对勾圆章） */
+  .alb .pick {
+    position: absolute; top: 8px; left: 8px; z-index: 3;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--ink); color: #fff; display: none; place-items: center;
+    font-size: 11px; box-shadow: 0 2px 8px rgba(26,26,26,.3);
+  }
+  .alb.on .pick { display: grid; animation: popIn .25s cubic-bezier(.2,.9,.3,1.4); }
+  .alb .cov { position: relative; aspect-ratio: 3/2; background: #fff; overflow: hidden; }
+  .alb .cov img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .45s; }
+  .alb:hover .cov img { transform: scale(1.05); }
+  .alb .cov .no-cover { display: grid; place-items: center; height: 100%; color: var(--gray); font-size: 11px; }
+  .alb .shade { position: absolute; left: 0; right: 0; bottom: 0; height: 55%; background: linear-gradient(transparent, rgba(0,0,0,.68)); }
+  .alb .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 14px 13px; color: #fff; }
+  .alb .meta b { display: block; font-size: 14px; font-weight: 700; letter-spacing: .5px; text-shadow: 0 1px 3px rgba(0,0,0,.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alb .meta span { display: block; margin-top: 2px; font-size: 11px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alb .alb-edit {
+    position: absolute; top: 8px; right: 8px; z-index: 2;
+    width: 28px; height: 28px; border-radius: 9px; border: none; cursor: pointer;
+    background: rgba(0,0,0,.45); color: #fff; display: grid; place-items: center;
+    backdrop-filter: blur(2px); transition: background .15s, transform .15s;
+  }
+  .alb .alb-edit:hover { background: var(--ink); transform: scale(1.1); }
+  .alb .alb-edit .ico { width: 13px; height: 13px; }
+  .alb.add {
+    display: grid; place-items: center; border-style: dashed; border-color: var(--line-d);
+    background: transparent; box-shadow: none; color: var(--gray); aspect-ratio: 3/2; border-radius: 14px;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .alb.add:hover { color: var(--ink); border-color: var(--ink); background: #FBFBF9; }
+
+  /* 工具条 */
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  .toolbar .sp { flex: 1; }
+  .alb-head { display: flex; align-items: center; gap: 10px; }
+  .alb-head h2 { font-size: 17px; letter-spacing: 1px; }
+  .alb-head .tag { font-size: 11px; }
+  .tbar-div { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+
+  /* 照片墙 */
+  .photos { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .ph {
+    position: relative; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    cursor: pointer; aspect-ratio: 3/2; box-shadow: 0 1px 2px rgba(26,26,26,.04);
+    transition: transform .18s, border-color .15s, box-shadow .18s;
+  }
+  .ph:hover { border-color: var(--line-d); transform: translateY(-3px); box-shadow: 0 12px 26px rgba(26,26,26,.13); }
+  .ph.sel { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink), inset 0 0 0 1px rgba(26,26,26,.08), 0 12px 26px rgba(26,26,26,.15); }
+  .ph .img { position: absolute; inset: 0; }
+  .ph .img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s; }
+  .ph:hover .img img { transform: scale(1.07); }
+  .ph.sel .img img { transform: scale(1.05); }
+  .ph .chk {
+    position: absolute; top: 6px; right: 6px; width: 21px; height: 21px; border-radius: 50%;
+    background: rgba(0,0,0,.45); color: #fff; display: none; place-items: center;
+    font-size: 11px; box-shadow: 0 1px 5px rgba(0,0,0,.3);
+  }
+  .ph.sel .chk { display: grid; background: var(--ink); animation: popIn .22s cubic-bezier(.2,.9,.3,1.4); }
+  .ph .cover-tag { position: absolute; left: 6px; bottom: 6px; font-size: 10px; background: var(--ink); color: #fff; border-radius: 3px; padding: 2px 6px; }
+  .ph:hover .ops { display: flex; }
+  .ph .ops { position: absolute; left: 0; right: 0; bottom: 0; display: none; gap: 4px; padding: 6px; background: linear-gradient(transparent, rgba(0,0,0,.55)); }
+  .ph .ops span { flex: 1; text-align: center; font-size: 10px; color: #fff; background: rgba(0,0,0,.4); border-radius: 3px; padding: 3px 0; cursor: pointer; }
+  .ph .ops span:hover { background: rgba(0,0,0,.7); }
+
+  /* 上传 */
+  .drop { border: 2px dashed var(--line-d); border-radius: 14px; padding: 42px 20px; text-align: center; color: var(--gray); cursor: pointer; background: #fff; transition: border-color .15s, color .15s, background .15s, transform .15s; }
+  .drop:hover, .drop.drag { border-color: var(--ink); color: var(--ink); background: #FBFBF9; }
+  .drop .big { font-size: 30px; margin-bottom: 8px; transition: transform .3s; }
+  .drop:hover .big { transform: translateY(-4px); }
+  .drop p { font-size: 13px; }
+  .drop small { font-size: 11px; }
+  .up-item { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 12px; }
+  .up-item .fn { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 11px; }
+  .up-item .ok { color: var(--green); }
+  .up-item .bad { color: var(--red); }
+  #upList { max-height: 180px; overflow-y: auto; }
+
+  /* ===== 预览小窗（电子纸设备画框 · 参考小程序画布容器） ===== */
+  .pv-modal {
+    width: 440px; max-width: calc(100vw - 40px);
+    background: var(--card); border: 1px solid var(--ink); border-radius: 16px;
+    box-shadow: var(--shadow-lg); overflow: hidden;
+    animation: popIn .3s cubic-bezier(.2,.9,.3,1.2);
+  }
+  .pv-top { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .pv-top b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pv-top .x { margin-left: auto; color: var(--gray); cursor: pointer; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; }
+  .pv-top .x:hover { color: var(--ink); background: var(--line); }
+  .pv-stage {
+    padding: 28px 20px; background: var(--paper);
+    background-image: radial-gradient(rgba(26,26,26,.05) 1px, transparent 1px);
+    background-size: 16px 16px;
+    display: grid; place-items: center; position: relative; overflow: hidden;
+  }
+  .pv-stage::before {
+    content: ""; position: absolute; width: 90px; height: 90px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(252,208,0,.14), transparent 70%);
+    top: -30px; right: -20px;
+  }
+  .pv-device { position: relative; }
+  .pv-frame {
+    background: #3A3A37; padding: 14px 14px 30px; border-radius: 8px;
+    box-shadow: 0 18px 34px rgba(26,26,26,.28); transform: rotate(-1deg);
+    transition: transform .3s;
+  }
+  .pv-device:hover .pv-frame { transform: rotate(0); }
+  .pv-screen {
+    width: 210px; height: 315px; background: #fff; position: relative; overflow: hidden;
+    cursor: grab; touch-action: none;
+  }
+  .pv-screen.grabbing { cursor: grabbing; }
+  .pv-screen img { position: absolute; left: 0; top: 0; background: #fff; user-select: none; -webkit-user-drag: none; }
+  .pv-screen .ph { font-size: 10px; color: var(--gray); text-align: center; line-height: 1.9; padding: 8px; }
+  /* 缩放指示（屏幕左下角） */
+  .pv-zoom {
+    position: absolute; left: 6px; bottom: 6px; font-size: 9px; letter-spacing: .5px;
+    color: rgba(26,26,26,.55); background: rgba(255,255,255,.85); border-radius: 3px; padding: 1px 5px;
+  }
+  /* 屏幕底部品牌角标 */
+  .pv-screen .seal {
+    position: absolute; right: 6px; bottom: 6px; font-size: 7px; letter-spacing: 1px;
+    color: rgba(26,26,26,.35); background: rgba(255,255,255,.8); border-radius: 2px; padding: 1px 4px;
+  }
+  .pv-hint { text-align: center; font-size: 11px; color: var(--gray); padding: 8px 16px 2px; }
+  .pv-foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .pv-foot .sp { flex: 1; }
+
+  /* ===== 趣味动效 ===== */
+  .albums .alb { animation: riseIn .5s cubic-bezier(.2,.9,.3,1.1) both; }
+  .albums .alb:nth-child(1) { animation-delay: .03s; }
+  .albums .alb:nth-child(2) { animation-delay: .1s; }
+  .albums .alb:nth-child(3) { animation-delay: .17s; }
+  .albums .alb:nth-child(4) { animation-delay: .24s; }
+  .photos .ph { animation: riseIn .45s cubic-bezier(.2,.9,.3,1.1) both; }
+  .photos .ph:nth-child(1) { animation-delay: .03s; }
+  .photos .ph:nth-child(2) { animation-delay: .08s; }
+  .photos .ph:nth-child(3) { animation-delay: .13s; }
+  .photos .ph:nth-child(4) { animation-delay: .18s; }
+  .photos .ph:nth-child(5) { animation-delay: .23s; }
+  .photos .ph:nth-child(6) { animation-delay: .28s; }
+  .ph { transition: transform .18s, border-color .15s, box-shadow .15s; }
+  .ph:hover { transform: translateY(-3px); }
+  .ph.sel { animation: pickPop .35s cubic-bezier(.2,.9,.3,1.4); }
+  .ph .img { transition: filter .3s; }
+  .photos .ph.shuffle { animation: shuffleMove .45s ease; }
+  .empty-wall { border: 2px dashed var(--line-d); border-radius: 12px; padding: 40px; text-align: center; color: var(--gray); font-size: 13px; background: #fff; }
+  .empty-wall .big { font-size: 28px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topnav">
+    <div class="inner">
+      <div class="brand">
+        <span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span>
+        <b>film-hub</b>
+      </div>
+      <nav class="nav">
+        <a href="dashboard.html"><span class="ico ico-dash"></span>仪表盘</a>
+        <a href="devices.html"><span class="ico ico-dev"></span>设备管理</a>
+        <a href="templates.html"><span class="ico ico-tpl"></span>模板库</a>
+        <a href="streams.html"><span class="ico ico-stream"></span>轮播流</a>
+        <a class="on" href="albums.html"><span class="ico ico-album"></span>相册</a>
+        <a href="ai.html"><span class="ico ico-ai"></span>AI 创作</a>
+        <a href="settings.html"><span class="ico ico-set"></span>设置</a>
+      </nav>
+      <div class="top-right">
+        <a class="gh" href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener" title="GitHub 仓库"><svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        <span class="status"><span class="dot dot-pulse"></span>连接中…</span>
+        <div class="avatar">管</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>相册</h1>
+        <div class="sub">批量导入原图 · 点击照片可在预览中调整它在画布里的显示位置与大小</div>
+      </div>
+      <div class="right">
+        <button class="btn btn-primary" onclick="openUpload()">+ 批量导入照片</button>
+      </div>
+    </div>
+
+    <div class="section-title"><h2>相册</h2><span class="more" id="albMeta">—</span></div>
+    <div class="albums" id="albums"></div>
+
+    <div class="toolbar" id="photoBar" style="display:none">
+      <div class="alb-head">
+        <h2 id="albTitle">—</h2>
+        <span class="tag" id="albCount">0 张</span>
+      </div>
+      <span class="sp"></span>
+      <button class="btn btn-sm" onclick="editAlbum(cur.id)"><span class="ico ico-edit ico-sm"></span> 重命名</button>
+      <button class="btn btn-sm btn-danger" onclick="delAlbumFromBar()"><span class="ico ico-trash ico-sm"></span> 删除相册</button>
+      <span class="tbar-div"></span>
+      <button class="btn btn-sm" onclick="setCoverSel()">设为封面</button>
+      <button class="btn btn-sm" onclick="shufflePhotos()">⤳ 洗牌</button>
+      <button class="btn btn-sm btn-danger" onclick="delSel()">删除选中</button>
+      <button class="btn btn-sm btn-primary" onclick="openUpload()">+ 导入</button>
+    </div>
+
+    <div id="wallWrap"></div>
+
+    <div class="foot-note">
+      <span>点击照片多选 · 洗牌排序会立即保存到后端</span>
+      <span>点击预览可拖动 / 缩放照片在画布中的位置与大小，保存后模板与设备输出同步生效</span>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <div class="f-about">
+        <div class="f-brand"><span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span><b>film-hub</b></div>
+        <p>FrameFilm 彩色电子纸冰箱贴的局域网后端与管理工具：模板编排、服务端渲染、轮播时间轴与 OTA 推送。</p>
+      </div>
+      <div class="f-col">
+        <h4>链接</h4>
+        <a href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener">GitHub 仓库</a>
+        <a href="/docs" target="_blank">后端 API 文档</a>
+      </div>
+      <div class="f-col">
+        <h4>技术栈</h4>
+        <span>ESP32-S3 + 彩色电子纸</span>
+        <span>Python FastAPI 后端</span>
+        <span>微信小程序 / Web 工具</span>
+      </div>
+    </div>
+    <div class="f-bottom">© 2026 FrameFilm · GPL-3.0 · 开源彩色电子纸冰箱贴</div>
+  </footer>
+</div>
+
+<!-- ===== 新建/编辑相册模态框 ===== -->
+<div class="modal-mask" id="modal-alb">
+  <div class="modal">
+    <div class="m-head"><b id="albModalTitle">新建相册</b><span class="x" onclick="closeModal('alb')"><span class="ico ico-close"></span></span></div>
+    <div class="m-body">
+      <div class="field"><label>相册名称</label><input class="input" id="albName" placeholder="例如：家庭 / 旅行 / 宠物"></div>
+      <div class="field"><label>描述（可选）</label><input class="input" id="albDesc" placeholder="一句话描述这个相册"></div>
+      <div class="field" style="font-size:11px;color:var(--gray)">相册只负责存放照片，e-ink 渲染算法由引用该相册的模板统一配置。</div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-danger btn-sm" id="albDelBtn" style="margin-right:auto;display:none" onclick="delAlbum()">删除相册</button>
+      <button class="btn" onclick="closeModal('alb')">取消</button>
+      <button class="btn btn-primary" onclick="saveAlbum()">保存 <span class="ico ico-check ico-sm"></span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 照片预览小窗 ===== -->
+<div class="modal-mask" id="modal-pv">
+  <div class="pv-modal">
+    <div class="pv-top">
+      <b id="pvName">—</b>
+      <span class="tag" id="pvMeta"></span>
+      <span class="x" onclick="closeModal('pv')" title="关闭"><span class="ico ico-close ico-sm"></span></span>
+    </div>
+    <div class="pv-stage">
+      <div class="pv-device">
+        <div class="pv-frame">
+          <div class="pv-screen" id="pvScreen" title="拖动调整位置 · 滚轮缩放大小">
+            <img id="pvImg" src="" alt="" draggable="false">
+            <span class="pv-zoom" id="pvZoom">100%</span>
+            <span class="seal">FILM-HUB</span>
+          </div>
+        </div>
+      </div>
+      <div class="pv-hint">拖动调整位置 · 滚轮缩放 · ⟲⟳ 旋转（90° 步进）· 保存后模板预览与设备输出同步生效</div>
+    </div>
+    <div class="pv-foot">
+      <button class="btn btn-sm" onclick="pvSetCover()"><span class="ico ico-push ico-sm"></span> 设为封面</button>
+      <button class="btn btn-sm btn-danger" onclick="pvDel()"><span class="ico ico-trash ico-sm"></span> 删除</button>
+      <span class="sp"></span>
+      <button class="btn btn-sm" onclick="pvRotate(-90)" title="逆时针旋转 90°">⟲</button>
+      <button class="btn btn-sm" onclick="pvRotate(90)" title="顺时针旋转 90°">⟳</button>
+      <button class="btn btn-sm" onclick="pvReset()">重置</button>
+      <button class="btn btn-sm btn-primary" onclick="pvSave()">保存布局</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 上传模态框 ===== -->
+<div class="modal-mask" id="modal-upload">
+  <div class="modal">
+    <div class="m-head"><b>批量导入照片</b><span class="x" onclick="closeModal('upload')"><span class="ico ico-close"></span></span></div>
+    <div class="m-body">
+      <div class="field"><label>导入到相册</label>
+        <select class="select" id="upAlbum"></select>
+      </div>
+      <div class="drop" id="drop">
+        <div class="big"><span class="ico ico-upload ico-xl"></span></div>
+        <p>拖拽照片到此处，或 <b style="color:var(--ink)">点击选择</b></p>
+        <small>支持 JPG / PNG / WEBP / BMP / GIF · 自动生成缩略图</small>
+        <input type="file" id="upFile" accept=".jpg,.jpeg,.png,.webp,.bmp,.gif" multiple style="display:none">
+      </div>
+      <div id="upList"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn" onclick="closeModal('upload')">取消</button>
+      <button class="btn btn-primary" id="upBtn" onclick="doUpload()">开始导入 <span class="ico ico-arrow-r ico-sm"></span></button>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  FH.guard();
+  FH.setupNavRefresh();
+  FH.refreshStatus();
+
+  let albums = [];
+  let cur = null;       // 当前选中相册对象（列表态）
+  let editingId = null; // 编辑框对应的相册 id（删除用）
+  let photos = [];      // 当前相册照片
+  let selSet = new Set();
+  let upFiles = [];
+
+  function openModal(n) { document.getElementById('modal-' + n).classList.add('show'); }
+  function closeModal(n) { document.getElementById('modal-' + n).classList.remove('show'); }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  /* ===== 相册列表 ===== */
+  function renderAlbums() {
+    const box = document.getElementById('albums');
+    box.innerHTML = albums.map(a => {
+      const cov = a.cover_url
+        ? '<img src="' + a.cover_url + '" alt="" onerror="this.outerHTML=\'<div class=no-cover>暂无封面</div>\'">'
+        : '<div class="no-cover">暂无封面</div>';
+      const desc = a.description ? ' · ' + a.description : '';
+      return '<div class="alb' + (cur && cur.id === a.id ? ' on' : '') + '" onclick="selectAlbum(' + a.id + ')">' +
+        '<span class="pick">✓</span>' +
+        '<button class="alb-edit" title="重命名 / 删除相册" onclick="event.stopPropagation();editAlbum(' + a.id + ')"><span class="ico ico-edit"></span></button>' +
+        '<div class="cov">' + cov + '<div class="shade"></div>' +
+        '<div class="meta"><b>' + esc(a.name) + '</b><span>' + a.photo_count + ' 张' + desc + '</span></div>' +
+        '</div></div>';
+    }).join('') +
+      '<div class="alb add" onclick="openNewAlbum()"><div style="text-align:center"><div style="font-size:26px;line-height:1">+</div><div style="font-size:12px;margin-top:8px">新建相册</div></div></div>';
+    document.getElementById('albMeta').textContent = '共 ' + albums.length + ' 个相册';
+  }
+
+  function openNewAlbum() {
+    document.getElementById('albModalTitle').textContent = '新建相册';
+    document.getElementById('albName').value = '';
+    document.getElementById('albDesc').value = '';
+    document.getElementById('albDelBtn').style.display = 'none';
+    openModal('alb');
+  }
+
+  function editAlbum(id) {
+    const a = albums.find(x => x.id === id);
+    if (!a) return;
+    editingId = id;
+    document.getElementById('albModalTitle').textContent = '编辑相册';
+    document.getElementById('albName').value = a.name;
+    document.getElementById('albDesc').value = a.description || '';
+    document.getElementById('albDelBtn').style.display = 'inline-flex';
+    openModal('alb');
+  }
+
+  async function saveAlbum() {
+    const name = document.getElementById('albName').value.trim();
+    if (!name) { FH.toast('请填写相册名称', 'err'); return; }
+    const description = document.getElementById('albDesc').value.trim();
+    const body = { name, description };
+    const editing = document.getElementById('albModalTitle').textContent !== '新建相册';
+    try {
+      if (editing) {
+        await API.put('/albums/' + editingId, body);
+        FH.toast('相册已更新', 'ok');
+      } else {
+        const a = await API.post('/albums', body);
+        await selectAlbum(a.id);
+        FH.toast('相册已创建', 'ok');
+      }
+      closeModal('alb');
+      load();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function delAlbum() {
+    const a = albums.find(x => x.id === editingId);
+    if (!a) { FH.toast('请先选择要删除的相册', 'err'); return; }
+    const ok = await FH.confirmBox('确定删除相册「' + a.name + '」？其全部照片将一并删除，不可恢复。');
+    if (!ok) return;
+    try {
+      await API.del('/albums/' + editingId);
+      closeModal('alb');
+      editingId = null;
+      cur = null;
+      photos = [];
+      FH.toast('相册已删除', 'ok');
+      load();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function delAlbumFromBar() {
+    if (!cur) return;
+    editingId = cur.id;
+    await delAlbum();
+  }
+
+  /* ===== 照片墙 ===== */
+  async function selectAlbum(id) {
+    cur = albums.find(a => a.id === id) || null;
+    selSet.clear();
+    renderAlbums();
+    if (!cur) { document.getElementById('photoBar').style.display = 'none'; document.getElementById('wallWrap').innerHTML = ''; return; }
+    document.getElementById('photoBar').style.display = 'flex';
+    document.getElementById('albTitle').textContent = cur.name;
+    document.getElementById('albCount').textContent = cur.photo_count + ' 张';
+    try {
+      const full = await API.get('/albums/' + id);
+      photos = full.photos.slice().sort((a, b) => a.sort - b.sort);
+      renderWall();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  function renderWall() {
+    const wrap = document.getElementById('wallWrap');
+    if (!photos.length) {
+      wrap.innerHTML = '<div class="empty-wall"><div class="big"><span class="ico ico-upload ico-xl"></span></div>' +
+        '这个相册还是空的，<b style="color:var(--ink);cursor:pointer" onclick="openUpload()">导入照片</b> 或拖入模板卡片轮播</div>';
+      return;
+    }
+    wrap.innerHTML = '<div class="photos" id="photos">' + photos.map((p, i) => {
+      const url = p.thumb_url;
+      const isCover = cur.cover_photo_id === p.id;
+      return '<div class="ph' + (selSet.has(p.id) ? ' sel' : '') + '" data-id="' + p.id + '" style="animation-delay:' + (i * 0.04) + 's">' +
+        '<div class="img"><img src="' + url + '" alt="" loading="lazy"></div>' +
+        '<span class="chk">✓</span>' +
+        (isCover ? '<span class="cover-tag">封面</span>' : '') +
+        '<div class="ops"><span onclick="event.stopPropagation();viewPhoto(' + p.id + ')">预览</span>' +
+        '<span onclick="event.stopPropagation();setCover(' + p.id + ')">设为封面</span>' +
+        '<span onclick="event.stopPropagation();delPhoto(' + p.id + ')">删除</span></div>' +
+        '</div>';
+    }).join('') + '</div>';
+
+    // 选择事件
+    document.querySelectorAll('.photos .ph').forEach(ph => {
+      ph.addEventListener('click', () => {
+        const id = parseInt(ph.dataset.id, 10);
+        if (selSet.has(id)) selSet.delete(id); else selSet.add(id);
+        ph.classList.toggle('sel');
+        ph.classList.remove('pick-pop'); void ph.offsetWidth; ph.classList.add('pick-pop');
+      });
+    });
+  }
+
+  /* ===== 照片预览小窗（原图 + 拖动/缩放调整画布布局） ===== */
+  let curPv = null;
+  // 布局基准画布 400×600（设备画布），scale 为相对 contain 适配的缩放倍数，x/y 为画布像素偏移
+  const PV_W = 400, PV_H = 600;
+  const PV_SCREEN_W = 210, PV_SCREEN_H = 315;   // 预览屏 CSS 尺寸（2:3 与画布同比例）
+  const PV_K = PV_SCREEN_W / PV_W;              // 屏幕像素 → 画布像素换算
+  let pvState = { scale: 1, x: 0, y: 0, rotate: 0 };
+  let pvImgW = 400, pvImgH = 600;               // 原图自然尺寸
+  let pvDrag = null;
+
+  function viewPhoto(id) {
+    const p = photos.find(x => x.id === id);
+    if (!p) return;
+    curPv = id;
+    pvImgW = p.width || 400;
+    pvImgH = p.height || 600;
+    let st = { scale: 1, x: 0, y: 0, rotate: 0 };
+    try { st = Object.assign(st, JSON.parse(p.layout || '{}')); } catch (e) { /* 忽略坏布局 */ }
+    pvState = { scale: st.scale || 1, x: st.x || 0, y: st.y || 0, rotate: st.rotate || 0 };
+    document.getElementById('pvName').textContent = p.filename;
+    document.getElementById('pvMeta').textContent = p.width + ' × ' + p.height;
+    const img = document.getElementById('pvImg');
+    img.onload = () => {
+      pvImgW = img.naturalWidth || pvImgW;
+      pvImgH = img.naturalHeight || pvImgH;
+      pvApply();
+    };
+    img.src = p.original_url;
+    pvApply();
+    openModal('pv');
+  }
+
+  /* 根据 pvState 计算照片在预览屏中的位置/尺寸（屏幕像素） */
+  function pvApply() {
+    const img = document.getElementById('pvImg');
+    const deg = ((pvState.rotate % 360) + 360) % 360;
+    const isSwap = deg % 180 === 90;   // 90/270 旋转后宽高互换
+    // 旋转后的宽高做 contain 适配，得到视觉显示尺寸
+    const rw = isSwap ? pvImgH : pvImgW;
+    const rh = isSwap ? pvImgW : pvImgH;
+    const ratio = Math.min(PV_W / rw, PV_H / rh);
+    const vw = rw * ratio * pvState.scale * PV_K;   // 旋转后视觉宽（屏幕像素）
+    const vh = rh * ratio * pvState.scale * PV_K;   // 旋转后视觉高
+    // CSS 元素盒：旋转 90/270 时需先交换宽高，rotate 后视觉尺寸才等于 vw×vh
+    const boxW = isSwap ? vh : vw;
+    const boxH = isSwap ? vw : vh;
+    const cx = PV_SCREEN_W / 2 + pvState.x * PV_K;
+    const cy = PV_SCREEN_H / 2 + pvState.y * PV_K;
+    img.style.width = Math.max(1, boxW) + 'px';
+    img.style.height = Math.max(1, boxH) + 'px';
+    img.style.left = (cx - boxW / 2) + 'px';
+    img.style.top = (cy - boxH / 2) + 'px';
+    img.style.transform = deg ? 'rotate(' + deg + 'deg)' : '';
+    document.getElementById('pvZoom').textContent =
+      Math.round(pvState.scale * 100) + '%' + (deg ? ' · ' + deg + '°' : '');
+  }
+
+  /* 旋转 90° 步进（与后端 layout.rotate 一致） */
+  function pvRotate(delta) {
+    pvState.rotate = (((pvState.rotate + delta) % 360) + 360) % 360;
+    pvApply();
+  }
+
+  /* 拖动平移 */
+  const pvScreen = document.getElementById('pvScreen');
+  pvScreen.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    pvDrag = { sx: e.clientX, sy: e.clientY, x: pvState.x, y: pvState.y };
+    pvScreen.classList.add('grabbing');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!pvDrag) return;
+    pvState.x = pvDrag.x + Math.round((e.clientX - pvDrag.sx) / PV_K);
+    pvState.y = pvDrag.y + Math.round((e.clientY - pvDrag.sy) / PV_K);
+    pvApply();
+  });
+  window.addEventListener('mouseup', () => {
+    pvDrag = null;
+    pvScreen.classList.remove('grabbing');
+  });
+
+  /* 滚轮缩放 */
+  pvScreen.addEventListener('wheel', e => {
+    e.preventDefault();
+    const f = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    pvState.scale = Math.round(Math.max(0.5, Math.min(4, pvState.scale * f)) * 1000) / 1000;
+    pvApply();
+  }, { passive: false });
+
+  /* 保存布局：模板预览与设备渲染均按此布局输出 */
+  async function pvSave() {
+    if (curPv == null) return;
+    try {
+      await API.put('/albums/' + cur.id + '/photos/' + curPv + '/layout', pvState);
+      const p = photos.find(x => x.id === curPv);
+      if (p) p.layout = JSON.stringify(pvState);
+      FH.toast('布局已保存，模板预览与设备输出将按此布局渲染', 'ok');
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  /* 重置为居中 contain */
+  function pvReset() {
+    pvState = { scale: 1, x: 0, y: 0, rotate: 0 };
+    pvApply();
+  }
+
+  function pvSetCover() {
+    if (curPv == null) return;
+    setCover(curPv);
+  }
+
+  function pvDel() {
+    if (curPv == null) return;
+    closeModal('pv');
+    delPhoto(curPv);
+  }
+
+  async function setCover(id) {
+    try {
+      await API.put('/albums/' + cur.id, { cover_photo_id: id });
+      cur.cover_photo_id = id;
+      FH.toast('封面已更新', 'ok');
+      renderWall();
+      load();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function setCoverSel() {
+    if (selSet.size !== 1) { FH.toast('请先选中一张照片再设为封面', 'err'); return; }
+    await setCover([...selSet][0]);
+  }
+
+  async function delPhoto(id) {
+    const ok = await FH.confirmBox('确定删除这张照片？');
+    if (!ok) return;
+    try {
+      await API.del('/photos/' + id);
+      selSet.delete(id);
+      FH.toast('照片已删除', 'ok');
+      selectAlbum(cur.id);
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function delSel() {
+    if (!selSet.size) { FH.toast('请先选中照片', 'err'); return; }
+    const ok = await FH.confirmBox('确定删除选中的 ' + selSet.size + ' 张照片？');
+    if (!ok) return;
+    try {
+      for (const id of selSet) await API.del('/photos/' + id);
+      selSet.clear();
+      FH.toast('已删除选中照片', 'ok');
+      selectAlbum(cur.id);
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  /* 洗牌排序：随机打乱 + 动画 + 保存到后端 */
+  async function shufflePhotos() {
+    if (photos.length < 2) { FH.toast('照片太少，无需排序', 'err'); return; }
+    const wall = document.getElementById('photos');
+    const phs = [...wall.querySelectorAll('.ph')];
+    for (let i = phs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      wall.insertBefore(phs[i], phs[j]);
+    }
+    phs.forEach((ph, i) => {
+      ph.classList.remove('rise-in');
+      ph.style.animationName = 'none';
+      void ph.offsetWidth;
+      ph.style.animationName = '';
+      ph.style.animationDelay = (i * 0.04) + 's';
+      ph.classList.add('shuffle');
+    });
+    setTimeout(() => phs.forEach(ph => {
+      ph.classList.remove('shuffle');
+      ph.style.animationName = '';
+      ph.style.animationDelay = '';
+    }), 1200);
+    // 保存新顺序
+    const ids = [...wall.querySelectorAll('.ph')].map(n => parseInt(n.dataset.id, 10));
+    try {
+      await API.put('/albums/' + cur.id + '/photos/sort', { photo_ids: ids });
+      FH.toast('新顺序已保存', 'ok');
+      selectAlbum(cur.id);
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  /* ===== 上传 ===== */
+  function openUpload() {
+    const sel = document.getElementById('upAlbum');
+    sel.innerHTML = albums.map(a =>
+      '<option value="' + a.id + '"' + (cur && cur.id === a.id ? ' selected' : '') + '>' + esc(a.name) + '（' + a.photo_count + ' 张）</option>'
+    ).join('') + '<option value="new">＋ 新建相册…</option>';
+    document.getElementById('upList').innerHTML = '';
+    upFiles = [];
+    openModal('upload');
+  }
+
+  const drop = document.getElementById('drop');
+  const upFile = document.getElementById('upFile');
+  drop.addEventListener('click', () => upFile.click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    drop.classList.remove('drag');
+    addUpFiles(e.dataTransfer.files);
+  });
+  upFile.addEventListener('change', () => { addUpFiles(upFile.files); upFile.value = ''; });
+
+  function addUpFiles(list) {
+    for (const f of list) {
+      if (/\.(jpg|jpeg|png|webp|bmp|gif)$/i.test(f.name)) upFiles.push(f);
+    }
+    renderUpList();
+  }
+
+  function renderUpList() {
+    document.getElementById('upList').innerHTML = upFiles.map((f, i) =>
+      '<div class="up-item"><span class="fn">' + esc(f.name) + '</span><span id="upst' + i + '">' + (f.size / 1024).toFixed(0) + ' KB</span></div>'
+    ).join('');
+  }
+
+  async function doUpload() {
+    if (!upFiles.length) { FH.toast('请先选择要导入的照片', 'err'); return; }
+    let albumId = parseInt(document.getElementById('upAlbum').value, 10);
+    const btn = document.getElementById('upBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ico ico-refresh spin ico-sm"></span> 导入中…';
+    try {
+      if (isNaN(albumId)) {
+        // 新建相册
+        const a = await API.post('/albums', { name: '新相册 ' + new Date().toLocaleDateString('zh-CN') });
+        albumId = a.id;
+      }
+      const fd = new FormData();
+      upFiles.forEach(f => fd.append('files', f));
+      const res = await API.upload('/albums/' + albumId + '/photos/batch', fd);
+      // 更新每条状态
+      const done = new Set(res.map(r => r.id));
+      upFiles.forEach((f, i) => {
+        const el = document.getElementById('upst' + i);
+        if (el) el.innerHTML = '<span class="ok"><span class="ico ico-check ico-sm"></span> 已完成</span>';
+      });
+      FH.toast('成功导入 ' + res.length + ' 张照片', 'ok');
+      setTimeout(() => {
+        closeModal('upload');
+        load().then(() => selectAlbum(albumId));
+      }, 600);
+    } catch (e) {
+      FH.toast(e.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '开始导入 <span class="ico ico-arrow-r ico-sm"></span>';
+    }
+  }
+
+  /* ===== 加载 ===== */
+  async function load() {
+    try {
+      albums = await API.get('/albums');
+      renderAlbums();
+      if (cur) {
+        const fresh = albums.find(a => a.id === cur.id);
+        if (fresh) cur = fresh;
+      }
+      // 支持 ?album=ID 直达（如 AI 生图后跳转）
+      const q = new URLSearchParams(location.search).get('album');
+      if (q && albums.some(a => a.id === parseInt(q, 10))) {
+        selectAlbum(parseInt(q, 10));
+        history.replaceState(null, '', location.pathname);
+      }
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+  load();
+</script>
+</body>
+</html>

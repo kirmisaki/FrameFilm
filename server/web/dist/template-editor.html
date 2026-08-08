@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模板编辑器 · film-hub</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow: hidden; }
+  .editor { display: flex; flex-direction: column; height: 100vh; }
+
+  /* 顶部栏 */
+  .e-top { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.62); }
+  .e-top .back { color: var(--gray); display: flex; align-items: center; }
+  .e-top .back:hover { color: var(--ink); }
+  .e-top .name-input { border: 1px solid transparent; font-size: 16px; font-weight: 700; padding: 6px 10px; border-radius: 6px; background: transparent; outline: none; width: 260px; }
+  .e-top .name-input:focus { border-color: var(--line-d); background: #fff; }
+  .e-top .sp { flex: 1; }
+  .e-top .render-chip { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--gray); border: 1px solid var(--line); border-radius: 20px; padding: 5px 12px; background: #fff; white-space: nowrap; }
+
+  /* 三栏布局 */
+  .e-body { flex: 1; display: flex; min-height: 0; }
+
+  /* 左：渲染参数 */
+  .e-left { width: 250px; border-right: 1px solid var(--line); padding: 14px; overflow-y: auto; background: rgba(255,255,255,.4); }
+  .e-panel-h { font-size: 12px; color: var(--gray); font-weight: 600; letter-spacing: 1px; margin-bottom: 10px; }
+  .prop-sec { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fff; margin-bottom: 14px; }
+  .prop-sec h5 { font-size: 12px; color: var(--gray); letter-spacing: 1px; margin-bottom: 12px; }
+  .mini-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
+  .mini-row label { color: var(--gray); width: 48px; flex-shrink: 0; }
+  .mini-row .range { flex: 1; }
+  .mini-row .select { flex: 1; font-size: 12px; padding: 5px 8px; }
+  .mini-row .range-val { font-family: var(--mono); font-size: 12px; color: var(--ink); min-width: 30px; text-align: right; }
+  .lock-note { background: #fdf9e8; border: 1px solid #f0e0a0; color: #8a6d00; font-size: 12px; border-radius: 8px; padding: 10px 12px; line-height: 1.7; margin-bottom: 14px; }
+
+  /* 中：JSON 编辑器 + 图层概览 */
+  .e-mid { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--paper); }
+  .json-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 12px; }
+  .json-bar .hint { color: var(--gray); flex: 1; }
+  #jsonErr { color: var(--red); font-size: 12px; flex: 1; text-align: right; }
+  textarea.json { flex: 1; border: none; outline: none; resize: none; padding: 16px 18px; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; background: transparent; color: var(--ink); tab-size: 2; }
+  .layers-bar { border-top: 1px solid var(--line); padding: 10px 16px; max-height: 150px; overflow-y: auto; background: rgba(255,255,255,.5); }
+  .layers-bar h5 { font-size: 12px; color: var(--gray); letter-spacing: 1px; margin-bottom: 8px; }
+  .layer-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .layer-chips span { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; color: var(--gray); font-family: var(--mono); }
+  .layer-chips span b { color: var(--ink); font-weight: 600; }
+
+  /* 右：预览 */
+  .e-right { width: 300px; border-left: 1px solid var(--line); overflow-y: auto; padding: 16px; background: rgba(255,255,255,.4); }
+  .preview-frame { background: var(--ink); padding: 12px; border-radius: 12px; box-shadow: var(--shadow-lg); display: block; }
+  .preview-screen { width: 100%; aspect-ratio: 2/3; background: #fff; position: relative; overflow: hidden; display: grid; place-items: center; }
+  .preview-screen img { width: 100%; height: 100%; object-fit: contain; position: absolute; inset: 0; }
+  .preview-screen .ph { font-size: 12px; color: var(--gray); text-align: center; line-height: 2; padding: 20px; }
+  .dev-tabs { display: flex; gap: 6px; margin-top: 12px; justify-content: center; }
+  .dev-tabs .filter { font-size: 12px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 20px; cursor: pointer; color: var(--gray); background: #fff; }
+  .dev-tabs .filter.on { border-color: var(--ink); color: var(--ink); font-weight: 600; }
+  .pv-tip { margin-top: 12px; font-size: 12px; color: var(--gray); line-height: 1.8; text-align: center; }
+</style>
+</head>
+<body>
+<div class="editor">
+  <!-- 顶部栏 -->
+  <div class="e-top">
+    <a class="back" href="templates.html" title="返回模板库"><span class="ico ico-back"></span></a>
+    <input class="name-input" id="tplName" placeholder="模板名称">
+    <span class="tag" id="kindTag">自定义</span>
+    <div class="sp"></div>
+    <div class="render-chip" id="renderChip"><span class="ico ico-eye ico-sm"></span> 默认渲染</div>
+    <button class="btn" onclick="doPreview()"><span class="ico ico-eye ico-sm"></span> 预览</button>
+    <button class="btn btn-primary" id="saveBtn" onclick="doSave()"><span class="ico ico-check ico-sm"></span> 保存模板</button>
+  </div>
+
+  <div class="e-body">
+    <!-- 左：渲染参数 -->
+    <div class="e-left">
+      <div class="lock-note" id="lockNote" style="display:none">内置模板结构锁定：仅可修改渲染参数、相册绑定与数据配置。如需改结构请新建自定义模板。</div>
+
+      <div class="prop-sec" id="albumSec" style="display:none">
+        <h5>相册绑定</h5>
+        <div class="mini-row"><label>相册</label><select class="select" id="albumSel"><option value="">未绑定</option></select></div>
+      </div>
+
+      <div class="prop-sec">
+        <h5>渲染算法</h5>
+        <div class="mini-row"><label>抖动</label>
+          <select class="select" id="rcDither">
+            <option value="none">无</option>
+            <option value="floyd_steinberg">Floyd-Steinberg</option>
+            <option value="atkinson">Atkinson</option>
+            <option value="stucki">Stucki</option>
+            <option value="jarvis">Jarvis-Judice-Ninke</option>
+            <option value="gamma_floyd_steinberg">Gamma 感知 FS</option>
+            <option value="bayer">Bayer 4×4</option>
+            <option value="adaptive">自适应（边缘感知）</option>
+          </select>
+        </div>
+        <div class="mini-row"><label>强度</label><input class="range" type="range" id="rcStrength" min="0" max="100" value="80" oninput="rcVal(this)"><span class="range-val" id="rcStrengthV">80</span></div>
+        <div class="mini-row"><label>对比度</label><input class="range" type="range" id="rcContrast" min="50" max="150" value="100" oninput="rcVal(this)"><span class="range-val" id="rcContrastV">100</span></div>
+        <div class="mini-row"><label>饱和度</label><input class="range" type="range" id="rcSaturation" min="50" max="150" value="100" oninput="rcVal(this)"><span class="range-val" id="rcSaturationV">100</span></div>
+        <div class="mini-row"><label>亮度</label><input class="range" type="range" id="rcBrightness" min="-50" max="50" value="0" oninput="rcVal(this)"><span class="range-val" id="rcBrightnessV">0</span></div>
+        <div class="mini-row"><label>调色板</label>
+          <select class="select" id="rcPalette">
+            <option value="6color">6 色</option>
+            <option value="bw">黑白</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="prop-sec">
+        <h5>说明</h5>
+        <p style="font-size:12px;color:var(--gray);line-height:1.8">渲染管线：画布 → 对比度/亮度预处理 → 6 色调色板量化 + 抖动 → 4bit 像素打包 → film 文件。definition 参考坐标系为 400×600，渲染时按设备分辨率缩放。</p>
+      </div>
+    </div>
+
+    <!-- 中：JSON 编辑 -->
+    <div class="e-mid">
+      <div class="json-bar">
+        <span class="hint">definition JSON · 图层结构（type: text / image / rect / circle / table / line）</span>
+        <button class="btn btn-sm" onclick="fmtJson()">格式化</button>
+        <button class="btn btn-sm" onclick="checkJson()">校验</button>
+        <span id="jsonErr"></span>
+      </div>
+      <textarea class="json" id="jsonInput" spellcheck="false" placeholder='{\n  "kind": "custom",\n  "background": { "color": "#ffffff" },\n  "layers": [\n    { "type": "text", "x": 24, "y": 20, "w": 300, "h": 40, "size": 34, "weight": "bold", "color": "#000000", "value": { "source": "calendar", "key": "title" } }\n  ]\n}'></textarea>
+      <div class="layers-bar">
+        <h5>图 层 概 览</h5>
+        <div class="layer-chips" id="layerChips"><span>（解析 JSON 后显示图层列表）</span></div>
+      </div>
+    </div>
+
+    <!-- 右：预览 -->
+    <div class="e-right">
+      <div class="preview-frame">
+        <div class="preview-screen" id="pvScreen">
+          <div class="ph" id="pvPh">保存后可预览<br>服务端渲染 + 6 色转换</div>
+        </div>
+      </div>
+      <div class="dev-tabs">
+        <span class="filter on" data-dev="basic" onclick="pickDev(this)">basic 400×600</span>
+        <span class="filter" data-dev="pro" onclick="pickDev(this)">pro 528×792</span>
+      </div>
+      <div class="pv-tip">预览由后端实时渲染并缓存缩略图，点击「预览」强制刷新。</div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  FH.guard();
+
+  const KIND_CN = {
+    album: '相册', calendar: '日历', memo: '备忘录', weather: '天气',
+    fridge: '冰箱食材', fortune: '今日运势', countdown: '倒计时', quote: '每日一言', custom: '自定义',
+  };
+  const KINDS = ['album', 'calendar', 'memo', 'weather', 'fridge', 'fortune', 'countdown', 'quote', 'custom'];
+  const DITHER_CN = { none: '抖动无', floyd_steinberg: '抖动 FS', atkinson: '抖动 Atkinson', stucki: '抖动 Stucki', jarvis: '抖动 Jarvis', gamma_floyd_steinberg: 'Gamma 感知 FS', bayer: 'Bayer 有序', adaptive: '自适应' };
+  const PALETTE_CN = { '6color': '6 色', bw: '黑白' };
+
+  let tplId = null;       // 编辑中的模板 id（null = 新建）
+  let isBuiltin = false;
+  let devType = 'basic';
+  let albums = [];
+
+  const params = new URLSearchParams(location.search);
+  tplId = params.get('id') ? parseInt(params.get('id'), 10) : null;
+
+  function rcVal(el) { document.getElementById(el.id + 'V').textContent = el.value; }
+
+  function updateChip() {
+    const d = document.getElementById('rcDither').value;
+    const s = document.getElementById('rcStrength').value;
+    const c = document.getElementById('rcContrast').value;
+    const sat = document.getElementById('rcSaturation').value;
+    document.getElementById('renderChip').innerHTML =
+      '<span class="ico ico-eye ico-sm"></span> ' + DITHER_CN[d] + ' · 强度 ' + s + ' · 对比 ' + c + ' · 饱和 ' + sat;
+  }
+  ['rcDither', 'rcStrength', 'rcContrast', 'rcSaturation', 'rcBrightness', 'rcPalette'].forEach(id => {
+    document.getElementById(id).addEventListener('input', updateChip);
+  });
+
+  function collectRenderConfig() {
+    return {
+      dither_type: document.getElementById('rcDither').value,
+      dither_strength: parseInt(document.getElementById('rcStrength').value, 10),
+      contrast: parseInt(document.getElementById('rcContrast').value, 10),
+      saturation: parseInt(document.getElementById('rcSaturation').value, 10),
+      brightness: parseInt(document.getElementById('rcBrightness').value, 10),
+      palette: document.getElementById('rcPalette').value,
+    };
+  }
+
+  function parseDef() {
+    try {
+      return JSON.parse(document.getElementById('jsonInput').value);
+    } catch (e) {
+      document.getElementById('jsonErr').textContent = 'JSON 语法错误：' + e.message;
+      return null;
+    }
+  }
+
+  function checkJson() {
+    const def = parseDef();
+    if (!def) { FH.toast('JSON 语法错误', 'err'); return; }
+    if (!Array.isArray(def.layers)) { document.getElementById('jsonErr').textContent = 'definition.layers 必须为数组'; FH.toast('layers 必须为数组', 'err'); return; }
+    document.getElementById('jsonErr').textContent = '';
+    FH.toast('JSON 校验通过', 'ok');
+    renderLayers(def);
+  }
+
+  function fmtJson() {
+    const def = parseDef();
+    if (!def) return;
+    document.getElementById('jsonInput').value = JSON.stringify(def, null, 2);
+    document.getElementById('jsonErr').textContent = '';
+    renderLayers(def);
+  }
+
+  const LAYER_CN = { text: '文字', image: '图片', rect: '矩形', circle: '圆形', table: '表格', line: '线条' };
+  function renderLayers(def) {
+    const box = document.getElementById('layerChips');
+    const layers = (def && def.layers) || [];
+    if (!layers.length) { box.innerHTML = '<span>（无图层）</span>'; return; }
+    box.innerHTML = layers.map((l, i) =>
+      '<span><b>#' + (i + 1) + ' ' + (LAYER_CN[l.type] || l.type) + '</b> · ' + (l.x || 0) + ',' + (l.y || 0) + ' ' + (l.w || 0) + '×' + (l.h || 0) + '</span>'
+    ).join('');
+  }
+
+  /* 相册绑定：写入 definition.data.album.album_id（同时更新 image 图层 source） */
+  function bindAlbum(def, albumId) {
+    def = def || {};
+    def.data = def.data || {};
+    def.data.album = { album_id: albumId || null };
+    (def.layers || []).forEach(l => {
+      if (l.type === 'image' && l.source) l.source.album_id = albumId || null;
+    });
+    return def;
+  }
+
+  function albumOptions(sel) {
+    return '<option value="">未绑定</option>' + albums.map(a =>
+      '<option value="' + a.id + '"' + (sel == a.id ? ' selected' : '') + '>' + esc(a.name) + '（' + a.photo_count + ' 张）</option>'
+    ).join('');
+  }
+
+  async function loadAlbumOptions(selId) {
+    try {
+      albums = await API.get('/albums');
+      document.getElementById('albumSel').innerHTML = albumOptions(selId);
+    } catch (e) { /* 相册加载失败不阻塞 */ }
+  }
+
+  function applyRenderConfig(rc) {
+    rc = rc || {};
+    if (rc.dither_type) document.getElementById('rcDither').value = rc.dither_type;
+    if (rc.dither_strength != null) { document.getElementById('rcStrength').value = rc.dither_strength; document.getElementById('rcStrengthV').textContent = rc.dither_strength; }
+    if (rc.contrast != null) { document.getElementById('rcContrast').value = rc.contrast; document.getElementById('rcContrastV').textContent = rc.contrast; }
+    if (rc.saturation != null) { document.getElementById('rcSaturation').value = rc.saturation; document.getElementById('rcSaturationV').textContent = rc.saturation; }
+    if (rc.brightness != null) { document.getElementById('rcBrightness').value = rc.brightness; document.getElementById('rcBrightnessV').textContent = rc.brightness; }
+    if (rc.palette) document.getElementById('rcPalette').value = rc.palette;
+    updateChip();
+  }
+
+  async function init() {
+    if (tplId) {
+      try {
+        const t = await API.get('/templates/' + tplId);
+        isBuiltin = t.is_builtin;
+        document.getElementById('tplName').value = t.name;
+        document.getElementById('kindTag').textContent = KIND_CN[t.kind] || t.kind;
+        document.getElementById('kindTag').className = 'tag' + (t.is_builtin ? '' : ' blue');
+        document.getElementById('jsonInput').value = JSON.stringify(t.definition, null, 2);
+        applyRenderConfig(t.render_config);
+        renderLayers(t.definition);
+        document.getElementById('lockNote').style.display = t.is_builtin ? 'block' : 'none';
+        if (t.is_builtin) document.getElementById('jsonInput').setAttribute('readonly', 'readonly');
+        // 相册绑定回填
+        if (t.kind === 'album') {
+          document.getElementById('albumSec').style.display = 'block';
+          const sel = (t.definition.data && t.definition.data.album) ? t.definition.data.album.album_id : null;
+          await loadAlbumOptions(sel);
+        }
+        doPreview(false);
+      } catch (e) {
+        FH.toast(e.message, 'err');
+      }
+    } else {
+      // 新建模板默认骨架
+      const def = {
+        kind: 'custom',
+        background: { color: '#ffffff' },
+        layers: [
+          { type: 'text', x: 24, y: 20, w: 300, h: 44, size: 34, weight: 'bold', color: '#000000', value: '标题文字' },
+          { type: 'text', x: 24, y: 80, w: 352, h: 30, size: 20, color: '#555555', value: '副标题 · 2026-08-07' },
+          { type: 'rect', x: 24, y: 128, w: 352, h: 2, color: '#000000' },
+        ],
+      };
+      document.getElementById('jsonInput').value = JSON.stringify(def, null, 2);
+      renderLayers(def);
+    }
+  }
+
+  function pickDev(el) {
+    devType = el.dataset.dev;
+    document.querySelectorAll('.dev-tabs .filter').forEach(x => x.classList.remove('on'));
+    el.classList.add('on');
+    doPreview(false);
+  }
+
+  async function doPreview(force) {
+    if (!tplId) { FH.toast('请先保存模板，再生成预览', 'err'); return; }
+    const url = '/api/v1/admin/templates/' + tplId + '/preview?device_type=' + devType + (force ? '&refresh=true' : '');
+    const screen = document.getElementById('pvScreen');
+    document.getElementById('pvPh').style.display = 'none';
+    screen.innerHTML = '<div class="ph">渲染中…</div>';
+    try {
+      const objUrl = await FH.authImg(url);
+      const img = new Image();
+      img.onload = () => {
+        screen.innerHTML = '';
+        screen.appendChild(img);
+        screen.classList.remove('ink-refresh'); void screen.offsetWidth;
+        screen.classList.add('ink-refresh');
+      };
+      img.onerror = () => { screen.innerHTML = ''; document.getElementById('pvPh').style.display = 'block'; };
+      img.src = objUrl;
+    } catch (e) {
+      screen.innerHTML = '';
+      document.getElementById('pvPh').style.display = 'block';
+    }
+    if (force) FH.toast('预览已重新渲染', 'ok');
+  }
+
+  async function doSave() {
+    const name = document.getElementById('tplName').value.trim();
+    if (!name) { FH.toast('请填写模板名称', 'err'); return; }
+    let def = parseDef();
+    if (!def) return;
+    if (!Array.isArray(def.layers)) { FH.toast('definition.layers 必须为数组', 'err'); return; }
+    const kindSel = document.getElementById('kindTag').textContent; // 已建模板不可改 kind
+    const body = {
+      name,
+      definition: def,
+      render_config: collectRenderConfig(),
+    };
+    if (!tplId) body.kind = 'custom';
+    // 相册绑定合并进 definition
+    const albumSec = document.getElementById('albumSec');
+    if (albumSec.style.display !== 'none') {
+      const aid = parseInt(document.getElementById('albumSel').value || '0', 10) || null;
+      def = bindAlbum(def, aid);
+      body.definition = def;
+      document.getElementById('jsonInput').value = JSON.stringify(def, null, 2);
+    }
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    try {
+      let t;
+      if (tplId) {
+        t = await API.put('/templates/' + tplId, { name, definition: def, render_config: body.render_config });
+      } else {
+        t = await API.post('/templates', body);
+        tplId = t.id;
+        isBuiltin = false;
+      }
+      FH.toast('模板已保存', 'ok');
+      doPreview(true);
+    } catch (e) {
+      FH.toast(e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  init();
+</script>
+</body>
+</html>

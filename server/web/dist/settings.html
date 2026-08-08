@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设置 · film-hub</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .set-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 1100px) { .set-grid { grid-template-columns: 1fr; } }
+  .set-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .set-card h3 { font-size: 15px; margin-bottom: 4px; }
+  .set-card .desc { font-size: 12px; color: var(--gray); margin-bottom: 16px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
+  .kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; font-size: 13px; }
+  .kv dt { color: var(--gray); }
+  .kv dd { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .sys-info { background: #FBFBF9; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+
+  /* ===== 趣味动效 ===== */
+  .set-card { animation: riseIn .5s cubic-bezier(.2,.9,.3,1.1) both; }
+  @keyframes pulseRing {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(41,204,20,.4); }
+    50% { box-shadow: 0 0 0 6px rgba(41,204,20,0); }
+  }
+  .pulse-ring { animation: pulseRing 1.2s ease-out infinite; }
+  #aiStatus.tag { transition: all .2s; }
+
+  /* ===== 设备端接入 ===== */
+  .api-row { display: grid; grid-template-columns: 1fr 1.2fr; gap: 16px; }
+  @media (max-width: 700px) { .api-row { grid-template-columns: 1fr; } }
+  .api-code { display: flex; align-items: center; gap: 8px; }
+  .api-code code { flex: 1; font-family: var(--mono); font-size: 12px; background: #FBFBF9; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; word-break: break-all; }
+  .api-result { background: #FBFBF9; border: 1px dashed var(--line-d); border-radius: 10px; padding: 14px 16px; }
+  .api-label { font-size: 12px; color: var(--gray); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .api-result code { display: block; font-family: var(--mono); font-size: 11.5px; line-height: 1.7; word-break: break-all; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-height: 58px; }
+  .api-ops { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .hint-line { margin-top: 12px; font-size: 11.5px; color: var(--gray); line-height: 1.8; }
+  .step-list { margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--ink-light); line-height: 1.9; }
+  .step-list li { padding-left: 14px; position: relative; }
+  .step-list li::before { content: "›"; position: absolute; left: 0; color: var(--gray); }
+  .alt-api summary { cursor: pointer; font-size: 12px; color: var(--gray); user-select: none; display: flex; align-items: center; gap: 6px; }
+  .alt-api summary:hover { color: var(--ink); }
+  .alt-api summary .ico { transition: transform .15s; }
+  .alt-api[open] summary .ico { transform: rotate(90deg); }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topnav">
+    <div class="inner">
+      <div class="brand">
+        <span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span>
+        <b>film-hub</b>
+      </div>
+      <nav class="nav">
+        <a href="dashboard.html"><span class="ico ico-dash"></span>仪表盘</a>
+        <a href="devices.html"><span class="ico ico-dev"></span>设备管理</a>
+        <a href="templates.html"><span class="ico ico-tpl"></span>模板库</a>
+        <a href="streams.html"><span class="ico ico-stream"></span>轮播流</a>
+        <a href="albums.html"><span class="ico ico-album"></span>相册</a>
+        <a href="ai.html"><span class="ico ico-ai"></span>AI 创作</a>
+        <a class="on" href="settings.html"><span class="ico ico-set"></span>设置</a>
+      </nav>
+      <div class="top-right">
+        <a class="gh" href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener" title="GitHub 仓库"><svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        <span class="status"><span class="dot dot-pulse"></span>连接中…</span>
+        <div class="avatar">管</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>设置</h1>
+        <div class="sub">账号安全 · AI 服务 · 系统信息</div>
+      </div>
+      <div class="right"><button class="btn" onclick="API.clearToken();location.href='login.html'"><span class="ico ico-power ico-sm"></span> 退出登录</button></div>
+    </div>
+
+    <div class="set-grid">
+      <!-- 账号安全 -->
+      <div class="set-card" style="animation-delay:.05s">
+        <h3><span class="ico ico-lock ico-sm" style="vertical-align:-2px"></span> 账号安全</h3>
+        <div class="desc">单用户模式 · 修改密码后需重新登录</div>
+        <div class="field"><label>当前密码</label><input class="input" type="password" id="pwdOld" placeholder="请输入当前密码"></div>
+        <div class="field"><label>新密码</label><input class="input" type="password" id="pwdNew" placeholder="至少 6 位"></div>
+        <div class="field"><label>确认新密码</label><input class="input" type="password" id="pwdNew2" placeholder="再次输入新密码"></div>
+        <button class="btn btn-primary" onclick="changePwd()"><span class="ico ico-check ico-sm"></span> 更新密码</button>
+      </div>
+
+      <!-- AI 配置 -->
+      <div class="set-card" style="animation-delay:.15s">
+        <h3><span class="ico ico-ai ico-sm" style="vertical-align:-2px"></span> AI 服务配置</h3>
+        <div class="desc">OpenAI 兼容接口 · 支持 DeepSeek / Kimi / 通义千问等</div>
+        <div class="field"><label>API Base URL</label><input class="input" id="aiBase" placeholder="https://api.deepseek.com/v1"></div>
+        <div class="field"><label>API Key</label><input class="input" type="password" id="aiKey" placeholder="sk-...（留空保持不变）"></div>
+        <div class="row">
+          <div class="field"><label>对话模型（模板生成）</label><input class="input" id="aiModel" placeholder="deepseek-chat"></div>
+          <div class="field"><label>绘图模型（生图，可选）</label><input class="input" id="aiImgModel" placeholder="dall-e-3 / sd-3"></div>
+        </div>
+        <div class="field" style="display:flex;align-items:center;gap:10px;margin-bottom:0;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="saveAi()"><span class="ico ico-check ico-sm"></span> 保存配置</button>
+          <button class="btn" id="testBtn" onclick="testAi()">测试连接</button>
+          <span class="tag" id="aiStatus" style="margin-left:auto">● 未检测</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="set-card" style="margin-top:20px;animation-delay:.2s">
+      <h3><span class="ico ico-link ico-sm" style="vertical-align:-2px"></span> 设备端接入</h3>
+      <div class="desc">Pro 版设备通过心跳自动接入：填入服务器地址 → 设备用芯片序列号自动注册 → 服务端经心跳下发内容下载指令</div>
+      <div class="api-row">
+        <div class="api-result" style="border-style:solid">
+          <div class="api-label"><span class="ico ico-push ico-sm"></span> 服务器地址（设备端填写）</div>
+          <code id="devBase">…</code>
+          <div class="api-ops">
+            <button class="btn btn-primary btn-sm" onclick="copyBase()"><span class="ico ico-copy ico-sm"></span> 复制服务器地址</button>
+            <span class="tag green" style="margin-left:auto">主流程 · 无需预建设备</span>
+          </div>
+        </div>
+        <div class="api-meta">
+          <div class="field" style="margin-bottom:10px">
+            <label>设备自动拼接的心跳接口</label>
+            <div class="api-code"><code id="hbUrl">…</code><button class="btn btn-sm" onclick="copyHeartbeat()">复制</button></div>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>接入流程</label>
+            <ul class="step-list">
+              <li>1. 将上方服务器地址填入设备（小程序配网）</li>
+              <li>2. 设备首次心跳自动注册，device_id 取芯片序列号</li>
+              <li>3. Web「设备管理」中认领设备，即可推送内容</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <details class="alt-api">
+        <summary><span class="ico ico-arrow-r ico-sm"></span> 备用：下载 API 地址（简易定时轮播 / 重置 Token 后更新）</summary>
+        <div style="margin-top:10px">
+          <div class="field" style="margin-bottom:10px">
+            <label>选择设备（需已注册认领）</label>
+            <select class="select" id="devSelect" onchange="onPickDev()"><option value="">请选择设备…</option></select>
+          </div>
+          <div class="api-code"><code id="apiUrl">选择设备后自动生成</code></div>
+          <div class="api-ops">
+            <button class="btn btn-sm" id="copyApiBtn" disabled onclick="copyApi()"><span class="ico ico-copy ico-sm"></span> 复制下载地址</button>
+            <span class="tag" id="apiHint" style="margin-left:auto">未选择设备</span>
+          </div>
+        </div>
+      </details>
+
+      <div class="hint-line">提示：设备必须能访问此服务器。若管理页是用 localhost / 127.0.0.1 打开的，请改用局域网 IP（如 http://192.168.x.x:8000）访问本系统后再复制，否则设备无法连接。</div>
+    </div>
+
+    <div class="set-card" style="margin-top:20px;animation-delay:.25s">
+      <h3><span class="ico ico-info ico-sm" style="vertical-align:-2px"></span> 系统信息</h3>
+      <div class="desc">局域网单机部署 · 数据不离开本地网络</div>
+      <div class="sys-info">
+        <dl class="kv" id="sysInfo">
+          <dt>服务地址</dt><dd>—</dd>
+          <dt>版本</dt><dd>—</dd>
+          <dt>运行环境</dt><dd>—</dd>
+          <dt>数据目录</dt><dd>—</dd>
+          <dt>服务器时间</dt><dd>—</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="foot-note">
+      <span>退出登录仅清除本地凭证 · 修改密码会使旧会话全部失效</span>
+      <span><a href="/docs" target="_blank">后端 API 文档</a></span>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <div class="f-about">
+        <div class="f-brand"><span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span><b>film-hub</b></div>
+        <p>FrameFilm 彩色电子纸冰箱贴的局域网后端与管理工具：模板编排、服务端渲染、轮播时间轴与 OTA 推送。</p>
+      </div>
+      <div class="f-col">
+        <h4>链接</h4>
+        <a href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener">GitHub 仓库</a>
+        <a href="/docs" target="_blank">后端 API 文档</a>
+      </div>
+      <div class="f-col">
+        <h4>技术栈</h4>
+        <span>ESP32-S3 + 彩色电子纸</span>
+        <span>Python FastAPI 后端</span>
+        <span>微信小程序 / Web 工具</span>
+      </div>
+    </div>
+    <div class="f-bottom">© 2026 FrameFilm · GPL-3.0 · 开源彩色电子纸冰箱贴</div>
+  </footer>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  FH.guard();
+  FH.setupNavRefresh();
+  FH.refreshStatus();
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  /* ===== 改密码 ===== */
+  async function changePwd() {
+    const oldP = document.getElementById('pwdOld').value;
+    const p1 = document.getElementById('pwdNew').value;
+    const p2 = document.getElementById('pwdNew2').value;
+    if (!oldP) { FH.toast('请输入当前密码', 'err'); return; }
+    if (p1.length < 6) { FH.toast('新密码至少 6 位', 'err'); return; }
+    if (p1 !== p2) { FH.toast('两次输入的新密码不一致', 'err'); return; }
+    try {
+      await API.put('/auth/password', { old_password: oldP, new_password: p1 });
+      FH.toast('密码已修改，请重新登录', 'ok');
+      setTimeout(() => { API.clearToken(); location.href = 'login.html'; }, 1200);
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  /* ===== AI 配置 ===== */
+  async function loadAi() {
+    try {
+      const s = await API.get('/settings/ai');
+      document.getElementById('aiBase').value = s.base_url || '';
+      document.getElementById('aiModel').value = s.model || '';
+      document.getElementById('aiImgModel').value = s.image_model || '';
+      document.getElementById('aiKey').placeholder = s.api_key_set ? '已设置 · 留空保持不变' : 'sk-...';
+      document.getElementById('aiStatus').textContent = s.api_key_set ? '● 已配置' : '● 未配置';
+      document.getElementById('aiStatus').className = s.api_key_set ? 'tag green' : 'tag';
+    } catch (e) { /* 忽略 */ }
+  }
+
+  async function saveAi(silent) {
+    const body = {
+      base_url: document.getElementById('aiBase').value.trim(),
+      model: document.getElementById('aiModel').value.trim(),
+      image_model: document.getElementById('aiImgModel').value.trim(),
+      api_key: document.getElementById('aiKey').value,
+    };
+    if (!body.base_url || !body.model) { FH.toast('Base URL 与对话模型为必填项', 'err'); return; }
+    try {
+      await API.put('/settings/ai', body);
+      if (!silent) FH.toast('AI 配置已保存', 'ok');
+      document.getElementById('aiKey').value = '';
+      document.getElementById('aiKey').placeholder = '已设置 · 留空保持不变';
+      const st = document.getElementById('aiStatus');
+      st.textContent = '● 已保存';
+      st.className = 'tag green';
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function testAi() {
+    // 先保存当前表单（静默），再用已保存配置真实连通
+    await saveAi(true);
+    const btn = document.getElementById('testBtn');
+    const st = document.getElementById('aiStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ico ico-refresh spin ico-sm"></span> 测试中…';
+    st.className = 'tag pulse-ring';
+    st.textContent = '● 正在检测';
+    st.style.color = '#8a6d00';
+    try {
+      const r = await API.post('/settings/ai/test', {});
+      if (r.ok) {
+        st.className = 'tag green';
+        st.textContent = '● 连接正常 · ' + r.latency_ms + 'ms';
+        st.style.color = '';
+        st.classList.remove('pick-pop'); void st.offsetWidth; st.classList.add('pick-pop');
+      } else {
+        st.className = 'tag red';
+        st.textContent = '● 连接失败';
+        st.style.color = '';
+        FH.toast(r.error || '连接失败', 'err');
+      }
+    } catch (e) {
+      st.className = 'tag red';
+      st.textContent = '● 连接失败';
+      st.style.color = '';
+      FH.toast(e.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '测试连接';
+    }
+  }
+
+  /* ===== 设备端接入 ===== */
+  let devs = [];
+
+  async function loadDeviceApis() {
+    document.getElementById('devBase').textContent = location.origin;
+    document.getElementById('hbUrl').textContent = location.origin + '/api/v1/device/heartbeat?device_id=<芯片序列号>';
+    try { devs = await API.get('/devices'); } catch (e) { devs = []; }
+    const sel = document.getElementById('devSelect');
+    sel.innerHTML = '<option value="">请选择设备…</option>' + devs.map(d =>
+      '<option value="' + d.id + '">' + esc(d.name || d.device_id) + ' · ' + esc(d.device_id) + '</option>'
+    ).join('');
+    if (devs.length === 1) { sel.value = devs[0].id; onPickDev(); }
+  }
+
+  function curDev() {
+    return devs.find(d => d.id === parseInt(document.getElementById('devSelect').value, 10));
+  }
+
+  function buildApiUrl(d) {
+    return location.origin + '/api/v1/device/film/latest.film?device_id=' +
+      encodeURIComponent(d.device_id) + '&token=' + encodeURIComponent(d.token || '');
+  }
+
+  function onPickDev() {
+    const d = curDev();
+    const urlEl = document.getElementById('apiUrl');
+    const btn = document.getElementById('copyApiBtn');
+    const hint = document.getElementById('apiHint');
+    if (!d) {
+      urlEl.textContent = '选择设备后自动生成';
+      btn.disabled = true;
+      hint.textContent = '未选择设备';
+      hint.className = 'tag';
+      return;
+    }
+    if (!d.token) {
+      urlEl.textContent = '该设备尚未注册 Token：请让设备上报一次心跳，或在设备管理页点击「重置 Token」后重试';
+      btn.disabled = true;
+      hint.textContent = '缺少 Token';
+      hint.className = 'tag red';
+      return;
+    }
+    urlEl.textContent = buildApiUrl(d);
+    btn.disabled = false;
+    hint.textContent = '已生成 · 可复制';
+    hint.className = 'tag green';
+  }
+
+  async function copyText(t, okMsg) {
+    try {
+      await navigator.clipboard.writeText(t);
+      FH.toast(okMsg, 'ok');
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); FH.toast(okMsg, 'ok'); }
+      catch (err) { FH.toast('复制失败，请手动选择复制', 'err'); }
+      ta.remove();
+    }
+  }
+
+  function copyBase() { copyText(location.origin, '服务器地址已复制'); }
+
+  function copyHeartbeat() {
+    copyText(location.origin + '/api/v1/device/heartbeat?device_id=<芯片序列号>', '心跳接口地址已复制');
+  }
+
+  function copyApi() {
+    const d = curDev();
+    if (!d || !d.token) return;
+    copyText(buildApiUrl(d), '设备端 API 地址已复制');
+  }
+
+  /* ===== 系统信息 ===== */
+  async function loadSys() {
+    try {
+      const s = await API.get('/system/info');
+      const kv = document.getElementById('sysInfo');
+      kv.innerHTML =
+        '<dt>服务地址</dt><dd>' + esc(location.origin) + '</dd>' +
+        '<dt>版本</dt><dd>film-hub v' + esc(s.version) + ' · FastAPI</dd>' +
+        '<dt>运行环境</dt><dd>Python ' + esc(s.python) + ' · ' + esc(s.platform) + '</dd>' +
+        '<dt>数据目录</dt><dd>' + esc(s.data_dir) + '</dd>' +
+        '<dt>服务器时间</dt><dd>' + esc(new Date(s.server_time).toLocaleString('zh-CN')) + '</dd>';
+    } catch (e) { /* 保持占位 */ }
+  }
+
+  loadAi();
+  loadSys();
+  loadDeviceApis();
+</script>
+</body>
+</html>

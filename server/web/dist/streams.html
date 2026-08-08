@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>轮播流 · film-hub</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* 轮播流列表 */
+  .stream-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+  .sc { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; cursor: pointer; transition: all .15s; position: relative; }
+  .sc:hover { border-color: var(--ink); }
+  .sc.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .sc .sn { font-weight: 700; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+  .sc .sn .row { display: flex; align-items: center; gap: 8px; }
+  .sc .sm { font-size: 12px; color: var(--gray); margin-top: 6px; }
+  .sc .sf { margin-top: 12px; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--gray); }
+  .sc .sf .mini-track { flex: 1; height: 10px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: flex; }
+  .sc .sf .mini-track i { display: block; height: 100%; border-right: 1px solid #fff; background: var(--ink); }
+  .sc .x { position: absolute; top: 8px; right: 8px; display: none; color: var(--gray); }
+  .sc:hover .x { display: block; }
+  .sc .x:hover { color: var(--red); }
+  .sc.add { display: grid; place-items: center; border-style: dashed; border-color: var(--line-d); background: transparent; color: var(--gray); min-height: 118px; }
+  .sc.add:hover { color: var(--ink); border-color: var(--ink); }
+
+  /* 模式切换 */
+  .mode-switch { display: flex; gap: 0; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; }
+  .mode-switch span { padding: 8px 16px; font-size: 12px; cursor: pointer; background: #fff; }
+  .mode-switch span.on { background: var(--ink); color: #fff; }
+  .mode-switch span:first-child { border-right: 1px solid var(--ink); }
+  .mode-desc { font-size: 12px; color: var(--gray); line-height: 1.7; margin-top: 8px; }
+  .mode-desc b { color: var(--ink); }
+
+  /* ===== 模板卡片托盘 ===== */
+  .tray-card { margin-bottom: 20px; }
+  .tray-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 13px; gap: 12px; flex-wrap: wrap; }
+  .tray-head .hint { font-size: 11px; color: var(--gray); }
+  .tray { display: flex; gap: 14px; overflow-x: auto; padding: 6px 2px 12px; }
+  .tpl-card { flex-shrink: 0; width: 70px; text-align: center; cursor: grab; user-select: none; transition: transform .15s; }
+  .tpl-card:hover { transform: translateY(-3px); }
+  .tpl-card:active { cursor: grabbing; }
+  .tpl-card.dragging { opacity: .35; }
+  .tpl-card .tc-frame {
+    width: 58px; height: 76px; margin: 0 auto; background: #fff; border: 1px solid var(--line-d);
+    border-radius: 6px; display: grid; place-items: center; color: var(--ink); overflow: hidden;
+    box-shadow: 0 2px 0 rgba(26,26,26,.06); transition: box-shadow .15s;
+  }
+  .tpl-card .tc-frame img { width: 100%; height: 100%; object-fit: cover; }
+  .tpl-card .tc-frame .no-thumb { font-size: 9px; color: var(--gray); padding: 4px; text-align: center; }
+  .tpl-card.dragging .tc-frame { box-shadow: 0 12px 22px rgba(26,26,26,.18); transform: rotate(3deg); }
+  .tpl-card .tc-name { margin-top: 7px; font-size: 11px; color: var(--ink); letter-spacing: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70px; }
+
+  /* ===== 时间轴 ===== */
+  .tl-track { position: relative; height: 64px; border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; transition: border-color .15s, background .15s; }
+  .tl-seg { position: absolute; top: 8px; bottom: 8px; border: 1px solid var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; transition: box-shadow .15s; overflow: hidden; }
+  .tl-seg:hover { box-shadow: 0 0 0 2px var(--blue); z-index: 2; }
+  .tl-seg small { font-size: 9px; color: var(--gray); }
+  .tl-seg.now { background: var(--ink); color: #fff; }
+  .tl-seg.now small { color: #d0d0cf; }
+  .tl-seg.abs { background: repeating-linear-gradient(-45deg, #fff, #fff 6px, #f4f4f2 6px, #f4f4f2 12px); }
+  .tl-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--gray); margin-top: 8px; }
+  .tl-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--gray); font-size: 12px; }
+
+  /* ===== 播放列表（可拖拽排序 + 拖入模板卡片） ===== */
+  .items { display: flex; flex-direction: column; gap: 10px; }
+  .item { display: flex; align-items: center; gap: 14px; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; transition: border-color .15s, box-shadow .15s, transform .15s, opacity .15s; }
+  .item.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .item.dragging { opacity: .4; }
+  .item .drag { cursor: grab; color: var(--gray); font-size: 16px; }
+  .item .th { width: 34px; height: 51px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #fff; flex-shrink: 0; display: grid; place-items: center; font-size: 11px; }
+  .item .th img { width: 100%; height: 100%; object-fit: cover; }
+  .item .info { flex: 1; min-width: 0; }
+  .item .info .nm { font-size: 13px; font-weight: 600; }
+  .item .info .tp { font-size: 11px; color: var(--gray); margin-top: 2px; }
+  .item .time { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .item .time .seg { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; background: #fff; cursor: pointer; font-size: 12px; }
+  .item .time .seg.rel { border-color: var(--ink); }
+  .item .time .seg.abs { background: repeating-linear-gradient(-45deg,#fff,#fff 6px,#f4f4f2 6px,#f4f4f2 12px); }
+  .item .time input { width: 64px; border: 1px solid var(--line-d); border-radius: 5px; padding: 4px 6px; font-size: 12px; outline: none; text-align: center; font-family: var(--mono); }
+  .item .en-switch { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--gray); }
+  .item .del { color: var(--gray); cursor: pointer; font-size: 14px; }
+  .item .del:hover { color: var(--red); }
+
+  /* 空状态（也是一个投放区） */
+  #empty { display: grid; place-items: center; padding: 40px 20px; color: var(--gray); font-size: 13px; border: 2px dashed var(--line-d); border-radius: 10px; background: #fff; text-align: center; }
+  #empty .e-ico { font-size: 30px; margin-bottom: 8px; opacity: .8; }
+  #empty b { color: var(--ink); }
+  #empty small { display: block; margin-top: 6px; font-size: 11px; color: var(--gray); }
+
+  /* 拖拽投放目标高亮 */
+  #items.armed, #empty.armed, #track.armed { outline: 2px dashed var(--blue); outline-offset: 3px; border-radius: 10px; }
+  #items.hover, #empty.hover { outline: 2px solid var(--blue); outline-offset: 3px; background: #f3f5ff; }
+  #track.hover { border-color: var(--blue); box-shadow: inset 0 0 0 2px var(--blue); }
+
+  .add-item { margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; color: var(--gray); font-size: 13px; cursor: pointer; border: 1px dashed var(--line-d); padding: 10px 18px; border-radius: 8px; }
+  .add-item:hover { color: var(--ink); border-color: var(--ink); }
+  .no-stream { text-align: center; color: var(--gray); padding: 30px; border: 2px dashed var(--line-d); border-radius: 10px; background: #fff; }
+  .busy { opacity: .5; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topnav">
+    <div class="inner">
+      <div class="brand">
+        <span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span>
+        <b>film-hub</b>
+      </div>
+      <nav class="nav">
+        <a href="dashboard.html"><span class="ico ico-dash"></span>仪表盘</a>
+        <a href="devices.html"><span class="ico ico-dev"></span>设备管理</a>
+        <a href="templates.html"><span class="ico ico-tpl"></span>模板库</a>
+        <a class="on" href="streams.html"><span class="ico ico-stream"></span>轮播流</a>
+        <a href="albums.html"><span class="ico ico-album"></span>相册</a>
+        <a href="ai.html"><span class="ico ico-ai"></span>AI 创作</a>
+        <a href="settings.html"><span class="ico ico-set"></span>设置</a>
+      </nav>
+      <div class="top-right">
+        <a class="gh" href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener" title="GitHub 仓库"><svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        <span class="status"><span class="dot dot-pulse"></span>连接中…</span>
+        <div class="avatar">管</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>轮播流</h1>
+        <div class="sub">把模板卡片拖进时间轴，拼一条属于你的轮播流 · 相对时间按间隔循环 · 绝对时间定点更新</div>
+      </div>
+      <div class="right">
+        <button class="btn" id="saveOrderBtn" onclick="saveOrder()" disabled><span class="ico ico-check ico-sm"></span> 保存顺序</button>
+        <button class="btn btn-primary" onclick="openCreate()">+ 新建轮播流</button>
+      </div>
+    </div>
+
+    <div class="section-title"><h2>轮播流列表</h2><span class="more" id="streamMeta">—</span></div>
+    <div class="stream-cards" id="streamCards"></div>
+
+    <div id="editorWrap">
+      <div class="section-title"><h2>编 排</h2>
+        <span class="more">轮播方式：</span>
+        <span class="mode-switch" id="modeSwitch">
+          <span data-mode="server_push" onclick="setMode('server_push')">服务端主动推送</span>
+          <span data-mode="device_pull" onclick="setMode('device_pull')">设备主动获取</span>
+        </span>
+      </div>
+      <div class="mode-desc" style="margin-bottom:14px" id="modeDesc"></div>
+
+      <!-- 模板卡片托盘：拖入下方即创建条目 -->
+      <div class="card card-pad tray-card">
+        <div class="tray-head">
+          <b><span class="ico ico-tpl ico-sm" style="vertical-align:-2px"></span> 模板卡片</b>
+          <span class="hint">按住卡片拖到下面的时间轴或播放列表，松手即加入 · 也可拖动现有条目调整顺序</span>
+        </div>
+        <div class="tray" id="tray"></div>
+      </div>
+
+      <!-- 时间轴（投放区：横向插入位置） -->
+      <div class="card card-pad" style="margin-bottom:20px">
+        <div class="tray-head">
+          <b><span class="ico ico-stream ico-sm" style="vertical-align:-2px"></span> 今日播放时间轴</b>
+          <span class="tag" id="tlState">—</span>
+        </div>
+        <div class="tl-track" id="track"><div class="tl-empty">先创建或选择一条轮播流</div></div>
+        <div class="tl-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+      </div>
+
+      <!-- 播放列表（投放区 + 拖拽排序） -->
+      <div class="items" id="items"></div>
+      <div class="empty" id="empty" style="display:none">
+        <div>
+          <div class="e-ico"><span class="ico ico-plus ico-xl" style="color:var(--gray)"></span></div>
+          <div>把<b>模板卡片</b>拖到这里，拼一条轮播流</div>
+          <small>或者点击下方按钮随机添加一条</small>
+        </div>
+      </div>
+      <div class="add-item" id="addRandom" onclick="addRandom()"><span class="ico ico-plus ico-sm"></span> 从模板库随机添加一条</div>
+    </div>
+
+    <div class="foot-note">
+      <span>编辑立即保存 · 排序完成后点击「保存顺序」提交</span>
+      <span>时间轴按当日 00:00-24:00 展示</span>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <div class="f-about">
+        <div class="f-brand"><span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span><b>film-hub</b></div>
+        <p>FrameFilm 彩色电子纸冰箱贴的局域网后端与管理工具：模板编排、服务端渲染、轮播时间轴与 OTA 推送。</p>
+      </div>
+      <div class="f-col">
+        <h4>链接</h4>
+        <a href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener">GitHub 仓库</a>
+        <a href="/docs" target="_blank">后端 API 文档</a>
+      </div>
+      <div class="f-col">
+        <h4>技术栈</h4>
+        <span>ESP32-S3 + 彩色电子纸</span>
+        <span>Python FastAPI 后端</span>
+        <span>微信小程序 / Web 工具</span>
+      </div>
+    </div>
+    <div class="f-bottom">© 2026 FrameFilm · GPL-3.0 · 开源彩色电子纸冰箱贴</div>
+  </footer>
+</div>
+
+<!-- ===== 新建轮播流模态框 ===== -->
+<div class="modal-mask" id="modal-create">
+  <div class="modal">
+    <div class="m-head"><b>新建轮播流</b><span class="x" onclick="closeModal('create')"><span class="ico ico-close"></span></span></div>
+    <div class="m-body">
+      <div class="field"><label>轮播流名称</label><input class="input" id="stName" placeholder="例如：客厅轮播 / 厨房屏"></div>
+      <div class="field">
+        <label>轮播方式</label>
+        <div class="mode-switch" id="createMode" style="width:100%;justify-content:center">
+          <span data-mode="server_push" class="on" onclick="pickCreateMode(this,'server_push')">服务端主动推送</span>
+          <span data-mode="device_pull" onclick="pickCreateMode(this,'device_pull')">设备主动获取</span>
+        </div>
+        <div class="mode-desc" id="createModeDesc" style="margin-top:10px"><b>服务端主动推送</b>：后端定时渲染，设备心跳时立即下载。适合 24h 常开设备。</div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label class="row-switch" style="border:none;padding:0">
+          <span>创建后立即启用</span>
+          <label class="switch"><input type="checkbox" id="stEnabled" checked><span class="sl"></span></label>
+        </label>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn" onclick="closeModal('create')">取消</button>
+      <button class="btn btn-primary" onclick="doCreate()">创建 <span class="ico ico-arrow-r ico-sm"></span></button>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  FH.guard();
+  FH.setupNavRefresh();
+  FH.refreshStatus();
+
+  const MODE_CN = { server_push: '服务端主动推送', device_pull: '设备主动获取' };
+  const MODE_DESC = {
+    server_push: '<b><span class="ico ico-push ico-sm" style="vertical-align:-2px"></span> 服务端主动推送</b>：后端定时渲染 → 设备心跳响应携带 download_film 指令 → 设备立即下载。适合 24h 常开设备。',
+    device_pull: '<b><span class="ico ico-download ico-sm" style="vertical-align:-2px"></span> 设备主动获取</b>：设备定时休眠唤醒 → 主动拉取 → 每次拉取后自动推进下一条。适合省电场景。',
+  };
+
+  let streams = [];
+  let templates = [];
+  let cur = null;       // 当前选中的轮播流
+  let curItems = [];    // 当前条目
+  let dirtyOrder = false;
+
+  function openModal(name) { document.getElementById('modal-' + name).classList.add('show'); }
+  function closeModal(name) { document.getElementById('modal-' + name).classList.remove('show'); }
+  function openCreate() {
+    document.getElementById('stName').value = '';
+    document.getElementById('stEnabled').checked = true;
+    document.querySelectorAll('#createMode span').forEach((x, i) => x.classList.toggle('on', i === 0));
+    document.getElementById('createModeDesc').innerHTML = MODE_DESC.server_push;
+    openModal('create');
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  /* ===== 轮播流列表 ===== */
+  function renderStreams() {
+    const box = document.getElementById('streamCards');
+    box.innerHTML = streams.map(s => {
+      const n = s.items.length;
+      const tag = s.enabled
+        ? '<span class="tag green"><span class="dot dot-pulse" style="background:var(--green)"></span> 运行中</span>'
+        : '<span class="tag">‖ 已暂停</span>';
+      return '<div class="sc' + (cur && cur.id === s.id ? ' on' : '') + '" onclick="selectStream(' + s.id + ')">' +
+        '<span class="x" title="删除轮播流" onclick="event.stopPropagation();delStream(' + s.id + ')"><span class="ico ico-trash ico-sm"></span></span>' +
+        '<div class="sn"><span class="row">' + esc(s.name) + ' ' + tag + '</span></div>' +
+        '<div class="sm">' + MODE_CN[s.mode] + ' · ' + n + ' 条条目</div>' +
+        '<div class="sf"><span>' + n + ' 条</span><span class="mini-track">' + miniTrack(s.items) + '</span></div>' +
+        '</div>';
+    }).join('') +
+      '<div class="sc add" onclick="openCreate()"><div><div style="font-size:26px">+</div><div style="font-size:12px;margin-top:4px">新建轮播流</div></div></div>';
+    document.getElementById('streamMeta').textContent =
+      '共 ' + streams.length + ' 条 · 运行中 ' + streams.filter(s => s.enabled).length;
+  }
+
+  function miniTrack(items) {
+    if (!items.length) return '<i style="width:100%;opacity:.12"></i>';
+    return items.map(() => '<i style="width:' + (100 / items.length) + '%"></i>').join('');
+  }
+
+  function pickCreateMode(el, m) {
+    document.querySelectorAll('#createMode span').forEach(x => x.classList.remove('on'));
+    el.classList.add('on');
+    document.getElementById('createModeDesc').innerHTML = MODE_DESC[m];
+  }
+
+  async function doCreate() {
+    const name = document.getElementById('stName').value.trim();
+    if (!name) { FH.toast('请填写轮播流名称', 'err'); return; }
+    const mode = (document.querySelector('#createMode span.on') || {}).dataset.mode || 'device_pull';
+    const enabled = document.getElementById('stEnabled').checked;
+    try {
+      const s = await API.post('/streams', { name, mode, enabled });
+      closeModal('create');
+      document.getElementById('stName').value = '';
+      FH.toast('轮播流已创建', 'ok');
+      await loadStreams();
+      selectStream(s.id);
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function delStream(id) {
+    const s = streams.find(x => x.id === id);
+    if (!s) return;
+    const ok = await FH.confirmBox('确定删除轮播流「' + s.name + '」？其全部条目将一并删除。');
+    if (!ok) return;
+    try {
+      await API.del('/streams/' + id);
+      FH.toast('轮播流已删除', 'ok');
+      if (cur && cur.id === id) cur = null;
+      await loadStreams();
+      renderEditor();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function setMode(mode) {
+    if (!cur || cur.mode === mode) return;
+    try {
+      await API.put('/streams/' + cur.id, { mode });
+      cur.mode = mode;
+      renderMode();
+      FH.toast('已切换为 ' + MODE_CN[mode], 'ok');
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  function renderMode() {
+    document.querySelectorAll('#modeSwitch span').forEach(x =>
+      x.classList.toggle('on', x.dataset.mode === (cur ? cur.mode : '')));
+    document.getElementById('modeDesc').innerHTML = cur ? MODE_DESC[cur.mode] : '';
+  }
+
+  /* ===== 模板托盘 ===== */
+  function renderTray() {
+    const tray = document.getElementById('tray');
+    if (!templates.length) {
+      tray.innerHTML = '<span style="font-size:12px;color:var(--gray)">暂无模板，请先到模板库创建。</span>';
+      return;
+    }
+    tray.innerHTML = templates.map(t => {
+      const thumb = t.thumb_url
+        ? '<img src="' + t.thumb_url + '" alt="" onerror="this.outerHTML=\'<div class=no-thumb>无预览</div>\'">'
+        : '<div class="no-thumb">' + esc(t.name) + '</div>';
+      return '<div class="tpl-card" draggable="true" data-id="' + t.id + '" title="' + esc(t.name) + '">' +
+        '<div class="tc-frame">' + thumb + '</div>' +
+        '<div class="tc-name">' + esc(t.name) + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ===== 编辑器：时间轴 + 播放列表 ===== */
+  async function renderEditor() {
+    const track = document.getElementById('track');
+    const itemsEl = document.getElementById('items');
+    const emptyEl = document.getElementById('empty');
+    const saveBtn = document.getElementById('saveOrderBtn');
+
+    if (!cur) {
+      track.innerHTML = '<div class="tl-empty">先创建或选择一条轮播流</div>';
+      itemsEl.style.display = 'none';
+      emptyEl.style.display = 'none';
+      document.getElementById('tlState').textContent = '—';
+      saveBtn.disabled = true;
+      renderMode();
+      return;
+    }
+
+    renderMode();
+    document.getElementById('tlState').textContent = cur.enabled ? '● 运行中' : '‖ 已暂停';
+    saveBtn.disabled = !dirtyOrder;
+
+    // 时间轴（真实 timeline）
+    try {
+      const segs = await API.get('/streams/' + cur.id + '/timeline');
+      track.innerHTML = '';
+      if (segs.length === 0) {
+        track.innerHTML = '<div class="tl-empty">拖入模板卡片，生成播放时间轴</div>';
+      } else {
+        const total = 86400;
+        segs.forEach((s, i) => {
+          const seg = document.createElement('div');
+          seg.className = 'tl-seg' + (i === 0 ? ' now' : '') + (s.schedule_type === 'absolute' ? ' abs' : '');
+          seg.style.left = (s.start_sec / total * 100) + '%';
+          seg.style.width = Math.max(1, s.duration_sec / total * 100) + '%';
+          seg.dataset.itemId = s.item_id;
+          seg.innerHTML = esc(s.template_name || '模板') +
+            '<small>' + s.start_time + ' · ' + (s.schedule_type === 'absolute' ? '定点' : '相对') + '</small>';
+          track.appendChild(seg);
+        });
+      }
+    } catch (e) { FH.toast(e.message, 'err'); }
+
+    // 播放列表
+    curItems = (await API.get('/streams/' + cur.id)).items.slice().sort((a, b) => a.position - b.position);
+    if (!curItems.length) {
+      itemsEl.style.display = 'none';
+      emptyEl.style.display = 'grid';
+      return;
+    }
+    itemsEl.style.display = 'flex';
+    emptyEl.style.display = 'none';
+    itemsEl.innerHTML = curItems.map((it, i) => itemHTML(it, i)).join('');
+  }
+
+  function itemHTML(it, i) {
+    const thumb = '<img src="/api/v1/admin/templates/' + it.template_id + '/preview?device_type=basic" alt="" loading="lazy" onerror="this.outerHTML=\'<b>&middot;</b>\'">';
+    const rel = it.schedule_type !== 'absolute';
+    const timeCtrl = rel
+      ? '<span class="seg rel" onclick="toggleType(' + it.id + ')">相对 · 间隔</span><input value="' + (it.duration_sec || 30) + '" data-item="' + it.id + '" onchange="updDuration(this)" onfocus="this.select()"><span style="color:var(--gray)">秒</span>'
+      : '<span class="seg abs" onclick="toggleType(' + it.id + ')">绝对 · 定点</span><input value="' + fmtHHMM(it.start_at) + '" data-item="' + it.id + '" onchange="updStartAt(this)" onfocus="this.select()">';
+    return '<div class="item" draggable="true" data-id="' + it.id + '" style="animation-delay:' + (i * 0.04) + 's">' +
+      '<span class="drag">≡</span>' +
+      '<div class="th">' + thumb + '</div>' +
+      '<div class="info"><div class="nm">' + esc(it.template_name) + '</div><div class="tp">模板 #' + it.template_id + ' · ' + (it.enabled ? '启用' : '已停用') + '</div></div>' +
+      '<div class="time">' + timeCtrl + '</div>' +
+      '<label class="en-switch"><input type="checkbox" ' + (it.enabled ? 'checked' : '') + ' onchange="updEnabled(' + it.id + ', this.checked)">启用</label>' +
+      '<span class="del" onclick="delItem(' + it.id + ')"><span class="ico ico-close ico-sm"></span></span>' +
+      '</div>';
+  }
+
+  function fmtHHMM(v) {
+    if (!v) return '08:00';
+    const d = new Date(v);
+    const p = n => (n < 10 ? '0' + n : n);
+    return p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /* ===== 条目操作 ===== */
+  async function addItemByTpl(tplId) {
+    if (!cur) { FH.toast('请先创建或选择一条轮播流', 'err'); return; }
+    const tpl = templates.find(t => t.id === tplId);
+    try {
+      const it = await API.post('/streams/' + cur.id + '/items', {
+        template_id: tplId,
+        schedule_type: 'relative',
+        duration_sec: 30,
+      });
+      FH.toast('已加入：' + (tpl ? tpl.name : '模板'), 'ok');
+      dirtyOrder = true;
+      await renderEditor();
+      // 高亮新条目
+      const node = document.querySelector('.item[data-id="' + it.id + '"]');
+      if (node) { node.classList.add('on', 'wobble-in'); setTimeout(() => node.classList.remove('wobble-in'), 600); }
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function toggleType(itemId) {
+    const it = curItems.find(x => x.id === itemId);
+    if (!it) return;
+    const next = it.schedule_type === 'absolute' ? 'relative' : 'absolute';
+    const patch = next === 'absolute'
+      ? { schedule_type: 'absolute', start_at: '2000-01-01T08:00:00' }
+      : { schedule_type: 'relative', duration_sec: 30 };
+    try {
+      await API.put('/streams/' + cur.id + '/items/' + itemId, patch);
+      await renderEditor();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function updDuration(input) {
+    const itemId = parseInt(input.dataset.item, 10);
+    let v = parseInt(input.value, 10);
+    if (!v || v < 1) { v = 30; input.value = 30; }
+    if (v > 86400) { v = 86400; input.value = 86400; }
+    try {
+      await API.put('/streams/' + cur.id + '/items/' + itemId, { duration_sec: v });
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function updStartAt(input) {
+    const itemId = parseInt(input.dataset.item, 10);
+    const m = (input.value || '').match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) { FH.toast('时间格式应为 HH:MM', 'err'); input.value = fmtHHMM(curItems.find(x => x.id === itemId).start_at); return; }
+    const h = Math.min(23, parseInt(m[1], 10));
+    const mi = Math.min(59, parseInt(m[2], 10));
+    const start = '2000-01-01T' + ('0' + h).slice(-2) + ':' + ('0' + mi).slice(-2) + ':00';
+    try {
+      await API.put('/streams/' + cur.id + '/items/' + itemId, { start_at: start });
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function updEnabled(itemId, enabled) {
+    try {
+      await API.put('/streams/' + cur.id + '/items/' + itemId, { enabled });
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function delItem(itemId) {
+    try {
+      await API.del('/streams/' + cur.id + '/items/' + itemId);
+      dirtyOrder = true;
+      await renderEditor();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function saveOrder() {
+    if (!cur || !dirtyOrder) return;
+    const ids = [...document.querySelectorAll('#items .item')].map(n => parseInt(n.dataset.id, 10));
+    try {
+      await API.post('/streams/' + cur.id + '/items/sort', { item_ids: ids });
+      dirtyOrder = false;
+      document.getElementById('saveOrderBtn').disabled = true;
+      FH.toast('顺序已保存', 'ok');
+      await renderEditor();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function addRandom() {
+    if (!cur) { FH.toast('请先创建或选择一条轮播流', 'err'); return; }
+    if (!templates.length) { FH.toast('模板库为空', 'err'); return; }
+    const t = templates[Math.floor(Math.random() * templates.length)];
+    await addItemByTpl(t.id);
+  }
+
+  /* ===== 拖拽 ===== */
+  const itemsEl = document.getElementById('items');
+  const trackEl = document.getElementById('track');
+  const emptyEl = document.getElementById('empty');
+  const trayEl = document.getElementById('tray');
+  let dragTplId = null;
+  let dragItem = null;
+
+  function insertIndexAt(clientY) {
+    const items = [...itemsEl.querySelectorAll('.item')];
+    for (let i = 0; i < items.length; i++) {
+      const r = items[i].getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) return i;
+    }
+    return items.length;
+  }
+
+  /* 模板卡片 -> 拖拽源 */
+  trayEl.addEventListener('dragstart', e => {
+    const card = e.target.closest('.tpl-card');
+    if (!card) return;
+    dragTplId = parseInt(card.dataset.id, 10);
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', String(dragTplId));
+    card.classList.add('dragging');
+    [itemsEl, emptyEl, trackEl].forEach(el => el.classList.add('armed'));
+  });
+  trayEl.addEventListener('dragend', e => {
+    const card = e.target.closest('.tpl-card');
+    if (card) card.classList.remove('dragging');
+    [itemsEl, emptyEl, trackEl].forEach(el => el.classList.remove('armed', 'hover'));
+    dragTplId = null;
+  });
+
+  /* 播放列表：投放模板 + 拖拽排序 */
+  itemsEl.addEventListener('dragover', e => {
+    e.preventDefault();
+    itemsEl.classList.add('hover');
+    e.dataTransfer.dropEffect = dragTplId ? 'copy' : 'move';
+  });
+  itemsEl.addEventListener('dragleave', () => itemsEl.classList.remove('hover'));
+  itemsEl.addEventListener('drop', e => {
+    e.preventDefault();
+    itemsEl.classList.remove('hover', 'armed');
+    if (dragTplId) {
+      addItemByTpl(dragTplId);
+    } else if (dragItem) {
+      const idx = insertIndexAt(e.clientY);
+      const items = [...itemsEl.querySelectorAll('.item')];
+      const ref = items[idx] && items[idx] !== dragItem ? items[idx] : dragItem.nextSibling;
+      itemsEl.insertBefore(dragItem, ref);
+      dragItem = null;
+      dirtyOrder = true;
+      document.getElementById('saveOrderBtn').disabled = false;
+    }
+  });
+
+  emptyEl.addEventListener('dragover', e => { e.preventDefault(); emptyEl.classList.add('hover'); });
+  emptyEl.addEventListener('dragleave', () => emptyEl.classList.remove('hover'));
+  emptyEl.addEventListener('drop', e => {
+    e.preventDefault();
+    emptyEl.classList.remove('hover', 'armed');
+    if (dragTplId) addItemByTpl(dragTplId);
+  });
+
+  /* 时间轴投放：按横向位置插入到列表对应下标 */
+  trackEl.addEventListener('dragover', e => { e.preventDefault(); trackEl.classList.add('hover'); });
+  trackEl.addEventListener('dragleave', () => trackEl.classList.remove('hover'));
+  trackEl.addEventListener('drop', e => {
+    e.preventDefault();
+    trackEl.classList.remove('hover', 'armed');
+    if (!dragTplId) return;
+    addItemByTpl(dragTplId);
+  });
+
+  /* 列表内条目拖拽 */
+  itemsEl.addEventListener('dragstart', e => {
+    const it = e.target.closest('.item');
+    if (!it) return;
+    dragItem = it;
+    it.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  itemsEl.addEventListener('dragend', () => {
+    if (dragItem) dragItem.classList.remove('dragging');
+    dragItem = null;
+    [itemsEl, emptyEl, trackEl].forEach(el => el.classList.remove('armed', 'hover'));
+  });
+
+  /* 点击时间轴段 -> 高亮对应条目 */
+  trackEl.addEventListener('click', e => {
+    const seg = e.target.closest('.tl-seg');
+    if (!seg || !seg.dataset.itemId) return;
+    itemsEl.querySelectorAll('.item').forEach(i => i.classList.remove('on'));
+    const node = itemsEl.querySelector('.item[data-id="' + seg.dataset.itemId + '"]');
+    if (node) {
+      node.classList.add('on');
+      node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  });
+
+  /* ===== 加载 ===== */
+  async function selectStream(id) {
+    cur = streams.find(s => s.id === id) || null;
+    dirtyOrder = false;
+    renderStreams();
+    await renderEditor();
+  }
+
+  async function loadStreams() {
+    streams = await API.get('/streams');
+    if (!cur && streams.length) cur = streams[0];
+    renderStreams();
+  }
+
+  async function init() {
+    try {
+      await Promise.all([loadStreams(), API.get('/templates').then(t => { templates = t; renderTray(); })]);
+      await renderEditor();
+    } catch (e) {
+      FH.toast(e.message, 'err');
+    }
+  }
+  init();
+  setInterval(() => { if (cur) renderEditor(); }, 60000); // 每分钟刷新时间轴（绝对条目可能到点）
+</script>
+</body>
+</html>

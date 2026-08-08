@@ -1,0 +1,9 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+sqlalchemy>=2.0
+pillow>=11.0
+apscheduler>=3.10
+httpx>=0.28
+PyJWT>=2.10
+bcrypt>=4.2
+python-multipart>=0.0.20

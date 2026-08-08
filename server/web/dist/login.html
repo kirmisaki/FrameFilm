@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · film-hub</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { display: grid; place-items: center; min-height: 100vh; }
+  .login-card {
+    width: 860px; max-width: calc(100vw - 40px); min-height: 500px;
+    background: var(--card); border: 1px solid var(--ink); border-radius: 16px;
+    display: flex; overflow: hidden; box-shadow: var(--shadow-lg);
+  }
+  /* 左：墨水屏设备展示 */
+  .showcase { flex: 1.15; background: var(--paper); border-right: 1px solid var(--line); padding: 44px 40px; display: flex; flex-direction: column; justify-content: space-between; }
+  .showcase .brand { display: flex; align-items: center; gap: 10px; }
+  .showcase .brand .sw { display: flex; gap: 3px; }
+  .showcase .brand .sw i { width: 14px; height: 14px; border: 1px solid var(--ink); }
+  .showcase .brand b { font-size: 18px; letter-spacing: 1px; }
+  .frame { background: var(--ink); padding: 16px; border-radius: 16px; box-shadow: var(--shadow-lg); width: 240px; margin: 26px auto 0; transform: rotate(-1.2deg); }
+  .frame .screen { background: #fff; aspect-ratio: 2/3; padding: 24px 16px; font-size: 11px; position: relative; }
+  .frame .screen .t { font-size: 18px; font-weight: 700; letter-spacing: 3px; }
+  .frame .screen .sub { color: #888; margin-top: 2px; }
+  .frame .screen .cal { margin-top: 16px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; font-size: 9px; }
+  .frame .screen .cal b { aspect-ratio: 1; display: grid; place-items: center; border: 1px solid #eee; }
+  .frame .screen .cal .today { background: var(--ink); color: #fff; }
+  .frame .screen .cal .w { color: var(--red); }
+  .frame .ink-dots { margin-top: 12px; display: flex; gap: 3px; }
+  .frame .ink-dots i { width: 10px; height: 10px; }
+  .showcase .slogan { font-size: 13px; color: var(--gray); line-height: 1.9; }
+  .showcase .slogan b { color: var(--ink); }
+
+  /* 右：登录表单 */
+  .form-side { flex: 1; padding: 48px 44px; display: flex; flex-direction: column; justify-content: center; }
+  .form-side h2 { font-size: 26px; letter-spacing: 2px; margin-bottom: 6px; }
+  .form-side .tip { font-size: 13px; color: var(--gray); margin-bottom: 30px; }
+  .form-side .hint-box { background: #fdf9e8; border: 1px solid #f0e0a0; color: #8a6d00; font-size: 12px; border-radius: 8px; padding: 10px 14px; margin-bottom: 22px; line-height: 1.7; }
+  .form-side .act { margin-top: 26px; }
+  .form-side .sub-act { margin-top: 18px; text-align: center; font-size: 12px; color: var(--gray); }
+  .form-side .err-line { color: var(--red); font-size: 12px; min-height: 18px; margin-top: 2px; }
+
+  /* ===== 趣味动效：设备屏悬浮微动 + 周期刷新 + 分区入场 ===== */
+  .frame { animation: frameSway 7s ease-in-out infinite; }
+  @keyframes frameSway {
+    0%, 100% { transform: rotate(-1.2deg) translateY(0); }
+    50% { transform: rotate(-.4deg) translateY(-7px); }
+  }
+  .showcase, .form-side { animation: riseIn .6s cubic-bezier(.2,.9,.3,1.1) both; }
+  .form-side { animation-delay: .12s; }
+  .form-side .field { animation: riseIn .5s cubic-bezier(.2,.9,.3,1.1) both; }
+  .form-side .field:nth-of-type(1) { animation-delay: .28s; }
+  .form-side .field:nth-of-type(2) { animation-delay: .36s; }
+  .form-side .act { animation: riseIn .5s cubic-bezier(.2,.9,.3,1.1) .44s both; }
+</style>
+</head>
+<body>
+<div class="login-card">
+  <!-- 左侧设备展示 -->
+  <div class="showcase">
+    <div class="brand">
+      <span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span>
+      <b>film-hub</b>
+    </div>
+    <div class="frame">
+      <div class="screen" id="einkScreen">
+        <div class="t">08月07日</div>
+        <div class="sub">星期四 · 今日晴 26℃</div>
+        <div class="cal">
+          <b class="w">一</b><b class="w">二</b><b>三</b><b>四</b><b>五</b><b>六</b><b>日</b>
+          <b>27</b><b>28</b><b>29</b><b>30</b><b>31</b><b>1</b><b>2</b>
+          <b>3</b><b>4</b><b>5</b><b>6</b><b class="today">7</b><b>8</b><b>9</b>
+          <b>10</b><b>11</b><b>12</b><b>13</b><b>14</b><b>15</b><b>16</b>
+        </div>
+        <div class="ink-dots"><i style="background:#FCD000"></i><i style="background:#E00000"></i><i style="background:#0000FF"></i><i style="background:#29CC14"></i></div>
+      </div>
+    </div>
+    <div class="slogan">把<b>此刻</b>印在墙上。<br>局域网内容中枢 · 模板 / 轮播 / 设备管理</div>
+  </div>
+
+  <!-- 右侧登录表单 -->
+  <form class="form-side" id="loginForm" autocomplete="off">
+    <h2>登 录</h2>
+    <div class="tip">登录后管理你的墨水屏设备与内容</div>
+    <div class="hint-box">首次登录：账号 <b>admin</b> · 密码 <b>filmhub</b>，登录后请尽快修改默认密码。</div>
+    <div class="field">
+      <label>账号</label>
+      <input class="input" id="username" type="text" value="admin" placeholder="请输入账号" required>
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input class="input" id="password" type="password" placeholder="请输入密码" required>
+    </div>
+    <div class="err-line" id="loginErr"></div>
+    <div class="act">
+      <button class="btn btn-primary btn-lg" id="loginBtn" type="submit" style="width:100%;justify-content:center">进入 film-hub <span class="ico ico-arrow-r ico-sm"></span></button>
+    </div>
+    <div class="sub-act">局域网单用户模式 · 数据不出本地网络</div>
+    <div class="sub-act" style="margin-top:8px"><a href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener" style="text-decoration:underline">开源项目 · GitHub ↗</a></div>
+  </form>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  // 已登录则直接进入
+  if (API.isAuthed()) { location.href = 'dashboard.html'; }
+
+  // 设备屏模拟真实墨水屏的周期性全局刷新
+  const screen = document.getElementById('einkScreen');
+  setInterval(() => {
+    screen.classList.remove('ink-refresh');
+    void screen.offsetWidth;
+    screen.classList.add('ink-refresh');
+  }, 7000);
+
+  const loginBtn = document.getElementById('loginBtn');
+  document.getElementById('loginForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const errEl = document.getElementById('loginErr');
+    errEl.textContent = '';
+    loginBtn.disabled = true;
+    loginBtn.innerHTML = '<span class="ico ico-refresh spin ico-sm"></span> 登录中…';
+    try {
+      const res = await API.login(
+        document.getElementById('username').value.trim(),
+        document.getElementById('password').value
+      );
+      API.setToken(res.access_token);
+      FH.toast('登录成功，欢迎回来', 'ok');
+      setTimeout(() => { location.href = 'dashboard.html'; }, 400);
+    } catch (err) {
+      errEl.textContent = err.message;
+      loginBtn.disabled = false;
+      loginBtn.innerHTML = '进入 film-hub <span class="ico ico-arrow-r ico-sm"></span>';
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设备管理 · film-hub</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* 认领引导条 */
+  .claim-bar { background: #fdf9e8; border: 1px solid #f0e0a0; border-radius: var(--radius); padding: 14px 18px; display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .claim-bar .ico { font-size: 20px; }
+  .claim-bar .txt { flex: 1; font-size: 13px; color: #8a6d00; }
+  .claim-bar .txt b { font-weight: 700; }
+
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .toolbar .search { flex: 0 0 300px; }
+  .toolbar .search input { border: none; outline: none; background: transparent; flex: 1; font-size: 13px; min-width: 0; }
+  .filters { display: flex; gap: 6px; }
+  .filter { font-size: 12px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 20px; cursor: pointer; color: var(--gray); background: #fff; }
+  .filter.on { border-color: var(--ink); color: var(--ink); font-weight: 600; }
+
+  /* 状态徽章 */
+  .st-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+  .st-dot i { width: 8px; height: 8px; border-radius: 50%; }
+  .st-on i { background: var(--green); } .st-off i { background: #ccc; } .st-claim i { background: var(--yellow); }
+
+  /* 设备类型选择卡片 */
+  .type-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .type-card { border: 1px solid var(--line-d); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: all .15s; }
+  .type-card:hover { border-color: var(--ink); }
+  .type-card.on { border-color: var(--ink); background: #fff; box-shadow: inset 0 0 0 1px var(--ink); }
+  .type-card .tn { font-weight: 700; font-size: 14px; }
+  .type-card .ts { font-size: 12px; color: var(--gray); margin-top: 4px; line-height: 1.6; }
+  .type-card .screen-mini { width: 42px; height: 63px; border: 1px solid var(--line); background: #fff; margin: 12px auto 0; border-radius: 3px; position: relative; }
+  .screen-mini::after { content: ""; position: absolute; inset: 5px; border: 1px dashed var(--line-d); }
+
+  /* 详情模态框加宽 */
+  .modal.wide { width: 720px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 13px; }
+  .kv dt { color: var(--gray); }
+  .kv dd { font-family: var(--mono); }
+  .kv dd.mono-off { font-family: inherit; }
+  .sec-block { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
+  .sec-block h4 { font-size: 13px; margin-bottom: 12px; }
+  .row-switch { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .row-switch:last-child { border-bottom: none; }
+  .row-switch .hint { font-size: 11px; color: var(--gray); margin-left: 8px; }
+  .cmd-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+  .danger-zone { background: #fff4f4; border: 1px solid #f0c0c0; border-radius: 8px; padding: 12px 14px; margin-top: 14px; }
+  .danger-zone p { font-size: 12px; color: var(--red); margin-bottom: 8px; }
+  .kv-token { display: flex; align-items: center; gap: 8px; }
+  .kv-token .copy { cursor: pointer; color: var(--gray); }
+  .kv-token .copy:hover { color: var(--ink); }
+
+  /* ===== 趣味动效 ===== */
+  .st-on i { animation: dotPulse 1.8s ease-out infinite; }
+  .claim-bar { animation: claimGlow 3s ease-in-out infinite; }
+  @keyframes claimGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(138,109,0,.35); }
+    50% { box-shadow: 0 0 0 6px rgba(138,109,0,0); }
+  }
+  .type-card { transition: transform .15s, border-color .15s; }
+  .type-card:hover { transform: translateY(-2px); }
+  .type-card.on { animation: popIn .4s cubic-bezier(.2,.9,.3,1.15); }
+  .tbl tbody tr { animation: riseIn .45s cubic-bezier(.2,.9,.3,1.1) both; }
+  .tbl tbody tr:nth-child(2) { animation-delay: .08s; }
+  .tbl tbody tr:nth-child(3) { animation-delay: .16s; }
+  .dev-id { font-family: var(--mono); font-size: 11px; color: var(--gray); }
+  .empty-row td { text-align: center; color: var(--gray); padding: 40px 0; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topnav">
+    <div class="inner">
+      <div class="brand">
+        <span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span>
+        <b>film-hub</b>
+      </div>
+      <nav class="nav">
+        <a href="dashboard.html"><span class="ico ico-dash"></span>仪表盘</a>
+        <a class="on" href="devices.html"><span class="ico ico-dev"></span>设备管理</a>
+        <a href="templates.html"><span class="ico ico-tpl"></span>模板库</a>
+        <a href="streams.html"><span class="ico ico-stream"></span>轮播流</a>
+        <a href="albums.html"><span class="ico ico-album"></span>相册</a>
+        <a href="ai.html"><span class="ico ico-ai"></span>AI 创作</a>
+        <a href="settings.html"><span class="ico ico-set"></span>设置</a>
+      </nav>
+      <div class="top-right">
+        <a class="gh" href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener" title="GitHub 仓库"><svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        <span class="status"><span class="dot dot-pulse"></span>连接中…</span>
+        <div class="avatar">管</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>设备管理</h1>
+        <div class="sub">设备首次心跳自动注册 · 认领后按设备类型渲染对应分辨率</div>
+      </div>
+      <div class="right">
+        <div class="avatar">管</div>
+      </div>
+    </div>
+
+    <div class="claim-bar" id="claimBar" style="display:none">
+      <span class="ico ico-info"></span>
+      <span class="txt">有 <b id="claimCount">0</b> 台设备完成首次心跳，等待认领。认领时可设置名称与<b>设备类型</b>（basic 400×600 / pro 528×792，竖版）。</span>
+      <button class="btn btn-sm" onclick="openClaim()">去认领 <span class="ico ico-arrow-r ico-sm"></span></button>
+    </div>
+
+    <div class="toolbar">
+      <div class="search"><span class="ico ico-search"></span><input id="searchInput" placeholder="搜索设备名称 / ID…" oninput="renderRows()"></div>
+      <div class="filters" id="filters">
+        <span class="filter on" data-f="all">全部</span>
+        <span class="filter" data-f="online">在线</span>
+        <span class="filter" data-f="offline">离线</span>
+        <span class="filter" data-f="claim">待认领</span>
+      </div>
+      <span class="tag" style="margin-left:auto" id="countTag">—</span>
+    </div>
+
+    <div class="card table-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>设备</th><th>类型</th><th>状态</th><th>电量</th><th>心跳间隔</th><th>最近心跳</th><th style="text-align:right">操作</th></tr>
+        </thead>
+        <tbody id="devRows"></tbody>
+      </table>
+    </div>
+
+    <div class="foot-note">
+      <span>设备通过心跳上报状态 · 指令在下次心跳时生效</span>
+      <span>局域网管理 · 数据不出本地</span>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <div class="f-about">
+        <div class="f-brand"><span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span><b>film-hub</b></div>
+        <p>FrameFilm 彩色电子纸冰箱贴的局域网后端与管理工具：模板编排、服务端渲染、轮播时间轴与 OTA 推送。</p>
+      </div>
+      <div class="f-col">
+        <h4>链接</h4>
+        <a href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener">GitHub 仓库</a>
+        <a href="/docs" target="_blank">后端 API 文档</a>
+      </div>
+      <div class="f-col">
+        <h4>技术栈</h4>
+        <span>ESP32-S3 + 彩色电子纸</span>
+        <span>Python FastAPI 后端</span>
+        <span>微信小程序 / Web 工具</span>
+      </div>
+    </div>
+    <div class="f-bottom">© 2026 FrameFilm · GPL-3.0 · 开源彩色电子纸冰箱贴</div>
+  </footer>
+</div>
+
+<!-- ===== 认领模态框 ===== -->
+<div class="modal-mask" id="modal-claim">
+  <div class="modal">
+    <div class="m-head"><b>认领设备</b><span class="x" onclick="closeModal('claim')"><span class="ico ico-close"></span></span></div>
+    <div class="m-body">
+      <div class="field"><label>设备 ID</label><input class="input" id="claimDeviceId" disabled></div>
+      <div class="field"><label>设备名称</label><input class="input" id="claimName" placeholder="例如：客厅屏 / 厨房屏"></div>
+      <div class="field">
+        <label>设备类型（决定屏幕分辨率与渲染尺寸）</label>
+        <div class="type-cards">
+          <div class="type-card on" onclick="pickType(this,'basic')">
+            <div class="tn">基础版 basic</div>
+            <div class="ts">400 × 600 · 竖版 · film 固定 120032 B</div>
+            <div class="screen-mini"></div>
+          </div>
+          <div class="type-card" onclick="pickType(this,'pro')">
+            <div class="tn">Pro 版 pro</div>
+            <div class="ts">528 × 792 · 竖版 · 高分辨率彩色墨水屏</div>
+            <div class="screen-mini"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn" onclick="closeModal('claim')">取消</button>
+      <button class="btn btn-primary" id="claimBtn" onclick="doClaim()">确认认领 <span class="ico ico-arrow-r ico-sm"></span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 设备详情模态框 ===== -->
+<div class="modal-mask" id="modal-detail">
+  <div class="modal wide">
+    <div class="m-head"><b id="detailTitle">设备详情</b><span class="x" onclick="closeModal('detail')"><span class="ico ico-close"></span></span></div>
+    <div class="m-body" id="detailBody"></div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  FH.guard();
+  FH.setupNavRefresh();
+  FH.refreshStatus();
+
+  const RES = { basic: '400×600', pro: '528×792' };
+  const STATE_CN = { idle: '空闲', displaying: '显示中', downloading: '下载中', sleep: '休眠', offline: '离线' };
+  const PLAY_CN = ['手动', '本地轮播', '网络'];
+  let devices = [];
+  let query = '';
+  let filter = 'all';
+  let claimId = null;
+  let claimType = 'basic';
+  let cur = null; // 当前详情设备
+
+  function openModal(name) { document.getElementById('modal-' + name).classList.add('show'); }
+  function closeModal(name) { document.getElementById('modal-' + name).classList.remove('show'); }
+
+  function pickType(el, t) {
+    claimType = t;
+    document.querySelectorAll('#modal-claim .type-card').forEach(c => c.classList.remove('on'));
+    el.classList.add('on');
+    const mini = el.querySelector('.screen-mini');
+    if (mini) { mini.classList.remove('ink-refresh'); void mini.offsetWidth; mini.classList.add('ink-refresh'); }
+  }
+
+  function relTime(v) {
+    if (!v) return '从未';
+    const s = (Date.now() - new Date(v).getTime()) / 1000;
+    if (s < 60) return '刚刚';
+    if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
+    if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
+    return FH.fmtTime(v);
+  }
+
+  function stateDot(d) {
+    if (!d.is_claimed) return '<span class="st-dot st-claim"><i></i>待认领</span>';
+    if (d.online) return '<span class="st-dot st-on"><i></i>在线</span>';
+    return '<span class="st-dot st-off"><i></i>离线</span>';
+  }
+
+  function openClaim() {
+    const unclaimed = devices.filter(d => !d.is_claimed);
+    if (!unclaimed.length) { FH.toast('当前没有待认领的设备', 'err'); return; }
+    claimId = unclaimed[0].id;
+    claimType = 'basic';
+    document.getElementById('claimDeviceId').value = unclaimed[0].device_id || '';
+    document.getElementById('claimName').value = '';
+    document.querySelectorAll('#modal-claim .type-card').forEach((c, i) => {
+      c.classList.toggle('on', i === 0);
+    });
+    openModal('claim');
+  }
+
+  async function doClaim() {
+    const name = document.getElementById('claimName').value.trim();
+    if (!name) { FH.toast('请填写设备名称', 'err'); return; }
+    const btn = document.getElementById('claimBtn');
+    btn.disabled = true;
+    try {
+      await API.post('/devices/' + claimId + '/claim', { name, device_type: claimType });
+      closeModal('claim');
+      FH.toast('认领成功：' + name, 'ok');
+      load();
+    } catch (e) {
+      FH.toast(e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function openDetail(d) {
+    cur = d;
+    document.getElementById('detailTitle').textContent = '设备详情 · ' + (d.name || d.device_id);
+    const tokenShort = d.token ? d.token.slice(0, 6) + '…' : '—';
+    const typeTxt = d.is_claimed
+      ? '<span class="tag on">' + d.device_type + ' · ' + RES[d.device_type] + '</span>'
+      : '<span class="tag yellow">待配置</span>';
+    const stateTxt = d.online
+      ? '<span class="tag green">● ' + (STATE_CN[d.state] || '在线') + '</span>'
+      : '<span class="tag">○ 离线</span>';
+
+    document.getElementById('detailBody').innerHTML =
+      '<dl class="kv">' +
+      '<dt>设备 ID</dt><dd>' + (d.device_id || '—') + '</dd>' +
+      '<dt>设备 Token</dt><dd class="mono-off"><span class="kv-token"><span>' + tokenShort + '</span>' +
+        '<span class="copy" title="复制完整 Token" onclick="copyToken()"><span class="ico ico-copy ico-sm"></span></span></span></dd>' +
+      '<dt>类型</dt><dd class="mono-off">' + typeTxt + '</dd>' +
+      '<dt>最后 IP</dt><dd>' + (d.last_ip || '—') + '</dd>' +
+      '<dt>最近心跳</dt><dd>' + (d.last_heartbeat_at ? new Date(d.last_heartbeat_at).toLocaleString('zh-CN') : '—') + '</dd>' +
+      '<dt>注册时间</dt><dd>' + (d.created_at ? new Date(d.created_at).toLocaleString('zh-CN') : '—') + '</dd>' +
+      '</dl>' +
+
+      '<div class="sec-block">' +
+      '<h4>实时状态（最近心跳上报）</h4>' +
+      '<dl class="kv">' +
+      '<dt>电量</dt><dd>' + (d.battery_percent != null ? d.battery_percent + '%' : '—') + (d.voltage_mv ? ' · ' + d.voltage_mv + 'mV' : '') + '</dd>' +
+      '<dt>工作状态</dt><dd class="mono-off">' + stateTxt + '</dd>' +
+      '<dt>播放模式</dt><dd>' + PLAY_CN[d.play_mode] + (d.play_mode != null ? ' · ' + d.play_mode : '') + '</dd>' +
+      '<dt>WiFi</dt><dd>' + (d.wifi_enable ? '已开启' : '已关闭') + '</dd>' +
+      '<dt>休眠</dt><dd>' + (d.sleep_mode ? '已开启' : '关闭') + (d.sleep_auto ? ' · 定时' : '') + (d.sleep_time ? ' · ' + d.sleep_time + ' 分钟' : '') + '</dd>' +
+      '<dt>BLE</dt><dd>' + (d.ble_enable ? '已开启' : '已关闭') + '</dd>' +
+      '<dt>当前文件</dt><dd>' + (d.current_file_id ? '#' + d.current_file_id : '—') + '</dd>' +
+      '<dt>心跳间隔</dt><dd>' + (d.heartbeat_interval || 60) + 's</dd>' +
+      '</dl></div>' +
+
+      '<div class="sec-block">' +
+      '<h4>功能配置（写入待下发队列，下次心跳生效）</h4>' +
+      '<div class="row-switch"><span>播放模式</span>' +
+        '<select class="select" id="cfgPlay" style="width:190px">' +
+          '<option value="0">0 · 手动</option><option value="1">1 · 本地轮播</option><option value="2">2 · 网络</option>' +
+        '</select></div>' +
+      '<div class="row-switch"><span>WiFi 联网</span><label class="switch"><input type="checkbox" id="cfgWifi"><span class="sl"></span></label></div>' +
+      '<div class="row-switch"><span>休眠开关</span><label class="switch"><input type="checkbox" id="cfgSleep"><span class="sl"></span></label></div>' +
+      '<div class="row-switch"><span>定时休眠<span class="hint">开启后按下方时长自动休眠</span></span><label class="switch"><input type="checkbox" id="cfgSleepAuto"><span class="sl"></span></label></div>' +
+      '<div class="row-switch"><span>休眠时长<span class="hint">0–2880 分钟</span></span><input type="number" id="cfgSleepTime" class="input" style="width:120px;font-family:var(--mono)"></div>' +
+      '<div class="row-switch"><span>BLE 开关</span><label class="switch"><input type="checkbox" id="cfgBle"><span class="sl"></span></label></div>' +
+      '<div class="cmd-btns" style="margin-top:14px">' +
+        '<button class="btn btn-sm btn-primary" onclick="doSetConfig()">下发配置 <span class="ico ico-arrow-r ico-sm"></span></button>' +
+        '<button class="btn btn-sm" onclick="doCmd(\'sync_time\')"><span class="ico ico-clock ico-sm"></span> 同步时间</button>' +
+        '<button class="btn btn-sm" onclick="doCmd(\'reboot\')"><span class="ico ico-power ico-sm"></span> 重启设备</button>' +
+        '<button class="btn btn-sm" onclick="doCmd(\'clear_files\')"><span class="ico ico-trash ico-sm"></span> 清空文件</button>' +
+        '<button class="btn btn-sm" onclick="doSyncFilm()"><span class="ico ico-push ico-sm"></span> 同步最新内容</button>' +
+      '</div></div>' +
+
+      '<div class="danger-zone">' +
+      '<p>重置 Token：设备将失去访问权限，需重新认领。删除设备：同时清除注册信息。</p>' +
+      '<button class="btn btn-sm btn-danger" onclick="doResetToken()">重置 Token</button> ' +
+      '<button class="btn btn-sm btn-danger" onclick="doDelete()">删除设备</button>' +
+      '</div>';
+
+    // 回填配置项
+    document.getElementById('cfgPlay').value = String(d.play_mode ?? 0);
+    document.getElementById('cfgWifi').checked = !!d.wifi_enable;
+    document.getElementById('cfgSleep').checked = !!d.sleep_mode;
+    document.getElementById('cfgSleepAuto').checked = !!d.sleep_auto;
+    document.getElementById('cfgSleepTime').value = d.sleep_time || 0;
+    document.getElementById('cfgBle').checked = !!d.ble_enable;
+
+    openModal('detail');
+  }
+
+  async function copyToken() {
+    try {
+      await navigator.clipboard.writeText(cur.token || '');
+      FH.toast('Token 已复制', 'ok');
+    } catch (e) { FH.toast('复制失败', 'err'); }
+  }
+
+  async function doSetConfig() {
+    const cfg = {
+      play_mode: parseInt(document.getElementById('cfgPlay').value, 10),
+      wifi_enable: document.getElementById('cfgWifi').checked,
+      sleep_mode: document.getElementById('cfgSleep').checked,
+      sleep_auto: document.getElementById('cfgSleepAuto').checked,
+      sleep_time: parseInt(document.getElementById('cfgSleepTime').value || '0', 10),
+      ble_enable: document.getElementById('cfgBle').checked,
+    };
+    try {
+      const res = await API.post('/devices/' + cur.id + '/set-config', cfg);
+      FH.toast(res.msg || '配置已排队下发', 'ok');
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function doCmd(cmd) {
+    const params = cmd === 'sync_time' ? { timestamp: Math.floor(Date.now() / 1000) } : {};
+    try {
+      const res = await API.post('/devices/' + cur.id + '/commands', { cmd, params });
+      FH.toast(res.msg || '指令已排队', 'ok');
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function doSyncFilm() {
+    try {
+      const res = await API.post('/devices/' + cur.id + '/sync-film');
+      FH.toast(res.msg || '已发起最新内容推送', 'ok');
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function doResetToken() {
+    const ok = await FH.confirmBox('确定重置 ' + (cur.name || cur.device_id) + ' 的 Token？设备将失去访问权限，需重新认领。');
+    if (!ok) return;
+    try {
+      await API.post('/devices/' + cur.id + '/reset-token');
+      closeModal('detail');
+      FH.toast('Token 已重置，设备需重新认领', 'ok');
+      load();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function doDelete() {
+    const ok = await FH.confirmBox('确定删除设备「' + (cur.name || cur.device_id) + '」？此操作不可恢复。');
+    if (!ok) return;
+    try {
+      await API.del('/devices/' + cur.id);
+      closeModal('detail');
+      FH.toast('设备已删除', 'ok');
+      load();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  function renderRows() {
+    query = document.getElementById('searchInput').value.trim().toLowerCase();
+    const rows = devices.filter(d => {
+      if (filter === 'online' && !d.online) return false;
+      if (filter === 'offline' && d.online) return false;
+      if (filter === 'claim' && d.is_claimed) return false;
+      if (query) {
+        const hay = ((d.name || '') + ' ' + (d.device_id || '')).toLowerCase();
+        if (hay.indexOf(query) < 0) return false;
+      }
+      return true;
+    });
+
+    document.getElementById('countTag').textContent =
+      '共 ' + devices.length + ' 台设备 · ' + devices.filter(d => d.online).length + ' 台在线';
+
+    const tbody = document.getElementById('devRows');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">没有匹配的设备</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map((d, i) => {
+      const typeCell = d.is_claimed
+        ? '<span class="tag on">' + d.device_type + ' · ' + RES[d.device_type] + '</span>'
+        : '<span class="tag yellow">待配置</span>';
+      const bat = d.is_claimed
+        ? '<b>' + (d.battery_percent != null ? d.battery_percent + '%' : '—') + '</b> <span class="muted">' + (d.voltage_mv || '') + 'mV</span>'
+        : '—';
+      const ops = d.is_claimed
+        ? '<button class="btn btn-sm" onclick="openDetail(getDev(' + d.id + '))"><span class="ico ico-eye ico-sm"></span> 详情</button> ' +
+          '<button class="btn btn-sm btn-danger" onclick="delRow(' + d.id + ')"><span class="ico ico-trash ico-sm"></span> 删除</button>'
+        : '<button class="btn btn-sm btn-primary" onclick="claimRow(' + d.id + ')"><span class="ico ico-link ico-sm"></span> 认领</button>';
+      return '<tr style="animation-delay:' + (i * 0.06) + 's">' +
+        '<td><b>' + (d.name || '未命名设备') + '</b><div class="dev-id">' + (d.device_id || '') + '</div></td>' +
+        '<td>' + typeCell + '</td>' +
+        '<td>' + stateDot(d) + '</td>' +
+        '<td>' + bat + '</td>' +
+        '<td>' + (d.is_claimed ? ((d.heartbeat_interval || 60) + 's') : '—') + '</td>' +
+        '<td>' + relTime(d.last_heartbeat_at) + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' + ops + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function getDev(id) { return devices.find(d => d.id === id); }
+  function claimRow(id) {
+    claimId = id;
+    const d = getDev(id);
+    document.getElementById('claimDeviceId').value = d.device_id || '';
+    document.getElementById('claimName').value = '';
+    claimType = 'basic';
+    document.querySelectorAll('#modal-claim .type-card').forEach((c, i) => c.classList.toggle('on', i === 0));
+    openModal('claim');
+  }
+  function delRow(id) {
+    cur = getDev(id);
+    doDelete();
+  }
+
+  document.getElementById('filters').addEventListener('click', e => {
+    const f = e.target.closest('.filter');
+    if (!f) return;
+    document.querySelectorAll('#filters .filter').forEach(x => x.classList.remove('on'));
+    f.classList.add('on');
+    filter = f.dataset.f;
+    renderRows();
+  });
+
+  async function load() {
+    try {
+      devices = await API.get('/devices');
+      const unclaimed = devices.filter(d => !d.is_claimed);
+      const bar = document.getElementById('claimBar');
+      bar.style.display = unclaimed.length ? 'flex' : 'none';
+      document.getElementById('claimCount').textContent = unclaimed.length;
+      renderRows();
+    } catch (e) {
+      FH.toast(e.message, 'err');
+    }
+  }
+  load();
+  setInterval(load, 15000); // 15s 轮询心跳状态
+</script>
+</body>
+</html>

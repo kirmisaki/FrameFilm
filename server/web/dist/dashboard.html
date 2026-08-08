@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>仪表盘 · film-hub</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* 设备卡片（屏幕为竖版 2:3） */
+  .devices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .dev { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .dev .screen { position: relative; width: 96px; height: 144px; margin: 14px auto 8px; border: 1px solid var(--line-d); background: #fff; overflow: hidden; }
+  .dev .screen .ink { position: absolute; inset: 0; padding: 8px 9px; font-size: 9px; }
+  .dev .screen .ink .t { font-size: 12px; font-weight: 700; letter-spacing: 2px; }
+  .dev .screen .ink .d { margin-top: 5px; display: flex; gap: 2px; }
+  .dev .screen .ink .d i { width: 7px; height: 7px; }
+  .dev .meta { padding: 0 16px 14px; display: flex; align-items: center; justify-content: space-between; }
+  .dev .meta .nm { font-size: 14px; font-weight: 600; }
+  .dev .meta .st { font-size: 11px; color: var(--gray); margin-top: 2px; }
+  .battery { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .battery .bar { width: 42px; height: 12px; border: 1px solid var(--ink); padding: 1px; }
+  .battery .bar i { display: block; height: 100%; background: var(--green); }
+  .battery .bar i.low { background: var(--red); }
+  .dev .screen .stamp { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 4px; font-size: 8px; background: rgba(0,0,0,.06); color: var(--gray); }
+
+  /* 轮播时间轴 */
+  .timeline { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
+  .tl-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 13px; }
+  .tl-head .tag { font-size: 11px; border: 1px solid var(--ink); border-radius: 20px; padding: 3px 10px; }
+  .tl-track { position: relative; height: 56px; border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
+  .tl-seg { position: absolute; top: 8px; bottom: 8px; border: 1px solid var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; }
+  .tl-seg small { font-size: 9px; color: var(--gray); }
+  .tl-seg.now { background: var(--ink); color: #fff; }
+  .tl-seg.now small { color: #d0d0cf; }
+  .tl-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--gray); margin-top: 8px; }
+
+  /* 预览屏（竖版 2:3） */
+  .preview-screen { display: flex; gap: 26px; align-items: flex-start; }
+  .ps-frame { flex-shrink: 0; background: var(--ink); padding: 14px; border-radius: 14px; box-shadow: var(--shadow-lg); }
+  .ps-inner { width: 230px; height: 345px; background: #fff; position: relative; overflow: hidden; font-size: 11px; padding: 22px 18px; }
+  .ps-inner .t { font-size: 18px; font-weight: 700; letter-spacing: 3px; }
+  .ps-inner .cal { margin-top: 12px; font-size: 10px; }
+  .ps-inner img { width: 100%; height: 100%; object-fit: contain; position: absolute; inset: 0; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal b { aspect-ratio: 1; display: grid; place-items: center; border: 1px solid #eee; }
+  .cal .today { background: var(--ink); color: #fff; }
+  .cal .w { color: var(--red); }
+  .ps-info { flex: 1; }
+  .ps-info h3 { font-size: 16px; margin-bottom: 8px; }
+  .ps-info p { font-size: 13px; color: var(--ink-light); line-height: 1.8; }
+
+  /* 最近动态 */
+  .feed { list-style: none; }
+  .feed li { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13px; align-items: flex-start; }
+  .feed li:last-child { border-bottom: none; }
+  .feed .stamp { font-family: var(--mono); font-size: 11px; color: var(--gray); flex-shrink: 0; padding-top: 2px; }
+  .feed .txt { flex: 1; line-height: 1.6; }
+  .feed .txt b { font-weight: 600; }
+  .feed .act { flex-shrink: 0; }
+
+  .dash-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 1200px) { .dash-grid { grid-template-columns: 1fr; } }
+
+  /* ===== 趣味动效：设备屏拟真刷新 / 时间轴播放呼吸 / 分区入场 ===== */
+  .dev .screen { transition: transform .25s, border-color .25s; }
+  .dev:hover .screen { transform: rotate(-1.6deg) scale(1.03); border-color: var(--ink); }
+  .dev:nth-child(odd):hover .screen { transform: rotate(1.4deg) scale(1.03); }
+  .tl-seg.now { animation: tlGlow 2.8s ease-in-out infinite; }
+  @keyframes tlGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(26,26,26,.35); }
+    50% { box-shadow: 0 0 0 6px rgba(26,26,26,0); }
+  }
+  .feed li { animation: riseIn .5s cubic-bezier(.2,.9,.3,1.1) both; }
+  .feed li:nth-child(2) { animation-delay: .08s; }
+  .feed li:nth-child(3) { animation-delay: .16s; }
+  .feed li:nth-child(4) { animation-delay: .24s; }
+  .feed li:nth-child(5) { animation-delay: .32s; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topnav">
+    <div class="inner">
+      <div class="brand">
+        <span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span>
+        <b>film-hub</b>
+      </div>
+      <nav class="nav">
+        <a class="on" href="dashboard.html"><span class="ico ico-dash"></span>仪表盘</a>
+        <a href="devices.html"><span class="ico ico-dev"></span>设备管理</a>
+        <a href="templates.html"><span class="ico ico-tpl"></span>模板库</a>
+        <a href="streams.html"><span class="ico ico-stream"></span>轮播流</a>
+        <a href="albums.html"><span class="ico ico-album"></span>相册</a>
+        <a href="ai.html"><span class="ico ico-ai"></span>AI 创作</a>
+        <a href="settings.html"><span class="ico ico-set"></span>设置</a>
+      </nav>
+      <div class="top-right">
+        <a class="gh" href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener" title="GitHub 仓库"><svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        <span class="status"><span class="dot dot-pulse"></span>连接中…</span>
+        <div class="avatar">管</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>仪表盘</h1>
+        <div class="sub" id="dashDate">—</div>
+      </div>
+      <div class="right">
+        <div class="search"><span class="ico ico-search"></span> 搜索模板 / 设备…</div>
+        <div class="avatar">管</div>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="section-title"><h2>设备</h2><a class="more" href="devices.html">管理全部 <span class="ico ico-arrow-r ico-sm"></span></a></div>
+    <div class="devices" id="devices"></div>
+
+    <div class="section-title"><h2>轮播时间轴</h2><a class="more" href="streams.html">编排时间轴 <span class="ico ico-arrow-r ico-sm"></span></a></div>
+    <div class="timeline" id="timeline"></div>
+
+    <div class="section-title"><h2>渲染预览</h2><span class="more"><span class="ico ico-eye ico-sm"></span> 以 Pro 分辨率预览</span></div>
+    <div class="dash-grid">
+      <div class="preview-screen rise-in" style="animation-delay:.18s">
+        <div class="ps-frame">
+          <div class="ps-inner" id="previewInner">
+            <div class="t">08月07日</div>
+            <div style="color:#888">星期四 · 今日晴</div>
+            <div class="cal">
+              <b class="w">一</b><b class="w">二</b><b>三</b><b>四</b><b>五</b><b>六</b><b>日</b>
+              <b>27</b><b>28</b><b>29</b><b>30</b><b>31</b><b>1</b><b>2</b>
+              <b>3</b><b>4</b><b>5</b><b>6</b><b class="today">7</b><b>8</b><b>9</b>
+              <b>10</b><b>11</b><b>12</b><b>13</b><b>14</b><b>15</b><b>16</b>
+            </div>
+          </div>
+        </div>
+        <div class="ps-info">
+          <h3 id="previewTitle">服务端渲染预览</h3>
+          <p id="previewDesc">后端 Pillow 渲染 + 6 色调色板转换，所见即所得。</p>
+          <a href="templates.html"><button class="btn">管理模板 <span class="ico ico-arrow-r ico-sm"></span></button></a>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <h3>最近动态</h3>
+        <div class="desc" style="margin-bottom:6px">设备心跳 · 推送记录</div>
+        <ul class="feed" id="feed"></ul>
+      </div>
+    </div>
+
+    <div class="foot-note">
+      <span>film-hub · 仪表盘</span>
+      <span>基于方案 A 纸墨美学设计</span>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <div class="f-about">
+        <div class="f-brand"><span class="sw"><i style="background:#000"></i><i style="background:#E00000"></i><i style="background:#FCD000"></i><i style="background:#29CC14"></i></span><b>film-hub</b></div>
+        <p>FrameFilm 彩色电子纸冰箱贴的局域网后端与管理工具：模板编排、服务端渲染、轮播时间轴与 OTA 推送。</p>
+      </div>
+      <div class="f-col">
+        <h4>链接</h4>
+        <a href="https://github.com/film-hub/film-hub" target="_blank" rel="noopener">GitHub 仓库</a>
+        <a href="/docs" target="_blank">后端 API 文档</a>
+      </div>
+      <div class="f-col">
+        <h4>技术栈</h4>
+        <span>ESP32-S3 + 彩色电子纸</span>
+        <span>Python FastAPI 后端</span>
+        <span>微信小程序 / Web 工具</span>
+      </div>
+    </div>
+    <div class="f-bottom">© 2026 FrameFilm · GPL-3.0 · 开源彩色电子纸冰箱贴</div>
+  </footer>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/common.js"></script>
+<script>
+  FH.guard();
+  FH.setupNavRefresh();
+  FH.refreshStatus();
+
+  const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
+  const now = new Date();
+  document.getElementById('dashDate').textContent =
+    now.getFullYear() + '-' + FH.fmtTime(now).slice(0, 5) + ' · 星期' + WEEK[now.getDay()];
+
+  function batteryBar(pct) {
+    const cls = pct < 25 ? 'low' : '';
+    return '<div class="battery"><span>' + (pct || '—') + '%</span><span class="bar"><i class="' + cls + '" style="width:' + (pct || 0) + '%"></i></span></div>';
+  }
+
+  /* 设备屏幕内容：按设备类型展示 e-ink 风格占位 */
+  function devScreen(d, idx) {
+    const basic = d.device_type !== 'pro';
+    let inner;
+    if (!d.is_claimed) {
+      inner = '<div style="display:grid;place-items:center;height:100%;color:#999;font-size:10px">待认领<br><span style="font-size:8px">' + (d.device_id || '').slice(0, 8) + '</span></div>';
+    } else if (basic) {
+      inner = '<div class="t">' + (d.name || '设备') + '</div>' +
+        '<div style="color:#888">' + (d.online ? '在线 · 网络模式' : '离线') + '</div>' +
+        '<div class="d"><i style="background:#000"></i><i style="background:#000"></i><i style="background:#FCD000"></i><i style="background:#E00000"></i><i style="background:#29CC14"></i><i style="background:#0000FF"></i></div>' +
+        '<div style="margin-top:8px;color:#666">播放中 · 轮播</div>' +
+        '<div>■ ' + (d.play_mode === 2 ? '网络' : '本地') + '</div>';
+    } else {
+      inner = '<div style="display:grid;place-items:center;height:100%;text-align:center">' +
+        '<div><div style="font-size:26px;font-weight:700">' + (d.battery_percent || '--') + '</div>' +
+        '<div style="color:#666;font-size:8px">电量 · ' + (d.voltage_mv || 0) + 'mV</div>' +
+        '<div style="margin-top:6px;font-size:9px;color:' + (d.online ? '#14640a' : '#999') + '">' + (d.online ? '● 在线' : '○ 离线') + '</div></div>';
+    }
+    return '<div class="ink">' + inner + '</div>' +
+      '<div class="stamp">' + (basic ? 'basic 400×600' : 'pro 528×792') + '</div>';
+  }
+
+  async function load() {
+    try {
+      const [stats, devices, streams] = await Promise.all([
+        API.get('/stats/dashboard'),
+        API.get('/devices'),
+        API.get('/streams'),
+      ]);
+
+      // 统计卡
+      document.getElementById('stats').innerHTML =
+        statCard('1', '在线设备', '● ' + stats.devices + ' 台注册') +
+        statCard(stats.templates, '模板总数', '内置 + 自定义') +
+        statCard(stats.streams, '轮播流', '已启用 ' + streams.filter(s => s.enabled).length) +
+        statCard(stats.albums, '相册', '共收录照片');
+      function statCard(b, t, c) {
+        return '<div class="stat"><b>' + b + '</b><span>' + t + '</span><span class="ch">' + c + '</span></div>';
+      }
+
+      // 设备卡
+      const devBox = document.getElementById('devices');
+      if (devices.length === 0) {
+        devBox.innerHTML = '<div class="card card-pad" style="grid-column:1/-1;text-align:center;color:var(--gray)">暂无设备，设备首次心跳后会自动出现在这里。</div>';
+      } else {
+        devBox.innerHTML = devices.map((d, i) =>
+          '<div class="dev rise-in" style="animation-delay:' + (0.06 + i * 0.08) + 's">' +
+          '<div class="screen">' + devScreen(d, i) + '</div>' +
+          '<div class="meta"><div><div class="nm">' + (d.name || '未命名设备') + '</div>' +
+          '<div class="st">' + (d.is_claimed ? (d.device_type + ' · ' + d.device_id) : '待认领') + '</div></div>' +
+          batteryBar(d.battery_percent) + '</div></div>'
+        ).join('');
+        // 设备屏周期刷新 + 点击闪屏
+        document.querySelectorAll('.dev .screen .ink').forEach((ink, i) => {
+          setInterval(() => {
+            const s = ink.parentElement;
+            s.classList.remove('ink-refresh'); void s.offsetWidth; s.classList.add('ink-refresh');
+          }, 9000 + i * 3200);
+        });
+        document.querySelectorAll('.dev').forEach(dev => {
+          dev.addEventListener('click', () => {
+            const s = dev.querySelector('.screen');
+            s.classList.remove('ink-refresh'); void s.offsetWidth; s.classList.add('ink-refresh');
+          });
+        });
+      }
+
+      // 轮播时间轴
+      const tl = document.getElementById('timeline');
+      const active = streams.find(s => s.enabled) || streams[0];
+      if (!active) {
+        tl.innerHTML = '<div class="tl-head"><span>暂无轮播流</span><a href="streams.html" class="tag">去创建</a></div>' +
+          '<div class="tl-empty" style="padding:18px;text-align:center;color:var(--gray);font-size:12px">创建轮播流后，这里会展示当日播放时间轴</div>';
+      } else {
+        const segs = await API.get('/streams/' + active.id + '/timeline');
+        tl.innerHTML = '<div class="tl-head"><span>mode：' + (active.mode === 'server_push' ? '服务端主动推送' : '设备主动获取') + '</span>' +
+          '<span class="tag">' + (active.enabled ? '● 运行中' : '‖ 已暂停') + '</span></div>';
+        if (segs.length === 0) {
+          tl.innerHTML += '<div class="tl-empty" style="padding:18px;text-align:center;color:var(--gray);font-size:12px">该轮播流还没有条目</div>';
+        } else {
+          tl.innerHTML += '<div class="tl-track">' + segs.map((s, i) => {
+            const total = 86400;
+            const left = (s.start_sec / total * 100);
+            const w = (s.duration_sec / total * 100);
+            return '<div class="tl-seg' + (i === 0 ? ' now' : '') + '" style="left:' + left + '%;width:' + w + '%">' +
+              (s.template_name || '模板') + '<small>' + s.start_time + ' · ' + (s.schedule_type === 'absolute' ? '定点' : '相对') + '</small></div>';
+          }).join('') + '</div>' +
+            '<div class="tl-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>';
+        }
+      }
+
+      // 渲染预览：用第一个模板的 preview 图（preview 接口需要鉴权）
+      const tpls = await API.get('/templates');
+      const preview = document.getElementById('previewInner');
+      if (tpls.length) {
+        const first = tpls[0];
+        preview.innerHTML = '<div class="ph">渲染中…</div>';
+        FH.authImg('/api/v1/admin/templates/' + first.id + '/preview?device_type=pro').then(objUrl => {
+          const img = new Image();
+          img.onload = () => {
+            preview.classList.remove('ink-refresh'); void preview.offsetWidth;
+            preview.classList.add('ink-refresh');
+          };
+          img.onerror = () => { preview.innerHTML = ''; };
+          preview.innerHTML = '';
+          img.src = objUrl;
+          preview.appendChild(img);
+        }).catch(() => { preview.innerHTML = ''; });
+        document.getElementById('previewTitle').textContent = '服务端渲染预览 · ' + first.name;
+        document.getElementById('previewDesc').textContent =
+          '后端 Pillow 渲染 + 6 色调色板转换，所见即所得。';
+      }
+
+      // 最近动态
+      const feed = document.getElementById('feed');
+      const items = [];
+      devices.filter(d => d.online).forEach(d => {
+        items.push(['心跳', '<b>' + (d.name || d.device_id) + '</b> 心跳在线 · 电量 ' + (d.battery_percent || 0) + '%',
+          FH.fmtTime(d.last_heartbeat_at), '<span class="tag green">● 正常</span>']);
+      });
+      devices.filter(d => !d.is_claimed).forEach(d => {
+        items.push(['新设备', '新设备 <b>' + (d.device_id || '') + '</b> 首次心跳，等待认领',
+          FH.fmtTime(d.created_at), '<span class="tag yellow">待认领</span>']);
+      });
+      streams.filter(s => s.enabled).forEach(s => {
+        items.push(['推送', '<b>' + s.name + '</b> 正在运行 · 共 ' + s.items.length + ' 条',
+          '—', '<span class="tag">push</span>']);
+      });
+      if (items.length === 0) {
+        feed.innerHTML = '<li><span class="txt" style="color:var(--gray)">暂无动态</span></li>';
+      } else {
+        feed.innerHTML = items.slice(0, 5).map(it =>
+          '<li><span class="stamp">' + it[2] + '</span><span class="txt">' + it[1] + '</span><span class="act">' + it[3] + '</span></li>'
+        ).join('');
+      }
+    } catch (e) {
+      FH.toast(e.message, 'err');
+    }
+  }
+  load();
+</script>
+</body>
+</html>
