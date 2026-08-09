@@ -65,6 +65,7 @@
   .item .drag { cursor: grab; color: var(--gray); font-size: 16px; }
   .item .th { width: 34px; height: 51px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #fff; flex-shrink: 0; display: grid; place-items: center; font-size: 11px; }
   .item .th img { width: 100%; height: 100%; object-fit: cover; }
+  .item .th .no-thumb { font-size: 14px; font-weight: 700; color: #d8d3ca; letter-spacing: 1px; }
   .item .info { flex: 1; min-width: 0; }
   .item .info .nm { font-size: 13px; font-weight: 600; }
   .item .info .tp { font-size: 11px; color: var(--gray); margin-top: 2px; }
@@ -417,6 +418,7 @@
     itemsEl.innerHTML = html +
       '<div class="drop-hint"><span class="pill">松开加入播放列表</span></div>' +
       '<div class="drop-line"></div>';
+    ensureThumbs();
   }
 
   /* 相对间隔快捷档位（秒） */
@@ -441,15 +443,56 @@
     return sec + ' 秒';
   }
 
+  /* ===== 条目缩略图：优先公开缓存，缺失时用鉴权请求渲染一次（生成后端缩略图） ===== */
+  const _thumbObj = {};      // template_id -> objectURL（本页会话内复用）
+  const _thumbLoading = {};  // template_id -> 是否加载中
+
+  function thumbTxt(tplId) {
+    const t = templates.find(x => x.id === tplId);
+    const nm = (t && t.name) || '模板';
+    return '<span class="ph-txt">' + esc(nm.charAt(0)) + '</span>';
+  }
+  function thumbPh(tplId) {
+    return '<span class="no-thumb">' + thumbTxt(tplId) + '</span>';
+  }
+  function thumbHtml(it) {
+    const t = templates.find(x => x.id === it.template_id);
+    const url = (t && t.thumb_url) || '';
+    if (url) {
+      return '<img src="' + url + '" alt="" loading="lazy" onerror="this.outerHTML=thumbPh(' + it.template_id + ')">';
+    }
+    if (_thumbObj[it.template_id]) {
+      return '<img src="' + _thumbObj[it.template_id] + '" alt="">';
+    }
+    return '<span class="no-thumb" data-thumb="' + it.template_id + '">' + thumbTxt(it.template_id) + '</span>';
+  }
+  function ensureThumbs() {
+    const ids = [...new Set([...document.querySelectorAll('.no-thumb[data-thumb]')].map(el => parseInt(el.dataset.thumb, 10)))];
+    ids.forEach(id => {
+      if (_thumbObj[id] || _thumbLoading[id]) return;
+      _thumbLoading[id] = true;
+      FH.authImg('/api/v1/admin/templates/' + id + '/preview?device_type=basic')
+        .then(url => {
+          _thumbObj[id] = url;
+          document.querySelectorAll('.no-thumb[data-thumb="' + id + '"]').forEach(el => {
+            const img = document.createElement('img');
+            img.src = url; img.alt = ''; img.loading = 'lazy';
+            el.replaceWith(img);
+          });
+        })
+        .catch(() => { /* 保持首字占位 */ })
+        .finally(() => { _thumbLoading[id] = false; });
+    });
+  }
+
   function itemHTML(it, i, group) {
-    const thumb = '<img src="/api/v1/admin/templates/' + it.template_id + '/preview?device_type=basic" alt="" loading="lazy" onerror="this.outerHTML=\'<b>&middot;</b>\'">';
     const rel = group === 'rel';
     const timeCtrl = rel
       ? '<span class="seg rel" onclick="toggleType(' + it.id + ')">相对 · 循环</span><select data-item="' + it.id + '" onchange="updDuration(this)">' + relPresetOpts(it.duration_sec) + '</select>'
       : '<span class="seg abs" onclick="toggleType(' + it.id + ')">定点</span><input type="time" value="' + fmtHHMM(it.start_at) + '" data-item="' + it.id + '" onchange="updStartAt(this)">';
     return '<div class="item" draggable="true" data-id="' + it.id + '" style="animation-delay:' + (i * 0.04) + 's">' +
       '<span class="drag">≡</span>' +
-      '<div class="th">' + thumb + '</div>' +
+      '<div class="th">' + thumbHtml(it) + '</div>' +
       '<div class="info"><div class="nm">' + esc(it.template_name) + '</div><div class="tp">' + (rel ? '循环播放' : '每天 ' + fmtHHMM(it.start_at) + ' 定点') + ' · ' + (it.enabled ? '启用' : '已停用') + '</div></div>' +
       '<div class="time">' + timeCtrl + '</div>' +
       '<label class="en-switch"><input type="checkbox" ' + (it.enabled ? 'checked' : '') + ' onchange="updEnabled(' + it.id + ', this.checked)">启用</label>' +
