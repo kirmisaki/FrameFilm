@@ -24,6 +24,8 @@ class DeviceOut(BaseModel):
     sleep_time: int
     ble_enable: bool
     current_file_id: int
+    template_id: int = 0
+    template_name: str = ""
     heartbeat_interval: int
     battery_percent: int
     voltage_mv: int

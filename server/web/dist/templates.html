@@ -164,6 +164,18 @@
   .tpls .tpl:nth-child(6) { animation-delay: .38s; }
   .tpls .tpl:nth-child(7) { animation-delay: .45s; }
   .tpls .tpl:nth-child(8) { animation-delay: .52s; }
+
+  /* ===== 微信式待办清单控件（todo） ===== */
+  .todo-list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .todo-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--line); background: #fff; }
+  .todo-row:last-of-type { border-bottom: none; }
+  .todo-check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #07a15e; background: #fff; color: #fff; font-size: 12px; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; flex-shrink: 0; transition: all .15s; }
+  .todo-check.on { background: #07a15e; border-color: #07a15e; }
+  .todo-text { flex: 1; border: none; outline: none; font-size: 13px; background: transparent; min-width: 0; }
+  .todo-del { border: none; background: none; color: var(--gray); font-size: 14px; cursor: pointer; padding: 0 2px; }
+  .todo-del:hover { color: var(--red); }
+  .todo-add { display: block; width: 100%; padding: 8px; border: none; border-top: 1px dashed var(--line); background: #fafafa; color: var(--gray); font-size: 12px; cursor: pointer; }
+  .todo-add:hover { color: var(--ink); }
 </style>
 </head>
 <body>
@@ -310,6 +322,39 @@
     return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
 
+  /* ===== 微信式待办清单控件 ===== */
+  function todoRowsHtml(items) {
+    return (items || []).map(it => {
+      const s = String(it == null ? '' : it).trim();
+      const done = /^\[[xX]\]/.test(s);
+      const text = s.replace(/^\[[xX]\]\s*/, '').replace(/^\[\s*\]\s*/, '');
+      return '<div class="todo-row">' +
+        '<button type="button" class="todo-check' + (done ? ' on' : '') + '" onclick="toggleTodo(this)">✓</button>' +
+        '<input class="todo-text" value="' + esc(text) + '">' +
+        '<button type="button" class="todo-del" onclick="delTodo(this)">✕</button>' +
+        '</div>';
+    }).join('');
+  }
+  function toggleTodo(btn) {
+    btn.classList.toggle('on');
+    schedulePreview(true);
+  }
+  function addTodo(btn) {
+    const list = btn.closest('.todo-list');
+    const row = document.createElement('div');
+    row.className = 'todo-row';
+    row.innerHTML = '<button type="button" class="todo-check" onclick="toggleTodo(this)">✓</button>' +
+      '<input class="todo-text" value="">' +
+      '<button type="button" class="todo-del" onclick="delTodo(this)">✕</button>';
+    list.insertBefore(row, btn);
+    row.querySelector('input').focus();
+    schedulePreview(true);
+  }
+  function delTodo(btn) {
+    btn.closest('.todo-row').remove();
+    schedulePreview(true);
+  }
+
   /* ===== 卡片列表 ===== */
   function paramSummary(t) {
     // 从 data.params 与 params 定义生成一行摘要，如「跟随当前时间 · 米杏」
@@ -452,7 +497,7 @@
       const key = d.key;
       const cur = vals[key] != null ? vals[key] : d.default;
       const val = cur == null ? '' : cur;
-      const label = '<label>' + esc(d.label || key) + (d.type === 'list' ? ' <small>（每行一条）</small>' : '') + '</label>';
+      const label = '<label>' + esc(d.label || key) + (d.type === 'list' ? ' <small>（每行一条）</small>' : '') + (d.type === 'todo' ? ' <small>（点击圆圈标记完成）</small>' : '') + '</label>';
       let ctl = '';
       if (d.type === 'radio') {
         ctl = '<div class="pills" id="ctl-' + key + '">' + (d.options || []).map(o =>
@@ -462,9 +507,12 @@
         ctl = '<div class="schemes" id="ctl-' + key + '">' + (t.definition.schemes || []).map((s, i) =>
           '<span class="scheme-pill' + (Number(val) === i ? ' on' : '') + '" data-v="' + i + '"><i style="background:' + (s.accent || '#888') + '"></i>' + esc(s.name) + '</span>'
         ).join('') + '</div>';
+      } else if (d.type === 'todo') {
+        ctl = '<div class="todo-list" id="ctl-' + key + '">' + todoRowsHtml(Array.isArray(val) ? val : []) +
+              '<button type="button" class="todo-add" onclick="addTodo(this)">＋ 添加事项</button></div>';
       } else if (d.type === 'list') {
         const listVal = Array.isArray(val) ? val.join('\n') : '';
-        ctl = '<textarea class="textarea" id="ctl-' + key + '" rows="4" style="min-height:84px">' + esc(listVal) + '</textarea>';
+        ctl = '<textarea class="textarea" id="ctl-' + key + '" rows="4" style="min-height:84px" placeholder="每行一条，行首 [x] 表示已完成">' + esc(listVal) + '</textarea>';
       } else if (d.type === 'month') {
         ctl = '<input class="input" id="ctl-' + key + '" type="month" value="' + esc(val) + '">';
       } else if (d.type === 'date') {
@@ -507,7 +555,7 @@
           schedulePreview();
         });
       } else {
-        el.addEventListener('input', schedulePreview);
+        // 输入类控件：失焦/回车才触发渲染，避免逐字符请求预览
         el.addEventListener('change', schedulePreview);
       }
     });
@@ -582,6 +630,13 @@
         vals[d.key] = on != null ? parseInt(on.dataset.v, 10) : d.default;
       } else if (d.type === 'list') {
         vals[d.key] = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+      } else if (d.type === 'todo') {
+        vals[d.key] = Array.from(el.querySelectorAll('.todo-row')).map(r => {
+          const done = r.querySelector('.todo-check').classList.contains('on');
+          const text = r.querySelector('.todo-text').value.trim();
+          if (!text) return null;
+          return (done ? '[x] ' : '[ ] ') + text;
+        }).filter(Boolean);
       } else if (d.type === 'number') {
         vals[d.key] = el.value === '' ? null : parseInt(el.value, 10);
       } else if (d.type === 'album') {

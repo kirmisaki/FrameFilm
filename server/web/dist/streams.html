@@ -50,16 +50,12 @@
   .tpl-card.dragging .tc-frame { box-shadow: 0 12px 22px rgba(26,26,26,.18); transform: rotate(3deg); }
   .tpl-card .tc-name { margin-top: 7px; font-size: 11px; color: var(--ink); letter-spacing: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70px; }
 
-  /* ===== 时间轴 ===== */
-  .tl-track { position: relative; height: 64px; border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; transition: border-color .15s, background .15s; }
-  .tl-seg { position: absolute; top: 8px; bottom: 8px; border: 1px solid var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; transition: box-shadow .15s; overflow: hidden; }
-  .tl-seg:hover { box-shadow: 0 0 0 2px var(--blue); z-index: 2; }
-  .tl-seg small { font-size: 9px; color: var(--gray); }
-  .tl-seg.now { background: var(--ink); color: #fff; }
-  .tl-seg.now small { color: #d0d0cf; }
-  .tl-seg.abs { background: repeating-linear-gradient(-45deg, #fff, #fff 6px, #f4f4f2 6px, #f4f4f2 12px); }
-  .tl-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--gray); margin-top: 8px; }
-  .tl-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--gray); font-size: 12px; }
+  /* ===== 播放分组条（列表即时间轴） ===== */
+  .group-bar { display: flex; align-items: center; gap: 8px; margin: 20px 0 10px; font-size: 12px; color: var(--gray); }
+  .group-bar::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  .group-bar b { color: var(--ink); font-size: 13px; }
+  .group-bar .n { background: var(--line); color: var(--ink); border-radius: 10px; padding: 1px 8px; font-size: 10px; }
+  .group-bar:first-of-type { margin-top: 0; }
 
   /* ===== 播放列表（可拖拽排序 + 拖入模板卡片） ===== */
   .items { display: flex; flex-direction: column; gap: 10px; }
@@ -76,7 +72,9 @@
   .item .time .seg { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; background: #fff; cursor: pointer; font-size: 12px; }
   .item .time .seg.rel { border-color: var(--ink); }
   .item .time .seg.abs { background: repeating-linear-gradient(-45deg,#fff,#fff 6px,#f4f4f2 6px,#f4f4f2 12px); }
-  .item .time input { width: 64px; border: 1px solid var(--line-d); border-radius: 5px; padding: 4px 6px; font-size: 12px; outline: none; text-align: center; font-family: var(--mono); }
+  .item .time input[type=time] { width: 96px; border: 1px solid var(--line-d); border-radius: 5px; padding: 4px 6px; font-size: 12px; outline: none; text-align: center; font-family: var(--mono); }
+  .item .time select { border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; background: #fff; outline: none; cursor: pointer; }
+  .item .time select:focus { border-color: var(--ink); }
   .item .en-switch { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--gray); }
   .item .del { color: var(--gray); cursor: pointer; font-size: 14px; }
   .item .del:hover { color: var(--red); }
@@ -87,10 +85,31 @@
   #empty b { color: var(--ink); }
   #empty small { display: block; margin-top: 6px; font-size: 11px; color: var(--gray); }
 
-  /* 拖拽投放目标高亮 */
-  #items.armed, #empty.armed, #track.armed { outline: 2px dashed var(--blue); outline-offset: 3px; border-radius: 10px; }
-  #items.hover, #empty.hover { outline: 2px solid var(--blue); outline-offset: 3px; background: #f3f5ff; }
-  #track.hover { border-color: var(--blue); box-shadow: inset 0 0 0 2px var(--blue); }
+  /* 拖拽投放提示（精致：柔和光晕 + 胶囊提示 + 插入位置指示线） */
+  #items, #empty { position: relative; }
+  .drop-hint {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    pointer-events: none; opacity: 0; transition: opacity .18s ease; z-index: 5;
+    background: radial-gradient(ellipse 60% 60% at 50% 45%, rgba(47,111,216,.05), transparent 70%);
+  }
+  .drop-hint.on { opacity: 1; }
+  .drop-hint .pill {
+    background: rgba(255,255,255,.92); border: 1px solid rgba(47,111,216,.30);
+    color: var(--blue); font-size: 12px; padding: 7px 16px; border-radius: 999px;
+    box-shadow: 0 6px 20px rgba(47,111,216,.14); letter-spacing: 1px;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .drop-hint .pill::before { content: '+'; font-size: 15px; color: var(--blue); }
+  .drop-line {
+    position: absolute; left: 6px; right: 6px; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--blue), transparent);
+    opacity: 0; pointer-events: none; z-index: 4; transition: top .06s ease-out;
+  }
+  #items.armed .drop-hint { opacity: 1; }
+  #items.hover .drop-hint { opacity: 0; }
+  #items.hover .drop-line { opacity: .9; }
+  #empty.armed .drop-hint { opacity: 1; }
+  #empty.hover .drop-hint { opacity: .5; }
 
   .add-item { margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; color: var(--gray); font-size: 13px; cursor: pointer; border: 1px dashed var(--line-d); padding: 10px 18px; border-radius: 8px; }
   .add-item:hover { color: var(--ink); border-color: var(--ink); }
@@ -127,7 +146,7 @@
     <div class="topbar">
       <div>
         <h1>轮播流</h1>
-        <div class="sub">把模板卡片拖进时间轴，拼一条属于你的轮播流 · 相对时间按间隔循环 · 绝对时间定点更新</div>
+        <div class="sub">把模板卡片拖进播放列表，拼一条属于你的轮播流 · 相对循环按间隔循环 · 定点按时间播放</div>
       </div>
       <div class="right">
         <button class="btn" id="saveOrderBtn" onclick="saveOrder()" disabled><span class="ico ico-check ico-sm"></span> 保存顺序</button>
@@ -152,24 +171,18 @@
       <div class="card card-pad tray-card">
         <div class="tray-head">
           <b><span class="ico ico-tpl ico-sm" style="vertical-align:-2px"></span> 模板卡片</b>
-          <span class="hint">按住卡片拖到下面的时间轴或播放列表，松手即加入 · 也可拖动现有条目调整顺序</span>
+          <span class="hint">按住卡片拖到下方播放列表，松手即加入 · 也可拖动现有条目调整顺序 · 相对循环条目在上，定点条目按时间排在下</span>
         </div>
         <div class="tray" id="tray"></div>
       </div>
 
-      <!-- 时间轴（投放区：横向插入位置） -->
-      <div class="card card-pad" style="margin-bottom:20px">
-        <div class="tray-head">
-          <b><span class="ico ico-stream ico-sm" style="vertical-align:-2px"></span> 今日播放时间轴</b>
-          <span class="tag" id="tlState">—</span>
-        </div>
-        <div class="tl-track" id="track"><div class="tl-empty">先创建或选择一条轮播流</div></div>
-        <div class="tl-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+      <!-- 播放列表（即时间轴：相对循环在上 · 定点播放在下，均可拖拽排序） -->
+      <div class="items" id="items">
+        <div class="drop-hint"><span class="pill">松开加入播放列表</span></div>
+        <div class="drop-line"></div>
       </div>
-
-      <!-- 播放列表（投放区 + 拖拽排序） -->
-      <div class="items" id="items"></div>
       <div class="empty" id="empty" style="display:none">
+        <div class="drop-hint"><span class="pill">松开加入播放列表</span></div>
         <div>
           <div class="e-ico"><span class="ico ico-plus ico-xl" style="color:var(--gray)"></span></div>
           <div>把<b>模板卡片</b>拖到这里，拼一条轮播流</div>
@@ -181,7 +194,7 @@
 
     <div class="foot-note">
       <span>编辑立即保存 · 排序完成后点击「保存顺序」提交</span>
-      <span>时间轴按当日 00:00-24:00 展示</span>
+      <span>相对循环条目在上 · 定点条目按时间在下</span>
     </div>
   </main>
 
@@ -361,70 +374,83 @@
     }).join('');
   }
 
-  /* ===== 编辑器：时间轴 + 播放列表 ===== */
+  /* ===== 编辑器：播放列表（即时间轴） ===== */
   async function renderEditor() {
-    const track = document.getElementById('track');
     const itemsEl = document.getElementById('items');
     const emptyEl = document.getElementById('empty');
     const saveBtn = document.getElementById('saveOrderBtn');
 
     if (!cur) {
-      track.innerHTML = '<div class="tl-empty">先创建或选择一条轮播流</div>';
       itemsEl.style.display = 'none';
       emptyEl.style.display = 'none';
-      document.getElementById('tlState').textContent = '—';
       saveBtn.disabled = true;
       renderMode();
       return;
     }
 
     renderMode();
-    document.getElementById('tlState').textContent = cur.enabled ? '● 运行中' : '‖ 已暂停';
     saveBtn.disabled = !dirtyOrder;
 
-    // 时间轴（真实 timeline）
-    try {
-      const segs = await API.get('/streams/' + cur.id + '/timeline');
-      track.innerHTML = '';
-      if (segs.length === 0) {
-        track.innerHTML = '<div class="tl-empty">拖入模板卡片，生成播放时间轴</div>';
-      } else {
-        const total = 86400;
-        segs.forEach((s, i) => {
-          const seg = document.createElement('div');
-          seg.className = 'tl-seg' + (i === 0 ? ' now' : '') + (s.schedule_type === 'absolute' ? ' abs' : '');
-          seg.style.left = (s.start_sec / total * 100) + '%';
-          seg.style.width = Math.max(1, s.duration_sec / total * 100) + '%';
-          seg.dataset.itemId = s.item_id;
-          seg.innerHTML = esc(s.template_name || '模板') +
-            '<small>' + s.start_time + ' · ' + (s.schedule_type === 'absolute' ? '定点' : '相对') + '</small>';
-          track.appendChild(seg);
-        });
-      }
-    } catch (e) { FH.toast(e.message, 'err'); }
-
-    // 播放列表
-    curItems = (await API.get('/streams/' + cur.id)).items.slice().sort((a, b) => a.position - b.position);
+    // 播放列表：相对循环条目在上（保持添加顺序），定点条目在下（按时间排序）
+    curItems = (await API.get('/streams/' + cur.id)).items.slice();
     if (!curItems.length) {
       itemsEl.style.display = 'none';
       emptyEl.style.display = 'grid';
       return;
     }
+    const relItems = curItems.filter(it => it.schedule_type !== 'absolute');
+    const absItems = curItems.filter(it => it.schedule_type === 'absolute')
+      .sort((a, b) => String(a.start_at || '').localeCompare(String(b.start_at || '')));
+
     itemsEl.style.display = 'flex';
     emptyEl.style.display = 'none';
-    itemsEl.innerHTML = curItems.map((it, i) => itemHTML(it, i)).join('');
+    let html = '';
+    if (relItems.length) {
+      html += '<div class="group-bar"><b>相对循环</b><span class="n">' + relItems.length + '</span><span>按列表顺序循环 · 间隔可逐条设置</span></div>';
+      html += relItems.map((it, i) => itemHTML(it, i, 'rel')).join('');
+    }
+    if (absItems.length) {
+      html += '<div class="group-bar"><b>定点播放</b><span class="n">' + absItems.length + '</span><span>按当日时间顺序播放</span></div>';
+      html += absItems.map((it, i) => itemHTML(it, i, 'abs')).join('');
+    }
+    // innerHTML 会清空提示元素，重新挂载（指示线跟随列表重排）
+    itemsEl.innerHTML = html +
+      '<div class="drop-hint"><span class="pill">松开加入播放列表</span></div>' +
+      '<div class="drop-line"></div>';
   }
 
-  function itemHTML(it, i) {
+  /* 相对间隔快捷档位（秒） */
+  const REL_PRESETS = [
+    [30, '30 秒'], [60, '1 分钟'], [120, '2 分钟'], [300, '5 分钟'],
+    [600, '10 分钟'], [1800, '30 分钟'], [3600, '1 小时'], [7200, '2 小时'],
+  ];
+
+  function relPresetOpts(sec) {
+    const s = sec || 30;
+    let opts = REL_PRESETS.map(p => '<option value="' + p[0] + '"' + (p[0] === s ? ' selected' : '') + '>' + p[1] + '</option>').join('');
+    if (!REL_PRESETS.some(p => p[0] === s)) {
+      opts = '<option value="' + s + '" selected>' + fmtDur(s) + '</option>' + opts;
+    }
+    return opts;
+  }
+
+  function fmtDur(sec) {
+    sec = sec || 0;
+    if (sec % 3600 === 0) return (sec / 3600) + ' 小时';
+    if (sec % 60 === 0) return (sec / 60) + ' 分钟';
+    return sec + ' 秒';
+  }
+
+  function itemHTML(it, i, group) {
     const thumb = '<img src="/api/v1/admin/templates/' + it.template_id + '/preview?device_type=basic" alt="" loading="lazy" onerror="this.outerHTML=\'<b>&middot;</b>\'">';
-    const rel = it.schedule_type !== 'absolute';
+    const rel = group === 'rel';
     const timeCtrl = rel
-      ? '<span class="seg rel" onclick="toggleType(' + it.id + ')">相对 · 间隔</span><input value="' + (it.duration_sec || 30) + '" data-item="' + it.id + '" onchange="updDuration(this)" onfocus="this.select()"><span style="color:var(--gray)">秒</span>'
-      : '<span class="seg abs" onclick="toggleType(' + it.id + ')">绝对 · 定点</span><input value="' + fmtHHMM(it.start_at) + '" data-item="' + it.id + '" onchange="updStartAt(this)" onfocus="this.select()">';
+      ? '<span class="seg rel" onclick="toggleType(' + it.id + ')">相对 · 循环</span><select data-item="' + it.id + '" onchange="updDuration(this)">' + relPresetOpts(it.duration_sec) + '</select>'
+      : '<span class="seg abs" onclick="toggleType(' + it.id + ')">定点</span><input type="time" value="' + fmtHHMM(it.start_at) + '" data-item="' + it.id + '" onchange="updStartAt(this)">';
     return '<div class="item" draggable="true" data-id="' + it.id + '" style="animation-delay:' + (i * 0.04) + 's">' +
       '<span class="drag">≡</span>' +
       '<div class="th">' + thumb + '</div>' +
-      '<div class="info"><div class="nm">' + esc(it.template_name) + '</div><div class="tp">模板 #' + it.template_id + ' · ' + (it.enabled ? '启用' : '已停用') + '</div></div>' +
+      '<div class="info"><div class="nm">' + esc(it.template_name) + '</div><div class="tp">' + (rel ? '循环播放' : '每天 ' + fmtHHMM(it.start_at) + ' 定点') + ' · ' + (it.enabled ? '启用' : '已停用') + '</div></div>' +
       '<div class="time">' + timeCtrl + '</div>' +
       '<label class="en-switch"><input type="checkbox" ' + (it.enabled ? 'checked' : '') + ' onchange="updEnabled(' + it.id + ', this.checked)">启用</label>' +
       '<span class="del" onclick="delItem(' + it.id + ')"><span class="ico ico-close ico-sm"></span></span>' +
@@ -470,11 +496,9 @@
     } catch (e) { FH.toast(e.message, 'err'); }
   }
 
-  async function updDuration(input) {
-    const itemId = parseInt(input.dataset.item, 10);
-    let v = parseInt(input.value, 10);
-    if (!v || v < 1) { v = 30; input.value = 30; }
-    if (v > 86400) { v = 86400; input.value = 86400; }
+  async function updDuration(select) {
+    const itemId = parseInt(select.dataset.item, 10);
+    const v = Math.max(1, Math.min(86400, parseInt(select.value, 10) || 30));
     try {
       await API.put('/streams/' + cur.id + '/items/' + itemId, { duration_sec: v });
     } catch (e) { FH.toast(e.message, 'err'); }
@@ -489,6 +513,7 @@
     const start = '2000-01-01T' + ('0' + h).slice(-2) + ':' + ('0' + mi).slice(-2) + ':00';
     try {
       await API.put('/streams/' + cur.id + '/items/' + itemId, { start_at: start });
+      await renderEditor();
     } catch (e) { FH.toast(e.message, 'err'); }
   }
 
@@ -527,7 +552,6 @@
 
   /* ===== 拖拽 ===== */
   const itemsEl = document.getElementById('items');
-  const trackEl = document.getElementById('track');
   const emptyEl = document.getElementById('empty');
   const trayEl = document.getElementById('tray');
   let dragTplId = null;
@@ -542,6 +566,28 @@
     return items.length;
   }
 
+  /* 拖动时把插入指示线定位到对应条目空隙 */
+  function moveDropLine(clientY) {
+    const line = itemsEl.querySelector('.drop-line');
+    if (!line) return;
+    const items = [...itemsEl.querySelectorAll('.item')];
+    const box = itemsEl.getBoundingClientRect();
+    let top;
+    if (!items.length) {
+      top = 16;
+    } else {
+      const idx = insertIndexAt(clientY);
+      if (idx >= items.length) {
+        const last = items[items.length - 1].getBoundingClientRect();
+        top = last.bottom - box.top;
+      } else {
+        const ref = items[idx].getBoundingClientRect();
+        top = ref.top - box.top;
+      }
+    }
+    line.style.top = top + 'px';
+  }
+
   /* 模板卡片 -> 拖拽源 */
   trayEl.addEventListener('dragstart', e => {
     const card = e.target.closest('.tpl-card');
@@ -550,12 +596,12 @@
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('text/plain', String(dragTplId));
     card.classList.add('dragging');
-    [itemsEl, emptyEl, trackEl].forEach(el => el.classList.add('armed'));
+    [itemsEl, emptyEl].forEach(el => el.classList.add('armed'));
   });
   trayEl.addEventListener('dragend', e => {
     const card = e.target.closest('.tpl-card');
     if (card) card.classList.remove('dragging');
-    [itemsEl, emptyEl, trackEl].forEach(el => el.classList.remove('armed', 'hover'));
+    [itemsEl, emptyEl].forEach(el => el.classList.remove('armed', 'hover'));
     dragTplId = null;
   });
 
@@ -563,9 +609,14 @@
   itemsEl.addEventListener('dragover', e => {
     e.preventDefault();
     itemsEl.classList.add('hover');
+    itemsEl.classList.remove('armed'); // 进入列表后隐藏胶囊提示，改为插入线
     e.dataTransfer.dropEffect = dragTplId ? 'copy' : 'move';
+    moveDropLine(e.clientY);
   });
-  itemsEl.addEventListener('dragleave', () => itemsEl.classList.remove('hover'));
+  itemsEl.addEventListener('dragleave', () => {
+    itemsEl.classList.remove('hover');
+    itemsEl.classList.add('armed'); // 离开列表恢复胶囊提示
+  });
   itemsEl.addEventListener('drop', e => {
     e.preventDefault();
     itemsEl.classList.remove('hover', 'armed');
@@ -590,16 +641,6 @@
     if (dragTplId) addItemByTpl(dragTplId);
   });
 
-  /* 时间轴投放：按横向位置插入到列表对应下标 */
-  trackEl.addEventListener('dragover', e => { e.preventDefault(); trackEl.classList.add('hover'); });
-  trackEl.addEventListener('dragleave', () => trackEl.classList.remove('hover'));
-  trackEl.addEventListener('drop', e => {
-    e.preventDefault();
-    trackEl.classList.remove('hover', 'armed');
-    if (!dragTplId) return;
-    addItemByTpl(dragTplId);
-  });
-
   /* 列表内条目拖拽 */
   itemsEl.addEventListener('dragstart', e => {
     const it = e.target.closest('.item');
@@ -611,19 +652,7 @@
   itemsEl.addEventListener('dragend', () => {
     if (dragItem) dragItem.classList.remove('dragging');
     dragItem = null;
-    [itemsEl, emptyEl, trackEl].forEach(el => el.classList.remove('armed', 'hover'));
-  });
-
-  /* 点击时间轴段 -> 高亮对应条目 */
-  trackEl.addEventListener('click', e => {
-    const seg = e.target.closest('.tl-seg');
-    if (!seg || !seg.dataset.itemId) return;
-    itemsEl.querySelectorAll('.item').forEach(i => i.classList.remove('on'));
-    const node = itemsEl.querySelector('.item[data-id="' + seg.dataset.itemId + '"]');
-    if (node) {
-      node.classList.add('on');
-      node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
+    [itemsEl, emptyEl].forEach(el => el.classList.remove('armed', 'hover'));
   });
 
   /* ===== 加载 ===== */
@@ -649,7 +678,7 @@
     }
   }
   init();
-  setInterval(() => { if (cur) renderEditor(); }, 60000); // 每分钟刷新时间轴（绝对条目可能到点）
+  setInterval(() => { if (cur) renderEditor(); }, 60000); // 每分钟刷新（定点条目到点状态/排序）
 </script>
 </body>
 </html>

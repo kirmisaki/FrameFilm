@@ -31,17 +31,31 @@ _FONT_CANDIDATES = {
         "/System/Library/Fonts/PingFang.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
     ],
+    "serif": [
+        r"C:\Windows\Fonts\simsun.ttc",
+        r"C:\Windows\Fonts\msyh.ttc",
+        r"C:\Windows\Fonts\simhei.ttf",
+        "/System/Library/Fonts/STSongti-SC.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    ],
+    "serif_bold": [
+        r"C:\Windows\Fonts\simsun.ttc",
+        r"C:\Windows\Fonts\msyhbd.ttc",
+        "/System/Library/Fonts/STSongti-SC-Bold.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
+    ],
 }
 
 _FONT_CACHE: dict[str, ImageFont.FreeTypeFont] = {}
 
 
-def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    key = f"{size}-{'b' if bold else 'r'}"
+def _font(size: int, bold: bool = False, serif: bool = False) -> ImageFont.FreeTypeFont:
+    style = ("serif_bold" if serif and bold else "serif" if serif else "bold" if bold else "regular")
+    key = f"{style}-{size}"
     if key in _FONT_CACHE:
         return _FONT_CACHE[key]
     font = None
-    for path in _FONT_CANDIDATES["bold" if bold else "regular"]:
+    for path in _FONT_CANDIDATES[style]:
         if os.path.exists(path):
             try:
                 font = ImageFont.truetype(path, size)
@@ -104,6 +118,23 @@ def _resolve_text(value, data: dict) -> str:
         if "text" in value:
             return str(value["text"])
     return ""
+
+
+def _resolve_items(value, data: dict) -> list:
+    """解析条目数组：直接数组 / {source, key} 取数组或按 \\n 拆分字符串"""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        source, key = value.get("source"), value.get("key")
+        if source and key:
+            d = data.get(source, {})
+            if isinstance(d, dict) and key in d:
+                v = d[key]
+                if isinstance(v, list):
+                    return v
+                if isinstance(v, str):
+                    return [ln for ln in v.split("\n") if ln.strip()]
+    return []
 
 
 def _load_album_image(source: dict, width: int, height: int, now: dt.datetime) -> Image.Image | None:
@@ -283,7 +314,21 @@ def render_definition(definition: dict, width: int, height: int,
             else:
                 draw.rectangle([x, y, x + w, y + h], fill=fill, outline=color, width=_s(layer.get("width", 1)) or 1)
         elif ltype == "line":
-            draw.line([x, y, x + w, y + h], fill=color, width=max(1, _s(layer.get("width", 2))))
+            lw = max(1, _s(layer.get("width", 2)))
+            if layer.get("dash"):
+                dash = layer["dash"]
+                dlen = max(1, _s(dash[0]))
+                dgap = max(1, _s(dash[1])) if len(dash) > 1 else dlen
+                length = (w * w + h * h) ** 0.5 or 1
+                dx, dy = w / length, h / length
+                pos = 0.0
+                while pos < length:
+                    end = min(pos + dlen, length)
+                    draw.line([x + dx * pos, y + dy * pos, x + dx * end, y + dy * end],
+                              fill=color, width=lw)
+                    pos = end + dgap
+            else:
+                draw.line([x, y, x + w, y + h], fill=color, width=lw)
         elif ltype == "circle":
             fill = _resolve_color(layer.get("fill", "#ffffff"), scheme) if layer.get("fill") else None
             draw.ellipse([x, y, x + w, y + h], fill=fill, outline=color, width=max(1, _s(layer.get("width", 2))))
@@ -292,22 +337,170 @@ def render_definition(definition: dict, width: int, height: int,
             if text:
                 size = max(8, _s(layer.get("size", 24)))
                 bold = layer.get("weight") == "bold" or layer.get("bold")
-                font = _font(size, bold)
+                font = _font(size, bold, layer.get("font") == "serif")
                 align = layer.get("align", "left")
                 middle = layer.get("baseline") == "middle"
+                rotate = int(layer.get("rotate", 0) or 0) % 360
                 anchors = {
                     "left": "lm" if middle else "la",
                     "center": "mm" if middle else "ma",
                     "right": "rm" if middle else "ra",
                 }
-                ax, ay = x, y
-                if middle:
-                    ay = y + h // 2
-                elif align == "center":
-                    ax = x + w // 2
-                elif align == "right":
-                    ax = x + w
-                draw.text((ax, ay), text, font=font, fill=color, anchor=anchors.get(align, "la"))
+
+                def _draw_line(px, py, line, anchor):
+                    if rotate in (90, 270):
+                        # 竖排：横向绘制后整体旋转（顺时针语义与 CSS 一致）
+                        tmp = Image.new("RGBA", (size * 2 + 8, size * len(line) + 8), (0, 0, 0, 0))
+                        ImageDraw.Draw(tmp).text((tmp.width // 2, tmp.height // 2), line,
+                                                 font=font, fill=color + (255,), anchor="mm")
+                        tmp = tmp.rotate(-rotate, expand=True)
+                        canvas.paste(tmp, (px - tmp.width // 2, py - tmp.height // 2), tmp)
+                    else:
+                        draw.text((px, py), line, font=font, fill=color, anchor=anchor)
+
+                line_height = layer.get("line_height")
+                vertical = layer.get("vertical")
+                wrap_width = layer.get("wrap_width")
+                if vertical:
+                    lines = [ch for ch in str(text) if ch.strip()]
+                    lh_auto = size
+                elif line_height or "\n" in str(text) or wrap_width:
+                    raw = str(text)
+                    if wrap_width:
+                        # 按字体实测宽度自动换行（wrap_width 为参考坐标系宽度）
+                        ww = max(8, _s(wrap_width))
+                        lines = []
+                        cur = ""
+                        for ch in raw:
+                            if cur and font.getlength(cur + ch) > ww:
+                                lines.append(cur)
+                                cur = ch
+                            else:
+                                cur += ch
+                        if cur:
+                            lines.append(cur)
+                    else:
+                        lines = raw.split("\n")
+                    lh_auto = size * 1.5
+                else:
+                    lines = None
+                if lines:
+                    lh = max(size, _s(float(line_height) if line_height else lh_auto))
+                    h_anchor = {"left": "l", "center": "m", "right": "r"}[align]
+                    px = x + w // 2 if align == "center" else (x + w if align == "right" else x)
+                    if middle:
+                        start_y = y + h // 2 - (len(lines) * lh) // 2 + lh // 2
+                        for i, ln in enumerate(lines):
+                            _draw_line(px, start_y + i * lh, ln, h_anchor + "m")
+                    else:
+                        for i, ln in enumerate(lines):
+                            _draw_line(px, y + i * lh, ln, h_anchor + "a")
+                else:
+                    ax, ay = x, y
+                    if middle:
+                        ay = y + h // 2
+                    elif align == "center":
+                        ax = x + w // 2
+                    elif align == "right":
+                        ax = x + w
+                    _draw_line(ax, ay, text, anchors.get(align, "la"))
+        elif ltype == "checklist":
+            # 通用清单：每行 checkbox（方块/圆圈）+ 左文本 + 右对齐 sub（子信息）；
+            # urgent 项强调色；done 项（dict.done 或 "[x] 前缀"）实心填充 + 白对勾 + 灰色划线
+            items = _resolve_items(layer.get("items", layer.get("value")), data)
+            if items:
+                size = max(9, _s(layer.get("size", 22)))
+                font = _font(size)
+                sub_font = _font(max(8, _s(layer.get("sub_size", max(9, size - 5)))))
+                lh = max(size, _s(layer.get("line_height", size * 1.9)))
+                bs = max(8, int(_s(layer.get("box_size")))) if layer.get("box_size") is not None \
+                    else max(8, int(size * 0.95))
+                gap = _s(layer.get("gap", 12))
+                box = layer.get("box")
+                box_style = layer.get("box_style", "square")
+                box_color = _resolve_color(box if box else "#000000", scheme) if box else None
+                done_box_color = _resolve_color(layer.get("done_box_color", box if box else "#000000"), scheme) \
+                    if (layer.get("done_box_color") or box) else None
+                urgent_color = _resolve_color(layer.get("urgent_color", "#d63a2a"), scheme)
+                text_color = _resolve_color(layer.get("text_color", layer.get("color", "#000000")), scheme)
+                sub_color = _resolve_color(layer.get("sub_color", "#888888"), scheme)
+                done_color = _resolve_color(layer.get("done_color", sub_color), scheme)
+                divider = layer.get("divider")
+                divider_gap = _s(layer.get("divider_gap", 8))
+                divider_color = _resolve_color(layer.get("divider_color", layer.get("sub_color", "#888888")), scheme)
+                max_lines = int(layer.get("max_lines", 30))
+                trunc_pad = _s(layer.get("truncate_pad", 4))
+                done_font = _font(max(8, int(bs * 0.78)), True)
+                for i, it in enumerate(items[:max_lines]):
+                    cy = y + i * lh
+                    yc = cy + max(0, (lh - bs) // 2)  # 行内容垂直居中
+                    if isinstance(it, dict):
+                        txt = str(it.get("text", ""))
+                        sub = it.get("sub")
+                        urgent = bool(it.get("urgent"))
+                        done = bool(it.get("done"))
+                    else:
+                        s = str(it)
+                        if s.startswith("[x]") or s.startswith("[X]"):
+                            txt = s[3:].lstrip()
+                            sub, urgent, done = None, False, True
+                        elif s.startswith("[ ]"):
+                            txt = s[3:].lstrip()
+                            sub, urgent, done = None, False, False
+                        else:
+                            txt = s
+                            sub, urgent, done = None, False, False
+                    tcolor = urgent_color if urgent else (done_color if done else text_color)
+                    tx = x
+                    if box:
+                        rad = max(1, _s(layer.get("box_radius", 2)))
+                        if box_style == "circle":
+                            r = max(4, bs // 2)
+                            cxx, cyy = x + r, yc + bs // 2
+                            if done:
+                                draw.ellipse([cxx - r, cyy - r, cxx + r, cyy + r], fill=done_box_color)
+                                draw.text((cxx, cyy + 1), "✓", font=done_font, fill="#ffffff", anchor="mm")
+                            else:
+                                draw.ellipse([cxx - r, cyy - r, cxx + r, cyy + r],
+                                             outline=box_color, width=max(1, _s(2)))
+                        else:
+                            if done and done_box_color:
+                                draw.rounded_rectangle([x, yc, x + bs, yc + bs], radius=rad, fill=done_box_color)
+                                # 白色对勾（线条手绘，同小程序）
+                                draw.line([x + bs * 0.22, yc + bs // 2, x + bs * 0.44, yc + bs // 2 + bs * 0.2],
+                                          fill="#ffffff", width=2, joint="curve")
+                                draw.line([x + bs * 0.44, yc + bs // 2 + bs * 0.2, x + bs * 0.8, yc + bs // 2 - bs * 0.24],
+                                          fill="#ffffff", width=2, joint="curve")
+                            else:
+                                draw.rounded_rectangle([x, yc, x + bs, yc + bs], radius=rad,
+                                                       outline=box_color, width=max(1, _s(2)))
+                            if urgent and not (done and done_box_color):
+                                draw.rounded_rectangle([x + _s(2), yc + _s(2), x + bs - _s(2), yc + bs - _s(2)],
+                                                       radius=rad, fill=urgent_color)
+                        tx = x + bs + gap
+                    # 文本超宽截断（加 …）
+                    max_text_w = max(10, (x + w) - tx - trunc_pad)
+                    if draw.textlength(txt, font=font) > max_text_w:
+                        while txt and draw.textlength(txt + "…", font=font) > max_text_w:
+                            txt = txt[:-1]
+                        txt += "…"
+                    draw.text((tx, yc + bs // 2), txt, font=font, fill=tcolor, anchor="lm")
+                    if done and txt:
+                        tw = draw.textlength(txt, font=font)
+                        draw.line([tx, yc + bs // 2, tx + tw, yc + bs // 2], fill=tcolor, width=1)
+                    if sub:
+                        draw.text((x + w, yc + bs // 2), str(sub), font=sub_font,
+                                  fill=urgent_color if urgent else sub_color, anchor="rm")
+                    if divider:
+                        dy = yc + bs + divider_gap
+                        if layer.get("divider_solid"):
+                            draw.line([x, dy, x + w, dy], fill=divider_color, width=1)
+                        else:
+                            dl = _s(layer.get("divider_len", 5))
+                            dpos = x
+                            while dpos < x + w:
+                                draw.line([dpos, dy, min(dpos + dl, x + w), dy], fill=divider_color, width=1)
+                                dpos += dl + _s(4)
         elif ltype == "image":
             src = layer.get("source") or {}
             if isinstance(src, dict):

@@ -17,15 +17,22 @@ _CALENDAR_SCHEMES = [
     {"name": "杏黄", "text": "#453b28", "sub": "#4a402c", "sub2": "#5c503a", "accent": "#d94a2a", "card": "#ffffff"},
 ]
 
-# 文字类模板通用浅色纸张风（前 4 套）
-_PAPER_SCHEMES = _CALENDAR_SCHEMES[:4]
+# 文字类模板统一方案 key：text/sub/sub2/accent/card（text 深色→黑，accent 纯色强调）
 
-# 倒计时 4 套（tpl-countdown.js SCHEMES）
-_COUNTDOWN_SCHEMES = [
-    {"name": "蜜桃", "accent": "#ff5f7f", "text": "#3a2a2e", "sub": "#3a2a2e", "num": "#3a2a2e"},
-    {"name": "湖蓝", "accent": "#3d7bff", "text": "#23364e", "sub": "#23364e", "num": "#23364e"},
-    {"name": "抹茶", "accent": "#1fb573", "text": "#2a4636", "sub": "#2a4636", "num": "#2a4636"},
-    {"name": "赤金", "accent": "#c44a1f", "text": "#463a2c", "sub": "#463a2c", "num": "#463a2c"},
+# 备忘录（小程序 tpl-memo.js 同款配色）
+_MEMO_SCHEMES = [
+    {"name": "朱砂", "accent": "#e8553d", "text": "#3a3631", "sub": "#4a443c", "sub2": "#5a5448", "card": "#ffffff"},
+    {"name": "晴蓝", "accent": "#2f6fd8", "text": "#2c3a4d", "sub": "#33455c", "sub2": "#47586e", "card": "#ffffff"},
+    {"name": "竹绿", "accent": "#1fa86c", "text": "#2c4438", "sub": "#33503f", "sub2": "#46604f", "card": "#ffffff"},
+    {"name": "蜜桃", "accent": "#e8557a", "text": "#453a38", "sub": "#4a3c3a", "sub2": "#5e4a46", "card": "#ffffff"},
+    {"name": "赤金", "accent": "#c44a1f", "text": "#453b28", "sub": "#4a402c", "sub2": "#5c503a", "card": "#ffffff"},
+]
+
+# 每日一言（小程序 frame/quote 同款 3 套配色：红/蓝/绿，文字全黑）
+_QUOTE_SCHEMES = [
+    {"name": "朱红", "text": "#000000", "sub": "#000000", "sub2": "#666666", "accent": "#ff0000", "card": "#ffffff"},
+    {"name": "靛蓝", "text": "#000000", "sub": "#000000", "sub2": "#666666", "accent": "#0000ff", "card": "#ffffff"},
+    {"name": "青绿", "text": "#000000", "sub": "#000000", "sub2": "#666666", "accent": "#29cc14", "card": "#ffffff"},
 ]
 
 _DEFAULT_RC = {"dither_type": "adaptive", "dither_strength": 80, "contrast": 100, "brightness": 0, "saturation": 100}
@@ -94,168 +101,87 @@ _ALBUM = {
     **_params(album_id=None, rotate_sec=300, photo_index=0),
 }
 
-# ==================== 倒计时（移植小程序样式） ====================
-_COUNTDOWN = {
-    "kind": "countdown",
-    "schemes": _COUNTDOWN_SCHEMES,
-    "params": [
-        {"key": "title", "label": "纪念日名称", "type": "text", "default": "在一起", "maxlength": 8},
-        {"key": "target", "label": "目标日期", "type": "date", "default": "2026-12-31"},
-        {"key": "scheme", "label": "配色方案", "type": "scheme", "default": 0},
-    ],
-    "background": {"color": "#ffffff"},
-    "layers": [
-        # 顶部：品牌 + 今日
-        {"type": "text", "x": 24, "y": 24, "w": 240, "h": 24, "size": 13,
-         "baseline": "middle", "color": {"scheme": "sub"}, "value": "FRAME FILM · 幸福倒数"},
-        {"type": "text", "x": 376, "y": 24, "w": 0, "h": 24, "size": 13,
-         "align": "right", "baseline": "middle", "color": {"scheme": "sub"},
-         "value": {"source": "countdown", "key": "today_str"}},
-        # 白色撕页卡片（圆角卡 + 顶部日期条）
-        {"type": "rect", "x": 48, "y": 96, "w": 304, "h": 236, "radius": 10,
-         "fill": "#ffffff", "color": {"scheme": "sub"}, "width": 2},
-        {"type": "rect", "x": 56, "y": 104, "w": 288, "h": 40, "radius": 8,
-         "fill": {"scheme": "accent"}},
-        {"type": "text", "x": 200, "y": 104, "w": 0, "h": 40, "size": 13, "weight": "bold",
-         "align": "center", "baseline": "middle", "color": "#ffffff",
-         "value": {"source": "countdown", "key": "date_label"}},
-        # 大数字 + DAYS
-        {"type": "text", "x": 200, "y": 198, "w": 0, "h": 110, "size": 96, "weight": "bold",
-         "align": "center", "baseline": "middle", "color": {"scheme": "num"},
-         "value": {"source": "countdown", "key": "days"}},
-        {"type": "text", "x": 200, "y": 288, "w": 0, "h": 24, "size": 14, "weight": "bold",
-         "align": "center", "baseline": "middle", "color": {"scheme": "accent"}, "value": "DAYS"},
-        # 名称 / 状态 / 提示
-        {"type": "text", "x": 200, "y": 350, "w": 0, "h": 40, "size": 30, "weight": "bold",
-         "align": "center", "baseline": "middle", "color": {"scheme": "text"},
-         "value": {"source": "countdown", "key": "title"}},
-        {"type": "text", "x": 200, "y": 394, "w": 0, "h": 24, "size": 13, "weight": "bold",
-         "align": "center", "baseline": "middle", "color": {"scheme": "accent"},
-         "value": {"source": "countdown", "key": "mode_label"}},
-        {"type": "text", "x": 200, "y": 440, "w": 0, "h": 24, "size": 11,
-         "align": "center", "baseline": "middle", "color": {"scheme": "sub"},
-         "value": {"source": "countdown", "key": "hint"}},
-        # 底部装饰线
-        {"type": "line", "x": 170, "y": 480, "w": 60, "h": 0, "width": 2, "color": {"scheme": "accent"}},
-    ],
-    **_params(title="在一起", target="2026-12-31", scheme=0),
-}
-
-# ==================== 备忘录 ====================
+# ==================== 备忘录（小程序 tpl-memo.js 同款：品牌行 + 居中大标题 + 圆角方块勾选卡片 + 底部统计） ====================
 _MEMO = {
     "kind": "memo",
-    "schemes": _PAPER_SCHEMES,
+    "schemes": _MEMO_SCHEMES,
     "params": [
-        {"key": "title", "label": "标题", "type": "text", "default": "备忘"},
-        {"key": "items", "label": "备忘条目", "type": "list",
-         "default": ["1. 记得喝水", "2. 买菜：牛奶、鸡蛋", "3. 晚上 8 点会议"]},
+        {"key": "title", "label": "标题", "type": "text", "default": "今日备忘"},
+        {"key": "items", "label": "待办清单", "type": "todo",
+         "default": ["[x] 记得喝水", "买菜：牛奶、鸡蛋", "[ ] 晚上 8 点会议"]},
         {"key": "scheme", "label": "配色方案", "type": "scheme", "default": 0},
     ],
     "background": {"color": "#ffffff"},
     "layers": [
-        {"type": "text", "x": 24, "y": 20, "w": 352, "h": 40, "size": 32, "weight": "bold",
-         "color": {"scheme": "text"}, "value": {"source": "memo", "key": "title"}},
-        {"type": "line", "x": 24, "y": 72, "w": 352, "h": 0, "width": 2, "color": {"scheme": "accent"}},
-        {"type": "text", "x": 24, "y": 92, "w": 352, "h": 400, "size": 24,
-         "color": {"scheme": "text"}, "value": {"source": "memo", "key": "text_block"}},
+        # 顶部品牌行：左 "FRAME FILM · 备忘录"（sub），右 日期 YYYY.MM.DD（sub）
+        {"type": "text", "x": 28, "y": 30, "w": 300, "h": 16, "size": 13,
+         "baseline": "middle", "color": {"scheme": "sub"}, "value": "FRAME FILM · 备忘录"},
+        {"type": "text", "x": 372, "y": 30, "w": 0, "h": 16, "size": 13,
+         "align": "right", "baseline": "middle", "color": {"scheme": "sub"},
+         "value": {"source": "memo", "key": "date_dot"}},
+        # 大标题（居中 bold）+ accent 下划线
+        {"type": "text", "x": 200, "y": 90, "w": 0, "h": 40, "size": 30, "weight": "bold",
+         "align": "center", "baseline": "middle", "color": {"scheme": "text"},
+         "value": {"source": "memo", "key": "title"}},
+        {"type": "line", "x": 184, "y": 126, "w": 32, "h": 0, "width": 3, "color": {"scheme": "accent"}},
+        # 条目卡片（圆角矩形，sub2 描边；容量 8 行：40 + 8*32）
+        {"type": "rect", "x": 28, "y": 156, "w": 344, "h": 296, "radius": 8,
+         "fill": "#ffffff", "color": {"scheme": "sub2"}, "width": 2},
+        # 勾选清单：圆角方块（未完成 sub2 描边 / 完成 accent 填充 + 白对勾）+ 完成灰字划线 + 行间实线
+        {"type": "checklist", "x": 48, "y": 176, "w": 324, "h": 260, "size": 17,
+         "box_size": 18, "box_radius": 4, "line_height": 32, "gap": 12,
+         "box": {"scheme": "sub2"}, "done_box_color": {"scheme": "accent"},
+         "text_color": {"scheme": "text"}, "done_color": {"scheme": "sub2"},
+         "sub_color": {"scheme": "sub2"}, "divider": True, "divider_gap": 7,
+         "divider_solid": True, "divider_color": {"scheme": "sub2"}, "max_lines": 8,
+         "items": {"source": "memo", "key": "items"}},
+        # 底部统计 + accent 装饰线
+        {"type": "text", "x": 200, "y": 528, "w": 0, "h": 16, "size": 11,
+         "align": "center", "baseline": "middle", "color": {"scheme": "sub2"},
+         "value": {"source": "memo", "key": "summary"}},
+        {"type": "line", "x": 176, "y": 564, "w": 48, "h": 0, "width": 2, "color": {"scheme": "accent"}},
     ],
-    **_params(title="备忘", items=["1. 记得喝水", "2. 买菜：牛奶、鸡蛋", "3. 晚上 8 点会议"], scheme=0),
+    **_params(title="今日备忘", items=["[x] 记得喝水", "买菜：牛奶、鸡蛋", "[ ] 晚上 8 点会议"], scheme=0),
 }
 
-# ==================== 今日运势 ====================
-_FORTUNE = {
-    "kind": "fortune",
-    "schemes": _PAPER_SCHEMES,
-    "params": [{"key": "scheme", "label": "配色方案", "type": "scheme", "default": 0}],
+# ==================== 每日一言（完全还原小程序 frame/quote：引号 + 居中正文 + 作者 + 电量图标 + 日期） ====================
+_QUOTE = {
+    "kind": "quote",
+    "schemes": _QUOTE_SCHEMES,
+    "params": [
+        {"key": "scheme", "label": "配色方案", "type": "scheme", "default": 0},
+    ],
     "background": {"color": "#ffffff"},
     "layers": [
-        {"type": "text", "x": 24, "y": 24, "w": 300, "h": 44, "size": 36, "weight": "bold",
-         "color": {"scheme": "text"}, "value": "今日运势"},
-        {"type": "text", "x": 220, "y": 36, "w": 156, "h": 28, "size": 18,
-         "align": "right", "baseline": "middle", "color": {"scheme": "sub"},
-         "value": {"source": "calendar", "key": "title"}},
-        {"type": "text", "x": 24, "y": 110, "w": 352, "h": 60, "size": 40, "weight": "bold",
-         "color": {"scheme": "text"}, "value": {"source": "fortune", "key": "fortune"}},
-        {"type": "line", "x": 24, "y": 200, "w": 352, "h": 0, "width": 2, "color": {"scheme": "sub2"}},
-        {"type": "text", "x": 24, "y": 230, "w": 200, "h": 36, "size": 28,
-         "color": {"scheme": "text"}, "value": "幸运颜色"},
-        {"type": "text", "x": 240, "y": 230, "w": 136, "h": 36, "size": 28,
-         "align": "right", "baseline": "middle", "color": {"scheme": "accent"},
-         "value": {"source": "fortune", "key": "color"}},
+        # 装饰引号 “（左上角 80px serif accent）
+        {"type": "text", "x": 5, "y": 50, "w": 0, "h": 0, "size": 80,
+         "font": "serif", "baseline": "middle", "color": {"scheme": "accent"}, "value": "“"},
+        # 装饰线 (45,100)-(100,100) accent 3px
+        {"type": "line", "x": 45, "y": 100, "w": 55, "h": 0, "width": 3, "color": {"scheme": "accent"}},
+        # 正文（bold 30px serif 居中，行高 44，按 320 宽自动换行，垂直居中于 100~470）
+        {"type": "text", "x": 40, "y": 100, "w": 320, "h": 370, "size": 30, "weight": "bold",
+         "align": "center", "baseline": "middle", "font": "serif", "line_height": 44,
+         "wrap_width": 320, "color": {"scheme": "text"},
+         "value": {"source": "quote", "key": "text"}},
+        # 作者（bold 18px serif 居中底部）
+        {"type": "text", "x": 200, "y": 470, "w": 0, "h": 0, "size": 18, "weight": "bold",
+         "align": "center", "baseline": "middle", "font": "serif", "color": {"scheme": "text"},
+         "value": {"source": "quote", "key": "author"}},
+        # 底部装饰线 (170,535)-(230,535) accent 4px
+        {"type": "line", "x": 170, "y": 535, "w": 60, "h": 0, "width": 4, "color": {"scheme": "accent"}},
+        # 日期（居中底部，accent，2026 年 08 月 08 日）
+        {"type": "text", "x": 200, "y": 562, "w": 0, "h": 0, "size": 16,
+         "align": "center", "baseline": "middle", "color": {"scheme": "accent"},
+         "value": {"source": "quote", "key": "date_cn"}},
     ],
     **_params(scheme=0),
 }
 
-# ==================== 每日一言 ====================
-_QUOTE = {
-    "kind": "quote",
-    "schemes": _PAPER_SCHEMES,
-    "params": [
-        {"key": "text", "label": "固定文案（留空则每日自动换一句）", "type": "textarea", "default": ""},
-        {"key": "scheme", "label": "配色方案", "type": "scheme", "default": 0},
-    ],
-    "background": {"color": "#ffffff"},
-    "layers": [
-        {"type": "circle", "x": 40, "y": 40, "w": 24, "h": 24, "fill": {"scheme": "accent"}},
-        {"type": "text", "x": 24, "y": 100, "w": 352, "h": 260, "size": 40, "weight": "bold",
-         "color": {"scheme": "text"}, "value": {"source": "quote", "key": "text"}},
-        {"type": "text", "x": 376, "y": 400, "w": 0, "h": 36, "size": 22,
-         "align": "right", "baseline": "middle", "color": {"scheme": "sub2"},
-         "value": {"source": "quote", "key": "date"}},
-    ],
-    **_params(text="", scheme=0),
-}
-
-# ==================== 冰箱食材 ====================
-_FRIDGE = {
-    "kind": "fridge",
-    "schemes": _PAPER_SCHEMES,
-    "params": [
-        {"key": "items", "label": "食材条目（名称 | 日期 YYYY-MM-DD，日期可省略）", "type": "list",
-         "default": ["牛奶|2026-08-10", "鸡蛋|2026-08-12", "面包"]},
-        {"key": "scheme", "label": "配色方案", "type": "scheme", "default": 0},
-    ],
-    "background": {"color": "#ffffff"},
-    "layers": [
-        {"type": "text", "x": 24, "y": 20, "w": 352, "h": 40, "size": 32, "weight": "bold",
-         "color": {"scheme": "text"}, "value": "冰箱食材"},
-        {"type": "line", "x": 24, "y": 72, "w": 352, "h": 0, "width": 2, "color": {"scheme": "accent"}},
-        {"type": "text", "x": 24, "y": 92, "w": 352, "h": 400, "size": 24,
-         "color": {"scheme": "text"}, "value": {"source": "fridge", "key": "text_block"}},
-    ],
-    **_params(items=["牛奶|2026-08-10", "鸡蛋|2026-08-12", "面包"], scheme=0),
-}
-
-# ==================== 天气 ====================
-_WEATHER = {
-    "kind": "weather",
-    "schemes": _PAPER_SCHEMES,
-    "params": [
-        {"key": "city", "label": "城市（预留）", "type": "text", "default": ""},
-        {"key": "scheme", "label": "配色方案", "type": "scheme", "default": 0},
-    ],
-    "background": {"color": "#ffffff"},
-    "layers": [
-        {"type": "text", "x": 24, "y": 24, "w": 300, "h": 44, "size": 36, "weight": "bold",
-         "color": {"scheme": "text"}, "value": "今日天气"},
-        {"type": "text", "x": 24, "y": 110, "w": 352, "h": 120, "size": 80, "weight": "bold",
-         "baseline": "middle", "color": {"scheme": "text"}, "value": {"source": "weather", "key": "temp"}},
-        {"type": "text", "x": 24, "y": 250, "w": 352, "h": 60, "size": 32,
-         "baseline": "middle", "color": {"scheme": "sub"}, "value": {"source": "weather", "key": "text"}},
-    ],
-    **_params(city="", scheme=0),
-}
-
-
 BUILTIN_TEMPLATES = [
     {"name": "日历", "kind": "calendar", "definition": _CALENDAR, "render_config": _DEFAULT_RC},
     {"name": "相册", "kind": "album", "definition": _ALBUM, "render_config": _DEFAULT_RC},
-    {"name": "倒计时", "kind": "countdown", "definition": _COUNTDOWN, "render_config": _DEFAULT_RC},
     {"name": "备忘录", "kind": "memo", "definition": _MEMO, "render_config": _DEFAULT_RC},
-    {"name": "今日运势", "kind": "fortune", "definition": _FORTUNE, "render_config": _DEFAULT_RC},
     {"name": "每日一言", "kind": "quote", "definition": _QUOTE, "render_config": _DEFAULT_RC},
-    {"name": "冰箱食材", "kind": "fridge", "definition": _FRIDGE, "render_config": _DEFAULT_RC},
-    {"name": "天气", "kind": "weather", "definition": _WEATHER, "render_config": _DEFAULT_RC},
 ]
 
 

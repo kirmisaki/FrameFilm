@@ -6,10 +6,17 @@
 <title>仪表盘 · film-hub</title>
 <link rel="stylesheet" href="style.css">
 <style>
+  /* 统计卡（四色侧条） */
+  .stat { position: relative; overflow: hidden; transition: transform .15s, box-shadow .15s; }
+  .stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+  .stat::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; background: var(--ac, var(--ink)); }
+  .stat .ch { background: #fff; }
+
   /* 设备卡片（屏幕为竖版 2:3） */
   .devices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .dev { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-  .dev .screen { position: relative; width: 96px; height: 144px; margin: 14px auto 8px; border: 1px solid var(--line-d); background: #fff; overflow: hidden; }
+  .dev { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; transition: transform .18s, box-shadow .18s, border-color .18s; }
+  .dev:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); border-color: var(--ink); }
+  .dev .screen { position: relative; width: 96px; height: 144px; margin: 14px auto 8px; border: 1px solid var(--line-d); background: #fff; overflow: hidden; box-shadow: 0 1px 0 rgba(26,26,26,.05); }
   .dev .screen .ink { position: absolute; inset: 0; padding: 8px 9px; font-size: 9px; }
   .dev .screen .ink .t { font-size: 12px; font-weight: 700; letter-spacing: 2px; }
   .dev .screen .ink .d { margin-top: 5px; display: flex; gap: 2px; }
@@ -22,17 +29,34 @@
   .battery .bar i { display: block; height: 100%; background: var(--green); }
   .battery .bar i.low { background: var(--red); }
   .dev .screen .stamp { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 4px; font-size: 8px; background: rgba(0,0,0,.06); color: var(--gray); }
+  .dev .screen .ink img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .dev .screen .scr-lazy { display: grid; place-items: center; height: 100%; color: #999; font-size: 9px; letter-spacing: 1px; }
 
-  /* 轮播时间轴 */
+  /* 轮播时间轴（简易版：分组列表，与轮播流编排页同款视觉） */
   .timeline { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
   .tl-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 13px; }
+  .tl-head .tl-name { font-weight: 600; }
   .tl-head .tag { font-size: 11px; border: 1px solid var(--ink); border-radius: 20px; padding: 3px 10px; }
-  .tl-track { position: relative; height: 56px; border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
-  .tl-seg { position: absolute; top: 8px; bottom: 8px; border: 1px solid var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; }
-  .tl-seg small { font-size: 9px; color: var(--gray); }
-  .tl-seg.now { background: var(--ink); color: #fff; }
-  .tl-seg.now small { color: #d0d0cf; }
-  .tl-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--gray); margin-top: 8px; }
+  .tl-head .tag.green { color: #14640a; border-color: #b6e5ac; background: #f0fbed; }
+  .group-bar { display: flex; align-items: center; gap: 8px; margin: 14px 0 8px; font-size: 11px; color: var(--gray); }
+  .group-bar::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  .group-bar b { color: var(--ink); font-size: 12px; }
+  .group-bar .n { background: var(--line); color: var(--ink); border-radius: 10px; padding: 1px 8px; font-size: 10px; }
+  .tl-items { display: flex; flex-direction: column; gap: 6px; }
+  .tli { display: flex; align-items: center; gap: 10px; padding: 7px 12px; background: #fff; border: 1px solid var(--line); border-radius: 7px; font-size: 12px; transition: border-color .15s, transform .15s; }
+  .tli:hover { border-color: var(--ink); transform: translateX(2px); }
+  .tli .tdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .tli .tdot.rel { background: var(--ink); }
+  .tli .tdot.abs { background: #2f6fd8; }
+  .tli .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tli .mt { font-size: 11px; color: var(--gray); flex-shrink: 0; }
+  .tli .st { font-size: 10px; color: var(--gray); border: 1px solid var(--line); border-radius: 20px; padding: 1px 7px; flex-shrink: 0; }
+  /* 当前播放条目：左侧强调条 + 绿色呼吸标签 */
+  .tli.on { border-color: var(--line-d); box-shadow: inset 3px 0 0 var(--ac, var(--ink)); background: #fbfbfa; }
+  .tli.on .st { color: var(--ink); border-color: var(--line-d); }
+  .tli .now-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #14640a; background: #f0fbed; border: 1px solid #b6e5ac; border-radius: 20px; padding: 1px 8px; flex-shrink: 0; }
+  .tli .now-tag .pulse { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: dotPulse 1.2s ease infinite; }
+  .tl-empty { padding: 22px 0; text-align: center; color: var(--gray); font-size: 12px; }
 
   /* 预览屏（竖版 2:3） */
   .preview-screen { display: flex; gap: 26px; align-items: flex-start; }
@@ -51,8 +75,9 @@
 
   /* 最近动态 */
   .feed { list-style: none; }
-  .feed li { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13px; align-items: flex-start; }
+  .feed li { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13px; align-items: flex-start; }
   .feed li:last-child { border-bottom: none; }
+  .feed .ico-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
   .feed .stamp { font-family: var(--mono); font-size: 11px; color: var(--gray); flex-shrink: 0; padding-top: 2px; }
   .feed .txt { flex: 1; line-height: 1.6; }
   .feed .txt b { font-weight: 600; }
@@ -65,11 +90,6 @@
   .dev .screen { transition: transform .25s, border-color .25s; }
   .dev:hover .screen { transform: rotate(-1.6deg) scale(1.03); border-color: var(--ink); }
   .dev:nth-child(odd):hover .screen { transform: rotate(1.4deg) scale(1.03); }
-  .tl-seg.now { animation: tlGlow 2.8s ease-in-out infinite; }
-  @keyframes tlGlow {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(26,26,26,.35); }
-    50% { box-shadow: 0 0 0 6px rgba(26,26,26,0); }
-  }
   .feed li { animation: riseIn .5s cubic-bezier(.2,.9,.3,1.1) both; }
   .feed li:nth-child(2) { animation-delay: .08s; }
   .feed li:nth-child(3) { animation-delay: .16s; }
@@ -190,30 +210,50 @@
   document.getElementById('dashDate').textContent =
     now.getFullYear() + '-' + FH.fmtTime(now).slice(0, 5) + ' · 星期' + WEEK[now.getDay()];
 
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
   function batteryBar(pct) {
     const cls = pct < 25 ? 'low' : '';
     return '<div class="battery"><span>' + (pct || '—') + '%</span><span class="bar"><i class="' + cls + '" style="width:' + (pct || 0) + '%"></i></span></div>';
   }
 
-  /* 设备屏幕内容：按设备类型展示 e-ink 风格占位 */
+  /* 时间轴单行条目：相对 -> 间隔，定点 -> 时间；当前时段高亮 */
+  function tli(s, group) {
+    let mt;
+    if (group === 'rel') {
+      const sec = s.duration_sec || 30;
+      mt = sec % 3600 === 0 ? (sec / 3600) + ' 小时'
+        : sec % 60 === 0 ? (sec / 60) + ' 分钟' : sec + ' 秒';
+      mt = '每 ' + mt;
+    } else {
+      mt = s.start_time || '—';
+    }
+    const st = group === 'rel' ? '循环' : '定点';
+    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const on = s.start_sec != null && nowSec >= s.start_sec &&
+      nowSec < s.start_sec + (s.duration_sec || 0);
+    const ac = group === 'abs' ? '#2f6fd8' : 'var(--ink)';
+    return '<div class="tli' + (on ? ' on' : '') + '" style="--ac:' + ac + '">' +
+      '<span class="tdot ' + group + '"></span>' +
+      '<span class="nm">' + esc(s.template_name || '模板') + '</span>' +
+      '<span class="mt">' + esc(mt) + '</span>' +
+      '<span class="st">' + st + '</span>' +
+      (on ? '<span class="now-tag"><span class="pulse"></span>播放中</span>' : '') +
+      '</div>';
+  }
+
+  /* 设备屏幕内容：真实模板预览图（e-ink 效果） */
   function devScreen(d, idx) {
     const basic = d.device_type !== 'pro';
-    let inner;
     if (!d.is_claimed) {
-      inner = '<div style="display:grid;place-items:center;height:100%;color:#999;font-size:10px">待认领<br><span style="font-size:8px">' + (d.device_id || '').slice(0, 8) + '</span></div>';
-    } else if (basic) {
-      inner = '<div class="t">' + (d.name || '设备') + '</div>' +
-        '<div style="color:#888">' + (d.online ? '在线 · 网络模式' : '离线') + '</div>' +
-        '<div class="d"><i style="background:#000"></i><i style="background:#000"></i><i style="background:#FCD000"></i><i style="background:#E00000"></i><i style="background:#29CC14"></i><i style="background:#0000FF"></i></div>' +
-        '<div style="margin-top:8px;color:#666">播放中 · 轮播</div>' +
-        '<div>■ ' + (d.play_mode === 2 ? '网络' : '本地') + '</div>';
-    } else {
-      inner = '<div style="display:grid;place-items:center;height:100%;text-align:center">' +
-        '<div><div style="font-size:26px;font-weight:700">' + (d.battery_percent || '--') + '</div>' +
-        '<div style="color:#666;font-size:8px">电量 · ' + (d.voltage_mv || 0) + 'mV</div>' +
-        '<div style="margin-top:6px;font-size:9px;color:' + (d.online ? '#14640a' : '#999') + '">' + (d.online ? '● 在线' : '○ 离线') + '</div></div>';
+      return '<div class="ink"><div style="display:grid;place-items:center;height:100%;color:#999;font-size:10px">待认领<br><span style="font-size:8px">' + (d.device_id || '').slice(0, 8) + '</span></div></div>' +
+        '<div class="stamp">' + (basic ? 'basic 400×600' : 'pro 528×792') + '</div>';
     }
-    return '<div class="ink">' + inner + '</div>' +
+    // 播放中的模板预览图（懒加载，失败回退占位）
+    return '<div class="ink" data-tpl="' + d.template_id + '"><div class="scr-lazy">' +
+      (d.template_name ? esc(d.template_name) : (d.name || '设备')) + '</div></div>' +
       '<div class="stamp">' + (basic ? 'basic 400×600' : 'pro 528×792') + '</div>';
   }
 
@@ -225,14 +265,15 @@
         API.get('/streams'),
       ]);
 
-      // 统计卡
+      // 统计卡（四色侧条）
+      const onlineN = devices.filter(d => d.online).length;
       document.getElementById('stats').innerHTML =
-        statCard('1', '在线设备', '● ' + stats.devices + ' 台注册') +
-        statCard(stats.templates, '模板总数', '内置 + 自定义') +
-        statCard(stats.streams, '轮播流', '已启用 ' + streams.filter(s => s.enabled).length) +
-        statCard(stats.albums, '相册', '共收录照片');
-      function statCard(b, t, c) {
-        return '<div class="stat"><b>' + b + '</b><span>' + t + '</span><span class="ch">' + c + '</span></div>';
+        statCard(onlineN || 0, '在线设备', devices.length + ' 台注册', '#14640a') +
+        statCard(stats.templates, '模板总数', '内置 + 自定义', '#E00000') +
+        statCard(stats.streams, '轮播流', '已启用 ' + streams.filter(s => s.enabled).length, '#2f6fd8') +
+        statCard(stats.albums, '相册', '共收录照片', '#d9921e');
+      function statCard(b, t, c, color) {
+        return '<div class="stat" style="--ac:' + color + '"><b>' + b + '</b><span>' + t + '</span><span class="ch">' + c + '</span></div>';
       }
 
       // 设备卡
@@ -247,6 +288,17 @@
           '<div class="st">' + (d.is_claimed ? (d.device_type + ' · ' + d.device_id) : '待认领') + '</div></div>' +
           batteryBar(d.battery_percent) + '</div></div>'
         ).join('');
+        // 设备屏：填充真实模板预览图（e-ink 效果）
+        devices.filter(d => d.is_claimed && d.template_id).forEach(d => {
+          const ink = devBox.querySelector('.ink[data-tpl="' + d.template_id + '"]');
+          if (!ink) return;
+          FH.authImg('/api/v1/admin/templates/' + d.template_id + '/preview?device_type=' + (d.device_type === 'pro' ? 'pro' : 'basic'))
+            .then(objUrl => {
+              const img = new Image();
+              img.onload = () => { ink.innerHTML = ''; ink.appendChild(img); };
+              img.src = objUrl;
+            }).catch(() => { /* 保持占位 */ });
+        });
         // 设备屏周期刷新 + 点击闪屏
         document.querySelectorAll('.dev .screen .ink').forEach((ink, i) => {
           setInterval(() => {
@@ -262,27 +314,33 @@
         });
       }
 
-      // 轮播时间轴
+      // 轮播时间轴（简易分组列表：相对循环在上 · 定点在下）
       const tl = document.getElementById('timeline');
       const active = streams.find(s => s.enabled) || streams[0];
       if (!active) {
-        tl.innerHTML = '<div class="tl-head"><span>暂无轮播流</span><a href="streams.html" class="tag">去创建</a></div>' +
-          '<div class="tl-empty" style="padding:18px;text-align:center;color:var(--gray);font-size:12px">创建轮播流后，这里会展示当日播放时间轴</div>';
+        tl.innerHTML = '<div class="tl-head"><span class="tl-name">暂无轮播流</span><a href="streams.html" class="tag">去创建</a></div>' +
+          '<div class="tl-empty">创建轮播流后，这里会展示当日播放安排</div>';
       } else {
         const segs = await API.get('/streams/' + active.id + '/timeline');
-        tl.innerHTML = '<div class="tl-head"><span>mode：' + (active.mode === 'server_push' ? '服务端主动推送' : '设备主动获取') + '</span>' +
-          '<span class="tag">' + (active.enabled ? '● 运行中' : '‖ 已暂停') + '</span></div>';
+        const rel = segs.filter(s => s.schedule_type !== 'absolute');
+        const abs = segs.filter(s => s.schedule_type === 'absolute')
+          .sort((a, b) => String(a.start_at || '').localeCompare(String(b.start_at || '')));
+        const head = '<div class="tl-head"><span class="tl-name">' + esc(active.name) + '</span>' +
+          '<span class="tag' + (active.enabled ? ' green' : '') + '">' + (active.enabled ? '● 运行中' : '‖ 已暂停') + '</span></div>';
         if (segs.length === 0) {
-          tl.innerHTML += '<div class="tl-empty" style="padding:18px;text-align:center;color:var(--gray);font-size:12px">该轮播流还没有条目</div>';
+          tl.innerHTML = head + '<div class="tl-empty">该轮播流还没有条目</div>';
         } else {
-          tl.innerHTML += '<div class="tl-track">' + segs.map((s, i) => {
-            const total = 86400;
-            const left = (s.start_sec / total * 100);
-            const w = (s.duration_sec / total * 100);
-            return '<div class="tl-seg' + (i === 0 ? ' now' : '') + '" style="left:' + left + '%;width:' + w + '%">' +
-              (s.template_name || '模板') + '<small>' + s.start_time + ' · ' + (s.schedule_type === 'absolute' ? '定点' : '相对') + '</small></div>';
-          }).join('') + '</div>' +
-            '<div class="tl-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>';
+          let body = '<div class="tl-items">';
+          if (rel.length) {
+            body += '<div class="group-bar"><b>相对循环</b><span class="n">' + rel.length + '</span><span>按列表顺序循环</span></div>';
+            body += rel.map(s => tli(s, 'rel')).join('');
+          }
+          if (abs.length) {
+            body += '<div class="group-bar"><b>定点播放</b><span class="n">' + abs.length + '</span><span>按当日时间播放</span></div>';
+            body += abs.map(s => tli(s, 'abs')).join('');
+          }
+          body += '</div>';
+          tl.innerHTML = head + body;
         }
       }
 
@@ -308,26 +366,26 @@
           '后端 Pillow 渲染 + 6 色调色板转换，所见即所得。';
       }
 
-      // 最近动态
+      // 最近动态（带图标色点：绿=心跳 黄=新设备 蓝=推送）
       const feed = document.getElementById('feed');
       const items = [];
       devices.filter(d => d.online).forEach(d => {
         items.push(['心跳', '<b>' + (d.name || d.device_id) + '</b> 心跳在线 · 电量 ' + (d.battery_percent || 0) + '%',
-          FH.fmtTime(d.last_heartbeat_at), '<span class="tag green">● 正常</span>']);
+          FH.fmtTime(d.last_heartbeat_at), '<span class="tag green">● 正常</span>', 'var(--green)']);
       });
       devices.filter(d => !d.is_claimed).forEach(d => {
         items.push(['新设备', '新设备 <b>' + (d.device_id || '') + '</b> 首次心跳，等待认领',
-          FH.fmtTime(d.created_at), '<span class="tag yellow">待认领</span>']);
+          FH.fmtTime(d.created_at), '<span class="tag yellow">待认领</span>', '#d9921e']);
       });
       streams.filter(s => s.enabled).forEach(s => {
         items.push(['推送', '<b>' + s.name + '</b> 正在运行 · 共 ' + s.items.length + ' 条',
-          '—', '<span class="tag">push</span>']);
+          '—', '<span class="tag blue">push</span>', '#2f6fd8']);
       });
       if (items.length === 0) {
         feed.innerHTML = '<li><span class="txt" style="color:var(--gray)">暂无动态</span></li>';
       } else {
         feed.innerHTML = items.slice(0, 5).map(it =>
-          '<li><span class="stamp">' + it[2] + '</span><span class="txt">' + it[1] + '</span><span class="act">' + it[3] + '</span></li>'
+          '<li><span class="ico-dot" style="background:' + it[4] + '"></span><span class="stamp">' + it[2] + '</span><span class="txt">' + it[1] + '</span><span class="act">' + it[3] + '</span></li>'
         ).join('');
       }
     } catch (e) {
