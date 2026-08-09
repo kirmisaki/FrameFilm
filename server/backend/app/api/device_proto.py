@@ -11,7 +11,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
-from ..config import HEARTBEAT_DEFAULT_INTERVAL, HEARTBEAT_MAX_INTERVAL, HEARTBEAT_MIN_INTERVAL, JWT_SECRET
+from ..config import JWT_SECRET
 from ..db import get_db
 from ..models import Device
 from ..schemas.device import HeartbeatCommand, HeartbeatResponse, HeartbeatResponseData
@@ -100,6 +100,7 @@ def heartbeat(
     ble_enable: int | None = None,
     current_file_id: int | None = None,
     state: str = "",
+    heartbeat_interval: int | None = None,
     db: Session = Depends(get_db),
 ):
     if not device_id:
@@ -127,6 +128,9 @@ def heartbeat(
         device.current_file_id = current_file_id
     if state:
         device.state = state
+    # 心跳间隔：设备上报其本地实际值（可被 BLE/指令修改），回写设备表供管理页显示
+    if heartbeat_interval is not None and 5 <= heartbeat_interval <= 180:
+        device.heartbeat_interval = heartbeat_interval
     device.last_heartbeat_at = dt.datetime.now()
     device.last_ip = request.client.host if request.client else ""
     db.commit()
@@ -166,7 +170,7 @@ def heartbeat(
 
     return HeartbeatResponse(data=HeartbeatResponseData(
         server_time=int(dt.datetime.now().timestamp()),
-        heartbeat_interval=device.heartbeat_interval or HEARTBEAT_DEFAULT_INTERVAL,
+        heartbeat_interval=None,  # 间隔由设备本地/BLE/set_heartbeat 指令控制，响应不下发避免覆盖
         token=device.token if (is_new or token_changed) else None,
         commands=commands,
     ))
@@ -200,7 +204,7 @@ def get_latest_film(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     # 消费记录（pull 模式推进 / push 模式记录下发）
-    stream = scheduler.active_stream(db)
+    stream = scheduler.active_stream_for_device(db, device)
     method = "push" if (stream and stream.mode == "server_push") else "pull"
     film_name = f"item{item.id}.film" if item else "latest.film"
     scheduler.record_push(db, device, item, film_name, method)

@@ -28,6 +28,7 @@ class Device(Base):
 
     # 服务端管理
     heartbeat_interval: Mapped[int] = mapped_column(Integer, default=60)
+    play_stream_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 绑定的轮播流；None=回退全局第一个启用流
     battery_percent: Mapped[int] = mapped_column(Integer, default=-1)
     voltage_mv: Mapped[int] = mapped_column(Integer, default=0)
     state: Mapped[str] = mapped_column(String(16), default="")

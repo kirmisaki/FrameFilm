@@ -3,12 +3,12 @@ import datetime as dt
 import json
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from ..config import HEARTBEAT_DEFAULT_INTERVAL, ONLINE_FACTOR
 from ..db import get_db
-from ..models import Device, Template, User
+from ..models import Device, PushRecord, StreamItem, Template, User
 from ..schemas.device import (
     CommandRequest,
     DeviceClaim,
@@ -16,7 +16,7 @@ from ..schemas.device import (
     DeviceOut,
     DeviceUpdate,
 )
-from ..services.scheduler import active_stream, advance_pull, current_item
+from ..services.scheduler import active_stream_for_device, advance_pull, resolve_film_for_device
 from .deps import get_current_user
 
 router = APIRouter(prefix="/api/v1/admin/devices", tags=["devices"])
@@ -28,11 +28,23 @@ def _playing_template(db: Session, stream, d: Device, now: dt.datetime) -> tuple
         return 0, ""
     if stream.mode == "device_pull":
         item, _ = advance_pull(db, stream, d, now)
-    else:
-        item, _ = current_item(stream, now)
-    if not item:
+        if not item:
+            return 0, ""
+        t = db.get(Template, item.template_id)
+        return (t.id, t.name) if t else (0, "")
+    # 服务端推送：当前内容 = 最近一次推送的条目
+    last = (
+        db.query(PushRecord)
+        .filter(PushRecord.device_id == d.id, PushRecord.method == "push")
+        .order_by(PushRecord.id.desc())
+        .first()
+    )
+    if not last or not last.stream_item_id:
         return 0, ""
-    t = db.get(Template, item.template_id)
+    si = db.get(StreamItem, last.stream_item_id)
+    if not si:
+        return 0, ""
+    t = db.get(Template, si.template_id)
     if not t:
         return 0, ""
     return t.id, t.name
@@ -53,6 +65,7 @@ def _device_out(d: Device, db: Session, stream) -> DeviceOut:
         sleep_auto=d.sleep_auto, sleep_time=d.sleep_time, ble_enable=d.ble_enable,
         current_file_id=d.current_file_id, heartbeat_interval=d.heartbeat_interval,
         template_id=template_id, template_name=template_name,
+        play_stream_id=d.play_stream_id,
         battery_percent=d.battery_percent, voltage_mv=d.voltage_mv, state=d.state,
         last_heartbeat_at=d.last_heartbeat_at, last_ip=d.last_ip,
         created_at=d.created_at, online=online,
@@ -68,9 +81,8 @@ def _get_device(db: Session, device_id: int) -> Device:
 
 @router.get("", response_model=list[DeviceOut])
 def list_devices(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    # 轮播流只查一次，避免逐设备重复查询（N+1）
-    stream = active_stream(db)
-    return [_device_out(d, db, stream) for d in db.query(Device).order_by(Device.id).all()]
+    return [_device_out(d, db, active_stream_for_device(db, d))
+            for d in db.query(Device).order_by(Device.id).all()]
 
 
 @router.post("/{device_id}/claim", response_model=DeviceOut)
@@ -86,7 +98,7 @@ def claim_device(
     d.is_claimed = True
     db.commit()
     db.refresh(d)
-    return _device_out(d, db, active_stream(db))
+    return _device_out(d, db, active_stream_for_device(db, d))
 
 
 @router.put("/{device_id}", response_model=DeviceOut)
@@ -98,11 +110,13 @@ def update_device(
 ):
     d = _get_device(db, device_id)
     data = body.model_dump(exclude_unset=True)
+    if data.get("play_stream_id") == 0:  # 传 0 = 清除绑定，存 NULL 回退全局
+        data["play_stream_id"] = None
     for k, v in data.items():
         setattr(d, k, v)
     db.commit()
     db.refresh(d)
-    return _device_out(d, db, active_stream(db))
+    return _device_out(d, db, active_stream_for_device(db, d))
 
 
 @router.delete("/{device_id}")
@@ -128,7 +142,7 @@ def reset_token(
     d.is_claimed = False  # 需重新认领
     db.commit()
     db.refresh(d)
-    return _device_out(d, db, active_stream(db))
+    return _device_out(d, db, active_stream_for_device(db, d))
 
 
 @router.post("/{device_id}/set-config")
@@ -192,3 +206,15 @@ def sync_film(
     d.pending_commands = json.dumps(queue, ensure_ascii=False)
     db.commit()
     return {"msg": "已发起最新内容推送"}
+
+
+@router.get("/{device_id}/preview")
+def device_preview(device_id: int, db: Session = Depends(get_db),
+                   _: User = Depends(get_current_user)):
+    """设备当前内容预览 PNG：与设备下载同一渲染路径（相册按 rotate_sec 轮换等动态内容与设备一致）"""
+    d = _get_device(db, device_id)
+    _, _, preview = resolve_film_for_device(db, d, for_preview=True)
+    if preview is None:
+        raise HTTPException(404, "该设备当前没有可播放内容")
+    return Response(content=preview, media_type="image/png",
+                    headers={"Cache-Control": "no-store"})  # 不缓存：相册按时间轮换，需实时画面

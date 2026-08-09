@@ -27,6 +27,7 @@ class DeviceOut(BaseModel):
     template_id: int = 0
     template_name: str = ""
     heartbeat_interval: int
+    play_stream_id: int | None = None  # 绑定的轮播流 id；None=回退全局第一个启用流
     battery_percent: int
     voltage_mv: int
     state: str
@@ -42,6 +43,7 @@ class DeviceUpdate(BaseModel):
     heartbeat_interval: int | None = Field(
         default=None, ge=HEARTBEAT_MIN_INTERVAL, le=HEARTBEAT_MAX_INTERVAL
     )
+    play_stream_id: int | None = Field(default=None)  # 绑定轮播流；传 0/None 清除绑定回退全局
 
 
 class DeviceClaim(BaseModel):
@@ -74,7 +76,7 @@ class HeartbeatCommand(BaseModel):
 
 class HeartbeatResponseData(BaseModel):
     server_time: int
-    heartbeat_interval: int
+    heartbeat_interval: int | None = None  # 设备表显式设置时才下发，未设置保持设备本地值
     token: str | None = None
     commands: list[HeartbeatCommand] = Field(default_factory=list)
 

@@ -62,9 +62,9 @@
   .type-card { transition: transform .15s, border-color .15s; }
   .type-card:hover { transform: translateY(-2px); }
   .type-card.on { animation: popIn .4s cubic-bezier(.2,.9,.3,1.15); }
-  .tbl tbody tr { animation: riseIn .45s cubic-bezier(.2,.9,.3,1.1) both; }
-  .tbl tbody tr:nth-child(2) { animation-delay: .08s; }
-  .tbl tbody tr:nth-child(3) { animation-delay: .16s; }
+  .tbl.initial tbody tr { animation: riseIn .45s cubic-bezier(.2,.9,.3,1.1) both; }
+  .tbl.initial tbody tr:nth-child(2) { animation-delay: .08s; }
+  .tbl.initial tbody tr:nth-child(3) { animation-delay: .16s; }
   .dev-id { font-family: var(--mono); font-size: 11px; color: var(--gray); }
   .empty-row td { text-align: center; color: var(--gray); padding: 40px 0; }
 </style>
@@ -213,6 +213,9 @@
   let claimId = null;
   let claimType = 'basic';
   let cur = null; // 当前详情设备
+  let firstRender = true; // 首屏入场动画标志
+  let streams = []; // 轮播流列表（播放流下拉用），懒加载一次
+  let streamsLoaded = false;
 
   function openModal(name) { document.getElementById('modal-' + name).classList.add('show'); }
   function closeModal(name) { document.getElementById('modal-' + name).classList.remove('show'); }
@@ -270,7 +273,7 @@
     }
   }
 
-  function openDetail(d) {
+  async function openDetail(d) {
     cur = d;
     document.getElementById('detailTitle').textContent = '设备详情 · ' + (d.name || d.device_id);
     const tokenShort = d.token ? d.token.slice(0, 6) + '…' : '—';
@@ -316,8 +319,13 @@
       '<div class="row-switch"><span>定时休眠<span class="hint">开启后按下方时长自动休眠</span></span><label class="switch"><input type="checkbox" id="cfgSleepAuto"><span class="sl"></span></label></div>' +
       '<div class="row-switch"><span>休眠时长<span class="hint">0–2880 分钟</span></span><input type="number" id="cfgSleepTime" class="input" style="width:120px;font-family:var(--mono)"></div>' +
       '<div class="row-switch"><span>BLE 开关</span><label class="switch"><input type="checkbox" id="cfgBle"><span class="sl"></span></label></div>' +
+      '<div class="row-switch"><span>心跳间隔<span class="hint">5–180 秒，写入设备表，下次心跳生效</span></span><input type="number" id="cfgHeartbeat" class="input" style="width:120px;font-family:var(--mono)"></div>' +
+      '<div class="row-switch"><span>播放流<span class="hint">绑定后设备只播放该流；不绑定回退全局第一个启用流</span></span>' +
+        '<select class="select" id="cfgStream" style="width:190px"><option value="0">回退全局（默认）</option></select></div>' +
       '<div class="cmd-btns" style="margin-top:14px">' +
         '<button class="btn btn-sm btn-primary" onclick="doSetConfig()">下发配置 <span class="ico ico-arrow-r ico-sm"></span></button>' +
+        '<button class="btn btn-sm" onclick="doSaveHeartbeat()"><span class="ico ico-heart ico-sm"></span> 保存心跳间隔</button>' +
+        '<button class="btn btn-sm" onclick="doSaveStream()"><span class="ico ico-stream ico-sm"></span> 保存播放流</button>' +
         '<button class="btn btn-sm" onclick="doCmd(\'sync_time\')"><span class="ico ico-clock ico-sm"></span> 同步时间</button>' +
         '<button class="btn btn-sm" onclick="doCmd(\'reboot\')"><span class="ico ico-power ico-sm"></span> 重启设备</button>' +
         '<button class="btn btn-sm" onclick="doCmd(\'clear_files\')"><span class="ico ico-trash ico-sm"></span> 清空文件</button>' +
@@ -337,8 +345,33 @@
     document.getElementById('cfgSleepAuto').checked = !!d.sleep_auto;
     document.getElementById('cfgSleepTime').value = d.sleep_time || 0;
     document.getElementById('cfgBle').checked = !!d.ble_enable;
+    document.getElementById('cfgHeartbeat').value = d.heartbeat_interval || 60;
+    await ensureStreams();
+    fillStreamOptions(d.play_stream_id || 0);
 
     openModal('detail');
+  }
+
+  // 播放流列表懒加载（只拉一次），失败静默重试
+  async function ensureStreams() {
+    if (streamsLoaded) return;
+    try {
+      streams = await API.get('/streams');
+      streamsLoaded = true;
+    } catch (e) {
+      streams = [];
+    }
+  }
+
+  function fillStreamOptions(current) {
+    const sel = document.getElementById('cfgStream');
+    if (!sel) return;
+    sel.innerHTML = '<option value="0">回退全局（默认）</option>' +
+      streams.map(s =>
+        '<option value="' + s.id + '"' + (s.id === current ? ' selected' : '') + '>' +
+        (s.name || ('流 #' + s.id)) + '（' + (s.enabled ? '启用' : '停用') + '）</option>'
+      ).join('');
+    sel.value = String(current || 0);
   }
 
   async function copyToken() {
@@ -360,6 +393,27 @@
     try {
       const res = await API.post('/devices/' + cur.id + '/set-config', cfg);
       FH.toast(res.msg || '配置已排队下发', 'ok');
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function doSaveHeartbeat() {
+    const v = parseInt(document.getElementById('cfgHeartbeat').value || '', 10);
+    if (!(v >= 5 && v <= 180)) { FH.toast('心跳间隔需在 5–180 秒之间', 'err'); return; }
+    try {
+      // 同时更新设备表（列表立即显示）并下发指令（设备本地生效）
+      const d = await API.put('/devices/' + cur.id, { heartbeat_interval: v });
+      cur.heartbeat_interval = d.heartbeat_interval;
+      await API.post('/devices/' + cur.id + '/commands', { cmd: 'set_heartbeat', params: { interval: v } });
+      FH.toast('已保存并下发，下次心跳生效', 'ok');
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  async function doSaveStream() {
+    const v = parseInt(document.getElementById('cfgStream').value || '0', 10);
+    try {
+      const res = await API.put('/devices/' + cur.id, { play_stream_id: v || 0 });
+      cur.play_stream_id = res.play_stream_id || null;
+      FH.toast(res.play_stream_id ? '已绑定播放流' : '已回退全局播放流', 'ok');
     } catch (e) { FH.toast(e.message, 'err'); }
   }
 
@@ -413,6 +467,11 @@
       return true;
     });
 
+    // 入场动画仅首屏播放，轮询刷新不重播（避免整表闪烁）
+    const tbl = document.querySelector('.tbl');
+    tbl.classList.toggle('initial', firstRender);
+    firstRender = false;
+
     document.getElementById('countTag').textContent =
       '共 ' + devices.length + ' 台设备 · ' + devices.filter(d => d.online).length + ' 台在线';
 
@@ -426,7 +485,7 @@
         ? '<span class="tag on">' + d.device_type + ' · ' + RES[d.device_type] + '</span>'
         : '<span class="tag yellow">待配置</span>';
       const bat = d.is_claimed
-        ? '<b>' + (d.battery_percent != null ? d.battery_percent + '%' : '—') + '</b> <span class="muted">' + (d.voltage_mv || '') + 'mV</span>'
+        ? '<b>' + (d.battery_percent != null ? d.battery_percent + '%' : '—') + '</b>'
         : '—';
       const ops = d.is_claimed
         ? '<button class="btn btn-sm" onclick="openDetail(getDev(' + d.id + '))"><span class="ico ico-eye ico-sm"></span> 详情</button> ' +

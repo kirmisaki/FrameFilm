@@ -92,6 +92,7 @@
             <option value="gamma_floyd_steinberg">Gamma 感知 FS</option>
             <option value="bayer">Bayer 4×4</option>
             <option value="adaptive">自适应（边缘感知）</option>
+            <option value="smart_adaptive">智能自适应（自动选优）</option>
           </select>
         </div>
         <div class="mini-row"><label>强度</label><input class="range" type="range" id="rcStrength" min="0" max="100" value="80" oninput="rcVal(this)"><span class="range-val" id="rcStrengthV">80</span></div>
@@ -153,7 +154,7 @@
     fridge: '冰箱食材', fortune: '今日运势', countdown: '倒计时', quote: '每日一言', custom: '自定义',
   };
   const KINDS = ['album', 'calendar', 'memo', 'weather', 'fridge', 'fortune', 'countdown', 'quote', 'custom'];
-  const DITHER_CN = { none: '抖动无', floyd_steinberg: '抖动 FS', atkinson: '抖动 Atkinson', stucki: '抖动 Stucki', jarvis: '抖动 Jarvis', gamma_floyd_steinberg: 'Gamma 感知 FS', bayer: 'Bayer 有序', adaptive: '自适应' };
+  const DITHER_CN = { none: '抖动无', floyd_steinberg: '抖动 FS', atkinson: '抖动 Atkinson', stucki: '抖动 Stucki', jarvis: '抖动 Jarvis', gamma_floyd_steinberg: 'Gamma 感知 FS', bayer: 'Bayer 有序', adaptive: '自适应', smart_adaptive: '智能自适应' };
   const PALETTE_CN = { '6color': '6 色', bw: '黑白' };
 
   let tplId = null;       // 编辑中的模板 id（null = 新建）

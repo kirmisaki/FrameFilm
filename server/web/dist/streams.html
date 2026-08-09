@@ -22,6 +22,17 @@
   .sc .x:hover { color: var(--red); }
   .sc.add { display: grid; place-items: center; border-style: dashed; border-color: var(--line-d); background: transparent; color: var(--gray); min-height: 118px; }
   .sc.add:hover { color: var(--ink); border-color: var(--ink); }
+  /* 卡片：播放设备绑定行 */
+  .sc .sbind { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--gray); }
+  .sc .sbind b { color: var(--ink); font-weight: 600; }
+
+  /* 指定播放设备弹窗列表 */
+  .bind-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; margin-bottom: 6px; cursor: pointer; background: #fff; transition: border-color .15s; }
+  .bind-row:hover { border-color: var(--ink); }
+  .bind-row .bind-nm { font-weight: 600; font-size: 13px; }
+  .bind-row .bind-id { font-size: 11px; color: var(--gray); font-family: var(--mono); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bind-row .bind-st { font-size: 11px; color: var(--gray); flex-shrink: 0; }
+  .bind-row .bind-st.on { color: var(--green); }
 
   /* 模式切换 */
   .mode-switch { display: flex; gap: 0; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; }
@@ -249,6 +260,22 @@
   </div>
 </div>
 
+<!-- ===== 指定播放设备模态框 ===== -->
+<div class="modal-mask" id="modal-bind">
+  <div class="modal">
+    <div class="m-head"><b id="bindTitle">指定播放设备</b><span class="x" onclick="closeModal('bind')"><span class="ico ico-close"></span></span></div>
+    <div class="m-body">
+      <div class="desc" style="margin-bottom:10px;font-size:12px;color:var(--gray);line-height:1.7">
+        勾选播放该轮播流的设备，未勾选的设备不受影响。若某设备之前绑定此流、本次取消勾选，将回退到全局第一个启用流。</div>
+      <div id="bindList"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn" onclick="closeModal('bind')">取消</button>
+      <button class="btn btn-primary" onclick="doBind()">保存 <span class="ico ico-arrow-r ico-sm"></span></button>
+    </div>
+  </div>
+</div>
+
 <script src="js/api.js"></script>
 <script src="js/common.js"></script>
 <script>
@@ -264,6 +291,8 @@
 
   let streams = [];
   let templates = [];
+  let devices = [];     // 设备列表（播放设备绑定用）
+  let bindStreamId = null; // 指定设备弹窗对应的流 id
   let cur = null;       // 当前选中的轮播流
   let curItems = [];    // 当前条目
   let dirtyOrder = false;
@@ -286,6 +315,7 @@
     const box = document.getElementById('streamCards');
     box.innerHTML = streams.map(s => {
       const n = s.items.length;
+      const bound = devices.filter(d => d.play_stream_id === s.id).length;
       const tag = s.enabled
         ? '<span class="tag green"><span class="dot dot-pulse" style="background:var(--green)"></span> 运行中</span>'
         : '<span class="tag">‖ 已暂停</span>';
@@ -294,6 +324,8 @@
         '<div class="sn"><span class="row">' + esc(s.name) + ' ' + tag + '</span></div>' +
         '<div class="sm">' + MODE_CN[s.mode] + ' · ' + n + ' 条条目</div>' +
         '<div class="sf"><span>' + n + ' 条</span><span class="mini-track">' + miniTrack(s.items) + '</span></div>' +
+        '<div class="sbind"><span>播放设备 <b>' + bound + '</b> 台</span>' +
+          '<button class="btn btn-sm" onclick="event.stopPropagation();openBind(' + s.id + ')"><span class="ico ico-dev ico-sm"></span> 指定设备</button></div>' +
         '</div>';
     }).join('') +
       '<div class="sc add" onclick="openCreate()"><div><div style="font-size:26px">+</div><div style="font-size:12px;margin-top:4px">新建轮播流</div></div></div>';
@@ -338,6 +370,40 @@
       if (cur && cur.id === id) cur = null;
       await loadStreams();
       renderEditor();
+    } catch (e) { FH.toast(e.message, 'err'); }
+  }
+
+  /* ===== 指定播放设备 ===== */
+  function openBind(id) {
+    bindStreamId = id;
+    const s = streams.find(x => x.id === id);
+    document.getElementById('bindTitle').textContent = '指定播放设备 · ' + (s ? s.name : '');
+    const list = document.getElementById('bindList');
+    if (!devices.length) {
+      list.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--gray);font-size:12px">暂无设备，设备首次心跳后自动注册。</div>';
+      openModal('bind');
+      return;
+    }
+    list.innerHTML = devices.map(d =>
+      '<label class="bind-row"><input type="checkbox" class="bind-cb" data-id="' + d.id + '"' +
+        (d.play_stream_id === id ? ' checked' : '') + '>' +
+        '<span class="bind-nm">' + esc(d.name || '未命名设备') + '</span>' +
+        '<span class="bind-id">' + esc(d.device_id || '') + '</span>' +
+        '<span class="bind-st' + (d.online ? ' on' : '') + '">' + (d.online ? '● 在线' : '○ 离线') + '</span>' +
+      '</label>'
+    ).join('');
+    openModal('bind');
+  }
+
+  async function doBind() {
+    const ids = Array.from(document.querySelectorAll('#bindList .bind-cb:checked'))
+      .map(c => parseInt(c.dataset.id, 10));
+    try {
+      const res = await API.post('/streams/' + bindStreamId + '/devices', { device_ids: ids });
+      closeModal('bind');
+      devices = await API.get('/devices'); // 刷新绑定状态
+      renderStreams();
+      FH.toast(res.msg || '已保存', 'ok');
     } catch (e) { FH.toast(e.message, 'err'); }
   }
 
@@ -714,7 +780,12 @@
 
   async function init() {
     try {
-      await Promise.all([loadStreams(), API.get('/templates').then(t => { templates = t; renderTray(); })]);
+      await Promise.all([
+        loadStreams(),
+        API.get('/templates').then(t => { templates = t; renderTray(); }),
+        API.get('/devices').then(d => { devices = d; }),
+      ]);
+      renderStreams(); // devices 就绪后重绘（卡片显示播放设备数）
       await renderEditor();
     } catch (e) {
       FH.toast(e.message, 'err');

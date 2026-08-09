@@ -3,7 +3,8 @@
 算法对齐小程序 film-utils.js / Web convert.js：
 - 6 色调色板 + HSL/Lab 最近色匹配
 - 抖动：none / floyd_steinberg / atkinson / stucki / jarvis /
-        gamma_floyd_steinberg（线性空间误差扩散）/ bayer（4×4 有序）/ adaptive（边缘感知误差扩散）
+        gamma_floyd_steinberg（线性空间误差扩散）/ bayer（4×4 有序）/ adaptive（边缘感知误差扩散）/
+        smart_adaptive（智能自适应：降采样试跑候选抖动并打分选优，对齐小程序 adaptiveDither）
 - 文件头：32B（FileSize + ScreenWidth/Height + ColorCount + ColorTable）
 - 像素：每字节 2 像素（高 4 位在前）
 """
@@ -44,6 +45,7 @@ def _rgb_to_hsl(r: int, g: int, b: int):
     return {"h": h * 360.0, "s": s, "l": l}
 
 
+@lru_cache(maxsize=262144)
 def _rgb_to_lab(r: int, g: int, b: int):
     # sRGB -> XYZ -> Lab
     def _f(c: float):
@@ -137,29 +139,70 @@ def apply_saturation(img: Image.Image, saturation: int = 100) -> Image.Image:
     return ImageEnhance.Color(img).enhance(saturation / 100.0)
 
 
-def _diffuse(px, w, h, strength, offsets, divisor, write_self=True):
-    """通用误差扩散"""
+# 误差扩散最近色 LUT（6bit/通道）：评估候选时避免重复调用 find_closest_color
+_DIFFUSE_LUT = None
+
+
+def _ensure_diffuse_lut():
+    """构造 64³ 颜色立方体 → 最近调色板色 查表（一次性，模块级缓存）"""
+    global _DIFFUSE_LUT
+    if _DIFFUSE_LUT is None:
+        lut = [None] * (64 * 64 * 64)
+        for i in range(64 * 64 * 64):
+            lut[i] = find_closest_color((i >> 12 & 63) * 4 + 2,
+                                        (i >> 6 & 63) * 4 + 2,
+                                        (i & 63) * 4 + 2)
+        _DIFFUSE_LUT = lut
+    return _DIFFUSE_LUT
+
+
+def _lut_lookup(lut, r, g, b):
+    return lut[((r >> 2) << 12) | ((g >> 2) << 6) | (b >> 2)]
+
+
+def _diffuse(px, w, h, strength, offsets, divisor, write_self=True, lut=None):
+    """通用误差扩散；lut 非 None 时最近色走查表（评估用，6bit 量化近似）
+
+    内联优化：权重系数预计算、clamp 用条件表达式避免函数调用
+    """
+    factors = [(dx, dy, wgt / divisor) for dx, dy, wgt in offsets]
+    use_lut = lut is not None
     for y in range(h):
+        row = y * w
         for x in range(w):
-            i = y * w + x
+            i = row + x
             r, g, b = px[i]
-            closest = find_closest_color(r, g, b)
+            if use_lut:
+                closest = lut[((r >> 2) << 12) | ((g >> 2) << 6) | (b >> 2)]
+            else:
+                closest = find_closest_color(r, g, b)
             if write_self:
                 px[i] = closest
-            err = ((r - closest[0]) * strength, (g - closest[1]) * strength, (b - closest[2]) * strength)
-            for dx, dy, wgt in offsets:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < w and 0 <= ny < h:
-                    j = ny * w + nx
-                    pr, pg, pb = px[j]
-                    px[j] = (
-                        _clamp255(pr + err[0] * wgt / divisor),
-                        _clamp255(pg + err[1] * wgt / divisor),
-                        _clamp255(pb + err[2] * wgt / divisor),
-                    )
+            er = (r - closest[0]) * strength
+            eg = (g - closest[1]) * strength
+            eb = (b - closest[2]) * strength
+            for dx, dy, f in factors:
+                nx = x + dx
+                if 0 <= nx < w:
+                    ny = y + dy
+                    if 0 <= ny < h:
+                        j = ny * w + nx
+                        pr, pg, pb = px[j]
+                        vr = pr + er * f
+                        vg = pg + eg * f
+                        vb = pb + eb * f
+                        px[j] = (
+                            0 if vr < 0 else 255 if vr > 255 else int(vr + 0.5),
+                            0 if vg < 0 else 255 if vg > 255 else int(vg + 0.5),
+                            0 if vb < 0 else 255 if vb > 255 else int(vb + 0.5),
+                        )
     if not write_self:
         for i in range(w * h):
-            px[i] = find_closest_color(*px[i])
+            r, g, b = px[i]
+            if use_lut:
+                px[i] = lut[((r >> 2) << 12) | ((g >> 2) << 6) | (b >> 2)]
+            else:
+                px[i] = find_closest_color(r, g, b)
 
 
 # sRGB <-> 线性空间（gamma 感知抖动用，对齐 convert.js LUT 公式）
@@ -263,6 +306,134 @@ def _adaptive_diffuse(px, gray, w, h, strength):
                     )
 
 
+# ===== 智能自适应（小程序 film-utils.js adaptiveDither 移植）=====
+# 候选算法表：(offsets, divisor, write_self) —— 与 film-utils.js 中
+# floydSteinberg / atkinson / stucki / jarvis 的权重与写入语义一致
+_SMART_ALGOS = {
+    "floyd_steinberg": (
+        [(1, 0, 7), (-1, 1, 3), (0, 1, 5), (1, 1, 1)], 16, False,
+    ),
+    "atkinson": (
+        [(1, 0, 1), (2, 0, 1), (-1, 1, 1), (0, 1, 1), (1, 1, 1), (0, 2, 1)], 8, True,
+    ),
+    "stucki": (
+        [(1, 0, 8), (2, 0, 4), (-2, 1, 2), (-1, 1, 4), (0, 1, 8), (1, 1, 4), (2, 1, 2),
+         (-2, 2, 1), (-1, 2, 2), (0, 2, 4), (1, 2, 2), (2, 2, 1)], 42, False,
+    ),
+    "jarvis": (
+        [(1, 0, 7), (2, 0, 5), (-2, 1, 3), (-1, 1, 5), (0, 1, 7), (1, 1, 5), (2, 1, 3),
+         (-2, 2, 1), (-1, 2, 3), (0, 2, 5), (1, 2, 3), (2, 2, 1)], 48, True,
+    ),
+}
+
+
+def _smart_gray(px):
+    return [round(r * 0.299 + g * 0.587 + b * 0.114) for (r, g, b) in px]
+
+
+def _smart_analyze(px, gray, w, h):
+    """analyzeImageAdvanced 移植：亮度 / 边缘密度 / 平均梯度 / 饱和度"""
+    n = w * h
+    brightness = 0.0
+    sat_sum = 0.0
+    for r, g, b in px:
+        brightness += r * 0.299 + g * 0.587 + b * 0.114
+        mx = max(r, g, b)
+        mn = min(r, g, b)
+        sat_sum += (mx - mn) / mx if mx > 0 else 0.0
+    edges = _sobel_edge_map(gray, w, h)
+    edge_sum = 0.0
+    edge_count = 0
+    for e in edges:
+        edge_sum += e
+        if e > 20:
+            edge_count += 1
+    inner = (w - 2) * (h - 2) if w > 2 and h > 2 else 0
+    return {
+        "brightness": brightness / n / 255.0,
+        "edgeDensity": edge_count / inner if inner else 0.0,
+        "avgGradient": edge_sum / inner / 255.0 if inner else 0.0,
+        "saturation": sat_sum / n,
+    }
+
+
+def _smart_candidates(analysis):
+    """generateAdaptiveCandidates 移植：按边缘密度/饱和度分档生成候选（4 算法 × 强度档）"""
+    if analysis["edgeDensity"] > 0.2:
+        strengths = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
+    elif analysis["saturation"] > 0.3:
+        strengths = [0.7, 0.9, 1.0, 1.2, 1.4, 1.6, 1.8]
+    else:
+        strengths = [0.6, 0.8, 1.0, 1.2, 1.5, 1.8, 2.0]
+    return [(name, s) for name in _SMART_ALGOS for s in strengths]
+
+
+def _smart_evaluate(orig, dith, o_edges, dith_gray, w, h):
+    """evaluateDitherResult 移植：Lab 色彩误差 + Sobel 边缘保持 + 色彩熵打分
+    o_edges 为原图边缘图（已在外部算好，避免逐候选重复计算）"""
+    import math
+    n = w * h
+    lab_sum = 0.0
+    for i in range(n):
+        lab_sum += _lab_distance(_rgb_to_lab(*orig[i]), _rgb_to_lab(*dith[i]))
+    avg_lab = lab_sum / n
+    d_edges = _sobel_edge_map(dith_gray, w, h)
+    corr = 0.0
+    oe = 0.0
+    de = 0.0
+    for a, b in zip(o_edges, d_edges):
+        corr += a * b
+        oe += a * a
+        de += b * b
+    edge_pres = corr / (oe * de) ** 0.5 if oe > 0 and de > 0 else 0.0
+    cmap = {}
+    for c in dith:
+        cmap[c] = cmap.get(c, 0) + 1
+    counts = sorted(cmap.values(), reverse=True)
+    entropy = 0.0
+    for c in counts:
+        p = c / n
+        if p > 0:
+            entropy -= p * math.log2(p)
+    max_entropy = math.log2(min(6, len(counts))) if len(counts) > 1 else 0.0
+    balance = entropy / max_entropy if max_entropy > 0 else 0.0
+    return avg_lab * 0.4 + (1.0 - edge_pres) * 80 * 0.35 + (1.0 - balance) * 30 * 0.25
+
+
+def _smart_adaptive(px, w, h):
+    """智能自适应（小程序 adaptiveDither 移植）：降采样 → 图像分析 →
+    候选（4 算法 × 强度档）试跑打分 → 最优配置应用到全图"""
+    # 降采样（对齐小程序 evalScale=3，drawImage 缩放用 LANCZOS）
+    ew = max(30, w // 3)
+    eh = max(30, h // 3)
+    # 评估图总像素上限：纯 Python 逐像素试跑比 JS 慢得多，粗图足以区分候选优劣
+    # （仅影响选优耗时与稳定度，算法结构与候选集不变，宽高比保留）
+    while ew * eh > 12000:
+        ew = (ew + 1) // 2
+        eh = (eh + 1) // 2
+    ew = max(16, ew)
+    eh = max(16, eh)
+    img = Image.new("RGB", (w, h))
+    img.putdata(px)
+    eval_px = list(img.resize((ew, eh), Image.LANCZOS).getdata())
+    eval_gray = _smart_gray(eval_px)
+    analysis = _smart_analyze(eval_px, eval_gray, ew, eh)
+    o_edges = _sobel_edge_map(eval_gray, ew, eh)  # 原图边缘只算一次
+    lut = _ensure_diffuse_lut()  # 候选试跑的最近色查表（一次性构造）
+    best = (list(_SMART_ALGOS)[0], 1.0)
+    best_score = float("inf")
+    for name, s in _smart_candidates(analysis):
+        offsets, divisor, write_self = _SMART_ALGOS[name]
+        copy = list(eval_px)
+        _diffuse(copy, ew, eh, s, offsets, divisor, write_self, lut)
+        score = _smart_evaluate(eval_px, copy, o_edges, _smart_gray(copy), ew, eh)
+        if score < best_score:
+            best_score = score
+            best = (name, s)
+    offsets, divisor, write_self = _SMART_ALGOS[best[0]]
+    _diffuse(px, w, h, best[1], offsets, divisor, write_self, lut)
+
+
 def _process_pixels(img: Image.Image, dither_type: str, strength: float, palette: list):
     """输入 RGB 图，输出每个像素的调色板索引（对应 PIXEL_CODES 下标）"""
     w, h = img.size
@@ -296,6 +467,8 @@ def _process_pixels(img: Image.Image, dither_type: str, strength: float, palette
         _gamma_diffuse(px, w, h, strength)
     elif dither_type == "bayer":
         _bayer_diffuse(px, w, h, strength)
+    elif dither_type == "smart_adaptive":
+        _smart_adaptive(px, w, h)  # 强度由算法内部自选（候选档位）
     else:  # adaptive
         gray = [round(r * 0.299 + g * 0.587 + b * 0.114) for (r, g, b) in px]
         _adaptive_diffuse(px, gray, w, h, strength)

@@ -1,4 +1,5 @@
 """模板库 API"""
+import datetime as dt
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -124,11 +125,9 @@ def delete_template(template_id: int, db: Session = Depends(get_db),
     t = _get_template(db, template_id)
     if t.is_builtin:
         raise HTTPException(400, "内置模板不可删除")
-    # 清理渲染缓存（预览 PNG 与缩略图）
-    for device_type in SCREENS:
-        pv = PREVIEWS_DIR / f"tpl_{t.id}_{device_type}.png"
-        if pv.exists():
-            pv.unlink()
+    # 清理渲染缓存（预览 PNG 与缩略图；预览文件名带 scale/日期后缀，用 glob 全清）
+    for pv in PREVIEWS_DIR.glob(f"tpl_{t.id}_*.png"):
+        pv.unlink()
     thumb = THUMBS_DIR / f"tpl_{t.id}.png"
     if thumb.exists():
         thumb.unlink()
@@ -150,7 +149,8 @@ def preview_template(
     t = _get_template(db, template_id)
     scr = SCREENS[device_type]
     scale = max(0.25, min(1.0, scale))
-    s_key = f"s{int(round(scale * 100))}"
+    # 缓存 key 按日失效：模板含日期动态内容（日历/老黄历等）时，保证预览与设备当日渲染一致
+    s_key = f"s{int(round(scale * 100))}_{dt.date.today().strftime('%Y%m%d')}"
     preview_path = PREVIEWS_DIR / f"tpl_{t.id}_{device_type}_{s_key}.png"
     if not preview_path.exists() or refresh:
         png = _render_and_cache(t, scr["canvas_w"], scr["canvas_h"], scale, db)

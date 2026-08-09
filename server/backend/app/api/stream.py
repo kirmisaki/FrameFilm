@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Stream, StreamItem, Template, User
+from ..models import Device, Stream, StreamItem, Template, User
 from ..schemas.stream import (
     StreamCreate,
+    StreamDevicesRequest,
     StreamItemCreate,
     StreamItemOut,
     StreamItemSortRequest,
@@ -15,7 +16,6 @@ from ..schemas.stream import (
     StreamOut,
     StreamUpdate,
 )
-from ..services.scheduler import build_timeline
 from .deps import get_current_user
 
 router = APIRouter(prefix="/api/v1/admin/streams", tags=["streams"])
@@ -154,13 +154,50 @@ def sort_items(stream_id: int, body: StreamItemSortRequest, db: Session = Depend
     return {"msg": "排序已更新"}
 
 
+@router.post("/{stream_id}/devices")
+def set_stream_devices(stream_id: int, body: StreamDevicesRequest, db: Session = Depends(get_db),
+                       _: User = Depends(get_current_user)):
+    """指定播放该轮播流的设备集：勾选集合完整赋值
+
+    - 勾选内的设备绑定到该流（覆盖其旧绑定）
+    - 原本绑定该流、本次未勾选的设备解绑，回退全局第一个启用流
+    - 其他流的绑定不受影响
+    """
+    s = _get_stream(db, stream_id)
+    ids = set(body.device_ids)
+    if ids:
+        n = db.query(Device).filter(Device.id.in_(ids)).count()
+        if n != len(ids):
+            raise HTTPException(404, "存在不存在的设备")
+    for d in db.query(Device).filter(Device.play_stream_id == stream_id).all():
+        if d.id not in ids:
+            d.play_stream_id = None  # 解绑回退
+    if ids:
+        db.query(Device).filter(Device.id.in_(ids)).update(
+            {Device.play_stream_id: s.id}, synchronize_session=False)
+    db.commit()
+    return {"msg": f"已更新指定设备，共 {len(ids)} 台"}
+
+
 @router.get("/{stream_id}/timeline")
 def timeline(stream_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    """当日时间轴预览：[(start_sec, duration_sec, item_id, template_name)]"""
+    """当日触发预览：列出各条目当天触发点（循环条目按周期列当日各次，定点列当日一次）"""
     s = _get_stream(db, stream_id)
     now = dt.datetime.now()
-    segs = build_timeline(s, now)
+    t_sec = now.hour * 3600 + now.minute * 60 + now.second
     names = {t.id: t.name for t in db.query(Template).all()}
+    events = []
+    for it in sorted(s.items, key=lambda i: i.position):
+        if not it.enabled:
+            continue
+        if it.schedule_type == "absolute" and it.start_at:
+            ts = it.start_at.hour * 3600 + it.start_at.minute * 60 + it.start_at.second
+            events.append((ts, 0, it))  # 定点：当日全部安排（含已过的，前端置灰标记）
+        elif it.schedule_type == "relative":
+            d = max(1, it.duration_sec or 30)
+            ts = (t_sec // d) * d  # 当前周期起点（最近一次触发点）
+            events.append((ts, d, it))  # 循环条目聚合为一条：展示周期即可，不展开当日所有触发点
+    events.sort(key=lambda e: (e[0], e[1]))
     return [
         {
             "start_sec": st, "duration_sec": d,
@@ -168,6 +205,7 @@ def timeline(stream_id: int, db: Session = Depends(get_db), _: User = Depends(ge
             "item_id": it.id, "template_id": it.template_id,
             "template_name": names.get(it.template_id, ""),
             "schedule_type": it.schedule_type,
+            "passed": st < t_sec,  # 定点条目已过触发时间
         }
-        for st, d, it in segs
+        for st, d, it in events
     ]

@@ -37,6 +37,7 @@ def _migrate():
     with engine.connect() as conn:
         cols = {row[1] for row in conn.execute(text("PRAGMA table_info(albums)"))}
         pcols = {row[1] for row in conn.execute(text("PRAGMA table_info(photos)"))}
+        dcols = {row[1] for row in conn.execute(text("PRAGMA table_info(devices)"))}
     with engine.begin() as conn:
         if "dither_type" not in cols:
             conn.execute(text("ALTER TABLE albums ADD COLUMN dither_type VARCHAR(32) NOT NULL DEFAULT 'adaptive'"))
@@ -44,3 +45,5 @@ def _migrate():
             conn.execute(text("ALTER TABLE albums ADD COLUMN dither_strength INTEGER NOT NULL DEFAULT 80"))
         if "layout" not in pcols:
             conn.execute(text("ALTER TABLE photos ADD COLUMN layout TEXT NOT NULL DEFAULT '{}'"))
+        if "play_stream_id" not in dcols:
+            conn.execute(text("ALTER TABLE devices ADD COLUMN play_stream_id INTEGER"))

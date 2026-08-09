@@ -307,7 +307,7 @@
     ['none', '无'], ['floyd_steinberg', 'Floyd-Steinberg'], ['atkinson', 'Atkinson'],
     ['stucki', 'Stucki'], ['jarvis', 'Jarvis-Judice-Ninke'],
     ['gamma_floyd_steinberg', 'Gamma 感知 FS'], ['bayer', 'Bayer 4×4'],
-    ['adaptive', '自适应（推荐）'],
+    ['adaptive', '自适应（边缘感知）'], ['smart_adaptive', '智能自适应（自动选优）'],
   ];
 
   let templates = [];
@@ -317,6 +317,7 @@
   let appTpl = null;   // 弹窗当前模板
   let appPvTimer = null; // 实时预览防抖
   let appPvUrl = null; // 当前预览 objectURL
+  let pvPhotoIdx = null; // 预览固定照片（相册内 sort 索引；null=自动轮换）
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -473,6 +474,7 @@
     document.getElementById('apKind').textContent = KIND_CN[t.kind] || t.kind;
     document.getElementById('apEditBtn').style.display = t.is_builtin ? 'none' : 'inline-flex';
     buildAppForm(t);
+    loadPhotoPicker(t);
     schedulePreview(true);
     document.getElementById('modal-app').classList.add('show');
   }
@@ -480,6 +482,7 @@
   function closeApp() {
     document.getElementById('modal-app').classList.remove('show');
     appTpl = null;
+    pvPhotoIdx = null;
     if (appPvTimer) { clearTimeout(appPvTimer); appPvTimer = null; }
   }
 
@@ -554,6 +557,9 @@
           p.classList.add('on');
           schedulePreview();
         });
+      } else if (d.type === 'album') {
+        // 相册参数切换后：刷新预览照片选择器并重渲染
+        el.addEventListener('change', () => { schedulePreview(); loadPhotoPicker(appTpl); });
       } else {
         // 输入类控件：失焦/回车才触发渲染，避免逐字符请求预览
         el.addEventListener('change', schedulePreview);
@@ -573,6 +579,8 @@
     const co = rc.contrast != null ? rc.contrast : 100;
     const sa = rc.saturation != null ? rc.saturation : 100;
     document.getElementById('apRender').innerHTML =
+      '<div class="f" id="pvPhotoRow" style="display:none"><label>预览照片 <small>（固定某张调试，不随保存落库）</small></label>' +
+      '<select class="select" id="pvPhotoSel" onchange="onPickPhoto(this)"><option value="">自动轮换</option></select></div>' +
       '<div class="f"><label>渲染算法 <small>（e-ink 预览抖动）</small></label>' +
       '<select class="select" id="rcDither">' + DITHER_OPTIONS.map(o =>
         '<option value="' + o[0] + '"' + (dt === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'
@@ -648,6 +656,46 @@
     return vals;
   }
 
+  /* 预览照片选择器：绑定当前相册，列出照片（按 sort），选中后预览固定渲染该张（不随保存落库） */
+  function onPickPhoto(sel) {
+    pvPhotoIdx = sel.value === '' ? null : parseInt(sel.value, 10);
+    schedulePreview();
+  }
+
+  function albumIdOf(t) {
+    const defs = (t.definition && t.definition.params) || [];
+    const vals = collectParams(t);   // 读当前控件值（相册参数可能已切换）
+    for (const d of defs) {
+      if (d.type === 'album' && vals[d.key]) return vals[d.key];
+    }
+    const d = (t.definition && t.definition.data) || {};
+    if (d.album && d.album.album_id) return d.album.album_id;
+    for (const l of (t.definition && t.definition.layers) || []) {
+      if (l.type === 'image' && l.source && l.source.album_id) return l.source.album_id;
+    }
+    return null;
+  }
+
+  async function loadPhotoPicker(t) {
+    const row = document.getElementById('pvPhotoRow');
+    const sel = document.getElementById('pvPhotoSel');
+    if (!row || !sel) return;
+    const aid = albumIdOf(t);
+    if (!aid) { row.style.display = 'none'; pvPhotoIdx = null; return; }
+    try {
+      const alb = await API.get('/albums/' + aid);
+      const photos = (alb.photos || []).slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+      sel.innerHTML = '<option value="">自动轮换</option>' + photos.map((p, i) =>
+        '<option value="' + i + '">#' + (i + 1) + ' ' + esc(p.filename || ('照片' + (i + 1))) + '</option>'
+      ).join('');
+      sel.value = pvPhotoIdx != null ? String(pvPhotoIdx) : '';
+      row.style.display = '';
+    } catch (e) {
+      row.style.display = 'none';
+      pvPhotoIdx = null;
+    }
+  }
+
   /* 实时预览（防抖，POST 临时参数，不落库） */
   let appScale = null;  // 'fast' 快速(0.5x) | 'full' 设备实际分辨率(1.0)，启动时从设置加载
   function setScale(s) {
@@ -680,6 +728,7 @@
     img.style.opacity = .35;
     try {
       const params = collectParams(appTpl);
+      if (pvPhotoIdx != null) { params.photo_index = pvPhotoIdx; params.rotate_sec = 0; }  // 固定预览照片，避免轮换
       const body = { params: params, render_config: collectRender(), device_type: 'basic', preview_scale: appScale === 'full' ? 1.0 : 0.5 };
       const token = localStorage.getItem('fh_token') || '';
       const res = await fetch('/api/v1/admin/templates/' + appTpl.id + '/preview', {
@@ -704,19 +753,20 @@
   /* 保存应用参数（随模板保存） */
   async function saveApp() {
     if (!appTpl) return;
+    const tplId = appTpl.id;   // 提前取 id：closeApp() 会置空 appTpl
     const params = collectParams(appTpl);
     const def = JSON.parse(JSON.stringify(appTpl.definition));
     def.data = def.data || {};
     def.data.params = params;
     try {
-      await API.put('/templates/' + appTpl.id, { definition: def, render_config: collectRender() });
-      // 强制重渲染 GET 缓存缩略图，保证卡片图反映新参数（按当前倍率档位）
-      await fetch(previewUrl(appTpl.id, true), {
-        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('fh_token') || '') },
-      }).catch(() => {});
+      await API.put('/templates/' + tplId, { definition: def, render_config: collectRender() });
       FH.toast('应用参数已保存', 'ok');
       closeApp();
       load();
+      // 缩略图异步重渲染：不阻塞保存流程（smart_adaptive 等算法渲染耗时数秒），完成后自动刷新卡片
+      fetch(previewUrl(tplId, true), {
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('fh_token') || '') },
+      }).catch(() => {}).then(() => load());
     } catch (e) { FH.toast(e.message, 'err'); }
   }
 

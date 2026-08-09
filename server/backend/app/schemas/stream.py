@@ -57,3 +57,9 @@ class StreamOut(BaseModel):
 
 class StreamItemSortRequest(BaseModel):
     item_ids: list[int] = Field(min_length=1)
+
+
+class StreamDevicesRequest(BaseModel):
+    """流绑定的设备集：完整赋值（原本绑定该流、本次未勾选的设备会被解绑回退全局）"""
+
+    device_ids: list[int] = Field(default_factory=list)

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 RENDER_CONFIG_KEYS = {"dither_type", "dither_strength", "contrast", "brightness", "saturation", "palette"}
 DITHER_TYPES = {"none", "floyd_steinberg", "atkinson", "stucki", "jarvis",
-                "gamma_floyd_steinberg", "bayer", "adaptive"}
+                "gamma_floyd_steinberg", "bayer", "adaptive", "smart_adaptive"}
 PALETTES = {"6color", "bw"}
 TEMPLATE_KINDS = (
     "album", "calendar", "memo", "weather", "fridge",
