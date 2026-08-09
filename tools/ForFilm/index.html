@@ -62,11 +62,22 @@
                             <div class="network-input-group">
                                 <label class="network-label">API地址</label>
                                 <div class="api-url-row">
-                                    <input type="text" id="film-api-url-input" placeholder="http://...">
+                                    <input type="text" id="film-api-url-input" placeholder="http://服务器IP:8000">
                                     <button class="secondary-button" onclick="applyFilmApiUrl()" style="width:auto;padding:8px 14px;">
                                         <i class="material-icons">check</i> 设置
                                     </button>
                                 </div>
+                                <div class="api-url-hint">心跳地址会自动拼接（/api/v1/device/heartbeat）</div>
+                            </div>
+                            <div class="network-input-group">
+                                <label class="network-label">心跳间隔（秒）</label>
+                                <div class="api-url-row">
+                                    <input type="number" id="film-heartbeat-interval-input" placeholder="5-180" min="5" max="180">
+                                    <button class="secondary-button" onclick="applyHeartbeatInterval()" style="width:auto;padding:8px 14px;">
+                                        <i class="material-icons">check</i> 设置
+                                    </button>
+                                </div>
+                                <div class="api-url-hint">设备主动上报频率，默认 5 秒</div>
                             </div>
                             <button class="secondary-button" onclick="onFilmDownload()" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:4px;">
                                 <i class="material-icons">cloud_download</i> 下载测试

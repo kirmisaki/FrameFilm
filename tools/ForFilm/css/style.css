@@ -1517,3 +1517,9 @@ textarea.quote-input {
 .api-url-row .secondary-button i {
     font-size: 16px;
 }
+
+.api-url-hint {
+    font-size: 11px;
+    color: #8b8680;
+    margin-top: 4px;
+}

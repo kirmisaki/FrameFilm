@@ -71,6 +71,10 @@ const BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET = 0x3A;
 const BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR = 0x3B;
 const BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD = 0x3C;
 const BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE = 0x3D;
+const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL = 0x3E;
+const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET = 0x3F;
+const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL = 0x40;
+const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET = 0x41;
 
 const BLE_CMD_LEN_MIN = 4;
 
@@ -948,6 +952,10 @@ function setupBluetoothListener() {
             const el = document.getElementById('film-api-url-input');
             if (el) el.value = url;
         }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET && cmdLen === 1) {
+            const el = document.getElementById('film-heartbeat-interval-input');
+            if (el) el.value = String(data[3]);
+        }
         else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET && cmdLen === 1) {
             const status = data[3];
             updateWifiConnectStatus(status === 1);
@@ -1289,6 +1297,14 @@ async function sendBleFilmApiUrlGet() {
     await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET);
 }
 
+async function sendBleHeartbeatIntervalSet(sec) {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL, sec);
+}
+
+async function sendBleHeartbeatIntervalGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET);
+}
+
 async function sendBleFilmDownload() {
     await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD);
 }
@@ -1357,6 +1373,20 @@ function applyFilmApiUrl() {
     const el = document.getElementById('film-api-url-input');
     if (!el || !el.value.trim()) return;
     sendBleFilmApiUrlSet(el.value.trim()).catch(err => console.error(err));
+}
+
+function applyHeartbeatInterval() {
+    const el = document.getElementById('film-heartbeat-interval-input');
+    if (!el || !el.value.trim()) return;
+    const sec = parseInt(el.value.trim(), 10);
+    if (!(sec >= 5 && sec <= 180)) { showMessage('心跳间隔需在 5–180 秒之间', 'error'); return; }
+    sendBleHeartbeatIntervalSet(sec)
+        .then(() => {
+            showMessage('已发送，回读确认中…', 'success');
+            // 设置后回读一次：输入框值不变说明固件不支持该命令（需烧录新固件）
+            setTimeout(() => sendBleHeartbeatIntervalGet().catch(err => console.error(err)), 600);
+        })
+        .catch(err => console.error(err));
 }
 
 let downloadPollTimer = null;
@@ -1507,6 +1537,7 @@ function queryWifiConfig() {
     sendBleWifiSsidGet().catch(err => console.error(err));
     sendBleWifiConnectGet().catch(err => console.error(err));
     sendBleFilmApiUrlGet().catch(err => console.error(err));
+    sendBleHeartbeatIntervalGet().catch(err => console.error(err));
 }
 
 function updateFileListDisplay(fileList) {
