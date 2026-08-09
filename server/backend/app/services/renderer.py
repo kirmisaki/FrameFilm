@@ -306,7 +306,10 @@ def render_definition(definition: dict, width: int, height: int,
         color = _resolve_color(layer.get("color", "#000000"), scheme)
 
         if ltype == "rect":
-            fill = _resolve_color(layer.get("fill", layer.get("color", "#000000")), scheme)
+            if "fill" in layer:
+                fill = None if layer.get("fill") is None else _resolve_color(layer["fill"], scheme)
+            else:
+                fill = _resolve_color(layer.get("color", "#000000"), scheme)
             radius = layer.get("radius")
             if radius:
                 draw.rounded_rectangle([x, y, x + w, y + h], radius=max(1, _s(radius)),
@@ -332,6 +335,45 @@ def render_definition(definition: dict, width: int, height: int,
         elif ltype == "circle":
             fill = _resolve_color(layer.get("fill", "#ffffff"), scheme) if layer.get("fill") else None
             draw.ellipse([x, y, x + w, y + h], fill=fill, outline=color, width=max(1, _s(layer.get("width", 2))))
+        elif ltype == "moon":
+            # 月相：cx, cy, r 圆心半径；phase 0-7（0 新月/1 娥眉/2 上弦/3 盈凸/4 满月/5 亏凸/6 下弦/7 残月）
+            # 描边圆 + 按相位用 bg 色覆盖实现
+            phase_val = layer.get("value")
+            if isinstance(phase_val, dict):
+                phase_val = data.get(phase_val.get("source", "fortune"), {}).get(phase_val.get("key", "moon_phase"), 0)
+            try:
+                phase = int(phase_val) % 8
+            except (TypeError, ValueError):
+                phase = 0
+            r = max(2, (w if w < h else h) // 2)
+            cx, cy = x + w // 2, y + h // 2
+            moon_bg = _resolve_color(layer.get("bg", "#ffffff"), scheme)
+            moon_ink = color
+            moon_box = [cx - r, cy - r, cx + r, cy + r]
+            if phase == 4:
+                # 满月：白色圆 + 黑色描边
+                draw.ellipse(moon_box, fill=moon_bg, outline=moon_ink, width=max(1, _s(layer.get("width", 1))))
+            elif phase == 0:
+                # 新月：实心黑圆
+                draw.ellipse(moon_box, fill=moon_ink)
+            else:
+                # 先铺白色底 + 黑色描边
+                draw.ellipse(moon_box, fill=moon_bg, outline=moon_ink, width=max(1, _s(layer.get("width", 1))))
+                # 再用黑色画暗部
+                rx = r
+                if phase in (2, 6):
+                    if phase == 2:  # 上弦（右半圆亮=左半暗）
+                        draw.rectangle([cx - rx, cy - r, cx, cy + r], fill=moon_ink)
+                    else:  # 下弦（左半圆亮=右半暗）
+                        draw.rectangle([cx, cy - r, cx + rx, cy + r], fill=moon_ink)
+                elif phase in (1, 3, 5, 7):
+                    # 暗部为一个偏移椭圆；sign: 右亮(1,3)暗偏左(负)，左亮(5,7)暗偏右(正)
+                    sign = -1 if phase in (1, 3) else 1
+                    # 娥眉：留 0.35r 宽亮弧；凸月：留 0.65r 宽亮部（示意性，非真实天文比例）
+                    ew = r * (0.65 if phase in (3, 5) else 0.82)
+                    ox = sign * (r - ew)
+                    draw.ellipse([cx - ew + ox, cy - r, cx + ew + ox, cy + r], fill=moon_ink)
+
         elif ltype == "text":
             text = _resolve_text(layer.get("value"), data)
             if text:
@@ -399,7 +441,7 @@ def render_definition(definition: dict, width: int, height: int,
                     ax, ay = x, y
                     if middle:
                         ay = y + h // 2
-                    elif align == "center":
+                    if align == "center":
                         ax = x + w // 2
                     elif align == "right":
                         ax = x + w

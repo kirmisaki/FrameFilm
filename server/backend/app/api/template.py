@@ -92,11 +92,33 @@ def update_template(template_id: int, body: TemplateUpdate, db: Session = Depend
                     _: User = Depends(get_current_user)):
     t = _get_template(db, template_id)
     data = body.model_dump(exclude_unset=True)
-    if t.is_builtin and "definition" in data:
-        # 内置模板：仅允许配置数据（如相册 album_id），结构锁定
-        if _core_definition(data["definition"]) != _core_definition(json.loads(t.definition or "{}")):
-            raise HTTPException(400, "内置模板不可修改结构，仅可配置数据（如相册）与渲染参数")
-        t.definition = json.dumps(data["definition"], ensure_ascii=False)
+    if t.is_builtin:
+        # 内置模板：结构由代码锁定，不接受前端修改 layers/background/kind/params/schemes 等结构字段；
+        # 仅允许更新：① data.params（应用态参数）② 各图层 source.album_id（相册绑定）③ render_config/name
+        if "definition" in data:
+            incoming = data["definition"] or {}
+            cur_def = json.loads(t.definition or "{}")
+            # data.params（日期/文本/列表等用户参数）
+            new_params = (incoming.get("data") or {}).get("params")
+            if isinstance(new_params, dict):
+                cur_def["data"] = dict(cur_def.get("data") or {})
+                cur_def["data"]["params"] = new_params
+            # layers[*].source.album_id（相册绑定）
+            in_layers = incoming.get("layers") if isinstance(incoming.get("layers"), list) else []
+            cur_layers = cur_def.get("layers") if isinstance(cur_def.get("layers"), list) else []
+            for i, cl in enumerate(cur_layers):
+                if not isinstance(cl, dict):
+                    continue
+                if i < len(in_layers) and isinstance(in_layers[i], dict):
+                    il = in_layers[i]
+                    cs = cl.get("source")
+                    isrc = il.get("source")
+                    if isinstance(cs, dict) and isinstance(isrc, dict) and "album_id" in isrc:
+                        cs["album_id"] = isrc["album_id"]
+            t.definition = json.dumps(cur_def, ensure_ascii=False)
+    else:
+        if "definition" in data:
+            t.definition = json.dumps(data["definition"], ensure_ascii=False)
     if "render_config" in data:
         t.render_config = json.dumps(data["render_config"], ensure_ascii=False)
     if "name" in data:

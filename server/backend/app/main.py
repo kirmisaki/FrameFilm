@@ -42,6 +42,8 @@ def _merge_old_data(old_def: dict, new_def: dict) -> dict:
     import copy
 
     merged = copy.deepcopy(new_def)
+    if "data" not in merged:
+        merged["data"] = {}
     old_data = (old_def or {}).get("data") or {}
     new_keys = {p.get("key") for p in new_def.get("params", [])}
     old_params = old_data.get("params") or {}
@@ -76,7 +78,14 @@ def seed_builtin_templates():
             if _core_definition(old_def) != _core_definition(bt["definition"]):
                 t.definition = json.dumps(_merge_old_data(old_def, bt["definition"]), ensure_ascii=False)
                 t.kind = bt["kind"]
-                t.render_config = json.dumps(bt["render_config"], ensure_ascii=False)
+                # 渲染算法：默认值更新，但保留用户自定义差异（新字段用默认，旧字段用户值覆盖默认）
+                old_rc = json.loads(t.render_config or "{}")
+                new_rc = {**bt["render_config"], **{k: v for k, v in old_rc.items() if k in bt["render_config"] and v != bt["render_config"].get(k)}}
+                # 保留旧版中有但新默认中没有的自定义字段
+                for k, v in old_rc.items():
+                    if k not in new_rc:
+                        new_rc[k] = v
+                t.render_config = json.dumps(new_rc, ensure_ascii=False)
                 print(f"[seed] 内置模板「{bt['name']}」已升级")
                 continue
             # 仍为旧默认渲染参数的内置模板：切换为当前默认（自适应），保留用户自定义

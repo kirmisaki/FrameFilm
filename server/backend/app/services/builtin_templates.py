@@ -177,11 +177,116 @@ _QUOTE = {
     **_params(scheme=0),
 }
 
+# ==================== 老黄历（传统手撕黄历风） ====================
+_ALMANAC = {
+    "kind": "fortune",
+    "background": {"color": "#ffffff"},
+    "layers": [
+        # === 双线外框 ===
+        {"type": "rect", "x": 14, "y": 14, "w": 372, "h": 572, "fill": "#ffffff", "color": "#000000", "width": 2},
+        {"type": "rect", "x": 20, "y": 20, "w": 360, "h": 560, "fill": None, "color": "#000000", "width": 1},
+        # 四角小装饰（L 形短线）
+        {"type": "line", "x": 28, "y": 28, "w": 0, "h": 14, "color": "#000000", "width": 2},
+        {"type": "line", "x": 28, "y": 28, "w": 14, "h": 0, "color": "#000000", "width": 2},
+        {"type": "line", "x": 372, "y": 28, "w": 0, "h": 14, "color": "#000000", "width": 2},
+        {"type": "line", "x": 358, "y": 28, "w": 14, "h": 0, "color": "#000000", "width": 2},
+        {"type": "line", "x": 28, "y": 572, "w": 0, "h": -14, "color": "#000000", "width": 2},
+        {"type": "line", "x": 28, "y": 572, "w": 14, "h": 0, "color": "#000000", "width": 2},
+        {"type": "line", "x": 372, "y": 572, "w": 0, "h": -14, "color": "#000000", "width": 2},
+        {"type": "line", "x": 358, "y": 572, "w": 14, "h": 0, "color": "#000000", "width": 2},
+
+        # === 顶部标题区 ===
+        {"type": "text", "x": 200, "y": 40, "size": 10, "font": "serif", "color": "#c8302a",
+         "align": "center", "value": "CHINESE  TRADITIONAL  ALMANAC"},
+        {"type": "text", "x": 200, "y": 60, "size": 52, "weight": "bold", "font": "serif",
+         "color": "#000000", "align": "center", "value": "老黄历"},
+        # 标题下方双线（与标题底部间距 8px）
+        {"type": "line", "x": 96, "y": 122, "w": 208, "h": 0, "color": "#000000", "width": 1},
+        {"type": "line", "x": 96, "y": 126, "w": 208, "h": 0, "color": "#000000", "width": 1},
+
+        # 年柱（居中）
+        {"type": "text", "x": 200, "y": 140, "size": 14, "font": "serif", "color": "#000000",
+         "align": "center",
+         "value": {"source": "fortune", "key": "ganzhi_year"}},
+        {"type": "text", "x": 200, "y": 160, "size": 12, "font": "serif", "color": "#000000",
+         "align": "center",
+         "value": {"source": "fortune", "key": "year_nayin"}},
+        # 右上角月相
+        {"type": "moon", "x": 324, "y": 134, "w": 28, "h": 28, "color": "#000000", "bg": "#ffffff",
+         "value": {"source": "fortune", "key": "moon_phase"}},
+        {"type": "text", "x": 338, "y": 172, "size": 11, "weight": "bold", "font": "serif", "color": "#000000",
+         "align": "center", "value": {"source": "fortune", "key": "moon_name"}},
+
+        # === 主体左列：公历年月日 ===
+        {"type": "text", "x": 48, "y": 188, "size": 12, "font": "serif", "color": "#000000",
+         "value": {"source": "fortune", "key": "year_full"}},
+        {"type": "text", "x": 48, "y": 208, "size": 22, "weight": "bold", "font": "serif",
+         "color": "#c8302a", "value": {"source": "fortune", "key": "month_en"}},
+        {"type": "text", "x": 48, "y": 240, "size": 12, "font": "serif", "color": "#000000",
+         "value": {"source": "fortune", "key": "weekday"}},
+        # 大日期阿拉伯数字（竖中居中，左对齐）
+        {"type": "text", "x": 48, "y": 268, "w": 120, "h": 130, "size": 110, "weight": "bold",
+         "font": "serif", "color": "#000000", "align": "left", "baseline": "middle",
+         "value": {"source": "fortune", "key": "day_big"}},
+
+        # === 主体右列：农历日期信息 ===
+        # 农历月 + 建星（同一行，月左、建星右）
+        {"type": "text", "x": 188, "y": 208, "size": 20, "weight": "bold", "font": "serif",
+         "color": "#000000", "value": {"source": "fortune", "key": "lunar_month"}},
+        {"type": "text", "x": 188, "y": 212, "w": 168, "size": 12, "weight": "bold", "font": "serif",
+         "color": "#c8302a", "align": "right",
+         "value": {"source": "fortune", "key": "jianshen"}},
+        {"type": "text", "x": 188, "y": 240, "size": 44, "weight": "bold", "font": "serif",
+         "color": "#c8302a", "value": {"source": "fortune", "key": "lunar_day"}},
+        # 节气/节日红字
+        {"type": "text", "x": 188, "y": 298, "size": 13, "weight": "bold", "font": "serif",
+         "color": "#c8302a", "value": {"source": "fortune", "key": "label"}},
+        {"type": "text", "x": 188, "y": 324, "size": 26, "weight": "bold", "font": "serif",
+         "color": "#000000", "value": {"source": "fortune", "key": "ganzhi_day"}},
+        {"type": "text", "x": 188, "y": 362, "size": 12, "font": "serif", "color": "#000000",
+         "value": {"source": "fortune", "key": "day_nayin"}},
+        {"type": "text", "x": 188, "y": 382, "size": 11, "font": "serif", "color": "#000000",
+         "value": {"source": "fortune", "key": "wuxing"}},
+        {"type": "text", "x": 188, "y": 400, "size": 11, "font": "serif", "color": "#000000",
+         "value": {"source": "fortune", "key": "chongsha"}},
+
+        # === 中部分隔双线 ===
+        {"type": "line", "x": 40, "y": 428, "w": 320, "h": 0, "color": "#000000", "width": 1},
+        {"type": "line", "x": 40, "y": 432, "w": 320, "h": 0, "color": "#000000", "width": 1},
+
+        # === 宜忌区（竖线居中分隔） ===
+        {"type": "line", "x": 204, "y": 450, "w": 0, "h": 96, "color": "#000000", "width": 1},
+        # 宜字（左列垂直居中）
+        {"type": "text", "x": 52, "y": 458, "w": 46, "h": 64, "size": 36, "weight": "bold",
+         "font": "serif", "color": "#c8302a", "align": "center", "baseline": "middle", "value": "宜"},
+        # 宜事项（与"宜"字垂直居中对齐）
+        {"type": "text", "x": 108, "y": 450, "w": 88, "h": 80, "size": 14, "font": "serif",
+         "color": "#000000", "line_height": 24, "wrap_width": 88, "baseline": "middle",
+         "value": {"source": "fortune", "key": "yi"}},
+        # 忌字（右列垂直居中）
+        {"type": "text", "x": 222, "y": 458, "w": 46, "h": 64, "size": 36, "weight": "bold",
+         "font": "serif", "color": "#000000", "align": "center", "baseline": "middle", "value": "忌"},
+        # 忌事项（与"忌"字垂直居中对齐）
+        {"type": "text", "x": 278, "y": 450, "w": 88, "h": 80, "size": 14, "font": "serif",
+         "color": "#000000", "line_height": 24, "wrap_width": 88, "baseline": "middle",
+         "value": {"source": "fortune", "key": "ji"}},
+
+        # === 底部 ===
+        {"type": "text", "x": 200, "y": 558, "size": 10, "font": "serif", "color": "#000000",
+         "align": "center", "value": "传统民俗 · 择吉参考"},
+    ],
+    "params": [
+        {"key": "fixed_date", "label": "日期（留空为今日）", "type": "date", "default": ""},
+    ],
+    **_params(fixed_date=""),
+}
+
 BUILTIN_TEMPLATES = [
     {"name": "日历", "kind": "calendar", "definition": _CALENDAR, "render_config": _DEFAULT_RC},
     {"name": "相册", "kind": "album", "definition": _ALBUM, "render_config": _DEFAULT_RC},
     {"name": "备忘录", "kind": "memo", "definition": _MEMO, "render_config": _DEFAULT_RC},
     {"name": "每日一言", "kind": "quote", "definition": _QUOTE, "render_config": _DEFAULT_RC},
+    {"name": "老黄历", "kind": "fortune", "definition": _ALMANAC, "render_config": _DEFAULT_RC},
 ]
 
 

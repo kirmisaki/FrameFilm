@@ -25,11 +25,31 @@ QUOTES = [
 ]
 
 MONTH_EN = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+MONTH_EN_FULL = ["January", "February", "March", "April", "May", "June",
+                 "July", "August", "September", "October", "November", "December"]
 WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"]
+_WEEKDAYS_FULL = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
 _TIANGAN = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
 _DIZHI   = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
 _SHENGXIAO = ["鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪"]
+_WUXING_TG = {"甲":"木","乙":"木","丙":"火","丁":"火","戊":"土","己":"土","庚":"金","辛":"金","壬":"水","癸":"水"}
+_WUXING_DZ = {"子":"水","丑":"土","寅":"木","卯":"木","辰":"土","巳":"火","午":"火","未":"土","申":"金","酉":"金","戌":"土","亥":"水"}
+# 建除十二神（按月建地支起"建"）
+_JIANCHU = ["建","除","满","平","定","执","破","危","成","收","开","闭"]
+# 六十甲子纳音（索引 = tg*6 + dz//2，每对干支共用一个纳音）
+_NAYIN = [
+    "海中金","海中金","炉中火","炉中火","大林木","大林木",
+    "路旁土","路旁土","剑锋金","剑锋金","山头火","山头火",
+    "涧下水","涧下水","城头土","城头土","白蜡金","白蜡金",
+    "杨柳木","杨柳木","泉中水","泉中水","屋上土","屋上土",
+    "霹雳火","霹雳火","松柏木","松柏木","长流水","长流水",
+    "沙中金","沙中金","山下火","山下火","平地木","平地木",
+    "壁上土","壁上土","金箔金","金箔金","覆灯火","覆灯火",
+    "天河水","天河水","大驿土","大驿土","钗钏金","钗钏金",
+    "桑柘木","桑柘木","大溪水","大溪水","沙中土","沙中土",
+    "天上火","天上火","石榴木","石榴木","大海水","大海水",
+]
 
 # ==================== 农历（1900-2100，移植自小程序 tpl-calendar.js） ====================
 _LUNAR_INFO = [
@@ -65,7 +85,7 @@ _DAY_NAMES = ["初一", "初二", "初三", "初四", "初五", "初六", "初�
 _SOLAR_TERMS = {
     1: {5: "小寒", 20: "大寒"}, 2: {4: "立春", 19: "雨水"}, 3: {6: "惊蛰", 21: "春分"},
     4: {5: "清明", 20: "谷雨"}, 5: {6: "立夏", 21: "小满"}, 6: {6: "芒种", 21: "夏至"},
-    7: {7: "小暑", 23: "大暑"}, 8: {8: "立秋", 23: "处暑"}, 9: {8: "白露", 23: "秋分"},
+    7: {7: "小暑", 23: "大暑"}, 8: {7: "立秋", 23: "处暑"}, 9: {8: "白露", 23: "秋分"},
     10: {8: "寒露", 23: "霜降"}, 11: {7: "立冬", 22: "小雪"}, 12: {7: "大雪", 22: "冬至"},
 }
 
@@ -374,71 +394,204 @@ def quote_data(now: dt.datetime | None = None, params: dict | None = None) -> di
     }
 
 
-# ==================== 干支 / 生肖 ====================
+# ==================== 干支 / 生肖 / 纳音 / 老黄历 ====================
+def _ganzhi_index(tg: int, dz: int) -> int:
+    """由天干(0-9)地支(0-11)索引算六十甲子序号(0-59)；满足 n%10=tg, n%12=dz"""
+    for n in range(60):
+        if n % 10 == tg and n % 12 == dz:
+            return n
+    return 0
+
+
+def _nayin(tg: int, dz: int) -> str:
+    return _NAYIN[_ganzhi_index(tg, dz)]
+
+
 def _ganzhi_year(year: int) -> dict:
-    """干支纪年 + 生肖"""
+    """干支纪年 + 生肖 + 纳音"""
     tg = (year - 4) % 10
     dz = (year - 4) % 12
     return {
         "gan": _TIANGAN[tg], "zhi": _DIZHI[dz], "shengxiao": _SHENGXIAO[dz],
         "full": f"{_TIANGAN[tg]}{_DIZHI[dz]}年",
+        "nayin": _nayin(tg, dz),
+        "wuxing": f"{_WUXING_TG[_TIANGAN[tg]]}{_WUXING_DZ[_DIZHI[dz]]}",
     }
 
 
 def _ganzhi_day(y: int, m: int, d: int) -> dict:
-    """干支纪日（1900-01-01 = 甲戌）"""
+    """干支纪日（1900-01-01 = 甲戌）+ 纳音 + 五行 + 冲煞"""
     base = dt.date(1900, 1, 1)
     delta = (dt.date(y, m, d) - base).days
     idx = (10 + delta) % 60  # 甲戌 = 10 (0 = 甲子)
     tg = idx % 10
     dz = idx % 12
-    return {"gan": _TIANGAN[tg], "zhi": _DIZHI[dz], "full": f"{_TIANGAN[tg]}{_DIZHI[dz]}日"}
+    chong_dz = (dz + 6) % 12  # 六冲
+    return {
+        "gan": _TIANGAN[tg], "zhi": _DIZHI[dz],
+        "full": f"{_TIANGAN[tg]}{_DIZHI[dz]}日",
+        "nayin": _nayin(tg, dz),
+        "wuxing": f"{_WUXING_TG[_TIANGAN[tg]]}{_WUXING_DZ[_DIZHI[dz]]}",
+        "chong": f"冲{_SHENGXIAO[chong_dz]}({_TIANGAN[(tg+6)%10]}{_DIZHI[chong_dz]})",
+        "sha": ["煞东","煞西","煞南","煞北"][dz % 4],
+        "idx": idx,
+    }
 
 
-# 传统宜忌（12 地支分组，每日固定）
-_ALMANAC_DATA = {
-    0:  {"yi": "祭祀 祈福 嫁娶", "ji": "动土 开仓"},
-    1:  {"yi": "出行 纳财 裁衣", "ji": "安葬 伐木"},
-    2:  {"yi": "开市 交易 立券", "ji": "入宅 移徙"},
-    3:  {"yi": "入宅 安床 祭灶", "ji": "开渠 穿井"},
-    4:  {"yi": "嫁娶 纳采 订盟", "ji": "词讼 行丧"},
-    5:  {"yi": "修造 动土 上梁", "ji": "出行 捕猎"},
-    6:  {"yi": "祈福 求嗣 斋醮", "ji": "破土 安葬"},
-    7:  {"yi": "移徙 出行 裁衣", "ji": "嫁娶 开市"},
-    8:  {"yi": "祭祀 祈福 入学", "ji": "动土 远行"},
-    9:  {"yi": "安葬 立碑 破土", "ji": "嫁娶 开仓"},
-    10: {"yi": "开市 纳财 交易", "ji": "词讼 出行"},
-    11: {"yi": "嫁娶 入宅 出行", "ji": "安葬 伐木"},
-}
+def _moon_phase(lunar_day: int) -> dict:
+    """月相（按农历日）：0新月/1娥眉/2上弦/3盈凸/4满月/5亏凸/6下弦/7残月"""
+    d = lunar_day
+    if d <= 2 or d >= 29:
+        return {"phase": 0, "name": "朔月"}
+    if d <= 6:
+        return {"phase": 1, "name": "娥眉月"}
+    if d <= 9:
+        return {"phase": 2, "name": "上弦月"}
+    if d <= 13:
+        return {"phase": 3, "name": "盈凸月"}
+    if d <= 16:
+        return {"phase": 4, "name": "满月"}
+    if d <= 20:
+        return {"phase": 5, "name": "亏凸月"}
+    if d <= 23:
+        return {"phase": 6, "name": "下弦月"}
+    return {"phase": 7, "name": "残月"}
 
 
-def fortune_data(now: dt.datetime | None = None) -> dict:
-    """老黄历：公历/农历日期 + 干支纪年纪日 + 生肖 + 传统宜忌（每日基于日地支固定）"""
+def _chinese_num(n: int) -> str:
+    """1-31 转中文数字（日期用）"""
+    CN = ["〇","一","二","三","四","五","六","七","八","九"]
+    if n < 10:
+        return CN[n] if n != 0 else "〇"
+    if n == 10:
+        return "初十"
+    if n < 20:
+        return "十" + CN[n - 10]
+    if n == 20:
+        return "二十"
+    if n < 30:
+        return "廿" + CN[n - 20]
+    if n == 30:
+        return "三十"
+    return "卅一"
+
+
+# 传统宜忌（按日地支 0-11，每日池，随机选 4-5 项）
+_YI_POOL = [
+    ["祭祀","祈福","求嗣","开光","塑绘","斋醮","订盟","纳采","嫁娶"],          # 子
+    ["出行","纳财","开市","交易","立券","裁衣","造仓","开渠","安碓硙"],      # 丑
+    ["开市","交易","立券","纳财","纳畜","造仓","造车器","祭祀","祈福"],      # 寅
+    ["入宅","安床","开光","祭祀","祈福","求嗣","斋醮","纳采","订盟"],        # 卯
+    ["嫁娶","纳采","订盟","祭祀","祈福","求嗣","开光","出行","解除"],        # 辰
+    ["修造","动土","上梁","竖柱","起基","安门","安床","造仓","开厕"],        # 巳
+    ["祈福","求嗣","开光","出行","解除","伐木","拆卸","修造","动土"],        # 午
+    ["移徙","出行","安床","开光","祈福","求嗣","斋醮","纳采","订盟"],        # 未
+    ["祭祀","祈福","求嗣","开光","入学","沐浴","剃头","整手足甲","纳畜"],    # 申
+    ["安葬","立碑","破土","启钻","移柩","修坟","祭祀","祈福","斋醮"],        # 酉
+    ["开市","纳财","交易","立券","纳畜","造仓","造车器","祭祀","开光"],      # 戌
+    ["嫁娶","入宅","出行","移徙","安床","开光","祈福","求嗣","斋醮"],        # 亥
+]
+_JI_POOL = [
+    ["动土","破土","开仓","出货财","安葬","行丧","伐木","作梁"],
+    ["安葬","行丧","伐木","作梁","开仓","嫁娶","移徙","入宅"],
+    ["入宅","移徙","嫁娶","动土","破土","安葬","行丧","赴任"],
+    ["开渠","穿井","掘井","行丧","安葬","动土","破土","伐木"],
+    ["词讼","行丧","安葬","伐木","作梁","开仓","出货财","赴任"],
+    ["出行","嫁娶","移徙","入宅","开市","安葬","行丧","词讼"],
+    ["破土","安葬","行丧","嫁娶","移徙","入宅","开仓","出货财"],
+    ["嫁娶","开市","破土","安葬","行丧","动土","开仓","赴任"],
+    ["动土","远行","出行","嫁娶","移徙","入宅","开市","交易"],
+    ["嫁娶","开市","入宅","移徙","动土","破土","开仓","出货财"],
+    ["词讼","出行","移徙","入宅","嫁娶","破土","安葬","行丧"],
+    ["安葬","伐木","作梁","动土","破土","开仓","出货财","行丧"],
+]
+
+
+def _pick_yi_ji(seed: int, pool: list, n: int) -> str:
+    """按 seed 确定性从 pool 里挑 n 项（同一天结果一致），用空格连接"""
+    items = list(pool)
+    # Fisher-Yates 前 n 步洗牌
+    s = (seed * 9301 + 49297) % 233280
+    picked = []
+    for i in range(min(n, len(items))):
+        s = (s * 9301 + 49297) % 233280
+        j = i + s % (len(items) - i)
+        items[i], items[j] = items[j], items[i]
+        picked.append(items[i])
+    return "  ".join(picked)
+
+
+def fortune_data(now: dt.datetime | None = None, params: dict | None = None) -> dict:
+    """老黄历：公历/农历 + 干支纪年纪日 + 生肖/纳音/五行/冲煞/建星/月相/宜忌
+    params:
+      date_mode: "current"（跟随当前时间，默认）| "fixed"（固定日期）
+      fixed_date: "YYYY-MM-DD"（date_mode=fixed 时生效）
+    """
     now = now or dt.datetime.now()
-    y, m, d = now.year, now.month, now.day
+    params = params or {}
+    fd = str(params.get("fixed_date") or "").strip()
+    if fd:
+        try:
+            y, m, d = (int(x) for x in fd.split("-")[:3])
+            target = dt.datetime(y, m, d, 12, 0, 0)
+        except (ValueError, TypeError):
+            y, m, d, target = now.year, now.month, now.day, now
+    else:
+        y, m, d, target = now.year, now.month, now.day, now
+
     lunar = _solar2lunar(y, m, d)
     gyear = _ganzhi_year(lunar["year"])
     gday = _ganzhi_day(y, m, d)
-    # 宜忌基于日地支
+
     dz_idx = _DIZHI.index(gday["zhi"])
-    almanac = _ALMANAC_DATA[dz_idx]
-    # 节气，没有则取农历日名
+    seed = gday["idx"] + y * 60
+    yi = _pick_yi_ji(seed, _YI_POOL[dz_idx], 4)
+    ji = _pick_yi_ji(seed + 7, _JI_POOL[dz_idx], 4)
+
+    # 节气/节日标签（有则显示，无则空）
     term = _SOLAR_TERMS.get(m, {}).get(d)
+    festival = _FESTIVALS.get(f"{m}-{d}") or _LUNAR_FESTIVALS.get((lunar["month"], lunar["day"]))
+    label = term or festival or ""
+    # 当日建星（每日都有）
     lun_note = _note_for(lunar["month"], lunar["day"])
-    note = term if term else lun_note
+
+    # 农历月份对应的建星（正月建寅，子月起建=建除...）
+    month_branch_month1 = 2  # 正月=寅(索引2)
+    month_dz = (lunar["month"] - 1 + month_branch_month1) % 12
+    jian_idx = (dz_idx - month_dz) % 12
+    jianshen = _JIANCHU[jian_idx]
+
+    moon = _moon_phase(lunar["day"])
+
+    lunar_str = ("闰" if lunar["is_leap"] else "") + _MON_NAMES[lunar["month"] - 1] + "月" + _DAY_NAMES[lunar["day"] - 1]
+
     return {
         "solar": f"{y}年{m}月{d}日",
-        "lunar": ("闰" if lunar["is_leap"] else "") + _MON_NAMES[lunar["month"] - 1] + "月" + _DAY_NAMES[lunar["day"] - 1],
-        "day": f"{d:02d}",
-        "note": note,
+        "solar_dot": f"{y}.{m:02d}.{d:02d}",
+        "lunar": lunar_str,
+        "lunar_month": ("闰" if lunar["is_leap"] else "") + _MON_NAMES[lunar["month"] - 1] + "月",
+        "lunar_day": _DAY_NAMES[lunar["day"] - 1],
+        "day_big": f"{d:02d}",
+        "day_cn": _chinese_num(d),
+        "month_en": MONTH_EN_FULL[m - 1].upper(),
+        "month_num": m,
+        "year_full": str(y),
+        "label": label,
         "ganzhi_year": gyear["full"],
         "ganzhi_day": gday["full"],
         "shengxiao": gyear["shengxiao"],
-        "extra": f"{gday['full']} · 生肖{gyear['shengxiao']} · {note}",
-        "yi": almanac["yi"],
-        "ji": almanac["ji"],
+        "year_nayin": gyear["nayin"],
+        "day_nayin": gday["nayin"],
+        "wuxing": gday["wuxing"],
+        "chongsha": f"{gday['chong']} {gday['sha']}",
+        "jianshen": jianshen + "日",
+        "moon_phase": moon["phase"],
+        "moon_name": moon["name"],
+        "yi": yi,
+        "ji": ji,
         "date": f"{y}.{m:02d}.{d:02d}",
-        "weekday": f"星期{WEEKDAYS[now.weekday()]}",
+        "weekday": f"星期{WEEKDAYS[target.weekday()]}",
+        "weekday_full": _WEEKDAYS_FULL[target.weekday()],
     }
 
 
@@ -468,7 +621,7 @@ def resolve(kind: str, definition_data: dict | None, now: dt.datetime | None = N
     elif kind == "quote":
         result = quote_data(now, params)
     elif kind == "fortune":
-        result = fortune_data(now)
+        result = fortune_data(now, params)
     elif kind == "weather":
         result = weather_data()
     else:
