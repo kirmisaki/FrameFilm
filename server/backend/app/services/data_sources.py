@@ -364,12 +364,20 @@ def countdown_data(definition_data: dict | None, now: dt.datetime | None = None,
     }
 
 
-# 一言 API（与小程序 pages/frame/quote 同源；每次渲染刷新一条，失败回退内置语录）
+# 一言 API（与小程序 pages/frame/quote 同源；拉取后缓存 10 分钟，避免每次渲染阻塞外部请求）
 _HITOKOTO_API = "https://international.v1.hitokoto.cn/?c=d&c=h&c=k&c=i&encode=json"
+_QUOTE_CACHE_TTL = 10 * 60
+
+_quote_cache: dict = {"text": "", "author": "", "ts": 0.0}
 
 
 def _fetch_quote() -> tuple:
-    """拉取一条新一言：{text, author}；异常时用内置语录"""
+    """拉取一条新一言：{text, author}；带 TTL 缓存，异常时回退内置语录"""
+    import time
+
+    now = time.monotonic()
+    if _quote_cache["text"] and now - _quote_cache["ts"] < _QUOTE_CACHE_TTL:
+        return _quote_cache["text"], _quote_cache["author"]
     text, author = "", ""
     try:
         resp = httpx.get(_HITOKOTO_API, timeout=2)
@@ -380,6 +388,7 @@ def _fetch_quote() -> tuple:
         pass
     if not text:
         text = QUOTES[_day_index() % len(QUOTES)]
+    _quote_cache.update(text=text, author=author, ts=now)
     return text, author
 
 

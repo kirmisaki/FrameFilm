@@ -3,13 +3,15 @@
 协议详见 docs/filmhub/design.md §7-§8。
 """
 import datetime as dt
+import hashlib
+import hmac
 import json
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
-from ..config import HEARTBEAT_DEFAULT_INTERVAL, HEARTBEAT_MAX_INTERVAL, HEARTBEAT_MIN_INTERVAL
+from ..config import HEARTBEAT_DEFAULT_INTERVAL, HEARTBEAT_MAX_INTERVAL, HEARTBEAT_MIN_INTERVAL, JWT_SECRET
 from ..db import get_db
 from ..models import Device
 from ..schemas.device import HeartbeatCommand, HeartbeatResponse, HeartbeatResponseData
@@ -17,12 +19,35 @@ from ..services import scheduler
 
 router = APIRouter(prefix="/api/v1/device", tags=["device-proto"])
 
+# 签名 URL 有效期（秒）：设备从心跳收到 download_film 指令到实际下载的窗口
+_SIGNED_URL_TTL = 600
 
-def _authenticate(db: Session, device_id: str, token: str) -> tuple[Device, bool]:
-    """设备认证。返回 (device, is_new)；新设备自动注册并签发 token。
 
-    - 未找到设备：自动注册（is_claimed=0，待认领）
-    - 已注册但 token 不匹配：未认领设备沿用原记录（重复注册），已认领设备拒绝
+def _sign_film_url(device_id: str, exp: int) -> str:
+    """对 (device_id, exp) 计算 HMAC 签名，避免把设备 token 明文拼进 URL"""
+    msg = f"{device_id}:{exp}".encode("utf-8")
+    return hmac.new(JWT_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+
+def _verify_film_url(device_id: str, sig: str, exp: str) -> bool:
+    try:
+        exp_i = int(exp)
+    except (TypeError, ValueError):
+        return False
+    if exp_i < int(dt.datetime.now().timestamp()):
+        return False
+    expected = _sign_film_url(device_id, exp_i)
+    return hmac.compare_digest(expected, sig or "")
+
+
+def _authenticate(db: Session, device_id: str, token: str, strict: bool = False) -> tuple[Device, bool, bool]:
+    """设备认证。返回 (device, is_new, token_changed)。
+
+    - 未找到设备：自动注册（is_claimed=0，待认领），返回新 token
+    - token 为空：补发新 token
+    - token 不匹配：
+      - 非 strict（心跳）：未认领设备放行并补发 token（兼容 NVS 丢失场景）；已认领设备拒绝
+      - strict（film 下载等资源访问）：一律拒绝
     """
     device = db.query(Device).filter(Device.device_id == device_id).first()
     if device is None:
@@ -36,22 +61,28 @@ def _authenticate(db: Session, device_id: str, token: str) -> tuple[Device, bool
         db.add(device)
         db.commit()
         db.refresh(device)
-        return device, True
+        return device, True, True
+    token_changed = False
     if not device.token:
         device.token = secrets.token_hex(16)
+        token_changed = True
+    elif token != device.token:
+        if strict or device.is_claimed:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "设备 token 无效")
+        # 未认领设备：兼容重复注册（设备可能丢了 NVS token），补发新 token
+        device.token = secrets.token_hex(16)
+        token_changed = True
+    if token_changed:
         db.commit()
-    if token != device.token:
-        if not device.is_claimed:
-            # 未认领：沿用原记录（设备可能丢了 NVS token）
-            db.refresh(device)
-            return device, False
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "设备 token 无效")
-    return device, False
+        db.refresh(device)
+    return device, False, token_changed
 
 
 def _film_download_url(request: Request, device: Device) -> str:
     base = str(request.base_url).rstrip("/")
-    return f"{base}/api/v1/device/film/latest.film?device_id={device.device_id}&token={device.token}"
+    exp = int(dt.datetime.now().timestamp()) + _SIGNED_URL_TTL
+    sig = _sign_film_url(device.device_id, exp)
+    return f"{base}/api/v1/device/film/latest.film?device_id={device.device_id}&sig={sig}&exp={exp}"
 
 
 @router.get("/heartbeat", response_model=HeartbeatResponse)
@@ -73,7 +104,7 @@ def heartbeat(
 ):
     if not device_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "缺少 device_id")
-    device, is_new = _authenticate(db, device_id, token)
+    device, is_new, token_changed = _authenticate(db, device_id, token)
 
     # 更新上报字段（设备已有设置参数）
     if battery is not None and 0 <= battery <= 100:
@@ -113,8 +144,8 @@ def heartbeat(
             commands.append(HeartbeatCommand(cmd="set_config", params=cfg))
         device.pending_config = "{}"
 
-    # 2. 服务端主动推送：当前条目变化则下发下载指令
-    if not is_new:
+    # 2. 服务端主动推送：当前条目变化则下发下载指令（token 变更的设备暂不下发）
+    if not is_new and not token_changed:
         need_push, item = scheduler.should_push(db, device)
         if need_push and item is not None:
             commands.append(HeartbeatCommand(
@@ -136,7 +167,7 @@ def heartbeat(
     return HeartbeatResponse(data=HeartbeatResponseData(
         server_time=int(dt.datetime.now().timestamp()),
         heartbeat_interval=device.heartbeat_interval or HEARTBEAT_DEFAULT_INTERVAL,
-        token=device.token if is_new else None,
+        token=device.token if (is_new or token_changed) else None,
         commands=commands,
     ))
 
@@ -146,12 +177,23 @@ def get_latest_film(
     request: Request,
     device_id: str = "",
     token: str = "",
+    sig: str = "",
+    exp: str = "",
     db: Session = Depends(get_db),
 ):
-    """设备 film 获取：按设备类型分辨率渲染轮播当前内容并转换返回"""
+    """设备 film 获取：按设备类型分辨率渲染轮播当前内容并转换返回
+
+    鉴权：优先校验签名 URL（sig+exp，服务端下发），兼容旧版明文 token 方式。
+    """
     if not device_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "缺少 device_id")
-    device, _ = _authenticate(db, device_id, token)
+    if _verify_film_url(device_id, sig, exp):
+        device = db.query(Device).filter(Device.device_id == device_id).first()
+        if device is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "设备不存在")
+    else:
+        # 旧版明文 token 鉴权（严格：token 必须完全匹配）
+        device, _, _ = _authenticate(db, device_id, token, strict=True)
 
     film, item, preview = scheduler.resolve_film_for_device(db, device)
     if film is None:

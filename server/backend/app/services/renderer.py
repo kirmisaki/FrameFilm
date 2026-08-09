@@ -137,25 +137,30 @@ def _resolve_items(value, data: dict) -> list:
     return []
 
 
-def _load_album_image(source: dict, width: int, height: int, now: dt.datetime) -> Image.Image | None:
-    """从相册取照片（支持按时轮流换），按照片显示布局（layout）适配到目标画布"""
+def _load_album_image(source: dict, width: int, height: int, now: dt.datetime,
+                      db: "Session | None" = None) -> Image.Image | None:
+    """从相册取照片（支持按时轮流换），按照片显示布局（layout）适配到目标画布
+
+    db 可传入请求会话复用；为 None 时自建短期会话。
+    """
     import json
 
-    from sqlalchemy.orm import Session
-
-    from ..db import SessionLocal
     from ..models import Album, Photo
 
     album_id = source.get("album_id")
     if not album_id:
         return None
-    session: Session = SessionLocal()
+    own_session = db is None
+    if db is None:
+        from ..db import SessionLocal
+
+        db = SessionLocal()
     layout_raw = "{}"
     try:
-        album = session.get(Album, album_id)
+        album = db.get(Album, album_id)
         if not album:
             return None
-        photos = session.query(Photo).filter(Photo.album_id == album_id).order_by(Photo.sort).all()
+        photos = db.query(Photo).filter(Photo.album_id == album_id).order_by(Photo.sort).all()
         if not photos:
             return None
         rotate_sec = int(source.get("rotate_sec", 0))
@@ -169,7 +174,8 @@ def _load_album_image(source: dict, width: int, height: int, now: dt.datetime) -
         layout_raw = photo.layout or "{}"
         img = Image.open(photo.original_path).convert("RGB")
     finally:
-        session.close()
+        if own_session:
+            db.close()
     try:
         layout = json.loads(layout_raw)
     except (TypeError, ValueError):
@@ -268,8 +274,8 @@ def _render_calendar_grid(draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: 
 
 def render_definition(definition: dict, width: int, height: int,
                       now: dt.datetime | None = None,
-                      force_photo_index: int | None = None,
-                      params: dict | None = None) -> Image.Image:
+                      params: dict | None = None,
+                      db: "Session | None" = None) -> Image.Image:
     """渲染模板定义 -> RGB 图；params 非空时覆盖应用态参数（用于实时预览不落库）"""
     now = now or dt.datetime.now()
     scale = width / REF_WIDTH
@@ -553,7 +559,7 @@ def render_definition(definition: dict, width: int, height: int,
                         src = {**src, k: p[k]}
                 album_id = src.get("album_id") or cur.get("album", {}).get("album_id")
                 if album_id:
-                    img = _load_album_image({**src, "album_id": album_id}, w or width, h or height, now)
+                    img = _load_album_image({**src, "album_id": album_id}, w or width, h or height, now, db)
                     if img is not None:
                         canvas.paste(img, (x, y))
         elif ltype == "table":
@@ -584,8 +590,8 @@ def render_definition(definition: dict, width: int, height: int,
 
 
 def render_template(template, width: int, height: int, now: dt.datetime | None = None,
-                    force_photo_index: int | None = None,
-                    params: dict | None = None) -> Image.Image:
+                    params: dict | None = None,
+                    db: "Session | None" = None) -> Image.Image:
     """渲染 Template ORM 对象（definition 为 JSON 字符串）"""
     definition = json.loads(template.definition or "{}")
-    return render_definition(definition, width, height, now, force_photo_index, params)
+    return render_definition(definition, width, height, now, params, db)

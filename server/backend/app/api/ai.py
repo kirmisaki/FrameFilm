@@ -14,6 +14,7 @@ from ..models import Album, Photo, Template, User
 from ..schemas.ai import AIImageRequest, AISettings, AITemplateRequest
 from ..schemas.template import TemplateOut
 from ..services import ai_client
+from ..services.builtin_templates import _DEFAULT_RC
 from .deps import get_current_user
 
 router = APIRouter(prefix="/api/v1/admin", tags=["ai"])
@@ -87,10 +88,7 @@ async def ai_create_template(body: AITemplateRequest, db: Session = Depends(get_
     t = Template(
         name=name, kind="custom", is_builtin=False,
         definition=json.dumps(definition, ensure_ascii=False),
-        render_config=json.dumps({
-            "dither_type": "floyd_steinberg", "dither_strength": 80,
-            "contrast": 100, "brightness": 0,
-        }),
+        render_config=json.dumps(dict(_DEFAULT_RC), ensure_ascii=False),
     )
     db.add(t)
     db.commit()

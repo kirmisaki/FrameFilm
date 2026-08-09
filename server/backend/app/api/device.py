@@ -22,9 +22,8 @@ from .deps import get_current_user
 router = APIRouter(prefix="/api/v1/admin/devices", tags=["devices"])
 
 
-def _playing_template(db: Session, d: Device, now: dt.datetime) -> tuple[int, str]:
+def _playing_template(db: Session, stream, d: Device, now: dt.datetime) -> tuple[int, str]:
     """按生效轮播流推断设备当前播放的模板 (template_id, template_name)；无返回 (0, "")"""
-    stream = active_stream(db)
     if not stream:
         return 0, ""
     if stream.mode == "device_pull":
@@ -39,14 +38,14 @@ def _playing_template(db: Session, d: Device, now: dt.datetime) -> tuple[int, st
     return t.id, t.name
 
 
-def _device_out(d: Device, db: Session) -> DeviceOut:
+def _device_out(d: Device, db: Session, stream) -> DeviceOut:
     online = False
     if d.last_heartbeat_at is not None:
         interval = d.heartbeat_interval or HEARTBEAT_DEFAULT_INTERVAL
         online = (dt.datetime.now() - d.last_heartbeat_at).total_seconds() <= ONLINE_FACTOR * interval
     template_id, template_name = (0, "")
     if d.is_claimed:
-        template_id, template_name = _playing_template(db, d, dt.datetime.now())
+        template_id, template_name = _playing_template(db, stream, d, dt.datetime.now())
     return DeviceOut(
         id=d.id, device_id=d.device_id, name=d.name, device_type=d.device_type,
         token=d.token, is_claimed=d.is_claimed,
@@ -69,7 +68,9 @@ def _get_device(db: Session, device_id: int) -> Device:
 
 @router.get("", response_model=list[DeviceOut])
 def list_devices(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return [_device_out(d, db) for d in db.query(Device).order_by(Device.id).all()]
+    # 轮播流只查一次，避免逐设备重复查询（N+1）
+    stream = active_stream(db)
+    return [_device_out(d, db, stream) for d in db.query(Device).order_by(Device.id).all()]
 
 
 @router.post("/{device_id}/claim", response_model=DeviceOut)
@@ -85,7 +86,7 @@ def claim_device(
     d.is_claimed = True
     db.commit()
     db.refresh(d)
-    return _device_out(d, db)
+    return _device_out(d, db, active_stream(db))
 
 
 @router.put("/{device_id}", response_model=DeviceOut)
@@ -101,7 +102,7 @@ def update_device(
         setattr(d, k, v)
     db.commit()
     db.refresh(d)
-    return _device_out(d, db)
+    return _device_out(d, db, active_stream(db))
 
 
 @router.delete("/{device_id}")
@@ -127,7 +128,7 @@ def reset_token(
     d.is_claimed = False  # 需重新认领
     db.commit()
     db.refresh(d)
-    return _device_out(d, db)
+    return _device_out(d, db, active_stream(db))
 
 
 @router.post("/{device_id}/set-config")
@@ -178,10 +179,11 @@ def sync_film(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """立即推送最新 film：向设备下发 download_film 指令"""
+    """立即推送最新 film：向设备下发 download_film 指令（URL 使用短期签名，不携带明文 token）"""
     d = _get_device(db, device_id)
-    base = str(request.base_url).rstrip("/")
-    url = f"{base}/api/v1/device/film/latest.film?device_id={d.device_id}&token={d.token}"
+    from .device_proto import _film_download_url
+
+    url = _film_download_url(request, d)
     try:
         queue = json.loads(d.pending_commands or "[]")
     except json.JSONDecodeError:

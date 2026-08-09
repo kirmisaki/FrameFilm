@@ -20,13 +20,32 @@ HOST = os.getenv("FILMHUB_HOST", "0.0.0.0")
 PORT = int(os.getenv("FILMHUB_PORT", "8000"))
 
 # 安全
-JWT_SECRET = os.getenv("FILMHUB_SECRET", "filmhub-dev-secret-change-me")
+def _load_or_create_secret() -> str:
+    """JWT 密钥：优先环境变量；否则使用持久化的随机密钥（首次生成后落盘），
+    避免默认硬编码密钥导致可伪造 token。"""
+    env = os.getenv("FILMHUB_SECRET")
+    if env:
+        return env
+    secret_file = DATA_DIR / "jwt_secret"
+    if secret_file.exists():
+        return secret_file.read_text(encoding="utf-8").strip()
+    import secrets as _secrets
+
+    secret = _secrets.token_hex(32)
+    secret_file.write_text(secret, encoding="utf-8")
+    print(f"[config] 已生成 JWT 密钥并保存至 {secret_file}")
+    return secret
+
+
+JWT_SECRET = _load_or_create_secret()
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
 
-# 默认管理员（首次启动自动创建）
+# 默认管理员（首次启动自动创建；生产环境务必通过环境变量覆盖）
 DEFAULT_ADMIN_USERNAME = os.getenv("FILMHUB_ADMIN", "admin")
 DEFAULT_ADMIN_PASSWORD = os.getenv("FILMHUB_ADMIN_PASSWORD", "filmhub")
+if not os.getenv("FILMHUB_ADMIN_PASSWORD") and os.getenv("FILMHUB_ADMIN") is None:
+    print("[config] 警告：正在使用默认管理员密码（admin/filmhub），请设置 FILMHUB_ADMIN_PASSWORD 环境变量")
 
 # 屏幕配置（设备类型 -> 分辨率参数，对齐小程序 film-utils.js DEVICE_CONFIGS）
 # - canvas_w/h：渲染/模板画布（竖屏，用户创作视角）

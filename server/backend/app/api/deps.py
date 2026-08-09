@@ -21,7 +21,11 @@ def get_current_user(
         payload = decode_jwt(cred.credentials)
     except jwt.PyJWTError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "登录已过期，请重新登录")
-    user = db.get(User, int(payload.get("sub", 0)))
+    try:
+        user_id = int(payload.get("sub", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "登录状态已失效")
+    user = db.get(User, user_id)
     if user is None or payload.get("ver") != user.ver:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "登录状态已失效")
     return user

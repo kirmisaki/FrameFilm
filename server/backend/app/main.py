@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from .api import ai, album, auth, device, device_proto, settings as settings_api, stream, template
+from .api.deps import get_current_user
 from .config import DATA_DIR, DEFAULT_ADMIN_PASSWORD, DEFAULT_ADMIN_USERNAME, WEB_DIST_DIR
 from .db import SessionLocal, get_db, init_db
 from .models import Album, Device, Stream, Template, User
@@ -33,12 +34,24 @@ def seed_admin():
 
 
 def _core_definition(d: dict) -> dict:
-    """剔除 data 后的模板结构（内置模板结构锁与升级比较用）"""
-    return {k: v for k, v in d.items() if k != "data"}
+    """剔除 data 与图层相册绑定后的模板结构（内置模板结构锁与升级比较用）"""
+    core = {k: v for k, v in d.items() if k != "data"}
+    layers = []
+    for layer in core.get("layers", []):
+        if isinstance(layer, dict):
+            l = dict(layer)
+            src = l.get("source")
+            if isinstance(src, dict):
+                l["source"] = {k: v for k, v in src.items() if k != "album_id"}
+            layers.append(l)
+        else:
+            layers.append(layer)
+    core["layers"] = layers
+    return core
 
 
 def _merge_old_data(old_def: dict, new_def: dict) -> dict:
-    """内置模板升级：保留旧应用态参数（仍在新 params 定义中的 key）与相册绑定"""
+    """内置模板升级：保留旧应用态参数（仍在新 params 定义中的 key）、相册绑定（data.album 与图层 source.album_id）"""
     import copy
 
     merged = copy.deepcopy(new_def)
@@ -53,6 +66,16 @@ def _merge_old_data(old_def: dict, new_def: dict) -> dict:
     }
     if "album" in old_data:
         merged["data"]["album"] = old_data["album"]
+    # 保留旧版图层中的相册绑定（按图层位置对齐）
+    old_layers = (old_def or {}).get("layers") if isinstance((old_def or {}).get("layers"), list) else []
+    new_layers = merged.get("layers") if isinstance(merged.get("layers"), list) else []
+    for i, nl in enumerate(new_layers):
+        if not isinstance(nl, dict) or i >= len(old_layers):
+            continue
+        ol = old_layers[i]
+        ns, os_ = nl.get("source"), ol.get("source")
+        if isinstance(ns, dict) and isinstance(os_, dict) and os_.get("album_id") is not None:
+            ns["album_id"] = os_["album_id"]
     return merged
 
 
@@ -108,13 +131,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="film-hub", version="0.1.0", lifespan=lifespan)
 
-# 局域网跨域（开发期前端 vite dev server 直连）
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS：默认仅同源（前端由本服务托管，无需跨域）。
+# 开发期 vite dev server 直连时通过环境变量 FILMHUB_CORS 指定允许来源（逗号分隔），如:
+#   FILMHUB_CORS=http://localhost:5173,http://127.0.0.1:5173
+import os as _os
+
+_cors_origins = [o.strip() for o in _os.getenv("FILMHUB_CORS", "").split(",") if o.strip()]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 @app.middleware("http")
@@ -137,7 +166,7 @@ app.include_router(device_proto.router)
 
 
 @app.get("/api/v1/admin/stats/dashboard")
-def dashboard(db: Session = Depends(get_db)):
+def dashboard(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     return {
         "devices": db.query(Device).count(),
         "albums": db.query(Album).count(),
@@ -147,7 +176,7 @@ def dashboard(db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/admin/system/info")
-def system_info():
+def system_info(_: User = Depends(get_current_user)):
     import datetime as dt
     import sys
 

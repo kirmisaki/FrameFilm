@@ -47,6 +47,9 @@ def build_timeline(stream: Stream, now: dt.datetime):
             cursor = start + duration
         else:
             start = cursor
+            # 最后一个 absolute 锚点后相对条目已跨日：当日不再排程（不产生不可达段）
+            if start >= end_of_day:
+                continue
             duration = max(1, it.duration_sec or 30)
             nxt = next((s for s in abs_starts if s > start), None)
             if nxt is not None and start + duration > nxt:
@@ -67,7 +70,7 @@ def current_item(stream: Stream, now: dt.datetime):
             return it, t - start
     if t < segments[0][0]:
         return None, None  # 首条绝对锚点尚未到
-    return segments[-1][2], t - segments[-1][0]  # 超出末尾保持最后一条
+    return segments[-1][2], max(0, t - segments[-1][0])  # 超出末尾保持最后一条
 
 
 def resolve_film_for_device(db: Session, device, now: dt.datetime | None = None):
@@ -93,7 +96,7 @@ def resolve_film_for_device(db: Session, device, now: dt.datetime | None = None)
 
     scr = SCREENS.get(device.device_type, SCREENS["basic"])
     rc = json.loads(template.render_config or "{}")
-    img = renderer.render_template(template, scr["canvas_w"], scr["canvas_h"], now)
+    img = renderer.render_template(template, scr["canvas_w"], scr["canvas_h"], now, db=db)
     film, preview = film_convert.convert_for_device(img, device.device_type, rc)
     return film, item, preview
 
@@ -157,4 +160,15 @@ def advance_pull(db: Session, stream: Stream, device, now: dt.datetime):
 def record_push(db: Session, device, item, film_path: str, method: str):
     db.add(PushRecord(device_id=device.id, stream_item_id=item.id if item else None,
                       film_path=film_path, method=method))
+    # 控制 push_records 表膨胀：每设备仅保留最近 1000 条
+    over = (
+        db.query(PushRecord.id)
+        .filter(PushRecord.device_id == device.id)
+        .order_by(PushRecord.id.desc())
+        .offset(1000)
+        .all()
+    )
+    if over:
+        db.query(PushRecord).filter(PushRecord.id.in_([r[0] for r in over])).delete(
+            synchronize_session=False)
     db.commit()

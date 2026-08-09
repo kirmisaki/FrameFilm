@@ -86,6 +86,13 @@ def delete_stream(stream_id: int, db: Session = Depends(get_db), _: User = Depen
     return {"msg": "已删除轮播流"}
 
 
+def _normalize_start_at(v):
+    """absolute 条目只存时刻（date 固定为当日 2000-01-01），create/update 行为一致"""
+    if v is None:
+        return None
+    return v.replace(year=2000, month=1, day=1)
+
+
 @router.post("/{stream_id}/items", response_model=StreamItemOut)
 def add_item(stream_id: int, body: StreamItemCreate, db: Session = Depends(get_db),
              _: User = Depends(get_current_user)):
@@ -96,7 +103,7 @@ def add_item(stream_id: int, body: StreamItemCreate, db: Session = Depends(get_d
     it = StreamItem(
         stream_id=stream_id, template_id=body.template_id, position=pos,
         schedule_type=body.schedule_type, duration_sec=body.duration_sec,
-        start_at=body.start_at, enabled=body.enabled,
+        start_at=_normalize_start_at(body.start_at), enabled=body.enabled,
     )
     db.add(it)
     db.commit()
@@ -114,9 +121,8 @@ def update_item(stream_id: int, item_id: int, body: StreamItemUpdate,
     data = body.model_dump(exclude_unset=True)
     if "template_id" in data and db.get(Template, data["template_id"]) is None:
         raise HTTPException(404, "模板不存在")
-    if "start_at" in data and data["start_at"] is not None:
-        data["start_at"] = data["start_at"].replace(
-            year=2000, month=1, day=1)  # 绝对条目只存时刻（date 固定为当日）
+    if "start_at" in data:
+        data["start_at"] = _normalize_start_at(data["start_at"])  # 绝对条目只存时刻
     for k, v in data.items():
         setattr(it, k, v)
     db.commit()

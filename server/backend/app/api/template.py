@@ -35,10 +35,11 @@ def _get_template(db: Session, template_id: int) -> Template:
     return t
 
 
-def _render_and_cache(t: Template, width: int, height: int, scale: float = 0.8) -> bytes:
+def _render_and_cache(t: Template, width: int, height: int, scale: float = 0.8,
+                      db: Session | None = None) -> bytes:
     """渲染模板 -> 转换 -> 返回 preview PNG（scale 为预览倍率，0.8/1.0 分别对应快速/设备分辨率封面）"""
     rc = json.loads(t.render_config or "{}")
-    img = renderer.render_template(t, width, height)
+    img = renderer.render_template(t, width, height, db=db)
     _, preview = film_convert.convert_image(img, width, height, rc, preview_scale=scale)
     # 缩略图缓存
     thumb_path = THUMBS_DIR / f"tpl_{t.id}.png"
@@ -73,20 +74,6 @@ def create_template(body: TemplateCreate, db: Session = Depends(get_db),
     return _template_out(t)
 
 
-def _core_definition(d: dict) -> dict:
-    """剔除数据配置后剩余的模板结构（用于内置模板结构校验）"""
-    core = {k: v for k, v in d.items() if k != "data"}
-    layers = []
-    for layer in core.get("layers", []):
-        l = dict(layer)
-        src = l.get("source")
-        if isinstance(src, dict):
-            l["source"] = {k: v for k, v in src.items() if k != "album_id"}
-        layers.append(l)
-    core["layers"] = layers
-    return core
-
-
 @router.put("/{template_id}", response_model=TemplateOut)
 def update_template(template_id: int, body: TemplateUpdate, db: Session = Depends(get_db),
                     _: User = Depends(get_current_user)):
@@ -94,7 +81,10 @@ def update_template(template_id: int, body: TemplateUpdate, db: Session = Depend
     data = body.model_dump(exclude_unset=True)
     if t.is_builtin:
         # 内置模板：结构由代码锁定，不接受前端修改 layers/background/kind/params/schemes 等结构字段；
-        # 仅允许更新：① data.params（应用态参数）② 各图层 source.album_id（相册绑定）③ render_config/name
+        # 仅允许更新：① data.params（应用态参数）② 各图层 source.album_id（相册绑定）③ render_config
+        # 名称也不可改：seed 按 name 匹配内置模板，改名会导致重启后重复创建
+        if "name" in data and data["name"] != t.name:
+            raise HTTPException(400, "内置模板不可改名")
         if "definition" in data:
             incoming = data["definition"] or {}
             cur_def = json.loads(t.definition or "{}")
@@ -163,7 +153,7 @@ def preview_template(
     s_key = f"s{int(round(scale * 100))}"
     preview_path = PREVIEWS_DIR / f"tpl_{t.id}_{device_type}_{s_key}.png"
     if not preview_path.exists() or refresh:
-        png = _render_and_cache(t, scr["canvas_w"], scr["canvas_h"], scale)
+        png = _render_and_cache(t, scr["canvas_w"], scr["canvas_h"], scale, db)
         preview_path.write_bytes(png)
     return Response(content=preview_path.read_bytes(), media_type="image/png")
 
@@ -182,7 +172,7 @@ def preview_template_with_params(
         raise HTTPException(400, "device_type 必须是 basic 或 pro")
     t = _get_template(db, template_id)
     scr = SCREENS[device_type]
-    img = renderer.render_template(t, scr["canvas_w"], scr["canvas_h"], params=body.get("params"))
+    img = renderer.render_template(t, scr["canvas_w"], scr["canvas_h"], params=body.get("params"), db=db)
     rc = json.loads(t.render_config or "{}")
     if isinstance(body.get("render_config"), dict):
         rc = {**rc, **body["render_config"]}

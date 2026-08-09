@@ -26,6 +26,8 @@ router = APIRouter(prefix="/api/v1/admin", tags=["albums"])
 
 ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 THUMB_WIDTH = 320  # 缩略图宽度
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 单文件大小上限 20MB
+MAX_IMAGE_PIXELS = 40_000_000  # 解压炸弹防护：解码像素上限 4000 万
 
 
 def _photo_out(p: Photo) -> PhotoOut:
@@ -129,13 +131,27 @@ async def upload_photos(
         ext = os.path.splitext(f.filename or "")[1].lower()
         if ext not in ALLOWED_EXT:
             continue
-        raw = await f.read()
+        # 大小上限：分块读取，超限即拒绝
+        raw = bytearray()
+        while True:
+            chunk = await f.read(1024 * 1024)
+            if not chunk:
+                break
+            raw.extend(chunk)
+            if len(raw) > MAX_UPLOAD_BYTES:
+                raise HTTPException(413, f"文件超过大小上限 {MAX_UPLOAD_BYTES // 1024 // 1024}MB")
         if not raw:
             continue
         try:
-            img = Image.open(io.BytesIO(raw))
-            img.load()
-            img = img.convert("RGB")
+            with Image.open(io.BytesIO(raw)) as img:
+                # 解压炸弹防护：限制解码像素量
+                if img.width * img.height > MAX_IMAGE_PIXELS:
+                    raise HTTPException(413, "图片尺寸过大")
+                img.load()
+                img = img.convert("RGB")
+                width, height = img.width, img.height
+        except HTTPException:
+            raise
         except Exception:
             continue
 
