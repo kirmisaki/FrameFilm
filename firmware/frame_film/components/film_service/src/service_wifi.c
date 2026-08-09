@@ -29,6 +29,8 @@
  * INCLUDES
  */
 #include <string.h>
+#include <stdio.h>
+#include <sys/time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -38,8 +40,11 @@
 #include "esp_http_client.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "cJSON.h"
 
 #include "sys_log.h"
+#include "sys_com.h"
+#include "hal_bat.h"
 #include "service_param.h"
 #include "service_file.h"
 #include "service_wifi.h"
@@ -136,6 +141,9 @@ void service_wifi_init(void)
     g_wifi_initialized = true;
 
     sys_logi(WIFI_SERVICE_TAG, "WiFi initialized");
+
+    // 启动心跳任务（内部等待 WiFi 连接后再上报）
+    service_wifi_heartbeat_start();
 
     if(strlen(g_service_param.network.wifi_ssid) > 0)
     {
@@ -354,23 +362,33 @@ static esp_err_t wifi_http_event_handler(esp_http_client_event_t *evt)
 
 /**
  * [wifi_download_task 下载任务]
+ * @param pvParameters 下载 URL（strdup 拷贝，任务结束负责释放）
  */
 static void wifi_download_task(void *pvParameters)
 {
-    const char *url = g_service_param.network.film_api_url;
+    const char *url = (const char *)pvParameters;
 
-    if(strlen(url) == 0)
+    if(url == NULL || strlen(url) == 0)
     {
-        sys_loge(WIFI_SERVICE_TAG, "Film API URL is empty");
+        sys_loge(WIFI_SERVICE_TAG, "Download URL is empty");
         g_download_state = WIFI_DOWNLOAD_ERROR;
+        free((void *)url);
         vTaskDelete(NULL);
         return;
     }
 
-    // 从 URL 提取文件名
+    // 从 URL 提取文件名（截断查询参数 ?...，如 latest.film?device_id=... 取 latest.film）
     const char *last_slash = strrchr(url, '/');
     const char *filename = last_slash ? (last_slash + 1) : "download.film";
-    strncpy(g_download_filename, filename, sizeof(g_download_filename) - 1);
+    const char *query = strchr(filename, '?');
+    size_t fname_len = query ? (size_t)(query - filename) : strlen(filename);
+    if(fname_len <= 0 || fname_len >= sizeof(g_download_filename))
+    {
+        fname_len = strlen("download.film");
+        filename = "download.film";
+    }
+    memcpy(g_download_filename, filename, fname_len);
+    g_download_filename[fname_len] = '\0';
 
     esp_http_client_config_t config = {
         .url = url,
@@ -399,11 +417,12 @@ static void wifi_download_task(void *pvParameters)
     }
 
     esp_http_client_cleanup(client);
+    free((void *)url);
     vTaskDelete(NULL);
 }
 
 /**
- * [service_wifi_download_start 开始下载film文件]
+ * [service_wifi_download_start 开始下载film文件（使用配置的 film_api_url）]
  */
 void service_wifi_download_start(void)
 {
@@ -431,10 +450,51 @@ void service_wifi_download_start(void)
         return;
     }
 
+    service_wifi_download_url(g_service_param.network.film_api_url);
+}
+
+/**
+ * [service_wifi_download_url 按指定 URL 开始下载film文件]
+ */
+void service_wifi_download_url(const char *url)
+{
+    if(!g_service_param.network.wifi_enable)
+    {
+        sys_logw(WIFI_SERVICE_TAG, "WiFi disabled, cannot download");
+        return;
+    }
+
+    if(!g_wifi_connected)
+    {
+        sys_logw(WIFI_SERVICE_TAG, "WiFi not connected, cannot download");
+        return;
+    }
+
+    if(g_download_state == WIFI_DOWNLOAD_DOWNLOADING)
+    {
+        sys_logw(WIFI_SERVICE_TAG, "Download already in progress");
+        return;
+    }
+
+    if(url == NULL || strlen(url) == 0)
+    {
+        sys_logw(WIFI_SERVICE_TAG, "Download URL is empty");
+        return;
+    }
+
+    char *url_copy = strdup(url);
+    if(url_copy == NULL)
+    {
+        sys_loge(WIFI_SERVICE_TAG, "Failed to alloc download URL");
+        g_download_state = WIFI_DOWNLOAD_ERROR;
+        return;
+    }
+
     // 创建下载任务
-    if(pdPASS != xTaskCreate(wifi_download_task, "wifi_dl", 4096, NULL, 5, NULL))
+    if(pdPASS != xTaskCreate(wifi_download_task, "wifi_dl", 4096, url_copy, 5, NULL))
     {
         sys_loge(WIFI_SERVICE_TAG, "Failed to create download task");
+        free(url_copy);
         g_download_state = WIFI_DOWNLOAD_ERROR;
     }
 }
@@ -484,5 +544,343 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         sys_logi(WIFI_SERVICE_TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         g_wifi_connected = true;
+    }
+}
+
+/*********************************************************************
+ * 心跳（film-hub 服务端适配：定时上报 + 指令下发执行）
+ *********************************************************************/
+#define HEARTBEAT_RESP_MAX  2048
+#define HEARTBEAT_URL_MAX   512
+
+static TaskHandle_t g_heartbeat_task_hdl = NULL;
+static char g_heartbeat_resp[HEARTBEAT_RESP_MAX];
+static int g_heartbeat_resp_len = 0;
+
+/**
+ * [heartbeat_http_event_handler 心跳响应收集]
+ */
+static esp_err_t heartbeat_http_event_handler(esp_http_client_event_t *evt)
+{
+    switch(evt->event_id)
+    {
+    case HTTP_EVENT_ON_DATA:
+        if(evt->data_len > 0 && g_heartbeat_resp_len + evt->data_len < (int)sizeof(g_heartbeat_resp))
+        {
+            memcpy(g_heartbeat_resp + g_heartbeat_resp_len, evt->data, evt->data_len);
+            g_heartbeat_resp_len += evt->data_len;
+        }
+        break;
+    case HTTP_EVENT_ON_FINISH:
+    case HTTP_EVENT_DISCONNECTED:
+        g_heartbeat_resp[g_heartbeat_resp_len] = '\0';
+        break;
+    default:
+        break;
+    }
+    return ESP_OK;
+}
+
+/**
+ * [wifi_heartbeat_exec_cmd 执行服务端下发的单条指令]
+ */
+static void wifi_heartbeat_exec_cmd(cJSON *cmd)
+{
+    cJSON *cmd_name = cJSON_GetObjectItem(cmd, "cmd");
+    cJSON *params = cJSON_GetObjectItem(cmd, "params");
+    if(!cJSON_IsString(cmd_name) || cmd_name->valuestring == NULL)
+    {
+        return;
+    }
+    const char *name = cmd_name->valuestring;
+
+    if(strcmp(name, "download_film") == 0)
+    {
+        cJSON *url = params ? cJSON_GetObjectItem(params, "url") : NULL;
+        if(cJSON_IsString(url) && url->valuestring != NULL && url->valuestring[0] != '\0')
+        {
+            sys_logi(WIFI_SERVICE_TAG, "Heartbeat cmd: download_film");
+            service_wifi_download_url(url->valuestring);
+        }
+    }
+    else if(strcmp(name, "set_config") == 0)
+    {
+        bool changed = false;
+        if(cJSON_IsObject(params))
+        {
+            cJSON *item = NULL;
+            item = cJSON_GetObjectItem(params, "play_mode");
+            if(cJSON_IsNumber(item) && (item->valueint == 0 || item->valueint == 1 || item->valueint == 2))
+            {
+                if(g_service_param.film.play_mode != (uint8_t)item->valueint)
+                {
+                    g_service_param.film.play_mode = (uint8_t)item->valueint;
+                    changed = true;
+                }
+            }
+            item = cJSON_GetObjectItem(params, "wifi_enable");
+            if(cJSON_IsNumber(item) && (item->valueint == 0 || item->valueint == 1))
+            {
+                if(g_service_param.network.wifi_enable != (uint8_t)item->valueint)
+                {
+                    g_service_param.network.wifi_enable = (uint8_t)item->valueint;
+                    changed = true;
+                    if(g_service_param.network.wifi_enable)
+                    {
+                        service_wifi_init();
+                    }
+                    else
+                    {
+                        service_wifi_disconnect();
+                    }
+                }
+            }
+            item = cJSON_GetObjectItem(params, "sleep_mode");
+            if(cJSON_IsNumber(item) && (item->valueint == 0 || item->valueint == 1))
+            {
+                if(g_service_param.sleep.sleep_mode != (uint8_t)item->valueint)
+                {
+                    g_service_param.sleep.sleep_mode = (uint8_t)item->valueint;
+                    changed = true;
+                }
+            }
+            item = cJSON_GetObjectItem(params, "sleep_auto");
+            if(cJSON_IsNumber(item) && (item->valueint == 0 || item->valueint == 1))
+            {
+                if(g_service_param.sleep.sleep_auto != (uint8_t)item->valueint)
+                {
+                    g_service_param.sleep.sleep_auto = (uint8_t)item->valueint;
+                    changed = true;
+                }
+            }
+            item = cJSON_GetObjectItem(params, "sleep_time");
+            if(cJSON_IsNumber(item) && item->valueint >= 10 && item->valueint <= 2880)
+            {
+                if(g_service_param.sleep.sleep_time != (uint16_t)item->valueint)
+                {
+                    g_service_param.sleep.sleep_time = (uint16_t)item->valueint;
+                    changed = true;
+                }
+            }
+            item = cJSON_GetObjectItem(params, "ble_enable");
+            if(cJSON_IsNumber(item) && (item->valueint == 0 || item->valueint == 1))
+            {
+                if(g_service_param.ble.ble_enable != (uint8_t)item->valueint)
+                {
+                    g_service_param.ble.ble_enable = (uint8_t)item->valueint;
+                    changed = true;
+                }
+            }
+        }
+        if(changed)
+        {
+            sys_logi(WIFI_SERVICE_TAG, "Heartbeat cmd: set_config applied");
+            service_param_save();
+        }
+    }
+    else if(strcmp(name, "set_heartbeat") == 0)
+    {
+        cJSON *interval = params ? cJSON_GetObjectItem(params, "interval") : NULL;
+        if(cJSON_IsNumber(interval) && interval->valueint >= 5 && interval->valueint <= 180)
+        {
+            sys_logi(WIFI_SERVICE_TAG, "Heartbeat cmd: set_heartbeat %d", interval->valueint);
+            g_service_param.network.film_heartbeat_interval = (uint8_t)interval->valueint;
+            service_param_save();
+        }
+    }
+    else if(strcmp(name, "sync_time") == 0)
+    {
+        cJSON *ts = params ? cJSON_GetObjectItem(params, "timestamp") : NULL;
+        if(cJSON_IsNumber(ts) && ts->valuedouble > 0)
+        {
+            struct timeval tv = { .tv_sec = (time_t)ts->valuedouble, .tv_usec = 0 };
+            settimeofday(&tv, NULL);
+            sys_logi(WIFI_SERVICE_TAG, "Heartbeat cmd: sync_time");
+        }
+    }
+    else if(strcmp(name, "reboot") == 0)
+    {
+        sys_logi(WIFI_SERVICE_TAG, "Heartbeat cmd: reboot");
+        vTaskDelay(pdMS_TO_TICKS(100));
+        sys_reboot();
+    }
+    // clear_files 等其它指令：暂不支持，忽略
+}
+
+/**
+ * [wifi_heartbeat_parse 解析心跳响应：token / 间隔 / 指令]
+ */
+static void wifi_heartbeat_parse(const char *body)
+{
+    cJSON *root = cJSON_Parse(body);
+    if(root == NULL)
+    {
+        sys_logw(WIFI_SERVICE_TAG, "Heartbeat response parse failed");
+        return;
+    }
+
+    cJSON *data = cJSON_GetObjectItem(root, "data");
+    if(!cJSON_IsObject(data))
+    {
+        cJSON_Delete(root);
+        return;
+    }
+
+    // 首次心跳（或 token 轮换）下发 token
+    cJSON *token = cJSON_GetObjectItem(data, "token");
+    if(cJSON_IsString(token) && token->valuestring != NULL && token->valuestring[0] != '\0')
+    {
+        if(strcmp(token->valuestring, g_service_param.network.film_token) != 0)
+        {
+            strncpy(g_service_param.network.film_token, token->valuestring,
+                    sizeof(g_service_param.network.film_token) - 1);
+            sys_logi(WIFI_SERVICE_TAG, "Heartbeat token updated");
+            service_param_save();
+        }
+    }
+
+    // 服务端可动态调整心跳间隔
+    cJSON *interval = cJSON_GetObjectItem(data, "heartbeat_interval");
+    if(cJSON_IsNumber(interval) && interval->valueint >= 5 && interval->valueint <= 180)
+    {
+        if(g_service_param.network.film_heartbeat_interval != (uint8_t)interval->valueint)
+        {
+            g_service_param.network.film_heartbeat_interval = (uint8_t)interval->valueint;
+            service_param_save();
+        }
+    }
+
+    // 指令下发
+    cJSON *cmds = cJSON_GetObjectItem(data, "commands");
+    if(cJSON_IsArray(cmds))
+    {
+        int count = cJSON_GetArraySize(cmds);
+        for(int i = 0; i < count; i++)
+        {
+            cJSON *cmd = cJSON_GetArrayItem(cmds, i);
+            wifi_heartbeat_exec_cmd(cmd);
+        }
+    }
+
+    cJSON_Delete(root);
+}
+
+/**
+ * [wifi_heartbeat_once 单次心跳请求]
+ */
+static void wifi_heartbeat_once(void)
+{
+    char url[HEARTBEAT_URL_MAX];
+    char auto_hb[192] = "";
+    const char *hb_base = g_service_param.network.film_heartbeat_url;
+
+    // 心跳地址：优先使用已配置的完整心跳接口；否则由服务器 API 地址自动拼接
+    // （只配置一个 API 地址即可，如 http://192.168.1.219:8000）
+    if(strstr(hb_base, "/api/v1/device/heartbeat") == NULL)
+    {
+        const char *api = g_service_param.network.film_api_url;
+        int alen = (int)strlen(api);
+        while(alen > 0 && api[alen - 1] == '/') alen--;  // 去掉末尾斜杠
+        if(alen <= 0)
+        {
+            sys_logw(WIFI_SERVICE_TAG, "No API URL configured, skip heartbeat");
+            return;
+        }
+        snprintf(auto_hb, sizeof(auto_hb), "%.*s/api/v1/device/heartbeat", alen, api);
+        hb_base = auto_hb;
+    }
+
+    const char *token = g_service_param.network.film_token;
+
+    int n = snprintf(url, sizeof(url),
+        "%s?device_id=%s&token=%s&battery=%d&play_mode=%d&wifi_enable=%d"
+        "&sleep_mode=%d&sleep_auto=%d&sleep_time=%d&ble_enable=%d"
+        "&current_file_id=%lu&state=idle&heartbeat_interval=%d",
+        hb_base,
+        g_service_param.network.film_device_id,
+        (token != NULL && token[0] != '\0') ? token : "",
+        hal_bat_get_percent(),
+        g_service_param.film.play_mode,
+        g_service_param.network.wifi_enable,
+        g_service_param.sleep.sleep_mode,
+        g_service_param.sleep.sleep_auto,
+        g_service_param.sleep.sleep_time,
+        g_service_param.ble.ble_enable,
+        g_service_param.film.current_file_id,
+        g_service_param.network.film_heartbeat_interval);
+
+    if(n <= 0 || n >= (int)sizeof(url))
+    {
+        sys_logw(WIFI_SERVICE_TAG, "Heartbeat URL too long");
+        return;
+    }
+
+    g_heartbeat_resp_len = 0;
+    g_heartbeat_resp[0] = '\0';
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = heartbeat_http_event_handler,
+        .timeout_ms = 10000,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if(client == NULL)
+    {
+        sys_loge(WIFI_SERVICE_TAG, "Heartbeat http client init failed");
+        return;
+    }
+
+    esp_err_t err = esp_http_client_perform(client);
+    if(err == ESP_OK)
+    {
+        wifi_heartbeat_parse(g_heartbeat_resp);
+    }
+    else
+    {
+        sys_logw(WIFI_SERVICE_TAG, "Heartbeat request failed: %d", err);
+    }
+
+    esp_http_client_cleanup(client);
+}
+
+/**
+ * [wifi_heartbeat_task 心跳任务：WiFi 连接后定时上报]
+ */
+static void wifi_heartbeat_task(void *pvParameters)
+{
+    for(;;)
+    {
+        // 有 API 地址（用于拼接心跳接口）即视为已配置
+        if(g_wifi_connected && strlen(g_service_param.network.film_api_url) > 0)
+        {
+            wifi_heartbeat_once();
+        }
+
+        uint32_t interval = g_service_param.network.film_heartbeat_interval;
+        if(interval < 5) interval = 5;
+        if(interval > 180) interval = 180;
+        vTaskDelay(pdMS_TO_TICKS(interval * 1000));
+    }
+    vTaskDelete(NULL);
+}
+
+/**
+ * [service_wifi_heartbeat_start 启动心跳任务]
+ */
+void service_wifi_heartbeat_start(void)
+{
+    if(g_heartbeat_task_hdl != NULL)
+    {
+        return;
+    }
+
+    if(pdPASS != xTaskCreate(wifi_heartbeat_task, "wifi_hb", 4096, NULL, 4, &g_heartbeat_task_hdl))
+    {
+        sys_loge(WIFI_SERVICE_TAG, "Failed to create heartbeat task");
+    }
+    else
+    {
+        sys_logi(WIFI_SERVICE_TAG, "Heartbeat task started");
     }
 }

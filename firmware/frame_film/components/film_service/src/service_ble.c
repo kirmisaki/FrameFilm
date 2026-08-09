@@ -865,6 +865,60 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
             break;
         }
+        case BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL : // HTTP心跳地址设置
+        {
+            if(cmd->len > 0 && cmd->len < sizeof(g_service_param.network.film_heartbeat_url))
+            {
+                memset(g_service_param.network.film_heartbeat_url, 0, sizeof(g_service_param.network.film_heartbeat_url));
+                memcpy(g_service_param.network.film_heartbeat_url, cmd->pdata, cmd->len);
+                sys_logi(BEL_SERVICE_TAG, "Set heartbeat URL: %s", g_service_param.network.film_heartbeat_url);
+                service_param_save();
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET : // HTTP心跳地址查询
+        {
+            uint8_t url_len = strlen(g_service_param.network.film_heartbeat_url);
+            sys_logi(BEL_SERVICE_TAG, "Heartbeat URL: %s", g_service_param.network.film_heartbeat_url);
+            uint8_t resp_url_len = 4 + url_len;
+            uint8_t *resp_buf = pvPortMalloc(resp_url_len);
+            if(resp_buf)
+            {
+                resp_buf[0] = BLE_CMD_HEAD;
+                resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET;
+                resp_buf[2] = url_len;
+                if(url_len > 0)
+                {
+                    memcpy(&resp_buf[3], g_service_param.network.film_heartbeat_url, url_len);
+                }
+                resp_buf[3 + url_len] = ble_checksum(resp_buf, 3 + url_len);
+                service_ble_msg_gatts_data_send(resp_buf, resp_url_len, MSG_BLE_CH1_OUT_DATA);
+                vPortFree(resp_buf);
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL : // 心跳间隔设置
+        {
+            if(cmd->len == 1 && cmd->pdata[0] >= 5 && cmd->pdata[0] <= 180)
+            {
+                g_service_param.network.film_heartbeat_interval = cmd->pdata[0];
+                sys_logi(BEL_SERVICE_TAG, "Set heartbeat interval: %ds", cmd->pdata[0]);
+                service_param_save();
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET : // 心跳间隔查询
+        {
+            sys_logi(BEL_SERVICE_TAG, "Heartbeat interval: %ds", g_service_param.network.film_heartbeat_interval);
+            uint8_t resp_buf[5];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET;
+            resp_buf[2] = 1;
+            resp_buf[3] = g_service_param.network.film_heartbeat_interval;
+            resp_buf[4] = ble_checksum(resp_buf, 4);
+            service_ble_msg_gatts_data_send(resp_buf, 5, MSG_BLE_CH1_OUT_DATA);
+            break;
+        }
         default :
         {
             break;

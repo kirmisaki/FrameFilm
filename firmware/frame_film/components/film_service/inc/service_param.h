@@ -44,6 +44,8 @@ typedef struct
     char wifi_password[64];    // WiFi 密码（最大63字符）
     char film_api_url[128];    // HTTP下载film文件的API地址
     char film_heartbeat_url[128]; // HTTP心跳地址，用于检查服务是否正常以及是否发起film下载
+    char film_device_id[32];   // 设备唯一ID（MAC地址派生，与服务端 device_id 对应）
+    char film_token[64];       // 服务端注册token（首次心跳下发，持久化避免认领后失联）
 } ServiceNetwork_Def_t;
 
 typedef struct
@@ -89,6 +91,7 @@ extern ServiceParam_Def_t g_service_param;
 extern void service_param_init(void);
 extern void service_param_save(void);
 extern void service_param_reset(void);
+extern void service_param_ensure_device_id(void);
 
 
 #ifdef __cplusplus

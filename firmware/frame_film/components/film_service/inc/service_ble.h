@@ -67,6 +67,11 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD           (0x3C) // 开始下载film文件
 #define BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE     (0x3D) // 查询下载状态
 
+#define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL      (0x3E) // HTTP心跳地址设置
+#define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET  (0x3F) // HTTP心跳地址查询
+#define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL     (0x40) // 心跳间隔设置（1字节，5-180秒）
+#define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET (0x41) // 心跳间隔查询
+
 /*********************************************************************
 * TYPEDEFS
 */

@@ -29,11 +29,13 @@
  * INCLUDES
  */
 #include <string.h>
+#include <stdio.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
 #include "nvs_flash.h"
+#include "esp_mac.h"
 
 #include "sys_log.h"
 #include "service_param.h"
@@ -81,6 +83,31 @@ ServiceParam_Def_t g_service_param = {0};
 void service_param_init(void)
 {
     nvs_init();
+    service_param_ensure_device_id();
+}
+
+/**
+ * [service_param_ensure_device_id 确保设备唯一ID存在（无则用 MAC 生成并保存）]
+ */
+void service_param_ensure_device_id(void)
+{
+    if(g_service_param.network.film_device_id[0] != '\0')
+    {
+        return;
+    }
+
+    uint8_t mac[6];
+    if(esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK)
+    {
+        sys_loge("param", "read mac failed");
+        return;
+    }
+
+    snprintf(g_service_param.network.film_device_id,
+             sizeof(g_service_param.network.film_device_id),
+             "%02x%02x%02x%02x%02x%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    nvs_param_save();
 }
 
 /**
@@ -125,6 +152,8 @@ static void service_param_set_default(void)
     memset(g_service_param.network.wifi_password, 0, sizeof(g_service_param.network.wifi_password));
     memset(g_service_param.network.film_api_url, 0, sizeof(g_service_param.network.film_api_url));
     memset(g_service_param.network.film_heartbeat_url, 0, sizeof(g_service_param.network.film_heartbeat_url));
+    memset(g_service_param.network.film_device_id, 0, sizeof(g_service_param.network.film_device_id));
+    memset(g_service_param.network.film_token, 0, sizeof(g_service_param.network.film_token));
 
     // BLE参数重置
     g_service_param.ble.ble_enable = 1; // BLE默认开启
