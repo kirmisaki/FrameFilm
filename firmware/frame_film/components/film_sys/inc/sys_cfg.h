@@ -17,13 +17,17 @@ extern "C" {
 // 机型二选一
 #define FRAMEFILM_STD        1          // 基础版（默认）
 // #define FRAMEFILM_PRO        1          // Pro 版
+#define FRAMEFILM_MAX        1          // Max 版
 #ifndef FRAMEFILM_STD
 #define FRAMEFILM_STD        0
 #endif
 #ifndef FRAMEFILM_PRO
 #define FRAMEFILM_PRO        0
 #endif
-#if (FRAMEFILM_STD + FRAMEFILM_PRO) != 1
+#ifndef FRAMEFILM_MAX
+#define FRAMEFILM_MAX        0
+#endif
+#if (FRAMEFILM_STD + FRAMEFILM_PRO + FRAMEFILM_MAX) != 1
 #error "机型配置错误：只能选择一个机型"
 #endif
 
@@ -34,6 +38,10 @@ extern "C" {
 #if FRAMEFILM_PRO == 1
 #define SYS_DEVICE_NAME                "FRAMEFILMPRO"
 #define SYS_MANUFACTURER_NAME          "FRAMEFILMPRO"
+#endif
+#if FRAMEFILM_MAX == 1
+#define SYS_DEVICE_NAME                "FRAMEFILMMAX"
+#define SYS_MANUFACTURER_NAME          "FRAMEFILMMAX"
 #endif
 
 #define SYS_MODEL_NUMBER               "M1.0"
