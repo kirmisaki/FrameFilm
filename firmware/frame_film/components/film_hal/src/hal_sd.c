@@ -48,6 +48,15 @@
  */
 #define TF_TAG                  "HAL_TF"
 
+#if FRAMEFILM_MAX == 1
+#define PIN_NUM_CLK             (8)
+#define PIN_NUM_CMD             (3)
+#define PIN_NUM_D0              (5)
+#define PIN_NUM_D1              (4)
+#define PIN_NUM_D2              (16)
+#define PIN_NUM_D3              (15)
+#define PIN_NUM_DET             (45)
+#else
 #define PIN_NUM_CLK             (40)
 #define PIN_NUM_CMD             (41)
 #define PIN_NUM_D0              (39)
@@ -55,6 +64,8 @@
 #define PIN_NUM_D2              (2)
 #define PIN_NUM_D3              (42)
 #define PIN_NUM_DET             (45)
+#endif
+
 #define GPIO_INPUT_PIN_SEL      (1ULL << PIN_NUM_DET)
 
 #define SD_USE_SDNAND           1
