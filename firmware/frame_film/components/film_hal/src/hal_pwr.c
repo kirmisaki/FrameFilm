@@ -41,8 +41,13 @@
  */
 #define PWR_TAG                 "HAL_PWR"
 
-#define WAKEUP_GPIO_NUM         (5)
+#if FRAMEFILM_MAX == 1
+#define WAKEUP_GPIO_LEVEL       (1)
+#define WAKEUP_GPIO_NUM         (13)
+#else
 #define WAKEUP_GPIO_LEVEL       (0)
+#define WAKEUP_GPIO_NUM         (5)
+#endif
 
 #define PERI_PWR_PIN            GPIO_NUM_21     //外设供电管脚
 #define PERI_PWR_ON             gpio_set_level(PERI_PWR_PIN, 1)
@@ -83,6 +88,7 @@ void hal_pwr_init(void)
 {
     sys_logi(PWR_TAG, "pwr init");
 
+#if FRAMEFILM_MAX != 1
     // 初始化外设供电管脚
     gpio_config_t io_conf = {0};
     io_conf.intr_type = GPIO_INTR_DISABLE;
@@ -92,6 +98,7 @@ void hal_pwr_init(void)
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
     PERI_PWR_ON;
+#endif
 
     // esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     // switch (wakeup_reason)
@@ -126,7 +133,8 @@ void hal_pwr_init(void)
 void hal_pwr_enter_sleep(void)
 {
     sys_logi(PWR_TAG, "Entering deep sleep");
-
+    
+#if FRAMEFILM_MAX != 1
     // 关闭外设供电管脚
     PERI_PWR_OFF;
     gpio_config_t io_conf = {
@@ -137,8 +145,9 @@ void hal_pwr_enter_sleep(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);
+#endif
     
-    esp_err_t ret = esp_sleep_enable_ext0_wakeup(WAKEUP_GPIO_NUM, 0);
+    esp_err_t ret = esp_sleep_enable_ext0_wakeup(WAKEUP_GPIO_NUM, WAKEUP_GPIO_LEVEL);
     if (ret != ESP_OK)
     {
         sys_loge(PWR_TAG, "Failed to enable GPIO wakeup: %s", esp_err_to_name(ret));
