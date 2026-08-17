@@ -71,6 +71,9 @@
 #if FRAMEFILM_PRO == 1
 #define MONITOR_AUTO_SLEEP_TIMEOUT_SEC_LOW       (30)     // 自动休眠超时时间(自动唤醒) 30s (30s)
 #endif
+#if FRAMEFILM_MAX == 1
+#define MONITOR_AUTO_SLEEP_TIMEOUT_SEC_LOW       (50)     // 自动休眠超时时间(自动唤醒) 50s (50s)
+#endif
 
 #define MONITOR_TIMER_BASE_INTERVAL_MS           (100)
 #define MONITOR_LED_TICK_COUNT                   (MONITOR_LED_UPDATE_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
