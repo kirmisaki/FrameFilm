@@ -22,16 +22,25 @@ extern "C" {
 #define EPD_TAG                        "HAL_EPD"
 
 #if FRAMEFILM_STD == 1
-#define EPD_SELECT_E6_3_68_792_528  0
-#define EPD_SELECT_E6_3_70_720_480  0
-#define EPD_SELECT_E6_3_60_600_400  1
-#define EPD_SELECT_E6_1_54_240_240  0
+#define EPD_SELECT_E6_3_68_792_528   0
+#define EPD_SELECT_E6_3_70_720_480   0
+#define EPD_SELECT_E6_3_60_600_400   1
+#define EPD_SELECT_E6_1_54_240_240   0
+#define EPD_SELECT_E6_7_09_1600_1200 0
 #endif
 #if FRAMEFILM_PRO == 1
-#define EPD_SELECT_E6_3_68_792_528  1
-#define EPD_SELECT_E6_3_70_720_480  0
-#define EPD_SELECT_E6_3_60_600_400  0
-#define EPD_SELECT_E6_1_54_240_240  0
+#define EPD_SELECT_E6_3_68_792_528   1
+#define EPD_SELECT_E6_3_70_720_480   0
+#define EPD_SELECT_E6_3_60_600_400   0
+#define EPD_SELECT_E6_1_54_240_240   0
+#define EPD_SELECT_E6_7_09_1600_1200 0
+#endif
+#if FRAMEFILM_MAX == 1
+#define EPD_SELECT_E6_3_68_792_528   0
+#define EPD_SELECT_E6_3_70_720_480   0
+#define EPD_SELECT_E6_3_60_600_400   0
+#define EPD_SELECT_E6_1_54_240_240   0
+#define EPD_SELECT_E6_7_09_1600_1200 1
 #endif
 
 #if EPD_SELECT_E6_3_68_792_528 == 1
@@ -46,17 +55,32 @@ extern "C" {
 #elif EPD_SELECT_E6_1_54_240_240 == 1
 #define EPD_WIDTH                      240
 #define EPD_HEIGHT                     240
+#elif EPD_SELECT_E6_7_09_1600_1200 == 1
+#define EPD_WIDTH                      1200
+#define EPD_HEIGHT                     1600
 #endif
 
 //IO settings
 //SCK--GPIO12(SCLK)
 //SDIN---GPIO11(MOSI)
+#if EPD_SELECT_E6_7_09_1600_1200 == 1
+// 709 (GDEB0709E01) 双面板屏：4线SPI(command_bits)，双CS，无DC
+#define EPD_SCK_PIN     GPIO_NUM_9   //SCK
+#define EPD_SDIN_PIN    GPIO_NUM_41  //MOSI
+#define EPD_SDIO_PIN    GPIO_NUM_40  //MISO(读取用)
+#define EPD_BUSY_PIN    GPIO_NUM_7   //BUSY
+#define EPD_RST_PIN     GPIO_NUM_6   //RES
+#define EPD_CS0_PIN     GPIO_NUM_18  //CS0(左面板)
+#define EPD_CS1_PIN     GPIO_NUM_17  //CS1(右面板)
+#define EPD_LOAD_SW_PIN GPIO_NUM_45 //面板电源负载开关
+#else
 #define EPD_SCK_PIN  GPIO_NUM_48  //SCK
 #define EPD_SDIN_PIN GPIO_NUM_47  //SDIN
 #define EPD_BUSY_PIN GPIO_NUM_11  //BUSY
 #define EPD_RST_PIN  GPIO_NUM_12  //RES
 #define EPD_DC_PIN   GPIO_NUM_13  //DC
 #define EPD_CS_PIN   GPIO_NUM_14  //CS
+#endif
 
 #define EPD_SPI_HOST SPI2_HOST
 
@@ -181,6 +205,28 @@ void hal_epd_display_pic(const unsigned char* picData);
  * @param filmData .film 文件数据指针（包含 32 字节文件头）
  */
 void hal_epd_display_film(const unsigned char* filmData);
+
+/**
+ * @brief 局部窗口刷新（单面板）
+ *
+ * 仅对指定面板的局部窗口更新图像，可用于时钟等小区域动态刷新。
+ * 窗口坐标以单面板为参考：整屏 1200 宽由 CS0(左)/CS1(右) 两块各 600 宽的面板拼接，
+ * 左半屏局部窗口用 panel=0，右半屏用 panel=1（x_start 相对该面板）。
+ * 约束（与官方驱动一致）：x_start 为 4 的倍数，x_start+width <= 600，
+ * y_start 为 2 的倍数，y_start+height <= 1600 且为 2 的倍数。
+ *
+ * @param panel 面板编号：0=CS0(左面板)，1=CS1(右面板)
+ * @param x_start 窗口起始 X（像素，相对该面板，需为 4 的倍数）
+ * @param y_start 窗口起始 Y（像素，需为 2 的倍数）
+ * @param width 窗口宽度（像素，需满足 x_start+width <= 600）
+ * @param height 窗口高度（像素，需满足 y_start+height <= 1600）
+ * @param data 窗口图像数据（4bpp，字节数 = width*height/2）
+ * @param display_enable 非 0 时立即执行刷新（PON/DRF/POF），否则只写入窗口数据
+ * @return 0 成功；负数参数错误（-1~-8 与官方驱动一致，-9 data 为空）
+ */
+int32_t hal_epd_partial_update(uint8_t panel, uint16_t x_start, uint16_t y_start,
+                               uint16_t width, uint16_t height,
+                               const unsigned char* data, uint8_t display_enable);
 
 /**
  * @brief 电子纸进入睡眠模式
