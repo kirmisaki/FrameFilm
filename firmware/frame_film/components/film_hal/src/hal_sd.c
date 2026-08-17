@@ -55,7 +55,7 @@
 #define PIN_NUM_D1              (4)
 #define PIN_NUM_D2              (16)
 #define PIN_NUM_D3              (15)
-#define PIN_NUM_DET             (45)
+// Max版本无SD卡检测引脚
 #else
 #define PIN_NUM_CLK             (40)
 #define PIN_NUM_CMD             (41)
