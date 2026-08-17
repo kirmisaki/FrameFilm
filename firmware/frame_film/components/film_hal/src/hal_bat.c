@@ -46,6 +46,8 @@
 #define BAT_VOL_MAX         (4140)    //最大电压
 #define BAT_VOL_MIN         (3300)    //最小电压
 #define VOLTAGE_LEVEL_COUNT (11)      //电压等级数量
+#define BAT_LEVEL_MAX       (100)     //电池等级最大值
+#define BAT_LEVEL_MIN       (0)       //电池等级最小值
 
 #define BAT_ADC_EN_PIN      (GPIO_NUM_8)  // ADC采样使能引脚
 #define BAT_SAMPLE_COUNT    (10)          // 采样次数
@@ -62,6 +64,7 @@ typedef struct
     int adc_raw;
     int voltage;
     int level;
+    bool initialized;          // 电池检测初始化标志
 } bat_t;
 
 /*********************************************************************
@@ -75,7 +78,7 @@ static const int battery_levels[VOLTAGE_LEVEL_COUNT] = {0, 10, 20, 30, 40, 50, 6
  */
 static adc_oneshot_unit_handle_t adc_handle;
 static adc_cali_handle_t adc_cali_chan0_handle;
-static bat_t m_bat = {false, 0, 0, 0};
+static bat_t m_bat = {false, 0, 0, 0, false};
 
 
 /*********************************************************************
@@ -98,6 +101,10 @@ static int hal_bat_voltage_to_level(int voltage);
 
 void hal_bat_init(void)
 {
+#if FRAMEFILM_MAX == 1
+    // Max版本无电池检测，跳过初始化
+    return;
+#else
     //-------------ADC使能引脚配置---------------//
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << BAT_ADC_EN_PIN),
@@ -124,15 +131,22 @@ void hal_bat_init(void)
     };
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL_0, &config));
     m_bat.do_calibration_chan0 = hal_adc_cali_chan0_handle(ADC_UNIT_1, ADC_CHANNEL_0, ADC_ATTEN_DB_12, &adc_cali_chan0_handle);
+    m_bat.initialized = true;
 
     sys_logi(BAT_TAG, "bat init");
 
     // 读取一次电池电压
     hal_bat_get_level();
+#endif
 }
 
 int hal_bat_get_level(void)
 {
+    if (!m_bat.initialized)
+    {
+        return BAT_LEVEL_MAX;
+    }
+
     // 使能ADC采样电路
     gpio_set_level(BAT_ADC_EN_PIN, 1);
     // 等待电容稳定
@@ -196,6 +210,11 @@ int hal_bat_get_level(void)
 
 int hal_bat_get_percent(void)
 {
+    if (!m_bat.initialized)
+    {
+        return BAT_LEVEL_MAX;
+    }
+
     return m_bat.level;
 }
 
@@ -203,11 +222,11 @@ static int hal_bat_voltage_to_level(int voltage)
 {
     if (voltage >= BAT_VOL_MAX)
     {
-        return 100;
+        return BAT_LEVEL_MAX;
     }
     else if (voltage <= BAT_VOL_MIN)
     {
-        return 0;
+        return BAT_LEVEL_MIN;
     }
     else
     {
@@ -284,6 +303,11 @@ static bool hal_adc_cali_chan0_handle(adc_unit_t unit, adc_channel_t channel, ad
 
 void hal_bat_deinit(void)
 {
+    if (!m_bat.initialized)
+    {
+        return;
+    }
+
     // 关闭ADC采样使能引脚
     gpio_set_level(BAT_ADC_EN_PIN, 0);
 
@@ -313,6 +337,8 @@ void hal_bat_deinit(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);
+
+    m_bat.initialized = false;
 
     sys_logi(BAT_TAG, "bat deinitialized, ADC pin set to high-impedance");
 }
