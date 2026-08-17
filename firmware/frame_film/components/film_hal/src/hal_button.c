@@ -45,12 +45,14 @@
 #define BUTTON_PIN_UP                     (4)    // 上/右按键
 #define BUTTON_PIN_DOWN                   (6)    // 下/左按键
 #define BUTTON_PIN_CONFIRM                (5)    // 确认按键
+#define BUTTON_ACTIVE_LEVEL               (0)    // 按键激活电平为低电平
 #endif
 
 #if FRAMEFILM_MAX == 1
 #define BUTTON_PIN_UP                     (12)   // 上/右按键
 #define BUTTON_PIN_DOWN                   (14)   // 下/左按键
 #define BUTTON_PIN_CONFIRM                (13)   // 确认按键
+#define BUTTON_ACTIVE_LEVEL               (1)    // 按键激活电平为高电平
 #endif
 
 #define BUTTON_MAX_CALLBACKS              (5)
@@ -119,7 +121,7 @@ void hal_input_init(void)
         .short_press_time = BUTTON_SHORT_PRESS_TIME_MS,
         .gpio_button_config = {
             .gpio_num = BUTTON_PIN_UP,
-            .active_level = 0,
+            .active_level = BUTTON_ACTIVE_LEVEL,
         },
     };
     m_button_mgr.buttons[0].handle = iot_button_create(&up_cfg);
@@ -143,7 +145,7 @@ void hal_input_init(void)
         .short_press_time = BUTTON_SHORT_PRESS_TIME_MS,
         .gpio_button_config = {
             .gpio_num = BUTTON_PIN_DOWN,
-            .active_level = 0,
+            .active_level = BUTTON_ACTIVE_LEVEL,
         },
     };
     m_button_mgr.buttons[1].handle = iot_button_create(&down_cfg);
@@ -167,7 +169,7 @@ void hal_input_init(void)
         .short_press_time = BUTTON_SHORT_PRESS_TIME_MS,
         .gpio_button_config = {
             .gpio_num = BUTTON_PIN_CONFIRM,
-            .active_level = 0,
+            .active_level = BUTTON_ACTIVE_LEVEL,
         },
     };
     m_button_mgr.buttons[2].handle = iot_button_create(&confirm_cfg);
