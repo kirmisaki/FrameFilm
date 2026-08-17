@@ -288,11 +288,10 @@ function handleFileUpload(event) {
             var imgWidth = img.width;
             var imgHeight = img.height;
 
-            if (imgHeight > imgWidth) {
-                canvasRotation = 1;
-            } else {
-                canvasRotation = 0;
-            }
+            // 竖屏设备（Max）：横图旋转 90°，竖图直接显示；横向设备：竖图旋转
+            canvasRotation = isPortraitDevice()
+                ? (imgWidth > imgHeight ? 1 : 0)
+                : (imgHeight > imgWidth ? 1 : 0);
 
             let effectiveWidth = canvasWidth;
             let effectiveHeight = canvasHeight;
@@ -1518,9 +1517,13 @@ function updateCanvasScale() {
         var containerWidth = container.clientWidth;
         var containerHeight = container.clientHeight;
         if (containerWidth === 0 || containerHeight === 0) continue;
-        var rotatedWidth = getCanvasHeight();
-        var rotatedHeight = getCanvasWidth();
+        // 竖屏设备（Max）画布本身竖屏，无需旋转；横向设备画布旋转 90° 后竖屏显示
+        var portrait = getCanvasHeight() > getCanvasWidth();
+        var rotatedWidth = portrait ? getCanvasWidth() : getCanvasHeight();
+        var rotatedHeight = portrait ? getCanvasHeight() : getCanvasWidth();
         var scaleVal = Math.min(containerWidth / rotatedWidth, containerHeight / rotatedHeight);
-        canvas.style.transform = 'translate(-50%, -50%) rotate(90deg) scale(' + scaleVal + ')';
+        canvas.style.transform = portrait
+            ? 'translate(-50%, -50%) scale(' + scaleVal + ')'
+            : 'translate(-50%, -50%) rotate(90deg) scale(' + scaleVal + ')';
     }
 }

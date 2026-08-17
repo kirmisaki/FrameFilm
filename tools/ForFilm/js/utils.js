@@ -13,6 +13,12 @@ var DEVICE_CONFIGS = {
         screenHeight: 528,
         displayName: 'FrameFilm Pro',
         pixelLayout: 'row-major' // 行优先: (y * width) + x
+    },
+    FRAMEFILMMAX: {
+        screenWidth: 1200,
+        screenHeight: 1600,
+        displayName: 'FrameFilm Max',
+        pixelLayout: 'row-major' // 行优先: (y * width) + x
     }
 };
 
@@ -20,6 +26,12 @@ var currentDeviceType = 'FRAMEFILM';
 
 function getDeviceConfig() {
     return DEVICE_CONFIGS[currentDeviceType] || DEVICE_CONFIGS['FRAMEFILM'];
+}
+
+// 是否竖屏设备（画布高 > 宽），如 Max 版 1200x1600
+function isPortraitDevice() {
+    var cfg = getDeviceConfig();
+    return cfg.screenHeight > cfg.screenWidth;
 }
 
 function setDeviceType(type) {

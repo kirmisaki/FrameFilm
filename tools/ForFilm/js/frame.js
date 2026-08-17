@@ -132,11 +132,10 @@ function frameSetupImage(canvasId, fill) {
     var canvas = document.getElementById(canvasId);
     var img = frameOriginalImage;
 
-    if (img.height > img.width) {
-        frameCanvasRotation = 1;
-    } else {
-        frameCanvasRotation = 0;
-    }
+    // 竖屏设备（Max）：横图旋转 90°，竖图直接显示；横向设备：竖图旋转
+    frameCanvasRotation = isPortraitDevice()
+        ? (img.width > img.height ? 1 : 0)
+        : (img.height > img.width ? 1 : 0);
 
     var effectiveWidth = frameCanvasRotation === 1 ? getCanvasHeight() : getCanvasWidth();
     var effectiveHeight = frameCanvasRotation === 1 ? getCanvasWidth() : getCanvasHeight();
@@ -397,12 +396,23 @@ function frameRenderQuote(text, author) {
     canvas.height = ch;
     var ctx = canvas.getContext('2d');
 
-    // 竖屏渲染：反向旋转抵消CSS的rotate(90deg)，有效绘制区域为 height x width
+    var portrait = getCanvasHeight() > getCanvasWidth();
     ctx.save();
-    ctx.translate(0, ch);
-    ctx.rotate(-Math.PI / 2);
-    var w = ch;
-    var h = cw;
+    var w, h;
+    if (portrait) {
+        // 竖屏设备（Max）：画布本身竖屏，直接绘制
+        w = cw;
+        h = ch;
+    } else {
+        // 横向设备：反向旋转抵消CSS的rotate(90deg)，有效绘制区域为 height x width
+        ctx.translate(0, ch);
+        ctx.rotate(-Math.PI / 2);
+        w = ch;
+        h = cw;
+    }
+
+    // 布局缩放系数：以 Pro 有效宽（528）为基准，仅放大竖屏大屏设备（Max），不改变基础版/Pro 现有布局
+    var s = Math.max(1, w / 528);
 
     // 随机配色方案
     var scheme = frameColorSchemes[Math.floor(Math.random() * frameColorSchemes.length)];
@@ -412,31 +422,31 @@ function frameRenderQuote(text, author) {
     ctx.fillRect(0, 0, w, h);
 
     // 装饰引号
-    ctx.font = 'italic 80px Georgia, serif';
+    ctx.font = 'italic ' + Math.round(80 * s) + 'px Georgia, serif';
     ctx.fillStyle = scheme.accent;
-    ctx.fillText('\u201C', 20, 90);
+    ctx.fillText('\u201C', 20 * s, 90 * s);
 
     // 装饰线
     ctx.strokeStyle = scheme.accent;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 * s;
     ctx.beginPath();
-    ctx.moveTo(35, 105);
-    ctx.lineTo(90, 105);
+    ctx.moveTo(35 * s, 105 * s);
+    ctx.lineTo(90 * s, 105 * s);
     ctx.stroke();
 
     // 文字
-    ctx.font = 'bold 30px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif';
+    ctx.font = 'bold ' + Math.round(30 * s) + 'px "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif';
     ctx.fillStyle = scheme.text;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    var zhLines = frameWrapText(ctx, text, 30, w - 80);
-    var zhLineHeight = 44;
+    var zhLines = frameWrapText(ctx, text, 30 * s, w - 80 * s);
+    var zhLineHeight = 44 * s;
     var zhTotalHeight = zhLines.length * zhLineHeight;
     // 整体居中：考虑作者和装饰线的空间
-    var bottomSpace = author ? 130 : 60;  // 作者+装饰线+日期的空间
-    var availableHeight = h - 100 - bottomSpace;  // 减去顶部和底部空间
-    var zhStartY = 100 + (availableHeight - zhTotalHeight) / 2;
+    var bottomSpace = author ? 130 * s : 60 * s;  // 作者+装饰线+日期的空间
+    var availableHeight = h - 100 * s - bottomSpace;  // 减去顶部和底部空间
+    var zhStartY = 100 * s + (availableHeight - zhTotalHeight) / 2;
 
     for (var i = 0; i < zhLines.length; i++) {
         ctx.fillText(zhLines[i], w / 2, zhStartY + i * zhLineHeight);
@@ -444,26 +454,26 @@ function frameRenderQuote(text, author) {
 
     // 作者
     if (author) {
-        ctx.font = 'bold 18px "Noto Serif SC", "Songti SC", "SimSun", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif';
+        ctx.font = 'bold ' + Math.round(18 * s) + 'px "Noto Serif SC", "Songti SC", "SimSun", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", serif';
         ctx.fillStyle = scheme.author;
-        ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 130);
+        ctx.fillText('\u2014\u2014 ' + author, w / 2, h - 130 * s);
     }
 
     // 底部装饰线
     ctx.strokeStyle = scheme.accent;
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 4 * s;
     ctx.beginPath();
-    ctx.moveTo(w / 2 - 30, h - 65);
-    ctx.lineTo(w / 2 + 30, h - 65);
+    ctx.moveTo(w / 2 - 30 * s, h - 65 * s);
+    ctx.lineTo(w / 2 + 30 * s, h - 65 * s);
     ctx.stroke();
 
     // 电量图标（右上角）
-    var batteryX = w - 55;
-    var batteryY = 20;
-    var batteryWidth = 35;
-    var batteryHeight = 18;
+    var batteryX = w - 55 * s;
+    var batteryY = 20 * s;
+    var batteryWidth = 35 * s;
+    var batteryHeight = 18 * s;
     var batteryLevel = (typeof deviceBatteryLevel !== 'undefined') ? deviceBatteryLevel / 100 : 0;
-    var batteryRadius = 4;
+    var batteryRadius = 4 * s;
 
     // 绘制圆角矩形函数
     function drawRoundedRect(x, y, width, height, radius) {
@@ -483,25 +493,25 @@ function frameRenderQuote(text, author) {
     // 电池外框
     drawRoundedRect(batteryX, batteryY, batteryWidth, batteryHeight, batteryRadius);
     ctx.strokeStyle = scheme.accent;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.5 * s;
     ctx.stroke();
 
     // 电池正极
     ctx.fillStyle = scheme.accent;
-    ctx.fillRect(batteryX + batteryWidth + 1, batteryY + 5, 3, batteryHeight - 10);
+    ctx.fillRect(batteryX + batteryWidth + 1 * s, batteryY + 5 * s, 3 * s, batteryHeight - 10 * s);
 
     // 电池电量
-    drawRoundedRect(batteryX + 2, batteryY + 2, (batteryWidth - 4) * batteryLevel, batteryHeight - 4, 2);
+    drawRoundedRect(batteryX + 2 * s, batteryY + 2 * s, (batteryWidth - 4 * s) * batteryLevel, batteryHeight - 4 * s, 2 * s);
     ctx.fillStyle = scheme.accent;
     ctx.fill();
 
     // 日期显示（底部居中）
     var now = new Date();
     var dateStr = now.getFullYear() + ' 年 ' + (now.getMonth() + 1).toString().padStart(2, '0') + ' 月 ' + now.getDate().toString().padStart(2, '0') + ' 日';
-    ctx.font = '600 16px "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.font = '600 ' + Math.round(16 * s) + 'px "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.fillStyle = scheme.accent;
     ctx.textAlign = 'center';
-    ctx.fillText(dateStr, w / 2, h - 30);
+    ctx.fillText(dateStr, w / 2, h - 30 * s);
 
     ctx.restore();
 

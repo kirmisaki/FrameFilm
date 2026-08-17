@@ -157,7 +157,10 @@ function initBluetooth() {
 
             // 根据设备名称检测设备类型
             var deviceName = device.name || '';
-            if (deviceName.toUpperCase().indexOf('PRO') !== -1) {
+            var upperName = deviceName.toUpperCase();
+            if (upperName.indexOf('MAX') !== -1) {
+                setDeviceType('FRAMEFILMMAX');
+            } else if (upperName.indexOf('PRO') !== -1) {
                 setDeviceType('FRAMEFILMPRO');
             } else {
                 setDeviceType('FRAMEFILM');
