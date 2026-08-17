@@ -58,6 +58,7 @@ typedef struct
 {
     uint32_t brightness;  // LED亮度值，范围通常为0到255
     uint32_t color;       // LED颜色值，通常是一个32位的颜色编码
+    bool initialized;     // LED初始化标志
 } led_t;
 
 /*********************************************************************
@@ -72,7 +73,8 @@ static led_strip_handle_t m_rgb;
 static led_t m_led =
 {
     .brightness = 10,
-    .color = LED_COLOR_WHITE
+    .color = LED_COLOR_WHITE,
+    .initialized = false
 };
 
 /*********************************************************************
@@ -99,10 +101,16 @@ static led_strip_handle_t configure_led(void);
  */
 void hal_led_init(void)
 {
+#if FRAMEFILM_MAX == 1
+    // Max版本无LED，跳过初始化
+    return;
+#else
     m_rgb = configure_led();
+    m_led.initialized = true;
 
     hal_led_set_color(m_led.color);
     hal_led_set_brightness(m_led.brightness);
+#endif
 }
 
 /**
@@ -114,6 +122,11 @@ void hal_led_init(void)
  */
 uint32_t hal_led_get_brightness(void)
 {
+    if (!m_led.initialized)
+    {
+        return 0;
+    }
+
     return m_led.brightness;
 }
 
@@ -126,6 +139,11 @@ uint32_t hal_led_get_brightness(void)
  */
 void hal_led_set_brightness(uint32_t brightness)
 {
+    if (!m_led.initialized)
+    {
+        return;
+    }
+
     m_led.brightness = brightness;
     hal_led_set_color(m_led.color);
 }
@@ -140,6 +158,11 @@ void hal_led_set_brightness(uint32_t brightness)
 void hal_led_set_color(uint32_t color)
 {
     uint32_t r = 0, g = 0, b = 0;
+
+    if (!m_led.initialized)
+    {
+        return;
+    }
 
     m_led.color = color;
     if (m_led.brightness > 0 && m_led.brightness <= 100)
@@ -165,11 +188,21 @@ void hal_led_set_color(uint32_t color)
  */
 uint32_t hal_led_get_color(void)
 {
+    if (!m_led.initialized)
+    {
+        return 0;
+    }
+
     return m_led.color;
 }
 
 void hal_led_deinit(void)
 {
+    if (!m_led.initialized)
+    {
+        return;
+    }
+
     hal_led_set_color(LED_COLOR_BLACK);
 
     if (m_rgb != NULL)
@@ -186,6 +219,8 @@ void hal_led_deinit(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);
+
+    m_led.initialized = false;
 
     sys_logi(LED_TAG, "LED deinitialized");
 }
