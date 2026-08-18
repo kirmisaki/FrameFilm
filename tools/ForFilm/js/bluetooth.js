@@ -125,45 +125,6 @@ async function processQueue() {
     }
 }
 
-// 根据设备名称检测并切换机型
-function detectDeviceTypeFromName(deviceName) {
-    if (!deviceName) return;
-    var upperName = deviceName.toUpperCase();
-    if (upperName.indexOf('MAX') !== -1) {
-        setDeviceType('FRAMEFILMMAX');
-    } else if (upperName.indexOf('PRO') !== -1) {
-        setDeviceType('FRAMEFILMPRO');
-    } else {
-        setDeviceType('FRAMEFILM');
-    }
-}
-
-// 更新连接成功后的状态文本与设备列表（机型切换后调用以刷新分辨率显示）
-function updateConnectedStatusUi() {
-    var devCfg = getDeviceConfig();
-    var status = document.getElementById('connection-status');
-    var deviceList = document.getElementById('device-list');
-    if (status) {
-        status.textContent = '已连接 - ' + devCfg.displayName;
-        status.className = 'status connected';
-    }
-    if (deviceList) {
-        deviceList.innerHTML = '<div class="device-item connected-device"><div class="device-info"><strong>' + (device.name || '已连接设备') + '</strong><p class="device-id">' + devCfg.displayName + ' | ' + devCfg.screenWidth + 'x' + devCfg.screenHeight + '</p></div><button class="disconnect-btn" onclick="disconnectDevice()">断开</button></div>';
-    }
-}
-
-// 主动读取 GATT 设备名特征（0x2A00），Android 上广播名可能缺失，此路径最可靠
-async function readGattDeviceName() {
-    try {
-        const gapService = await server.getPrimaryService(0x1800);
-        const nameChar = await gapService.getCharacteristic(0x2A00);
-        const value = await nameChar.readValue();
-        return String.fromCharCode.apply(null, new Uint8Array(value.buffer));
-    } catch (e) {
-        return null;
-    }
-}
-
 function initBluetooth() {
     const scanButton = document.getElementById('scan-button');
     if (!scanButton) return;
@@ -194,17 +155,22 @@ function initBluetooth() {
             service = await server.getPrimaryService(BLE_SERVICE_UUID);
             characteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
 
-            // 根据设备名称检测设备类型（Android 上 device.name 可能延迟更新，后续会再次校正）
-            detectDeviceTypeFromName(device.name);
-            updateConnectedStatusUi();
+            // 根据设备名称检测设备类型
+            var deviceName = device.name || '';
+            var upperName = deviceName.toUpperCase();
+            if (upperName.indexOf('MAX') !== -1) {
+                setDeviceType('FRAMEFILMMAX');
+            } else if (upperName.indexOf('PRO') !== -1) {
+                setDeviceType('FRAMEFILMPRO');
+            } else {
+                setDeviceType('FRAMEFILM');
+            }
+            var devCfg = getDeviceConfig();
 
-            // 主动读取 GATT 设备名特征，确保机型判断正确
-            readGattDeviceName().then(function(name) {
-                if (name) {
-                    detectDeviceTypeFromName(name);
-                    updateConnectedStatusUi();
-                }
-            }).catch(function() {});
+            status.textContent = '已连接 - ' + devCfg.displayName;
+            status.className = 'status connected';
+
+            deviceList.innerHTML = '<div class="device-item connected-device"><div class="device-info"><strong>' + (device.name || '已连接设备') + '</strong><p class="device-id">' + devCfg.displayName + ' | ' + devCfg.screenWidth + 'x' + devCfg.screenHeight + '</p></div><button class="disconnect-btn" onclick="disconnectDevice()">断开</button></div>';
 
             device.addEventListener('gattserverdisconnected', onDisconnected);
             console.log('设备已连接:', device.name);
@@ -250,14 +216,6 @@ function initBluetooth() {
             var netSection = document.getElementById('network-section');
             if (netSection) netSection.style.display = 'block';
             collapseNetworkSection();
-
-            // 兜底：连接后浏览器会异步从 GATT 更新 device.name，延迟再校正一次机型
-            setTimeout(function() {
-                if (device && device.name) {
-                    detectDeviceTypeFromName(device.name);
-                    updateConnectedStatusUi();
-                }
-            }, 1500);
 
         } catch (error) {
             console.error('连接错误:', error);
