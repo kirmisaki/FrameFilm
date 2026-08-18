@@ -286,12 +286,7 @@ function uploadToDevice() {
     }
 
     try {
-        var canvas = document.getElementById('canvas');
-        var canvasWidth = getCanvasWidth();
-        var canvasHeight = getCanvasHeight();
-        var ctx = canvas.getContext('2d');
-        var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-        window.processedDataForDownload = processImageData(imageData);
+        window.processedDataForDownload = processImageData(buildDeviceImageData());
     } catch (error) {
         showMessage('转换失败: ' + error.message, 'error');
         return;
