@@ -16,6 +16,29 @@ var originalImage = null;
 var uploadedFileName = 'output';
 window.processedDataForDownload = null;
 
+// 拖动偏移换算：横屏设备画布被 CSS rotate(90deg) 显示，竖屏设备（Max）不旋转。
+// 两种显示方式下 canvasRotation 对应的坐标映射不同，需分别换算，使拖动方向与视觉一致。
+function applyDragOffset(deltaX, deltaY) {
+    var cssRotated = !isPortraitDevice(); // 画布是否被 CSS 旋转 90° 显示
+    if (canvasRotation === 1) {
+        if (cssRotated) {
+            offsetX = startOffsetX + deltaX;
+            offsetY = startOffsetY + deltaY;
+        } else {
+            offsetX = startOffsetX - deltaY;
+            offsetY = startOffsetY + deltaX;
+        }
+    } else {
+        if (cssRotated) {
+            offsetX = startOffsetX + deltaY;
+            offsetY = startOffsetY - deltaX;
+        } else {
+            offsetX = startOffsetX + deltaX;
+            offsetY = startOffsetY + deltaY;
+        }
+    }
+}
+
 // Film 文件头大小（固定 32 字节）
 var FILM_HEADER_SIZE = 32;
 
@@ -103,15 +126,8 @@ function initConvertTool() {
             const deltaX = e.clientX - startX;
             const deltaY = e.clientY - startY;
             
-            // 根据旋转状态调整偏移量
-            if (canvasRotation === 1) {
-                // 旋转状态下，X和Y方向互换并调整符号，使鼠标移动与图片视觉移动一致
-                offsetX = startOffsetX + deltaX;
-                offsetY = startOffsetY + deltaY;
-            } else {
-                offsetX = startOffsetX + deltaY;
-                offsetY = startOffsetY - deltaX;
-            }
+            // 根据画布显示方式与旋转状态换算偏移，使拖动方向与视觉一致
+            applyDragOffset(deltaX, deltaY);
             
             updateImage();
         }
@@ -160,13 +176,7 @@ function initConvertTool() {
             const deltaX = e.touches[0].clientX - startX;
             const deltaY = e.touches[0].clientY - startY;
             
-            if (canvasRotation === 1) {
-                offsetX = startOffsetX + deltaX;
-                offsetY = startOffsetY + deltaY;
-            } else {
-                offsetX = startOffsetX + deltaY;
-                offsetY = startOffsetY - deltaX;
-            }
+            applyDragOffset(deltaX, deltaY);
             
             updateImage();
         } else if (e.touches.length === 2 && isPinching) {
