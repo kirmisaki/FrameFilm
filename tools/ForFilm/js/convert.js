@@ -693,46 +693,6 @@ function findClosestColor(r, g, b) {
     return closestColor;
 }
 
-// ===== E6 Natural 算法：Lab 感知空间 + 蛇形扫描 + 内容自适应三区扩散 =====
-
-// 快速 sRGB -> Lab（复用预计算的 sRGB 线性 LUT + cbrt，避免逐像素 pow）
-function srgbToLabLut(r, g, b) {
-    var lr = SRGB_TO_LINEAR_LUT[r];
-    var lg = SRGB_TO_LINEAR_LUT[g];
-    var lb = SRGB_TO_LINEAR_LUT[b];
-    var x = lr * 0.4124 + lg * 0.3576 + lb * 0.1805;
-    var y = lr * 0.2126 + lg * 0.7152 + lb * 0.0722;
-    var z = lr * 0.0193 + lg * 0.1192 + lb * 0.9505;
-    x /= 0.95047; y /= 1.0; z /= 1.08883;
-    var fx = x > 0.008856 ? Math.cbrt(x) : (7.787 * x + 16 / 116);
-    var fy = y > 0.008856 ? Math.cbrt(y) : (7.787 * y + 16 / 116);
-    var fz = z > 0.008856 ? Math.cbrt(z) : (7.787 * z + 16 / 116);
-    return { l: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
-}
-
-// 六色调色板的 Lab 坐标（用于感知空间量化与误差扩散）
-var paletteLab = rgbPalette.map(function(c) {
-    return { color: c, lab: srgbToLabLut(c.r, c.g, c.b) };
-});
-
-// 在 Lab 空间找最近色（感知均匀，色彩过渡更自然）
-function findClosestLab(L, A, B) {
-    var minDist = Infinity;
-    var best = paletteLab[0];
-    for (var i = 0; i < paletteLab.length; i++) {
-        var p = paletteLab[i].lab;
-        var dl = L - p.l;
-        var da = A - p.a;
-        var db = B - p.b;
-        var d = dl * dl + da * da + db * db;
-        if (d < minDist) {
-            minDist = d;
-            best = paletteLab[i];
-        }
-    }
-    return best;
-}
-
 function floydSteinbergDither(imageData, strength) {
     const width = imageData.width;
     const height = imageData.height;
@@ -1175,117 +1135,6 @@ function bayerDither(imageData, strength) {
     return imageData;
 }
 
-// E6 Natural：Lab 感知空间误差扩散 + 蛇形扫描 + 三区内容自适应。
-// 平坦区直接量化（零颗粒）、渐变区误差扩散（过渡自然）、边缘区保真（锐利）。
-function e6NaturalDither(imageData, strength) {
-    var width = imageData.width;
-    var height = imageData.height;
-    var data = imageData.data;
-    var N = width * height;
-    var s = Math.max(0, Math.min(1, typeof strength === 'number' ? strength : 1));
-
-    // 1. sRGB -> Lab 工作缓冲 + 亮度
-    var lab = new Float32Array(N * 3);
-    var lum = new Float32Array(N);
-    for (var i = 0; i < N; i++) {
-        var o = i * 4;
-        var r = data[o], g = data[o + 1], b = data[o + 2];
-        var l = srgbToLabLut(r, g, b);
-        lab[i * 3] = l.l;
-        lab[i * 3 + 1] = l.a;
-        lab[i * 3 + 2] = l.b;
-        lum[i] = 0.299 * r + 0.587 * g + 0.114 * b;
-    }
-
-    // 2. Sobel 梯度幅度（内容自适应依据）
-    var grad = new Float32Array(N);
-    var maxGrad = 0;
-    for (var y = 1; y < height - 1; y++) {
-        var row = y * width;
-        for (var x = 1; x < width - 1; x++) {
-            var p = row + x;
-            var tl = lum[p - 1 - width], tc = lum[p - width], tr = lum[p + 1 - width];
-            var ml = lum[p - 1], mr = lum[p + 1];
-            var bl = lum[p - 1 + width], bc = lum[p + width], br = lum[p + 1 + width];
-            var gx = -tl - 2 * ml - bl + tr + 2 * mr + br;
-            var gy = -tl - 2 * tc - tr + bl + 2 * bc + br;
-            var m = Math.sqrt(gx * gx + gy * gy);
-            grad[p] = m;
-            if (m > maxGrad) maxGrad = m;
-        }
-    }
-
-    // 3. 自适应阈值（绝对 Sobel 幅度，稳健区分平坦/渐变/边缘）
-    // 平坦区梯度接近 0，需保证其落入平坦档；边缘区梯度大，独立成档
-    var flatThr = Math.max(6, maxGrad * 0.01);
-    var edgeThr = Math.max(60, maxGrad * 0.15);
-    if (edgeThr <= flatThr) edgeThr = flatThr + 6;
-
-    // 4. 蛇形扫描 + 三区自适应误差扩散（Floyd-Steinberg 权重）
-    for (var y2 = 0; y2 < height; y2++) {
-        var ltr = (y2 % 2 === 0);
-        for (var step = 0; step < width; step++) {
-            var x2 = ltr ? step : (width - 1 - step);
-            var p = y2 * width + x2;
-            var act = grad[p];
-
-            var L = lab[p * 3], A = lab[p * 3 + 1], B = lab[p * 3 + 2];
-            var closest = findClosestLab(L, A, B);
-
-            var o = p * 4;
-            data[o] = closest.color.r;
-            data[o + 1] = closest.color.g;
-            data[o + 2] = closest.color.b;
-
-            // 仅渐变区扩散误差：平坦/边缘区直接量化（颗粒少、边缘锐利）
-            if (act < flatThr || act >= edgeThr) continue;
-
-            var eL = (L - closest.lab.l);
-            var eA = (A - closest.lab.a);
-            var eB = (B - closest.lab.b);
-            var w7 = 7 / 16 * s, w5 = 5 / 16 * s, w3 = 3 / 16 * s, w1 = 1 / 16 * s;
-
-            if (ltr) {
-                if (x2 + 1 < width) {
-                    var q = (p + 1) * 3;
-                    lab[q] += eL * w7; lab[q + 1] += eA * w7; lab[q + 2] += eB * w7;
-                }
-                if (y2 + 1 < height) {
-                    if (x2 > 0) {
-                        var q2 = (p + width - 1) * 3;
-                        lab[q2] += eL * w3; lab[q2 + 1] += eA * w3; lab[q2 + 2] += eB * w3;
-                    }
-                    var q3 = (p + width) * 3;
-                    lab[q3] += eL * w5; lab[q3 + 1] += eA * w5; lab[q3 + 2] += eB * w5;
-                    if (x2 + 1 < width) {
-                        var q4 = (p + width + 1) * 3;
-                        lab[q4] += eL * w1; lab[q4 + 1] += eA * w1; lab[q4 + 2] += eB * w1;
-                    }
-                }
-            } else {
-                if (x2 - 1 >= 0) {
-                    var q = (p - 1) * 3;
-                    lab[q] += eL * w7; lab[q + 1] += eA * w7; lab[q + 2] += eB * w7;
-                }
-                if (y2 + 1 < height) {
-                    if (x2 + 1 < width) {
-                        var q2 = (p + width + 1) * 3;
-                        lab[q2] += eL * w3; lab[q2 + 1] += eA * w3; lab[q2 + 2] += eB * w3;
-                    }
-                    var q3 = (p + width) * 3;
-                    lab[q3] += eL * w5; lab[q3 + 1] += eA * w5; lab[q3 + 2] += eB * w5;
-                    if (x2 - 1 >= 0) {
-                        var q4 = (p + width - 1) * 3;
-                        lab[q4] += eL * w1; lab[q4 + 1] += eA * w1; lab[q4 + 2] += eB * w1;
-                    }
-                }
-            }
-        }
-    }
-
-    return imageData;
-}
-
 function computeEdgeMap(data, width, height) {
     const edges = new Float32Array(width * height);
     for (let y = 1; y < height - 1; y++) {
@@ -1493,8 +1342,6 @@ function ditherImage(imageData) {
             return gammaFloydSteinbergDither(imageData, ditherStrength);
         case 'bayer':
             return bayerDither(imageData, ditherStrength);
-        case 'e6Natural':
-            return e6NaturalDither(imageData, ditherStrength);
         default:
             return imageData;
     }
