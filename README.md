@@ -62,6 +62,7 @@
 | 通信 | 蓝牙 BLE 4.2 / WiFi |
 | 交互 | 三按键 |
 | 电池 | 锂电池 244147规格 |
+| 充电 | 支持无线充电（兼容 MagSafe 充电器） |
 | 尺寸 | 约 90 × 59 × 5 mm |
 | 安装方式 | 背部磁吸 magasafe磁环 |
 
@@ -71,6 +72,9 @@
 
 👉 [立创开源硬件平台 - FrameFilm](https://oshwhub.com/kiritro/project_ttfkoxxv)  
 👉 [立创开源硬件平台 - FrameFilmPro](https://oshwhub.com/kiritro/project_wgzqduhs)
+👉 [立创开源硬件平台 - FrameFilm星火版](https://oshwhub.com/kiritro/project_uaqmgawa)
+
+💬 复刻交流 QQ 群：**1103626779**（欢迎入群交流制作经验）
 
 ## 项目结构
 
@@ -83,25 +87,34 @@ FrameFilm/
 │   ├── blecmd/                # BLE 通信协议文档
 │   ├── datasheet/             # 芯片和模块数据手册
 │   ├── film/                  # film 文件格式规范
-│   └── hardware/              # 硬件规格说明文档
+│   ├── filmhub/               # 云端相框服务设计文档
+│   ├── hardware/              # 硬件规格说明文档
+│   ├── knowledge/             # AI 知识库（架构/规范/命令速查）
+│   └── wifi/                  # WiFi 功能说明（Pro 版）
 │
 ├── firmware/                   # 设备固件 (ESP-IDF)
 │   └── frame_film/
 │       ├── components/
 │       │   ├── film_service/  # 服务层
 │       │   ├── film_sys/      # 系统层
-│       │   ├── film_hal/      # 硬件抽象层
-│       └── main/              # 主程序
+│       │   └── film_hal/      # 硬件抽象层
+│       ├── main/              # 主程序
+│       └── sdkconfig_*        # 各机型配置 (std/pro/max)
 │
 ├── hardware/                   # 硬件设计
 │   ├── pcb/                   # PCB 电路原理图
 │   └── model/                 # 外壳 3D 模型
+│
+├── server/                     # 云端服务
+│   ├── backend/               # 后端 API 服务 (FastAPI)
+│   └── web/                   # Web 管理前端
 │
 ├── tools/                      # 开发工具
 │   ├── convert/               # 照片转换工具
 │   ├── ForFilm/               # Web 端相框管理工具
 │   └── wechart/               # 微信小程序
 │
+├── AGENTS.md                   # AI 开发指南
 ├── README.md                   # 项目说明文档
 └── LICENSE                     # 许可证
 ```
@@ -110,19 +123,50 @@ FrameFilm/
 
 ### 固件开发
 
+固件为多机型统一源码，编译前需先完成机型配置（替换 sdkconfig + 修改设备类型宏），再编译烧录。
+
 1. **环境要求**
    - ESP-IDF v5.3+
 
-2. **编译固件**
+2. **配置目标机型**
+   - 替换 `sdkconfig`：将 `firmware/frame_film/sdkconfig_<机型>` 复制为 `sdkconfig`
+   - 修改设备类型宏：编辑 `firmware/frame_film/components/film_sys/inc/sys_cfg.h`，将对应机型宏置 1（三选一）
+
+   | 机型 | 替换用的 sdkconfig | sys_cfg.h 宏 |
+   |------|--------------------|--------------|
+   | 基础版 | `sdkconfig_std` | `FRAMEFILM_STD` |
+   | Pro 版 | `sdkconfig_pro` | `FRAMEFILM_PRO` |
+   | Max 版 | `sdkconfig_max` | `FRAMEFILM_MAX` |
+
    ```bash
    cd firmware/frame_film
+   cp sdkconfig_std sdkconfig   # 示例：基础版；Pro/Max 版同理
+   ```
+
+3. **编译固件**
+   ```bash
    idf.py build
    ```
 
-3. **烧录固件**
+4. **烧录固件**
    ```bash
    idf.py flash monitor
    ```
+
+#### 使用 VS Code ESP-IDF 插件
+
+项目已包含 `.vscode/settings.json`（IDF 路径已配置），按以下步骤即可编译烧录：
+
+1. 安装扩展：VS Code 扩展商店搜索 **Espressif IDF** 并安装
+2. 打开项目：文件 → 打开文件夹 → 选择 `firmware/frame_film`
+3. 配置机型：与命令行方式相同（替换 `sdkconfig` + 修改 `sys_cfg.h` 机型宏）
+4. 选择目标芯片：底部状态栏点击芯片图标，选择 **esp32s3**
+5. 选择串口：底部状态栏点击 **COM 端口**，选择设备对应的串口
+6. 编译：点击底部状态栏的 **构建图标（火焰）**，或按 `Ctrl+E` 然后 `B`
+7. 烧录：点击 **烧录图标**，或按 `Ctrl+E` 然后 `F`
+8. 串口监视：点击 **监视图标**，或按 `Ctrl+E` 然后 `M`（`Ctrl+]` 退出）
+
+> 提示：首次构建时间较长属正常；若更换串口/芯片，在底部状态栏重新选择即可。
 
 ### 照片转换
 
@@ -149,6 +193,21 @@ FrameFilm 微信小程序，方便在手机端管理和传输照片：
 **小程序码，扫码即可体验。**  
 ![小程序码](assets/pic/wechartQR.png)
 
+#### Film-hub（云端相框服务）
+
+局域网部署的云端相框服务，为设备提供 WiFi 内容推送、模板渲染与远程管理能力：
+
+- **设备管理** - 设备心跳注册与认领，实时查看电量、在线状态与设备配置
+- **相册管理** - 批量上传照片，服务端转换生成 film 文件
+- **模板引擎** - 内置日历/天气/备忘录/倒计时等模板，支持画布拖拽自定义
+- **轮播流** - 编排多模板轮播（相对/绝对时间调度），设备定时拉取更新
+- **AI 接入** - 对话生成模板、AI 生图
+
+**技术栈：** FastAPI + SQLite + Vue 3，单机局域网部署。
+
+- 设计文档：[docs/filmhub/](docs/filmhub/)（需求与技术方案）
+- 后端源码：`server/backend/` ｜ Web 前端：`server/web/`
+
 ## 开发指南
 
 详细的开发文档请参考各模块 README：
@@ -157,12 +216,16 @@ FrameFilm 微信小程序，方便在手机端管理和传输照片：
 - [硬件设计](hardware/README.md) - PCB 和外壳设计文件
 - [工具使用](tools/README.md) - ForFilm Web 工具和辅助脚本
 - [微信小程序](tools/wechart/README.md) - 小程序源码
+- [Film-hub 云端服务](docs/filmhub/) - 相框云服务需求与技术方案
 
 技术文档目录：
 
 - [docs/blecmd/](docs/blecmd/) - BLE 通信协议文档
+- [docs/datasheet/](docs/datasheet/) - 芯片和模块数据手册
 - [docs/film/](docs/film/) - Film 文件格式规范
+- [docs/filmhub/](docs/filmhub/) - 云端相框服务需求与技术方案
 - [docs/hardware/](docs/hardware/) - 硬件规格说明
+- [docs/knowledge/](docs/knowledge/) - AI 知识库（架构/规范/命令速查）
 - [docs/wifi/](docs/wifi/) - WiFi 功能说明（Pro 版）
 
 ## 开源许可
