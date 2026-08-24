@@ -394,14 +394,15 @@ void hal_epd_display_pic(const unsigned char *picData)
     }
 
     // 输入为每像素 1 字节的颜色表值（0x00/0xFF/0xFC/0xE0/0x03/0x1C），转换为 JD7601 面板字节
+    // 注意：与 display_film 一致，180° 旋转写入（行倒序 + 行内像素倒序）
     EPD_W21_WriteCMD(DTM1);
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     for (i = 0; i < EPD_HEIGHT; i++)
     {
         for (j = 0; j < EPD_INPUT_LINE; j++)
         {
-            line[j] = (color_lut[picData[i * EPD_WIDTH + 2 * j]] << 4)
-                      | color_lut[picData[i * EPD_WIDTH + 2 * j + 1]];
+            line[j] = (color_lut[picData[(EPD_HEIGHT - 1 - i) * EPD_WIDTH + (EPD_WIDTH - 1 - 2 * j)]] << 4)
+                      | color_lut[picData[(EPD_HEIGHT - 1 - i) * EPD_WIDTH + (EPD_WIDTH - 2 - 2 * j)]];
         }
         EPD_W21_WriteDATA_Bulk(line, EPD_INPUT_LINE);
     }
@@ -438,17 +439,18 @@ void hal_epd_display_film(const unsigned char *filmData)
     pixelData = filmData + FILM_HEADER_SIZE;
 
     // 颜色转换：colorTable 索引 -> colorTable 实际值 -> JD7601 面板字节（4bpp 直写）
+    // 注意：JD7601 面板需 180° 旋转写入（行倒序 + 行内像素倒序）
     EPD_W21_WriteCMD(DTM1);
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     for (i = 0; i < EPD_HEIGHT; i++)
     {
         for (j = 0; j < EPD_INPUT_LINE; j++)
         {
-            byte = pixelData[i * EPD_INPUT_LINE + j];
-            cc1 = (byte >> 4) & 0x0F;
-            cc2 = byte & 0x0F;
-            line[j] = (color_lut[header.colorTable[cc1]] << 4)
-                      | color_lut[header.colorTable[cc2]];
+            byte = pixelData[(EPD_HEIGHT - 1 - i) * EPD_INPUT_LINE + (EPD_INPUT_LINE - 1 - j)];
+            cc1 = (byte >> 4) & 0x0F;   // 源像素 2k（偶）→ 屏幕右像素（低半字节）
+            cc2 = byte & 0x0F;          // 源像素 2k+1（奇）→ 屏幕左像素（高半字节）
+            line[j] = (color_lut[header.colorTable[cc2]] << 4)
+                      | color_lut[header.colorTable[cc1]];
         }
         EPD_W21_WriteDATA_Bulk(line, EPD_INPUT_LINE);
     }
