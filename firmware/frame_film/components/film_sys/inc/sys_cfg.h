@@ -14,9 +14,10 @@ extern "C" {
  * MACROS
  */
 // SYS CONFIG
-// 机型二选一
+// 机型四选一
 // #define FRAMEFILM_STD        1          // 基础版
 #define FRAMEFILM_PRO        1          // Pro 版（默认）
+// #define FRAMEFILM_SE         1          // SE 版（3.7寸 720x480，其余同 Pro）
 // #define FRAMEFILM_MAX        1          // Max 版
 #ifndef FRAMEFILM_STD
 #define FRAMEFILM_STD        0
@@ -24,10 +25,13 @@ extern "C" {
 #ifndef FRAMEFILM_PRO
 #define FRAMEFILM_PRO        0
 #endif
+#ifndef FRAMEFILM_SE
+#define FRAMEFILM_SE         0
+#endif
 #ifndef FRAMEFILM_MAX
 #define FRAMEFILM_MAX        0
 #endif
-#if (FRAMEFILM_STD + FRAMEFILM_PRO + FRAMEFILM_MAX) != 1
+#if (FRAMEFILM_STD + FRAMEFILM_PRO + FRAMEFILM_SE + FRAMEFILM_MAX) != 1
 #error "机型配置错误：只能选择一个机型"
 #endif
 
@@ -38,6 +42,10 @@ extern "C" {
 #if FRAMEFILM_PRO == 1
 #define SYS_DEVICE_NAME                "FRAMEFILMPRO"
 #define SYS_MANUFACTURER_NAME          "FRAMEFILMPRO"
+#endif
+#if FRAMEFILM_SE == 1
+#define SYS_DEVICE_NAME                "FRAMEFILMSE"
+#define SYS_MANUFACTURER_NAME          "FRAMEFILMSE"
 #endif
 #if FRAMEFILM_MAX == 1
 #define SYS_DEVICE_NAME                "FRAMEFILMMAX"

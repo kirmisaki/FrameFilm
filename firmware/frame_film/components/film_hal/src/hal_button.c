@@ -29,7 +29,7 @@
  * INCLUDES
  */
 #include "sys_log.h"
-#if FRAMEFILM_PRO == 1 || FRAMEFILM_MAX == 1
+#if FRAMEFILM_PRO == 1 || FRAMEFILM_SE == 1 || FRAMEFILM_MAX == 1
 #include <string.h>
 #include "iot_button.h"
 #include "driver/gpio.h"
@@ -41,7 +41,7 @@
  */
 #define BUTTON_TAG                        "HAL_BUTTON"
 
-#if FRAMEFILM_PRO == 1
+#if FRAMEFILM_PRO == 1 || FRAMEFILM_SE == 1
 #define BUTTON_PIN_UP                     (4)    // 上/右按键
 #define BUTTON_PIN_DOWN                   (6)    // 下/左按键
 #define BUTTON_PIN_CONFIRM                (5)    // 确认按键
