@@ -162,6 +162,8 @@ function initBluetooth() {
                 setDeviceType('FRAMEFILMMAX');
             } else if (upperName.indexOf('PRO') !== -1) {
                 setDeviceType('FRAMEFILMPRO');
+            } else if (upperName.indexOf('SE') !== -1) {
+                setDeviceType('FRAMEFILMSE');
             } else {
                 setDeviceType('FRAMEFILM');
             }

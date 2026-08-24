@@ -14,6 +14,12 @@ var DEVICE_CONFIGS = {
         displayName: 'FrameFilm Pro',
         pixelLayout: 'row-major' // 行优先: (y * width) + x
     },
+    FRAMEFILMSE: {
+        screenWidth: 720,
+        screenHeight: 480,
+        displayName: 'FrameFilm SE',
+        pixelLayout: 'row-major' // 行优先: (y * width) + x
+    },
     FRAMEFILMMAX: {
         screenWidth: 1200,
         screenHeight: 1600,
