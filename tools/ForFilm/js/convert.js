@@ -492,71 +492,6 @@ function updateImage() {
     updateCanvasScale();
 }
 
-// 高质量渲染：超采样 + 高质量插值，仅用于传输给设备的画面，不影响预览画布
-function renderDeviceImageData(supersample) {
-    var ss = supersample || 2;
-    var targetW = getCanvasWidth();
-    var targetH = getCanvasHeight();
-
-    // 1. 在超采样大画布上渲染原图（复用与 updateImage 相同的几何变换）
-    var bigW = targetW * ss;
-    var bigH = targetH * ss;
-    var off = document.createElement('canvas');
-    off.width = bigW;
-    off.height = bigH;
-    var ctx = off.getContext('2d');
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    ctx.save();
-    var effW = bigW;
-    var effH = bigH;
-    if (canvasRotation === 1) {
-        ctx.translate(0, bigH);
-        ctx.rotate(-Math.PI / 2);
-        effW = bigH;
-        effH = bigW;
-    }
-
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, effW, effH);
-
-    var imgW = originalImage.width * scale * ss;
-    var imgH = originalImage.height * scale * ss;
-    var drawX = (effW - imgW) / 2 + offsetX * ss;
-    var drawY = (effH - imgH) / 2 + offsetY * ss;
-    ctx.drawImage(
-        originalImage,
-        0, 0,
-        originalImage.width, originalImage.height,
-        drawX, drawY,
-        imgW, imgH
-    );
-    ctx.restore();
-
-    // 2. 高质量缩小到设备目标分辨率
-    var out = document.createElement('canvas');
-    out.width = targetW;
-    out.height = targetH;
-    var octx = out.getContext('2d');
-    octx.imageSmoothingEnabled = true;
-    octx.imageSmoothingQuality = 'high';
-    octx.drawImage(off, 0, 0, bigW, bigH, 0, 0, targetW, targetH);
-
-    return octx.getImageData(0, 0, targetW, targetH);
-}
-
-// 生成设备传输用的图像数据：超采样渲染 + 对比度 + 抖动（与预览处理链路一致，但源为高质量渲染）
-function buildDeviceImageData() {
-    var imageData = renderDeviceImageData(2);
-    var contrastFactor = parseFloat(document.getElementById('contrast').value);
-    adjustContrast(imageData, contrastFactor);
-    if (isDitheringEnabled) {
-        imageData = ditherImage(imageData);
-    }
-    return imageData;
-}
-
 function adjustContrast(imageData, factor) {
     const data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
@@ -1558,7 +1493,12 @@ function downloadFilmFile() {
     }
 
     try {
-        window.processedDataForDownload = processImageData(buildDeviceImageData());
+        const canvas = document.getElementById('canvas');
+        const canvasWidth = getCanvasWidth();
+        const canvasHeight = getCanvasHeight();
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        window.processedDataForDownload = processImageData(imageData);
     } catch (error) {
         document.getElementById('imageResult').innerHTML = '<div class="error">转换失败: ' + error.message + '</div>';
         return;
