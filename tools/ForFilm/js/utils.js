@@ -99,10 +99,10 @@ function getFilmFileTotalSize() {
 function getPixelIndex(x, y, width, height) {
     var layout = getDeviceConfig().pixelLayout;
     if (layout === 'rotated') {
-        // 老设备 FrameFilm(600x400): 列优先翻转
+        // 老设备 FrameFilm: 列优先翻转
         return (x * height) + (height - 1 - y);
     }
-    // Pro/SE 及默认: 行优先
+    // Pro 及默认: 行优先
     return (y * width) + x;
 }
 
