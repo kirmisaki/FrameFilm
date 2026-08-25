@@ -18,7 +18,7 @@ var DEVICE_CONFIGS = {
         screenWidth: 720,
         screenHeight: 480,
         displayName: 'FrameFilm SE',
-        pixelLayout: 'transposed' // 面板 480x720 竖装呈横屏，按面板行序（列转置）打包，长轴(x)取反: (width-1-x)*height + y
+        pixelLayout: 'transposed' // 从右下角往上、从右往左逐列采集
     },
     FRAMEFILMMAX: {
         screenWidth: 1200,
@@ -103,8 +103,8 @@ function getPixelIndex(x, y, width, height) {
         return (x * height) + (height - 1 - y);
     }
     if (layout === 'transposed') {
-        // SE 版(720x480): 面板 480x720 竖装呈横屏，按面板行序（列转置）打包，长轴(x)取反
-        return (width - 1 - x) * height + y;
+        // SE 版(720x480): 面板 480x720 竖装呈横屏，从右下角往上、从右往左逐列采集
+        return (width - 1 - x) * height + (height - 1 - y);
     }
     // Pro 及默认: 行优先
     return (y * width) + x;
