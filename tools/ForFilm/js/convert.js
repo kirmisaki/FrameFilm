@@ -71,6 +71,10 @@ function initConvertTool() {
         document.getElementById('contrastValue').textContent = this.value;
         debounceUpdateImage();
     });
+    document.getElementById('saturation').addEventListener('input', function() {
+        document.getElementById('saturationValue').textContent = this.value;
+        debounceUpdateImage();
+    });
     document.getElementById('ditherType').addEventListener('change', function() {
         document.getElementById('ditherStrengthContainer').style.display =
             this.value === 'adaptive' ? 'none' : '';
@@ -472,6 +476,10 @@ function updateImage() {
     );
     adjustContrast(imageData, contrastFactor);
 
+    // 应用饱和度调整
+    const saturationFactor = parseFloat(document.getElementById('saturation').value);
+    adjustSaturation(imageData, saturationFactor);
+
     // 根据状态应用抖动或显示原始图像
     if (isDitheringEnabled) {
         const processedImageData = ditherImage(imageData);
@@ -498,6 +506,20 @@ function adjustContrast(imageData, factor) {
         data[i] = Math.min(255, Math.max(0, (data[i] - 128) * factor + 128));
         data[i + 1] = Math.min(255, Math.max(0, (data[i + 1] - 128) * factor + 128));
         data[i + 2] = Math.min(255, Math.max(0, (data[i + 2] - 128) * factor + 128));
+    }
+    return imageData;
+}
+
+function adjustSaturation(imageData, factor) {
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        data[i] = Math.min(255, Math.max(0, gray + (r - gray) * factor));
+        data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * factor));
+        data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * factor));
     }
     return imageData;
 }
