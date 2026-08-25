@@ -21,8 +21,8 @@ extern "C" {
  */
 #define EPD_TAG                        "HAL_EPD"
 
-#define EPD_WIDTH                      792
-#define EPD_HEIGHT                     528
+#define EPD_WIDTH                      760
+#define EPD_HEIGHT                     568
 
 //IO settings
 //SCK--GPIO12(SCLK)

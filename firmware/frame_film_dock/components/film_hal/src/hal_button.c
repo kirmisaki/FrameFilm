@@ -84,8 +84,6 @@ static button_mgr_t m_button_mgr;
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
-static void button_up_cb(void *button_handle, void *usr_data);
-static void button_down_cb(void *button_handle, void *usr_data);
 static void button_confirm_cb(void *button_handle, void *usr_data);
 static void trigger_callbacks(input_press_type_t type);
 
@@ -160,36 +158,6 @@ void hal_input_deinit(void)
 
     m_button_mgr.initialized = false;
     sys_logi(BUTTON_TAG, "button deinitialized");
-}
-
-static void button_up_cb(void *button_handle, void *usr_data)
-{
-    button_event_t event = iot_button_get_event(button_handle);
-    if (event == BUTTON_SINGLE_CLICK)
-    {
-        sys_logi(BUTTON_TAG, "UP SHORT PRESS");
-        trigger_callbacks(INPUT_PRESS_UP);
-    }
-    else if (event == BUTTON_LONG_PRESS_START)
-    {
-        sys_logi(BUTTON_TAG, "UP LONG PRESS");
-        trigger_callbacks(INPUT_PRESS_UP);
-    }
-}
-
-static void button_down_cb(void *button_handle, void *usr_data)
-{
-    button_event_t event = iot_button_get_event(button_handle);
-    if (event == BUTTON_SINGLE_CLICK)
-    {
-        sys_logi(BUTTON_TAG, "DOWN SHORT PRESS");
-        trigger_callbacks(INPUT_PRESS_DOWN);
-    }
-    else if (event == BUTTON_LONG_PRESS_START)
-    {
-        sys_logi(BUTTON_TAG, "DOWN LONG PRESS");
-        trigger_callbacks(INPUT_PRESS_DOWN);
-    }
 }
 
 static void button_confirm_cb(void *button_handle, void *usr_data)

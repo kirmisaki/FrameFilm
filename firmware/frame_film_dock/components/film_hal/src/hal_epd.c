@@ -19,8 +19,8 @@
  *
  *
  * FileName : /film_hal/src/hal_epd.c
- * Author: Kiritro  Version: v0.1  Date: 2026/3/31
- * Description: SE0368-C 6-color EPD driver (hardware SPI half-duplex)
+ * Author: Kiritro  Version: v0.1  Date: 2026/8/25
+ * Description: Function introduction
  * ChangeLog: Change Notes
  *
  *********************************************************************/
@@ -39,8 +39,8 @@
  * MACROS
  */
 // 4bpp input → 2bpp output conversion
-#define EPD_INPUT_LINE      (EPD_WIDTH / 2)   // 396 bytes per line
-#define EPD_OUTPUT_LINE     (EPD_WIDTH / 4)   // 198 bytes per line
+#define EPD_INPUT_LINE      (EPD_WIDTH / 2)   // 380 bytes per line
+#define EPD_OUTPUT_LINE     (EPD_WIDTH / 4)   // 190 bytes per line
 
 #define FILM_HEADER_SIZE                  (32)
 #define FILM_COLOR_TABLE_SIZE             (16)
@@ -51,29 +51,22 @@
 #define FILM_OFFSET_RESERVED              (0x09)
 #define FILM_OFFSET_COLORTABLE            (0x10)
 
-// SE0368-C commands
+// Panel commands
 #define PSR                            0x00  // Panel setting
 #define PWR                            0x01  // Power setting
-#define POF                            0x02  // Power off
-#define POFS                           0x03  // Power off sequence
+#define POF                            0x03  // Power off sequence
 #define PON                            0x04  // Power on
-#define BTST1                          0x05  // Booster soft start 1
-#define BTST2                          0x06  // Booster soft start 2
+#define BTST                           0x06  // Booster soft start
 #define DSLP                           0x07  // Deep sleep
-#define BTST3                          0x08  // Booster soft start 3
-#define DTM                            0x10  // Data start transmission
-#define REF                            0x17  // Display refresh
+#define DTM                            0x10  // Data start transmission (2bpp)
+#define POF2                           0x12  // Power off (sleep)
 #define PLL                            0x30  // PLL control
-#define TSE                            0x40  // Temperature sensor read
-#define TSD                            0x41  // Temperature sensor data
-#define CDI                            0x50  // CDI
-#define RES2                           0x62  // Resolution setting 2
-#define RSET                           0x83  // Resolution extended setting
-#define WFT                            0xE0  // Waveform temperature
-#define VCOM2                          0xE1  // VCOM2
+#define CDI                            0x50  // VCOM and data interval
+#define RES                            0x61  // Resolution
+#define RAMADDR                        0x65  // RAM address
+#define DRV                            0x70  // Driver/LUT select
+#define WAKEUP                         0x8F  // Soft reset / wakeup
 #define PWS                            0xE3  // Power saving
-#define WFD                            0xE6  // Waveform temperature data
-#define VCOM                           0xE7  // VCOM
 #define BOD                            0xE9  // Border
 
 // Pack 4 identical 2-bit values into one byte
@@ -106,9 +99,10 @@ static const unsigned char color_lut[256] =
     [0x1C] = 0x06, // Green
 };
 
-// SE0368-C 2-bit color maps for dual-pass display (from reference driver)
-static const uint8_t color_map[16]  = {1, 1, 2, 3, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-static const uint8_t color_map1[16] = {0, 1, 1, 3, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+// 双 pass 刷新颜色映射（color_map = pass1，color_map1 = pass2）
+// 索引约定：0=黑 1=白 2=黄 3=红 5=蓝 6=绿
+static const uint8_t color_map[16]  = {1, 1, 1, 3, 1, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+static const uint8_t color_map1[16] = {0, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
 /*********************************************************************
  * LOCAL VARIABLES
@@ -122,12 +116,11 @@ static void spi_init(void);
 static void EPD_W21_WriteCMD(unsigned char command);
 static void EPD_W21_WriteDATA(unsigned char datas);
 static void EPD_W21_WriteDATA_Bulk(const unsigned char *data, uint32_t len);
-static unsigned char EPD_read(void);
 static void reset(void);
 static void lcd_chkstatus(void);
-static unsigned char epd_read_temp(void);
-static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap, uint8_t temp_val);
-static void epd_display_solid_pass(unsigned char fill_byte, unsigned char temp_val);
+static void epd_init_seq(void);
+static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap);
+static void epd_display_solid_pass(unsigned char fill_byte);
 static void epd_display_solid(unsigned char color_index);
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header);
 
@@ -201,20 +194,6 @@ static void EPD_W21_WriteDATA_Bulk(const unsigned char *data, uint32_t len)
     EPD_W21_CS_1;
 }
 
-static unsigned char EPD_read(void)
-{
-    unsigned char rx_data = 0;
-    EPD_W21_CS_0;
-    EPD_W21_DC_1;
-    spi_transaction_t t;
-    memset(&t, 0, sizeof(t));
-    t.rxlength = 8;
-    t.rx_buffer = &rx_data;
-    spi_device_transmit(m_spi_device, &t);
-    EPD_W21_CS_1;
-    return rx_data;
-}
-
 /*********************************************************************
  * HELPER FUNCTIONS
  *********************************************************************/
@@ -224,34 +203,54 @@ static void reset(void)
     EPD_W21_RST_1;
     vTaskDelay(20 / portTICK_PERIOD_MS);
     EPD_W21_RST_0;
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(50 / portTICK_PERIOD_MS);
     EPD_W21_RST_1;
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(30 / portTICK_PERIOD_MS);
     lcd_chkstatus();
 }
 
 static void lcd_chkstatus(void)
 {
-    while (isEPD_W21_BUSY == 0);
+    int timeout = 0;
+    while (isEPD_W21_BUSY == 0)
+    {
+        vTaskDelay(1 / portTICK_PERIOD_MS);
+        if (++timeout > 15000)
+        {
+            sys_loge(EPD_TAG, "wait BUSY timeout");
+            break;
+        }
+    }
 }
 
-static unsigned char epd_read_temp(void)
+/* 完整初始化命令序列（每次刷新前都会发送一次） */
+static void epd_init_seq(void)
 {
-    EPD_W21_WriteCMD(TSD);   // 0x41
-    EPD_W21_WriteDATA(0x00);
-    EPD_W21_WriteCMD(TSE);   // 0x40
+    EPD_W21_WriteCMD(WAKEUP);  EPD_W21_WriteDATA(0x06);
+    EPD_W21_WriteCMD(PSR);     EPD_W21_WriteDATA(0x0F); EPD_W21_WriteDATA(0x29);
+    EPD_W21_WriteCMD(0x4D);    EPD_W21_WriteDATA(0x78);
+    EPD_W21_WriteCMD(PSR);     EPD_W21_WriteDATA(0x07); EPD_W21_WriteDATA(0x29);
+    EPD_W21_WriteCMD(BTST);    EPD_W21_WriteDATA(0x0D); EPD_W21_WriteDATA(0x12);
+                               EPD_W21_WriteDATA(0x30); EPD_W21_WriteDATA(0x20);
+                               EPD_W21_WriteDATA(0x19); EPD_W21_WriteDATA(0x34);
+                               EPD_W21_WriteDATA(0x10);
+    EPD_W21_WriteCMD(PWR);     EPD_W21_WriteDATA(0x07); EPD_W21_WriteDATA(0x00);
+    EPD_W21_WriteCMD(POF);     EPD_W21_WriteDATA(0x10); EPD_W21_WriteDATA(0x54); EPD_W21_WriteDATA(0x44);
+    EPD_W21_WriteCMD(PLL);     EPD_W21_WriteDATA(0x08);
+    EPD_W21_WriteCMD(CDI);     EPD_W21_WriteDATA(0x37);
+    EPD_W21_WriteCMD(0xF0);    EPD_W21_WriteDATA(0x7D);
+    EPD_W21_WriteCMD(RES);     EPD_W21_WriteDATA(0x02); EPD_W21_WriteDATA(0xF8);
+                               EPD_W21_WriteDATA(0x02); EPD_W21_WriteDATA(0x38);
+    EPD_W21_WriteCMD(RAMADDR); EPD_W21_WriteDATA(0x00); EPD_W21_WriteDATA(0x00);
+                               EPD_W21_WriteDATA(0x20); EPD_W21_WriteDATA(0x00);
+    EPD_W21_WriteCMD(PWS);     EPD_W21_WriteDATA(0x22);
+    EPD_W21_WriteCMD(BOD);     EPD_W21_WriteDATA(0x01);
+    EPD_W21_WriteCMD(DRV);     EPD_W21_WriteDATA(0x8E); EPD_W21_WriteDATA(0x02); EPD_W21_WriteDATA(0x01);
     lcd_chkstatus();
-    return EPD_read();
 }
 
-static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap, uint8_t temp_val)
+static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap)
 {
-    EPD_W21_WriteCMD(WFT);
-    EPD_W21_WriteDATA(0x02);
-    EPD_W21_WriteCMD(WFD);
-    EPD_W21_WriteDATA(temp_val);
-    lcd_chkstatus();
-
     EPD_W21_WriteCMD(DTM);
 
     unsigned char out_line[EPD_OUTPUT_LINE];
@@ -272,19 +271,12 @@ static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap, ui
         EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
     }
 
-    EPD_W21_WriteCMD(REF);
-    EPD_W21_WriteDATA(0xA5);
+    EPD_W21_WriteCMD(PON);
     lcd_chkstatus();
 }
 
-static void epd_display_solid_pass(unsigned char fill_byte, unsigned char temp_val)
+static void epd_display_solid_pass(unsigned char fill_byte)
 {
-    EPD_W21_WriteCMD(WFT);
-    EPD_W21_WriteDATA(0x02);
-    EPD_W21_WriteCMD(WFD);
-    EPD_W21_WriteDATA(temp_val);
-    lcd_chkstatus();
-
     EPD_W21_WriteCMD(DTM);
 
     unsigned char line[EPD_OUTPUT_LINE];
@@ -294,51 +286,22 @@ static void epd_display_solid_pass(unsigned char fill_byte, unsigned char temp_v
         EPD_W21_WriteDATA_Bulk(line, EPD_OUTPUT_LINE);
     }
 
-    EPD_W21_WriteCMD(REF);
-    EPD_W21_WriteDATA(0xA5);
+    EPD_W21_WriteCMD(PON);
     lcd_chkstatus();
 }
 
 static void epd_display_solid(unsigned char color_index)
 {
-    unsigned char var_temp, temp1, temp2;
-
-    var_temp = epd_read_temp();
-
-    if (var_temp < 5)
-    {
-        temp1 = 2;
-        temp2 = 7;
-    }
-    else if (var_temp <= 10)
-    {
-        temp1 = 12;
-        temp2 = 17;
-    }
-    else if (var_temp <= 20)
-    {
-        temp1 = 22;
-        temp2 = 27;
-    }
-    else if (var_temp <= 30)
-    {
-        temp1 = 32;
-        temp2 = 37;
-    }
-    else /* var_temp > 30 && <= 127*/
-    {
-        temp1 = 42;
-        temp2 = 47;
-    }
-
     uint8_t pass1 = PACK4(color_map[color_index]);
     uint8_t pass2 = PACK4(color_map1[color_index]);
 
-    sys_logi(EPD_TAG, "Solid idx=%d temp=%d t1=%d t2=%d p1=0x%02X p2=0x%02X",
-             color_index, var_temp, temp1, temp2, pass1, pass2);
+    sys_logi(EPD_TAG, "Solid idx=%d p1=0x%02X p2=0x%02X",
+             color_index, pass1, pass2);
 
-    epd_display_solid_pass(pass1, temp1);
-    epd_display_solid_pass(pass2, temp2);
+    epd_init_seq();
+    epd_display_solid_pass(pass1);
+    epd_init_seq();
+    epd_display_solid_pass(pass2);
 }
 
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header)
@@ -410,78 +373,7 @@ void hal_epd_init(void)
 void hal_epd_display_init(void)
 {
     reset();
-
-    // SE0368-C init sequence
-    EPD_W21_WriteCMD(PSR);   // 0x00
-    EPD_W21_WriteDATA(0x27);
-    EPD_W21_WriteDATA(0x29);
-
-    // 00寄存器第一byte写0x2B或2F扫描方向用以下设置
-	// EPD_W21_WriteCMD (0x61);
-	// EPD_W21_WriteDATA(0x03);
-	// EPD_W21_WriteDATA(0x18);
-	// EPD_W21_WriteDATA(0x02);
-	// EPD_W21_WriteDATA(0x58);
-	// lcd_chkstatus();
-	// EPD_W21_WriteCMD (0x65);
-	// EPD_W21_WriteDATA(0x00);
-	// EPD_W21_WriteDATA(0x00);
-	// EPD_W21_WriteDATA(0x00);
-	// EPD_W21_WriteDATA(0x00);
-
-    // 00寄存器第一byte写0x23或27扫描方向用以下设置
-    EPD_W21_WriteCMD(RSET);  // 0x83
-    EPD_W21_WriteDATA(0x00);
-    EPD_W21_WriteDATA(0x00);
-    EPD_W21_WriteDATA(0x03);
-    EPD_W21_WriteDATA(0x17);
-    EPD_W21_WriteDATA(0x00);
-    EPD_W21_WriteDATA(0x48);
-    EPD_W21_WriteDATA(0x02);
-    EPD_W21_WriteDATA(0x57);
-    EPD_W21_WriteDATA(0x01);
-    lcd_chkstatus();
-
-    EPD_W21_WriteCMD(PWR);   // 0x01
-    EPD_W21_WriteDATA(0x07);
-    EPD_W21_WriteDATA(0x00);
-
-    EPD_W21_WriteCMD(POFS);  // 0x03
-    EPD_W21_WriteDATA(0x10);
-    EPD_W21_WriteDATA(0x54);
-    EPD_W21_WriteDATA(0x44);
-
-    EPD_W21_WriteCMD(BTST2); // 0x06
-    EPD_W21_WriteDATA(0x25);
-    EPD_W21_WriteDATA(0x25);
-    EPD_W21_WriteDATA(0x3C);
-    EPD_W21_WriteDATA(0x17);
-
-    EPD_W21_WriteCMD(PLL);   // 0x30
-    EPD_W21_WriteDATA(0x08);
-    lcd_chkstatus();
-
-    EPD_W21_WriteCMD(TSD);   // 0x41
-    EPD_W21_WriteDATA(0x00);
-
-    EPD_W21_WriteCMD(CDI);   // 0x50
-    EPD_W21_WriteDATA(0x37);
-
-    EPD_W21_WriteCMD(RES2);  // 0x62
-    EPD_W21_WriteDATA(0x02);
-    EPD_W21_WriteDATA(0x02);
-
-    EPD_W21_WriteCMD(VCOM);  // 0xE7
-    EPD_W21_WriteDATA(0x1C);
-
-    EPD_W21_WriteCMD(PWS);   // 0xE3
-    EPD_W21_WriteDATA(0x22);
-
-    EPD_W21_WriteCMD(BOD);   // 0xE9
-    EPD_W21_WriteDATA(0x01);
-
-    EPD_W21_WriteCMD(VCOM2); // 0xE1
-    EPD_W21_WriteDATA(0x02);
+    epd_init_seq();
 
     sys_logi(EPD_TAG, "EPD display initialized");
 }
@@ -519,40 +411,10 @@ void hal_epd_display_pic(const unsigned char *picData)
         return;
     }
 
-    unsigned char var_temp, temp1, temp2;
-
-    var_temp = epd_read_temp();
-
-    if (var_temp < 5)
-    {
-        temp1 = 2;
-        temp2 = 7;
-    }
-    else if (var_temp <= 10)
-    {
-        temp1 = 12;
-        temp2 = 17;
-    }
-    else if (var_temp <= 20)
-    {
-        temp1 = 22;
-        temp2 = 27;
-    }
-    else if (var_temp <= 30)
-    {
-        temp1 = 32;
-        temp2 = 37;
-    }
-    else /* var_temp > 30 && <= 127*/
-    {
-        temp1 = 42;
-        temp2 = 47;
-    }
-
-    sys_logi(EPD_TAG, "Display pic: temp=%d t1=%d t2=%d", var_temp, temp1, temp2);
-
-    epd_do_pass(picData, color_map,  temp1);
-    epd_do_pass(picData, color_map1, temp2);
+    epd_init_seq();
+    epd_do_pass(picData, color_map);
+    epd_init_seq();
+    epd_do_pass(picData, color_map1);
 
     sys_logi(EPD_TAG, "Display pic completed");
 }
@@ -581,114 +443,43 @@ void hal_epd_display_film(const unsigned char *filmData)
 
     pixelData = filmData + FILM_HEADER_SIZE;
 
-    unsigned char var_temp, temp1, temp2;
-
-    var_temp = epd_read_temp();
-
-    if (var_temp < 5)
+    for (int pass = 0; pass < 2; pass++)
     {
-        temp1 = 2;
-        temp2 = 7;
-    }
-    else if (var_temp <= 10)
-    {
-        temp1 = 12;
-        temp2 = 17;
-    }
-    else if (var_temp <= 20)
-    {
-        temp1 = 22;
-        temp2 = 27;
-    }
-    else if (var_temp <= 30)
-    {
-        temp1 = 32;
-        temp2 = 37;
-    }
-    else /* var_temp > 30 && <= 127*/
-    {
-        temp1 = 42;
-        temp2 = 47;
-    }
+        const uint8_t *cmap = (pass == 0) ? color_map : color_map1;
 
-    sys_logi(EPD_TAG, "Film temp=%d t1=%d t2=%d", var_temp, temp1, temp2);
+        epd_init_seq();
+        EPD_W21_WriteCMD(DTM);
 
-    // ---- Pass 1 ----
-    EPD_W21_WriteCMD(WFT);
-    EPD_W21_WriteDATA(0x02);
-    EPD_W21_WriteCMD(WFD);
-    EPD_W21_WriteDATA(temp1);
-    lcd_chkstatus();
+        unsigned char line_4bpp[EPD_INPUT_LINE];
+        unsigned char out_line[EPD_OUTPUT_LINE];
 
-    EPD_W21_WriteCMD(DTM);
-
-    unsigned char line_4bpp[EPD_INPUT_LINE];
-    unsigned char out_line[EPD_OUTPUT_LINE];
-
-    for (i = 0; i < EPD_HEIGHT; i++)
-    {
-        for (j = 0; j < EPD_INPUT_LINE; j++)
+        for (i = 0; i < EPD_HEIGHT; i++)
         {
-            uint8_t byte = pixelData[i * EPD_INPUT_LINE + j];
-            uint8_t cc1 = (byte >> 4) & 0x0F;
-            uint8_t cc2 = byte & 0x0F;
-            line_4bpp[j] = (color_lut[header.colorTable[cc1]] << 4)
-                           |  color_lut[header.colorTable[cc2]];
+            for (j = 0; j < EPD_INPUT_LINE; j++)
+            {
+                uint8_t byte = pixelData[i * EPD_INPUT_LINE + j];
+                uint8_t cc1 = (byte >> 4) & 0x0F;
+                uint8_t cc2 = byte & 0x0F;
+                line_4bpp[j] = (color_lut[header.colorTable[cc1]] << 4)
+                               |  color_lut[header.colorTable[cc2]];
+            }
+            for (int k = 0; k < EPD_INPUT_LINE; k += 2)
+            {
+                uint8_t in1 = line_4bpp[k];
+                uint8_t in2 = line_4bpp[k + 1];
+                uint8_t p1 = (in1 >> 4) & 0x0F;
+                uint8_t p2 = in1 & 0x0F;
+                uint8_t p3 = (in2 >> 4) & 0x0F;
+                uint8_t p4 = in2 & 0x0F;
+                out_line[k / 2] = (cmap[p1] << 6) | (cmap[p2] << 4)
+                                  | (cmap[p3] << 2) | cmap[p4];
+            }
+            EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
         }
-        for (int k = 0; k < EPD_INPUT_LINE; k += 2)
-        {
-            uint8_t in1 = line_4bpp[k];
-            uint8_t in2 = line_4bpp[k + 1];
-            uint8_t p1 = (in1 >> 4) & 0x0F;
-            uint8_t p2 = in1 & 0x0F;
-            uint8_t p3 = (in2 >> 4) & 0x0F;
-            uint8_t p4 = in2 & 0x0F;
-            out_line[k / 2] = (color_map[p1] << 6) | (color_map[p2] << 4)
-                              | (color_map[p3] << 2) | color_map[p4];
-        }
-        EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
+
+        EPD_W21_WriteCMD(PON);
+        lcd_chkstatus();
     }
-
-    EPD_W21_WriteCMD(REF);
-    EPD_W21_WriteDATA(0xA5);
-    lcd_chkstatus();
-
-    // ---- Pass 2 ----
-    EPD_W21_WriteCMD(WFT);
-    EPD_W21_WriteDATA(0x02);
-    EPD_W21_WriteCMD(WFD);
-    EPD_W21_WriteDATA(temp2);
-    lcd_chkstatus();
-
-    EPD_W21_WriteCMD(DTM);
-
-    for (i = 0; i < EPD_HEIGHT; i++)
-    {
-        for (j = 0; j < EPD_INPUT_LINE; j++)
-        {
-            uint8_t byte = pixelData[i * EPD_INPUT_LINE + j];
-            uint8_t cc1 = (byte >> 4) & 0x0F;
-            uint8_t cc2 = byte & 0x0F;
-            line_4bpp[j] = (color_lut[header.colorTable[cc1]] << 4)
-                           |  color_lut[header.colorTable[cc2]];
-        }
-        for (int k = 0; k < EPD_INPUT_LINE; k += 2)
-        {
-            uint8_t in1 = line_4bpp[k];
-            uint8_t in2 = line_4bpp[k + 1];
-            uint8_t p1 = (in1 >> 4) & 0x0F;
-            uint8_t p2 = in1 & 0x0F;
-            uint8_t p3 = (in2 >> 4) & 0x0F;
-            uint8_t p4 = in2 & 0x0F;
-            out_line[k / 2] = (color_map1[p1] << 6) | (color_map1[p2] << 4)
-                              | (color_map1[p3] << 2) | color_map1[p4];
-        }
-        EPD_W21_WriteDATA_Bulk(out_line, EPD_OUTPUT_LINE);
-    }
-
-    EPD_W21_WriteCMD(REF);
-    EPD_W21_WriteDATA(0xA5);
-    lcd_chkstatus();
 
     sys_logi(EPD_TAG, "Film display completed");
 }
@@ -696,8 +487,8 @@ void hal_epd_display_film(const unsigned char *filmData)
 void hal_epd_sleep(void)
 {
     lcd_chkstatus();
-    EPD_W21_WriteCMD(DSLP);
-    EPD_W21_WriteDATA(0xA5);
+    EPD_W21_WriteCMD(POF2);
+    EPD_W21_WriteDATA(0x00);
 
     sys_logi(EPD_TAG, "EPD sleep");
 }
