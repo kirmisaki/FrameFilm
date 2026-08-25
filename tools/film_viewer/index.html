@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Film 文件查看器</title>
+<style>
+    :root {
+        --bg: #1e1f24;
+        --panel: #2a2b31;
+        --border: #3a3b42;
+        --text: #e6e6e6;
+        --muted: #9a9ba3;
+        --accent: #4a9eff;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+    header {
+        padding: 12px 20px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+    .controls label { color: var(--muted); }
+    select, input[type=number] {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 13px;
+    }
+    .btn {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        padding: 6px 14px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    main {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+    }
+    aside {
+        width: 260px;
+        background: var(--panel);
+        border-right: 1px solid var(--border);
+        padding: 16px;
+        overflow-y: auto;
+        font-size: 13px;
+    }
+    aside h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); font-weight: 600; }
+    .meta { margin-bottom: 16px; }
+    .meta .row { display: flex; justify-content: space-between; padding: 3px 0; }
+    .meta .row .k { color: var(--muted); }
+    .meta .row .v { font-family: Consolas, monospace; }
+    .swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .swatch { display: flex; align-items: center; gap: 6px; }
+    .swatch .box { width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--border); }
+    .viewer {
+        flex: 1;
+        overflow: auto;
+        padding: 20px;
+        cursor: grab;
+        background:
+            linear-gradient(45deg, #26272d 25%, transparent 25%),
+            linear-gradient(-45deg, #26272d 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #26272d 75%),
+            linear-gradient(-45deg, transparent 75%, #26272d 75%);
+        background-size: 20px 20px;
+        background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    }
+    canvas {
+        display: block;
+        margin: auto;
+        image-rendering: pixelated;
+        background: #fff;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+    .viewer.grabbing { cursor: grabbing; }
+    .drop-hint {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,0.6);
+        font-size: 20px;
+        pointer-events: none;
+    }
+    .drop-hint.show { display: flex; }
+    .empty {
+        color: var(--muted);
+        font-size: 15px;
+        text-align: center;
+        width: 100%;
+        margin-top: 48px;
+    }
+</style>
+</head>
+<body>
+<header>
+    <h1>Film 文件查看器</h1>
+    <div class="controls">
+        <input type="file" id="fileInput" accept=".film" style="display:none">
+        <button class="btn" id="openBtn">打开 .film 文件</button>
+        <label>布局</label>
+        <select id="layoutSelect">
+            <option value="row-major" selected>row-major（行优先）</option>
+            <option value="rotated">rotated（老 FrameFilm 600×400）</option>
+            <option value="rotated-180">rotated-180（SE 180° 旋转）</option>
+        </select>
+        <label>旋转</label>
+        <select id="rotationSelect">
+            <option value="0" selected>0°</option>
+            <option value="90">90°</option>
+            <option value="180">180°</option>
+            <option value="270">270°</option>
+        </select>
+        <label>缩放</label>
+        <input type="number" id="scaleInput" value="1" min="0.1" max="10" step="0.1">
+        <span id="coordInfo" style="color:var(--muted)"></span>
+    </div>
+</header>
+<main>
+    <aside>
+        <h2>文件信息</h2>
+        <div class="meta" id="meta"></div>
+        <h2>颜色表</h2>
+        <div class="swatches" id="swatches"></div>
+    </aside>
+    <div class="viewer" id="viewer">
+        <div class="empty" id="empty">请打开一个 .film 文件，或将文件拖入窗口</div>
+        <canvas id="canvas" style="display:none"></canvas>
+    </div>
+</main>
+<div class="drop-hint" id="dropHint">松开以打开文件</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var FILM_HEADER_SIZE = 32;
+
+    // 颜色实际值 -> RGB（与 ForFilm convert.js 的 rgbPalette 一致）
+    var VALUE_RGB = {
+        0x00: [0, 0, 0],        // 黑
+        0xFF: [255, 255, 255],  // 白
+        0xFC: [255, 255, 0],    // 黄
+        0xE0: [255, 0, 0],      // 红
+        0x03: [0, 0, 255],      // 蓝
+        0x1C: [41, 204, 20]     // 绿
+    };
+
+    var state = {
+        width: 0,
+        height: 0,
+        colorCount: 0,
+        colorTable: new Uint8Array(16),
+        pixelData: null
+    };
+
+    var canvas = document.getElementById('canvas');
+    var ctx = canvas.getContext('2d');
+    var offCanvas = document.createElement('canvas');
+    var viewer = document.getElementById('viewer');
+    var empty = document.getElementById('empty');
+    var meta = document.getElementById('meta');
+    var swatches = document.getElementById('swatches');
+    var layoutSelect = document.getElementById('layoutSelect');
+    var rotationSelect = document.getElementById('rotationSelect');
+    var scaleInput = document.getElementById('scaleInput');
+    var coordInfo = document.getElementById('coordInfo');
+
+    function getPixelIndex(x, y, width, height, layout) {
+        if (layout === 'rotated') {
+            return (x * height) + (height - 1 - y);
+        }
+        if (layout === 'rotated-180') {
+            return (height - 1 - y) * width + (width - 1 - x);
+        }
+        // row-major
+        return (y * width) + x;
+    }
+
+    function loadFile(file) {
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var buf = new Uint8Array(e.target.result);
+            parseAndRender(buf, file.name);
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function parseAndRender(buf, name) {
+        if (buf.length < FILM_HEADER_SIZE) {
+            showError('文件太小，不是有效的 film 文件');
+            return;
+        }
+
+        var fileSize = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+        var width = buf[4] | (buf[5] << 8);
+        var height = buf[6] | (buf[7] << 8);
+        var colorCount = buf[8];
+
+        if (width <= 0 || height <= 0) {
+            showError('头部宽高非法: ' + width + 'x' + height);
+            return;
+        }
+
+        var expectedPixels = (width * height) / 2;
+        if (expectedPixels % 1 !== 0) {
+            showError('宽×高必须为偶数，无法按 4bpp 解码');
+            return;
+        }
+
+        var colorTable = new Uint8Array(16);
+        for (var i = 0; i < 16; i++) colorTable[i] = buf[16 + i];
+
+        var pixelData = buf.slice(FILM_HEADER_SIZE, FILM_HEADER_SIZE + expectedPixels);
+
+        state.width = width;
+        state.height = height;
+        state.colorCount = colorCount;
+        state.colorTable = colorTable;
+        state.pixelData = pixelData;
+
+        renderMeta(name, buf.length, fileSize, width, height, colorCount, expectedPixels);
+        renderSwatches(colorTable, colorCount);
+        render();
+    }
+
+    function renderMeta(name, actualBytes, fileSize, width, height, colorCount, expectedPixels) {
+        var rows = [
+            ['文件名', name || '-'],
+            ['实际大小', actualBytes + ' B'],
+            ['头部 fileSize', fileSize + ' B'],
+            ['分辨率', width + ' × ' + height],
+            ['颜色数', colorCount],
+            ['像素数据', expectedPixels + ' B']
+        ];
+        meta.innerHTML = rows.map(function (r) {
+            return '<div class="row"><span class="k">' + r[0] + '</span><span class="v">' + r[1] + '</span></div>';
+        }).join('');
+    }
+
+    function renderSwatches(colorTable, colorCount) {
+        var html = '';
+        for (var i = 0; i < Math.max(6, colorCount); i++) {
+            var val = colorTable[i];
+            var rgb = VALUE_RGB[val] || [255, 255, 255];
+            html += '<div class="swatch"><span class="box" style="background:rgb(' + rgb.join(',') + ')"></span>' +
+                '#' + i + '=0x' + ('0' + val.toString(16)).slice(-2).toUpperCase() + '</div>';
+        }
+        swatches.innerHTML = html;
+    }
+
+    function render() {
+        var w = state.width, h = state.height;
+        var layout = layoutSelect.value;
+        var rot = parseInt(rotationSelect.value, 10) || 0;
+
+        // 解码到离屏画布（原始宽高）
+        offCanvas.width = w;
+        offCanvas.height = h;
+        var offCtx = offCanvas.getContext('2d');
+        var img = offCtx.createImageData(w, h);
+        var d = img.data;
+        var px = state.pixelData;
+        var ct = state.colorTable;
+
+        for (var y = 0; y < h; y++) {
+            for (var x = 0; x < w; x++) {
+                var idx = getPixelIndex(x, y, w, h, layout);
+                var byte = px[idx >> 1];
+                var nib = (idx & 1) ? (byte & 0x0F) : (byte >> 4);
+                var val = ct[nib];
+                var rgb = VALUE_RGB[val] || [255, 255, 255];
+                var p = (y * w + x) * 4;
+                d[p] = rgb[0];
+                d[p + 1] = rgb[1];
+                d[p + 2] = rgb[2];
+                d[p + 3] = 255;
+            }
+        }
+        offCtx.putImageData(img, 0, 0);
+
+        // 按旋转角度绘制到主画布
+        var rotated = (rot === 90 || rot === 270);
+        var cw = rotated ? h : w;
+        var ch = rotated ? w : h;
+        canvas.width = cw;
+        canvas.height = ch;
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.save();
+        if (rot === 90) {
+            ctx.translate(cw, 0);
+            ctx.rotate(Math.PI / 2);
+        } else if (rot === 180) {
+            ctx.translate(cw, ch);
+            ctx.rotate(Math.PI);
+        } else if (rot === 270) {
+            ctx.translate(0, ch);
+            ctx.rotate(-Math.PI / 2);
+        }
+        ctx.drawImage(offCanvas, 0, 0);
+        ctx.restore();
+
+        applyScale();
+        empty.style.display = 'none';
+        canvas.style.display = 'block';
+    }
+
+    function applyScale() {
+        var s = parseFloat(scaleInput.value) || 1;
+        canvas.style.width = (canvas.width * s) + 'px';
+        canvas.style.height = (canvas.height * s) + 'px';
+    }
+
+    // 将显示坐标逆旋转回原始 film 像素坐标
+    function invertRotation(dx, dy) {
+        var w = state.width, h = state.height;
+        var rot = parseInt(rotationSelect.value, 10) || 0;
+        var x, y;
+        if (rot === 90) {
+            x = dy; y = h - 1 - dx;
+        } else if (rot === 180) {
+            x = w - 1 - dx; y = h - 1 - dy;
+        } else if (rot === 270) {
+            x = w - 1 - dy; y = dx;
+        } else {
+            x = dx; y = dy;
+        }
+        if (x < 0 || x >= w || y < 0 || y >= h) return null;
+        return { x: x, y: y };
+    }
+
+    function showError(msg) {
+        empty.textContent = msg;
+        empty.style.display = 'block';
+        canvas.style.display = 'none';
+        meta.innerHTML = '';
+        swatches.innerHTML = '';
+    }
+
+    // ===== 事件 =====
+    document.getElementById('openBtn').addEventListener('click', function () {
+        document.getElementById('fileInput').click();
+    });
+    document.getElementById('fileInput').addEventListener('change', function (e) {
+        loadFile(e.target.files[0]);
+    });
+    layoutSelect.addEventListener('change', function () {
+        if (state.pixelData) render();
+    });
+    rotationSelect.addEventListener('change', function () {
+        if (state.pixelData) render();
+    });
+    scaleInput.addEventListener('change', applyScale);
+    scaleInput.addEventListener('input', applyScale);
+
+    // 滚轮缩放
+    viewer.addEventListener('wheel', function (e) {
+        if (!state.pixelData) return;
+        e.preventDefault();
+        var cur = parseFloat(scaleInput.value) || 1;
+        var next = Math.max(0.1, Math.min(10, cur * (e.deltaY < 0 ? 1.1 : 0.9)));
+        scaleInput.value = next.toFixed(1);
+        applyScale();
+    }, { passive: false });
+
+    // 拖拽平移
+    var dragging = false, startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
+    viewer.addEventListener('mousedown', function (e) {
+        if (!state.pixelData) return;
+        dragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        startScrollLeft = viewer.scrollLeft;
+        startScrollTop = viewer.scrollTop;
+        viewer.classList.add('grabbing');
+        e.preventDefault();
+    });
+    window.addEventListener('mousemove', function (e) {
+        if (!dragging) return;
+        viewer.scrollLeft = startScrollLeft - (e.clientX - startX);
+        viewer.scrollTop = startScrollTop - (e.clientY - startY);
+    });
+    window.addEventListener('mouseup', function () {
+        dragging = false;
+        viewer.classList.remove('grabbing');
+    });
+
+    // 拖拽打开
+    var dropHint = document.getElementById('dropHint');
+    window.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        dropHint.classList.add('show');
+    });
+    window.addEventListener('dragleave', function (e) {
+        if (e.relatedTarget === null) dropHint.classList.remove('show');
+    });
+    window.addEventListener('drop', function (e) {
+        e.preventDefault();
+        dropHint.classList.remove('show');
+        var f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) loadFile(f);
+    });
+
+    // 鼠标坐标 → 像素坐标（供调试定位，已按旋转逆映射回原始坐标）
+    canvas.addEventListener('mousemove', function (e) {
+        if (!state.pixelData) return;
+        var rect = canvas.getBoundingClientRect();
+        var dx = Math.floor((e.clientX - rect.left) / rect.width * canvas.width);
+        var dy = Math.floor((e.clientY - rect.top) / rect.height * canvas.height);
+        var p = invertRotation(dx, dy);
+        coordInfo.textContent = p ? '像素 (' + p.x + ', ' + p.y + ')' : '';
+    });
+    canvas.addEventListener('mouseleave', function () {
+        coordInfo.textContent = '';
+    });
+})();
+</script>
+</body>
+</html>
