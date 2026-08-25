@@ -18,7 +18,7 @@ var DEVICE_CONFIGS = {
         screenWidth: 720,
         screenHeight: 480,
         displayName: 'FrameFilm SE',
-        pixelLayout: 'row-major' // 行优先: (y * width) + x
+        pixelLayout: 'rotated-180' // 180° 旋转: (height-1-y) * width + (width-1-x)
     },
     FRAMEFILMMAX: {
         screenWidth: 1200,
@@ -101,6 +101,10 @@ function getPixelIndex(x, y, width, height) {
     if (layout === 'rotated') {
         // 老设备 FrameFilm: 列优先翻转
         return (x * height) + (height - 1 - y);
+    }
+    if (layout === 'rotated-180') {
+        // SE 版: 面板显示方向与画布差 180°
+        return (height - 1 - y) * width + (width - 1 - x);
     }
     // Pro 及默认: 行优先
     return (y * width) + x;
