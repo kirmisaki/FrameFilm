@@ -196,7 +196,7 @@ function frameUpdateImage(canvasId) {
     var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
     adjustContrast(imageData, 1.2);
 
-    var processedImageData = adaptiveDither(imageData);
+    var processedImageData = atkinsonEnhancedQuantize(imageData);
     var processedData = processImageData(processedImageData);
     var finalImageData = decodeProcessedData(processedData, canvasWidth, canvasHeight);
     ctx.putImageData(finalImageData, 0, 0);
@@ -519,7 +519,7 @@ function frameRenderQuote(text, author) {
     var imageData = ctx.getImageData(0, 0, cw, ch);
     var useDither = document.getElementById('frameQuoteDither').checked;
     var processedData = useDither 
-        ? processImageData(floydSteinbergDither(imageData, 0.8))
+        ? processImageData(atkinsonEnhancedQuantize(imageData))
         : processImageData(imageData);
     var finalData = decodeProcessedData(processedData, cw, ch);
     ctx.putImageData(finalData, 0, 0);

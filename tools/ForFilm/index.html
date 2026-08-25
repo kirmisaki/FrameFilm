@@ -419,7 +419,8 @@
                         <div class="form-group">
                             <label for="ditherType">抖动算法：</label>
                             <select id="ditherType">
-                                <option value="adaptive">自适应（推荐）</option>
+                                <option value="atkinsonEnhanced">Atkinson 增强</option>
+                                <option value="adaptive">自适应</option>
                                 <option value="floydSteinberg">Floyd-Steinberg</option>
                                 <option value="atkinson">Atkinson</option>
                                 <option value="stucki">Stucki</option>
@@ -511,6 +512,7 @@
     </div>
 
     <script src="js/utils.js"></script>
+    <script src="js/atkinson_enhanced_lut.js"></script>
     <script src="js/bluetooth.js"></script>
     <script src="js/convert.js"></script>
     <script src="js/frame.js"></script>

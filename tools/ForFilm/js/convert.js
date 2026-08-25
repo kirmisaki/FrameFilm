@@ -77,11 +77,11 @@ function initConvertTool() {
     });
     document.getElementById('ditherType').addEventListener('change', function() {
         document.getElementById('ditherStrengthContainer').style.display =
-            this.value === 'adaptive' ? 'none' : '';
+            (this.value === 'adaptive' || this.value === 'atkinsonEnhanced') ? 'none' : '';
         debounceUpdateImage();
     });
     document.getElementById('ditherStrengthContainer').style.display =
-        document.getElementById('ditherType').value === 'adaptive' ? 'none' : '';
+        (document.getElementById('ditherType').value === 'adaptive' || document.getElementById('ditherType').value === 'atkinsonEnhanced') ? 'none' : '';
     
     // 鼠标滚轮缩放功能
     const canvas = document.getElementById('canvas');
@@ -1280,6 +1280,194 @@ function adaptiveDither(imageData) {
     return applyDitherByType(imageData, bestConfig.type, bestConfig.strength);
 }
 
+// ===== Atkinson 增强六色抖动（Atkinson Enhanced）=====
+// 面向墨水屏六色显示优化的增强型误差扩散，相对普通 Atkinson 的改进：
+// 1) 常规像素按 CIELAB 感知色差加权最近色选色，比 RGB 最近色更符合人眼；
+// 2) 蓝/青区域使用修正 LUT + 选色 LUT 两级查表，补偿墨水屏蓝色显色偏差；
+// 3) 误差残差按墨水屏实际校准显色值计算（而非纯显示色），扩散更贴近最终观感；
+// 4) 三行滚动缓冲累加原始残差，像素消费时一次性 (sum+4)>>3，减少整数舍入误差。
+
+// 六色显示调色板（索引顺序: 0黑 1白 2黄 3红 4绿 5蓝）
+var AE_DISPLAY_PALETTE = [
+    [0, 0, 0],
+    [255, 255, 255],
+    [255, 255, 0],
+    [255, 0, 0],
+    [0, 255, 0],
+    [0, 0, 255]
+];
+
+// 六色残差校准色（按墨水屏实际显色值标定，误差扩散用，与最终显示色不同）
+var AE_RESIDUAL_PALETTE = [
+    [0, 0, 0],
+    [255, 255, 255],
+    [255, 235, 0],
+    [154, 0, 0],
+    [20, 85, 16],
+    [0, 36, 154]
+];
+
+// 调色板索引 -> film 编码（film 颜色表: 黑0x00 白0x01 黄0x02 红0x03 蓝0x04 绿0x05）
+var AE_INDEX_TO_FILM_CODE = [0x00, 0x01, 0x02, 0x03, 0x05, 0x04];
+
+// film 编码 -> 预览 RGB（与固件 color_get 显示一致）
+var FILM_CODE_RGB = {
+    0x00: [0, 0, 0],
+    0x01: [255, 255, 255],
+    0x02: [255, 255, 0],
+    0x03: [255, 0, 0],
+    0x04: [0, 0, 255],
+    0x05: [41, 204, 20]
+};
+
+// sRGB 通道线性化（D65 标准）
+function aeChannelToLinear(c) {
+    c = c / 255;
+    return c > 0.04045 ? Math.pow((c + 0.055) / 1.055, 2.4) : c / 12.92;
+}
+
+function aeLabPivot(t) {
+    return t > 0.008856 ? Math.pow(t, 1.0 / 3.0) : 7.787 * t + 16.0 / 116.0;
+}
+
+// sRGB -> D65 CIELAB
+function aeRgbToLab(r, g, b) {
+    var rl = aeChannelToLinear(r) * 100.0;
+    var gl = aeChannelToLinear(g) * 100.0;
+    var bl = aeChannelToLinear(b) * 100.0;
+    var x = (rl * 0.4124564 + gl * 0.3575761 + bl * 0.1804375) / 95.047;
+    var y = (rl * 0.2126729 + gl * 0.7151522 + bl * 0.0721750) / 100.0;
+    var z = (rl * 0.0193339 + gl * 0.1191920 + bl * 0.9503041) / 108.883;
+    var fx = aeLabPivot(x);
+    var fy = aeLabPivot(y);
+    var fz = aeLabPivot(z);
+    return { l: 116.0 * fy - 16.0, a: 500.0 * (fx - fy), b: 200.0 * (fy - fz) };
+}
+
+// 六色显示色的预计算 CIELAB
+var AE_PALETTE_LABS = AE_DISPLAY_PALETTE.map(function(color) {
+    return aeRgbToLab(color[0], color[1], color[2]);
+});
+
+// 64^3 查表单元索引
+function aeLutCell(r, g, b) {
+    return ((r >> 2) << 12) | ((g >> 2) << 6) | (b >> 2);
+}
+
+function aeLutAvailable() {
+    return typeof _aeCorrectionLUT !== 'undefined' && _aeCorrectionLUT !== null &&
+        typeof _aeSelectionLUT !== 'undefined' && _aeSelectionLUT !== null;
+}
+
+// 六色选色: 蓝/青区域走两级 LUT（墨水屏蓝色补偿），其余走 CIELAB 加权最近色
+function aeSelectInkColor(r, g, b, lab) {
+    var bestIndex;
+    if (aeLutAvailable() && (lab.b < -10.0 || lab.a < -35.0)) {
+        // 修正 LUT 混合后查选色 LUT
+        var cell = aeLutCell(r, g, b) * 3;
+        var cr = _aeCorrectionLUT[cell];
+        var cg = _aeCorrectionLUT[cell + 1];
+        var cb = _aeCorrectionLUT[cell + 2];
+        var r2 = r - ((r - cr) >> 2);
+        var g2 = g - ((g - cg) >> 2);
+        var b2 = b - ((b - cb) >> 2);
+        bestIndex = _aeSelectionLUT[aeLutCell(r2, g2, b2)];
+        if (bestIndex >= 6) bestIndex = 0;
+    } else {
+        bestIndex = 0;
+        var bestDistance = 0x7FFFFFFF;
+        for (var i = 0; i < AE_PALETTE_LABS.length; i++) {
+            var dl = lab.l - AE_PALETTE_LABS[i].l;
+            var da = lab.a - AE_PALETTE_LABS[i].a;
+            var db = lab.b - AE_PALETTE_LABS[i].b;
+            // 加权距离先截断成整数再做严格整数比较，平局保留较早索引
+            var distance = Math.trunc(2.0 * dl * dl + 0.8 * da * da + db * db);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+    }
+    return bestIndex;
+}
+
+function aeClampU8(value) {
+    return value < 0 ? 0 : (value > 255 ? 255 : value);
+}
+
+// Atkinson 增强量化: 三行滚动缓冲六邻域误差扩散。
+// 返回用 film 显示色填充的预览 ImageData；后续 processImageData 会把
+// 这些 film 颜色精确映射回 film 编码，因此下载/蓝牙上传结果与预览一致。
+function atkinsonEnhancedQuantize(imageData) {
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = imageData.data;
+    const stride = (width + 3) * 3;
+    let currentErrors = new Int32Array(stride);
+    let nextErrors = new Int32Array(stride);
+    let secondErrors = new Int32Array(stride);
+
+    // 当前像素的 film 编码（逻辑行优先）
+    var codes = new Uint8Array(width * height);
+
+    function slot(x) {
+        return (x + 1) * 3;
+    }
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const errorOffset = slot(x);
+            const sourceOffset = (y * width + x) * 4;
+            // 缓冲里累加的是未除以 8 的原始残差，消费时一次性 (sum+4)>>3
+            const r = aeClampU8(data[sourceOffset] + ((currentErrors[errorOffset] + 4) >> 3));
+            const g = aeClampU8(data[sourceOffset + 1] + ((currentErrors[errorOffset + 1] + 4) >> 3));
+            const b = aeClampU8(data[sourceOffset + 2] + ((currentErrors[errorOffset + 2] + 4) >> 3));
+
+            const lab = aeRgbToLab(r, g, b);
+            const index = aeSelectInkColor(r, g, b, lab);
+            codes[y * width + x] = AE_INDEX_TO_FILM_CODE[index];
+
+            // 残差按墨水屏校准色计算（非显示色）
+            const rp = AE_RESIDUAL_PALETTE[index];
+            const errR = r - rp[0];
+            const errG = g - rp[1];
+            const errB = b - rp[2];
+
+            // 六邻域: (x+1,y) (x+2,y) (x-1,y+1) (x,y+1) (x+1,y+1) (x,y+2)
+            let n = slot(x + 1);
+            currentErrors[n] += errR; currentErrors[n + 1] += errG; currentErrors[n + 2] += errB;
+            n = slot(x + 2);
+            currentErrors[n] += errR; currentErrors[n + 1] += errG; currentErrors[n + 2] += errB;
+            n = slot(x - 1);
+            nextErrors[n] += errR; nextErrors[n + 1] += errG; nextErrors[n + 2] += errB;
+            n = slot(x);
+            nextErrors[n] += errR; nextErrors[n + 1] += errG; nextErrors[n + 2] += errB;
+            n = slot(x + 1);
+            nextErrors[n] += errR; nextErrors[n + 1] += errG; nextErrors[n + 2] += errB;
+            n = slot(x);
+            secondErrors[n] += errR; secondErrors[n + 1] += errG; secondErrors[n + 2] += errB;
+        }
+        // 滚动三行缓冲
+        const temp = currentErrors;
+        currentErrors = nextErrors;
+        nextErrors = secondErrors;
+        secondErrors = temp;
+        secondErrors.fill(0);
+    }
+
+    // 预览: 用 film 显示色填充（与打包/设备显示一致）
+    const out = new ImageData(width, height);
+    const outData = out.data;
+    for (let i = 0; i < codes.length; i++) {
+        const color = FILM_CODE_RGB[codes[i]];
+        outData[i * 4] = color[0];
+        outData[i * 4 + 1] = color[1];
+        outData[i * 4 + 2] = color[2];
+        outData[i * 4 + 3] = 255;
+    }
+    return out;
+}
+
 function ditherImage(imageData) {
     const ditherType = document.getElementById('ditherType').value;
     const ditherStrength = parseFloat(document.getElementById('ditherStrength').value);
@@ -1287,6 +1475,8 @@ function ditherImage(imageData) {
     switch (ditherType) {
         case 'adaptive':
             return adaptiveDither(imageData);
+        case 'atkinsonEnhanced':
+            return atkinsonEnhancedQuantize(imageData);
         case 'floydSteinberg':
             return floydSteinbergDither(imageData, ditherStrength);
         case 'atkinson':
@@ -1459,7 +1649,7 @@ function applyDitherParameters(params) {
     document.getElementById('contrast').value = params.contrast;
     document.getElementById('contrastValue').textContent = params.contrast;
     document.getElementById('ditherStrengthContainer').style.display =
-        params.ditherType === 'adaptive' ? 'none' : '';
+        (params.ditherType === 'adaptive' || params.ditherType === 'atkinsonEnhanced') ? 'none' : '';
 }
 
 function autoConfigureDither() {
