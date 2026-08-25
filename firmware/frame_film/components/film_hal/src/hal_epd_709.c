@@ -83,11 +83,11 @@
 
 // 709 屏 4bit 颜色码
 #define EPD7_COLOR_BLACK   0x00
-#define EPD7_COLOR_WHITE   0x11
-#define EPD7_COLOR_YELLOW  0x22
-#define EPD7_COLOR_RED     0x33
-#define EPD7_COLOR_BLUE    0x55
-#define EPD7_COLOR_GREEN   0x66
+#define EPD7_COLOR_WHITE   0x01
+#define EPD7_COLOR_YELLOW  0x02
+#define EPD7_COLOR_RED     0x03
+#define EPD7_COLOR_BLUE    0x05
+#define EPD7_COLOR_GREEN   0x06
 
 /*********************************************************************
 * TYPEDEFS

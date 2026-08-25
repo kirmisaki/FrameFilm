@@ -86,11 +86,11 @@ typedef struct
 static const unsigned char color_lut[256] =
 {
     [0x00] = 0x00, // Black
-    [0xFF] = 0x11, // White
-    [0xFC] = 0x22, // Yellow
-    [0xE0] = 0x33, // Red
-    [0x03] = 0x55, // Blue
-    [0x1C] = 0x66, // Green
+    [0xFF] = 0x01, // White
+    [0xFC] = 0x02, // Yellow
+    [0xE0] = 0x03, // Red
+    [0x03] = 0x05, // Blue
+    [0x1C] = 0x06, // Green
 };
 
 /*********************************************************************
