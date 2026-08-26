@@ -1473,10 +1473,12 @@ function szLabToRgb(L, a, b) {
 }
 
 // SZ 选色：RGB 平方距离最近邻 fit128 感知六色。
-// fit128 的黄色校色值 (197,194,7) 很亮，Atkinson 扩散（丢 1/4 误差）会放大
-// 亮色区域的黄色选择导致整体偏黄，因此对黄色距离施加惩罚系数（>1 抑制黄）
-// 1.8 为实测标定值：黄 6.0% ≈ SZ 增强基准 5.6%
+// fit128 校准色亮暗不均：黄 (197,194,7) 很亮、绿 (36,75,24) 很暗。
+// Atkinson 扩散丢 1/4 误差会放大亮色的选择（偏黄）；而暗绿在 RGB 距离下
+// 会误吸暗红/暗蓝等中间色像素（偏绿）。分别用惩罚系数（>1 抑制）平衡：
+// 1.8 为实测标定值（用户图 1080×1528 上绿 12.0% ≈ SZ 增强基准 12.4%）
 var SZ_YELLOW_PENALTY = 1.8;
+var SZ_GREEN_PENALTY = 1.8;
 function szClosestFit128(r, g, b) {
     var best = 0;
     var bestDist = Infinity;
@@ -1488,6 +1490,8 @@ function szClosestFit128(r, g, b) {
         var dist = dr * dr + dg * dg + db * db;
         if (i === 2) {
             dist *= SZ_YELLOW_PENALTY;
+        } else if (i === 4) {
+            dist *= SZ_GREEN_PENALTY;
         }
         if (dist < bestDist) {
             bestDist = dist;
