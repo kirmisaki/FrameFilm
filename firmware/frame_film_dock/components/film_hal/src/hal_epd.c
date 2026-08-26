@@ -314,12 +314,13 @@ static void epd_display_solid(unsigned char color_index)
     sys_logi(EPD_TAG, "Solid idx=%d p1=0x%02X p2=0x%02X",
              color_index, pass1, pass2);
 
+    reset();
     epd_init_seq();
     epd_display_solid_pass(pass1);
     epd_update();
     epd_sleep();
-    vTaskDelay(300 / portTICK_PERIOD_MS);
 
+    reset();
     epd_wakeup();
     epd_init_seq();
     epd_display_solid_pass(pass2);
@@ -360,7 +361,6 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
 
 static void epd_sleep(void)
 {   
-    lcd_chkstatus();
     EPD_W21_WriteCMD(0X02);
     EPD_W21_WriteDATA(0x00);
     lcd_chkstatus();
@@ -443,13 +443,13 @@ void hal_epd_display_pic(const unsigned char *picData)
         sys_loge(EPD_TAG, "picData is NULL");
         return;
     }
-
+    reset();
     epd_init_seq();
     epd_do_pass(picData, color_map);
     epd_update();
 	epd_sleep();
-    vTaskDelay(300 / portTICK_PERIOD_MS);
 
+    reset();
     epd_wakeup();
     epd_init_seq();
     epd_do_pass(picData, color_map1);
@@ -487,9 +487,9 @@ void hal_epd_display_film(const unsigned char *filmData)
     {
         const uint8_t *cmap = (pass == 0) ? color_map : color_map1;
 
+        reset();
         if (pass == 1)
         {
-            vTaskDelay(300 / portTICK_PERIOD_MS);
             epd_wakeup();
         }
         epd_init_seq();
