@@ -60,6 +60,17 @@ const rgbPalette = [
     { name: "绿色", r: 41, g: 204, b: 20, value: 0x1c, code: COLOR_CODE_GREEN }
 ];
 
+// SZ 增强不使用对比度/饱和度（输入为原始 cover 图），选中时隐藏相应滑块
+function syncAdjustSliders() {
+    var ditherType = document.getElementById('ditherType').value;
+    document.getElementById('ditherStrengthContainer').style.display =
+        (ditherType === 'adaptive' || ditherType === 'atkinsonEnhanced' || ditherType === 'szEnhanced') ? 'none' : '';
+    var colorAdjust = document.getElementById('colorAdjustContainer');
+    if (colorAdjust) {
+        colorAdjust.style.display = (ditherType === 'szEnhanced') ? 'none' : '';
+    }
+}
+
 function initConvertTool() {
     // 事件监听器
     document.getElementById('imageFile').addEventListener('change', handleFileUpload);
@@ -76,12 +87,13 @@ function initConvertTool() {
         debounceUpdateImage();
     });
     document.getElementById('ditherType').addEventListener('change', function() {
-        document.getElementById('ditherStrengthContainer').style.display =
-            (this.value === 'adaptive' || this.value === 'atkinsonEnhanced') ? 'none' : '';
+        syncAdjustSliders();
         debounceUpdateImage();
     });
-    document.getElementById('ditherStrengthContainer').style.display =
-        (document.getElementById('ditherType').value === 'adaptive' || document.getElementById('ditherType').value === 'atkinsonEnhanced') ? 'none' : '';
+    syncAdjustSliders();
+
+    // SZ 增强算法仅 Pro 可用（默认机型非 Pro，选项保持禁用）
+    syncSzEnhancedAvailability();
     
     // 鼠标滚轮缩放功能
     const canvas = document.getElementById('canvas');
@@ -1489,6 +1501,25 @@ function ditherImage(imageData) {
             return gammaFloydSteinbergDither(imageData, ditherStrength);
         case 'bayer':
             return bayerDither(imageData, ditherStrength);
+        case 'szEnhanced':
+            if (currentDeviceType !== 'FRAMEFILMPRO') {
+                showMessage('SZ 增强仅支持 FrameFilm Pro', 'warning');
+                return floydSteinbergDither(imageData, ditherStrength);
+            }
+            if (!window.szEnhancedDither) return imageData;
+            // SZ 增强流水线（YRD0370 V7.5）输入为原始 cover 图，
+            // 不叠加 UI 对比度/饱和度调整（与 C++ source_cover_792x528.rgb 一致）
+            if (currentImageData &&
+                currentImageData.width === imageData.width &&
+                currentImageData.height === imageData.height) {
+                const rawImageData = new ImageData(
+                    new Uint8ClampedArray(currentImageData.data),
+                    currentImageData.width,
+                    currentImageData.height
+                );
+                return window.szEnhancedDither(rawImageData);
+            }
+            return window.szEnhancedDither(imageData);
         default:
             return imageData;
     }
@@ -1648,8 +1679,7 @@ function applyDitherParameters(params) {
     document.getElementById('ditherStrengthValue').textContent = params.ditherStrength;
     document.getElementById('contrast').value = params.contrast;
     document.getElementById('contrastValue').textContent = params.contrast;
-    document.getElementById('ditherStrengthContainer').style.display =
-        (params.ditherType === 'adaptive' || params.ditherType === 'atkinsonEnhanced') ? 'none' : '';
+    syncAdjustSliders();
 }
 
 function autoConfigureDither() {

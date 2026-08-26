@@ -68,6 +68,29 @@ function onDeviceTypeChanged() {
     if (typeInfo) {
         typeInfo.style.display = 'flex';
     }
+    // SZ 增强算法仅 FrameFilm Pro 可用
+    syncSzEnhancedAvailability();
+}
+
+// SZ 增强（结构感知六色量化）只对 FrameFilm Pro 生效：
+// 非 Pro 机型禁用选项，若已选中则回退到 Floyd-Steinberg
+function syncSzEnhancedAvailability() {
+    var select = document.getElementById('ditherType');
+    if (!select) {
+        return;
+    }
+    var option = select.querySelector('option[value="szEnhanced"]');
+    var isPro = currentDeviceType === 'FRAMEFILMPRO';
+    if (option) {
+        option.disabled = !isPro;
+    }
+    if (select.value === 'szEnhanced' && !isPro) {
+        select.value = 'floydSteinberg';
+        // 恢复滑块显示（对比度/饱和度/抖动强度）
+        if (typeof syncAdjustSliders === 'function') {
+            syncAdjustSliders();
+        }
+    }
 }
 
 function getCanvasWidth() {
