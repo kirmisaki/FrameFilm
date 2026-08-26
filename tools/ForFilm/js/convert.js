@@ -64,7 +64,7 @@ const rgbPalette = [
 function syncAdjustSliders() {
     var ditherType = document.getElementById('ditherType').value;
     document.getElementById('ditherStrengthContainer').style.display =
-        (ditherType === 'adaptive' || ditherType === 'atkinsonEnhanced' || ditherType === 'szEnhanced') ? 'none' : '';
+        (ditherType === 'adaptive' || ditherType === 'atkinsonEnhanced' || ditherType === 'szEnhanced' || ditherType === 'atkinsonSzCalib') ? 'none' : '';
     var colorAdjust = document.getElementById('colorAdjustContainer');
     if (colorAdjust) {
         colorAdjust.style.display = (ditherType === 'szEnhanced') ? 'none' : '';
@@ -1319,6 +1319,17 @@ var AE_RESIDUAL_PALETTE = [
     [0, 36, 154]
 ];
 
+// SZ 增强校色（YRD0370 fit128 感知六色，Epson V19 II 0° Gamma 2.2 实测，
+// 与 sz_enhanced.js PALETTE_PERCEIVED 一致；索引 0黑 1白 2黄 3红 4绿 5蓝）
+var SZ_FIT128_PALETTE = [
+    [2, 2, 2],          // 黑 (2,2,2)
+    [190, 200, 200],    // 白 (190,200,200)
+    [197, 194, 7],      // 黄 (197.478, 194.495, 6.653)
+    [89, 10, 6],        // 红 (88.942, 10.070, 5.819)
+    [36, 75, 24],       // 绿 (35.987, 74.689, 23.922)
+    [0, 18, 148]        // 蓝 (0, 18.061, 148.165)
+];
+
 // 调色板索引 -> film 编码（film 颜色表: 黑0x00 白0x01 黄0x02 红0x03 蓝0x04 绿0x05）
 var AE_INDEX_TO_FILM_CODE = [0x00, 0x01, 0x02, 0x03, 0x05, 0x04];
 
@@ -1361,6 +1372,11 @@ var AE_PALETTE_LABS = AE_DISPLAY_PALETTE.map(function(color) {
     return aeRgbToLab(color[0], color[1], color[2]);
 });
 
+// SZ 校色的预计算 CIELAB（选色用，替换 AE 校色时用）
+var SZ_FIT128_PALETTE_LABS = SZ_FIT128_PALETTE.map(function(color) {
+    return aeRgbToLab(color[0], color[1], color[2]);
+});
+
 // 64^3 查表单元索引
 function aeLutCell(r, g, b) {
     return ((r >> 2) << 12) | ((g >> 2) << 6) | (b >> 2);
@@ -1371,10 +1387,10 @@ function aeLutAvailable() {
         typeof _aeSelectionLUT !== 'undefined' && _aeSelectionLUT !== null;
 }
 
-// 六色选色: 蓝/青区域走两级 LUT（墨水屏蓝色补偿），其余走 CIELAB 加权最近色
-function aeSelectInkColor(r, g, b, lab) {
+// 六色选色: 蓝/青区域走两级 LUT（墨水屏蓝色补偿，仅 AE 校色），其余走 CIELAB 加权最近色
+function aeSelectInkColor(r, g, b, lab, paletteLabs, useLut) {
     var bestIndex;
-    if (aeLutAvailable() && (lab.b < -10.0 || lab.a < -35.0)) {
+    if (useLut !== false && aeLutAvailable() && (lab.b < -10.0 || lab.a < -35.0)) {
         // 修正 LUT 混合后查选色 LUT
         var cell = aeLutCell(r, g, b) * 3;
         var cr = _aeCorrectionLUT[cell];
@@ -1388,10 +1404,11 @@ function aeSelectInkColor(r, g, b, lab) {
     } else {
         bestIndex = 0;
         var bestDistance = 0x7FFFFFFF;
-        for (var i = 0; i < AE_PALETTE_LABS.length; i++) {
-            var dl = lab.l - AE_PALETTE_LABS[i].l;
-            var da = lab.a - AE_PALETTE_LABS[i].a;
-            var db = lab.b - AE_PALETTE_LABS[i].b;
+        for (var i = 0; i < paletteLabs.length; i++) {
+            var pl = paletteLabs[i];
+            var dl = lab.l - pl.l;
+            var da = lab.a - pl.a;
+            var db = lab.b - pl.b;
             // 加权距离先截断成整数再做严格整数比较，平局保留较早索引
             var distance = Math.trunc(2.0 * dl * dl + 0.8 * da * da + db * db);
             if (distance < bestDistance) {
@@ -1407,10 +1424,84 @@ function aeClampU8(value) {
     return value < 0 ? 0 : (value > 255 ? 255 : value);
 }
 
+// SZ 校色预处理：CIELab L 压缩到面板黑/白范围（与 balanced_fit128_seed.mjs 的
+// compressDynamicRange 一致，黑=fit128 黑 2,2,2，白=fit128 白 190,200,200）
+function szCompressDynamicRange(imageData) {
+    var width = imageData.width;
+    var height = imageData.height;
+    var src = imageData.data;
+    var n = width * height;
+    var blackL = aeRgbToLab(2, 2, 2).l;
+    var whiteL = aeRgbToLab(190, 200, 200).l;
+    var out = new ImageData(width, height);
+    var od = out.data;
+    for (var i = 0; i < n; i++) {
+        var o = i * 4;
+        var lab = aeRgbToLab(src[o], src[o + 1], src[o + 2]);
+        var compressedL = blackL + (lab.l / 100.0) * (whiteL - blackL);
+        var rgb = szLabToRgb(compressedL, lab.a, lab.b);
+        od[o] = rgb[0];
+        od[o + 1] = rgb[1];
+        od[o + 2] = rgb[2];
+        od[o + 3] = 255;
+    }
+    return out;
+}
+
+// Lab -> sRGB（upstream Lab 反变换，与 sz_enhanced.js upstreamLabToRgb 一致）
+function szLabToRgb(L, a, b) {
+    var y = (L + 16) / 116;
+    var x = a / 500 + y;
+    var z = y - b / 200;
+    x = x > 0.206897 ? Math.pow(x, 3) : (x - 16 / 116) / 7.787;
+    y = y > 0.206897 ? Math.pow(y, 3) : (y - 16 / 116) / 7.787;
+    z = z > 0.206897 ? Math.pow(z, 3) : (z - 16 / 116) / 7.787;
+    x = x * 95.047 / 100;
+    y = y * 100.0 / 100;
+    z = z * 108.883 / 100;
+    var r = x * 3.2404542 + y * -1.5371385 + z * -0.4985314;
+    var g = x * -0.969266 + y * 1.8760108 + z * 0.041556;
+    var b2 = x * 0.0556434 + y * -0.2040259 + z * 1.0572252;
+    r = r > 0.0031308 ? 1.055 * Math.pow(r, 1 / 2.4) - 0.055 : 12.92 * r;
+    g = g > 0.0031308 ? 1.055 * Math.pow(g, 1 / 2.4) - 0.055 : 12.92 * g;
+    b2 = b2 > 0.0031308 ? 1.055 * Math.pow(b2, 1 / 2.4) - 0.055 : 12.92 * b2;
+    return [
+        Math.max(0, Math.min(255, Math.round(r * 255))),
+        Math.max(0, Math.min(255, Math.round(g * 255))),
+        Math.max(0, Math.min(255, Math.round(b2 * 255)))
+    ];
+}
+
+// SZ 选色：RGB 平方距离最近邻 fit128 感知六色。
+// fit128 的黄色校色值 (197,194,7) 很亮，Atkinson 扩散（丢 1/4 误差）会放大
+// 亮色区域的黄色选择导致整体偏黄，因此对黄色距离施加惩罚系数（>1 抑制黄）
+// 1.8 为实测标定值：黄 6.0% ≈ SZ 增强基准 5.6%
+var SZ_YELLOW_PENALTY = 1.8;
+function szClosestFit128(r, g, b) {
+    var best = 0;
+    var bestDist = Infinity;
+    for (var i = 0; i < SZ_FIT128_PALETTE.length; i++) {
+        var c = SZ_FIT128_PALETTE[i];
+        var dr = r - c[0];
+        var dg = g - c[1];
+        var db = b - c[2];
+        var dist = dr * dr + dg * dg + db * db;
+        if (i === 2) {
+            dist *= SZ_YELLOW_PENALTY;
+        }
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = i;
+        }
+    }
+    return best;
+}
+
 // Atkinson 增强量化: 三行滚动缓冲六邻域误差扩散。
 // 返回用 film 显示色填充的预览 ImageData；后续 processImageData 会把
 // 这些 film 颜色精确映射回 film 编码，因此下载/蓝牙上传结果与预览一致。
-function atkinsonEnhancedQuantize(imageData) {
+// selectIndexFn(r,g,b) 返回 0-5 色板索引，residualOf(index) 返回残差 RGB。
+function atkinsonQuantizeBase(imageData, selectIndexFn, residualOf) {
     const width = imageData.width;
     const height = imageData.height;
     const data = imageData.data;
@@ -1436,11 +1527,11 @@ function atkinsonEnhancedQuantize(imageData) {
             const b = aeClampU8(data[sourceOffset + 2] + ((currentErrors[errorOffset + 2] + 4) >> 3));
 
             const lab = aeRgbToLab(r, g, b);
-            const index = aeSelectInkColor(r, g, b, lab);
+            const index = selectIndexFn(r, g, b, lab);
             codes[y * width + x] = AE_INDEX_TO_FILM_CODE[index];
 
             // 残差按墨水屏校准色计算（非显示色）
-            const rp = AE_RESIDUAL_PALETTE[index];
+            const rp = residualOf(index);
             const errR = r - rp[0];
             const errG = g - rp[1];
             const errB = b - rp[2];
@@ -1480,6 +1571,29 @@ function atkinsonEnhancedQuantize(imageData) {
     return out;
 }
 
+// 原版：AE 校色（含蓝/青 LUT 补偿，选色用 AE 加权 CIELAB 距离）
+function atkinsonEnhancedQuantize(imageData) {
+    return atkinsonQuantizeBase(imageData,
+        function(r, g, b, lab) {
+            return aeSelectInkColor(r, g, b, lab, AE_PALETTE_LABS, true);
+        },
+        function(i) {
+            return AE_RESIDUAL_PALETTE[i];
+        });
+}
+
+// 新算法：Atkinson 扩散 + SZ 校色（compressDynamicRange 预处理 + fit128 感知色
+// RGB 距离选色与残差，与 SZ 增强 V5 seed 的校色链路一致，无蓝青 LUT）
+function atkinsonSzCalibQuantize(imageData) {
+    return atkinsonQuantizeBase(szCompressDynamicRange(imageData),
+        function(r, g, b) {
+            return szClosestFit128(r, g, b);
+        },
+        function(i) {
+            return SZ_FIT128_PALETTE[i];
+        });
+}
+
 function ditherImage(imageData) {
     const ditherType = document.getElementById('ditherType').value;
     const ditherStrength = parseFloat(document.getElementById('ditherStrength').value);
@@ -1489,6 +1603,8 @@ function ditherImage(imageData) {
             return adaptiveDither(imageData);
         case 'atkinsonEnhanced':
             return atkinsonEnhancedQuantize(imageData);
+        case 'atkinsonSzCalib':
+            return atkinsonSzCalibQuantize(imageData);
         case 'floydSteinberg':
             return floydSteinbergDither(imageData, ditherStrength);
         case 'atkinson':

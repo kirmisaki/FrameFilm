@@ -80,11 +80,15 @@ function syncSzEnhancedAvailability() {
         return;
     }
     var option = select.querySelector('option[value="szEnhanced"]');
+    var option2 = select.querySelector('option[value="atkinsonSzCalib"]');
     var isPro = currentDeviceType === 'FRAMEFILMPRO';
     if (option) {
         option.disabled = !isPro;
     }
-    if (select.value === 'szEnhanced' && !isPro) {
+    if (option2) {
+        option2.disabled = !isPro;
+    }
+    if ((select.value === 'szEnhanced' || select.value === 'atkinsonSzCalib') && !isPro) {
         select.value = 'floydSteinberg';
         // 恢复滑块显示（对比度/饱和度/抖动强度）
         if (typeof syncAdjustSliders === 'function') {
