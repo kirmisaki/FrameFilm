@@ -260,6 +260,7 @@ static void epd_update(void)
 
 static void epd_wakeup(void)
 {
+    lcd_chkstatus();
     EPD_W21_WriteCMD(WAKEUP);
     EPD_W21_WriteDATA(0x06);
 }
@@ -317,7 +318,7 @@ static void epd_display_solid(unsigned char color_index)
     epd_display_solid_pass(pass1);
     epd_update();
     epd_sleep();
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(300 / portTICK_PERIOD_MS);
 
     epd_wakeup();
     epd_init_seq();
@@ -447,7 +448,7 @@ void hal_epd_display_pic(const unsigned char *picData)
     epd_do_pass(picData, color_map);
     epd_update();
 	epd_sleep();
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(300 / portTICK_PERIOD_MS);
 
     epd_wakeup();
     epd_init_seq();
@@ -488,7 +489,7 @@ void hal_epd_display_film(const unsigned char *filmData)
 
         if (pass == 1)
         {
-            vTaskDelay(100 / portTICK_PERIOD_MS);
+            vTaskDelay(300 / portTICK_PERIOD_MS);
             epd_wakeup();
         }
         epd_init_seq();
