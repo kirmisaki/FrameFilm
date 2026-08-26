@@ -260,6 +260,7 @@ static void epd_update(void)
 
 static void epd_wakeup(void)
 {
+    lcd_chkstatus();
     EPD_W21_WriteCMD(WAKEUP);
     EPD_W21_WriteDATA(0x06);
     lcd_chkstatus();
