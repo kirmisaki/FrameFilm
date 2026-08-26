@@ -119,11 +119,12 @@ static void EPD_W21_WriteDATA_Bulk(const unsigned char *data, uint32_t len);
 static void reset(void);
 static void lcd_chkstatus(void);
 static void epd_init_seq(void);
-static void epd_power_off(void);
+static void epd_update(void);
 static void epd_wakeup(void);
 static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap);
 static void epd_display_solid_pass(unsigned char fill_byte);
 static void epd_display_solid(unsigned char color_index);
+static void epd_sleep(void);
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header);
 
 /*********************************************************************
@@ -250,7 +251,7 @@ static void epd_init_seq(void)
     lcd_chkstatus();
 }
 
-static void epd_power_off(void)
+static void epd_update(void)
 {
     lcd_chkstatus();
     EPD_W21_WriteCMD(POF2);
@@ -315,12 +316,13 @@ static void epd_display_solid(unsigned char color_index)
 
     epd_init_seq();
     epd_display_solid_pass(pass1);
-    epd_power_off();
+    epd_update();
+    epd_sleep();
 
     epd_wakeup();
     epd_init_seq();
     epd_display_solid_pass(pass2);
-    epd_power_off();
+    epd_update();
 }
 
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header)
@@ -352,6 +354,16 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
     }
 
     return ESP_OK;
+}
+
+static void epd_sleep(void)
+{   
+    EPD_W21_WriteCMD(0X02);
+    EPD_W21_WriteDATA(0x00);
+    lcd_chkstatus();
+ 
+    EPD_W21_WriteCMD(0X07);
+    EPD_W21_WriteDATA(0xA5);
 }
 
 /*********************************************************************
@@ -432,12 +444,14 @@ void hal_epd_display_pic(const unsigned char *picData)
 
     epd_init_seq();
     epd_do_pass(picData, color_map);
-    epd_power_off();
+    epd_update();
+	epd_sleep();
 
     epd_wakeup();
     epd_init_seq();
     epd_do_pass(picData, color_map1);
-    epd_power_off();
+    epd_update();
+    epd_sleep();
 
     sys_logi(EPD_TAG, "Display pic completed");
 }
@@ -507,7 +521,8 @@ void hal_epd_display_film(const unsigned char *filmData)
         EPD_W21_WriteCMD(PON);
         lcd_chkstatus();
 
-        epd_power_off();
+        epd_update();
+        epd_sleep();
     }
 
     sys_logi(EPD_TAG, "Film display completed");
@@ -515,7 +530,7 @@ void hal_epd_display_film(const unsigned char *filmData)
 
 void hal_epd_sleep(void)
 {
-    epd_power_off();
+    epd_sleep();
 
     sys_logi(EPD_TAG, "EPD sleep");
 }
