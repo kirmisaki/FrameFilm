@@ -218,7 +218,7 @@ static void lcd_chkstatus(void)
     while (isEPD_W21_BUSY == 0)
     {
         vTaskDelay(1 / portTICK_PERIOD_MS);
-        if (++timeout > 15000)
+        if (++timeout > 90000)
         {
             sys_loge(EPD_TAG, "wait BUSY timeout");
             break;
@@ -323,6 +323,7 @@ static void epd_display_solid(unsigned char color_index)
     epd_init_seq();
     epd_display_solid_pass(pass2);
     epd_update();
+    epd_sleep();
 }
 
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header)
@@ -358,10 +359,10 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
 
 static void epd_sleep(void)
 {   
+    lcd_chkstatus();
     EPD_W21_WriteCMD(0X02);
     EPD_W21_WriteDATA(0x00);
     lcd_chkstatus();
- 
     EPD_W21_WriteCMD(0X07);
     EPD_W21_WriteDATA(0xA5);
 }
