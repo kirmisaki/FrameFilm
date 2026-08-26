@@ -119,6 +119,8 @@ static void EPD_W21_WriteDATA_Bulk(const unsigned char *data, uint32_t len);
 static void reset(void);
 static void lcd_chkstatus(void);
 static void epd_init_seq(void);
+static void epd_power_off(void);
+static void epd_wakeup(void);
 static void epd_do_pass(const unsigned char *input_data, const uint8_t *cmap);
 static void epd_display_solid_pass(unsigned char fill_byte);
 static void epd_display_solid(unsigned char color_index);
@@ -226,7 +228,6 @@ static void lcd_chkstatus(void)
 /* 完整初始化命令序列（每次刷新前都会发送一次） */
 static void epd_init_seq(void)
 {
-    EPD_W21_WriteCMD(WAKEUP);  EPD_W21_WriteDATA(0x06);
     EPD_W21_WriteCMD(PSR);     EPD_W21_WriteDATA(0x0F); EPD_W21_WriteDATA(0x29);
     EPD_W21_WriteCMD(0x4D);    EPD_W21_WriteDATA(0x78);
     EPD_W21_WriteCMD(PSR);     EPD_W21_WriteDATA(0x07); EPD_W21_WriteDATA(0x29);
@@ -246,6 +247,20 @@ static void epd_init_seq(void)
     EPD_W21_WriteCMD(PWS);     EPD_W21_WriteDATA(0x22);
     EPD_W21_WriteCMD(BOD);     EPD_W21_WriteDATA(0x01);
     EPD_W21_WriteCMD(DRV);     EPD_W21_WriteDATA(0x8E); EPD_W21_WriteDATA(0x02); EPD_W21_WriteDATA(0x01);
+    lcd_chkstatus();
+}
+
+static void epd_power_off(void)
+{
+    lcd_chkstatus();
+    EPD_W21_WriteCMD(POF2);
+    EPD_W21_WriteDATA(0x00);
+}
+
+static void epd_wakeup(void)
+{
+    EPD_W21_WriteCMD(WAKEUP);
+    EPD_W21_WriteDATA(0x06);
     lcd_chkstatus();
 }
 
@@ -300,8 +315,12 @@ static void epd_display_solid(unsigned char color_index)
 
     epd_init_seq();
     epd_display_solid_pass(pass1);
+    epd_power_off();
+
+    epd_wakeup();
     epd_init_seq();
     epd_display_solid_pass(pass2);
+    epd_power_off();
 }
 
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header)
@@ -413,8 +432,12 @@ void hal_epd_display_pic(const unsigned char *picData)
 
     epd_init_seq();
     epd_do_pass(picData, color_map);
+    epd_power_off();
+
+    epd_wakeup();
     epd_init_seq();
     epd_do_pass(picData, color_map1);
+    epd_power_off();
 
     sys_logi(EPD_TAG, "Display pic completed");
 }
@@ -447,6 +470,10 @@ void hal_epd_display_film(const unsigned char *filmData)
     {
         const uint8_t *cmap = (pass == 0) ? color_map : color_map1;
 
+        if (pass == 1)
+        {
+            epd_wakeup();
+        }
         epd_init_seq();
         EPD_W21_WriteCMD(DTM);
 
@@ -479,6 +506,8 @@ void hal_epd_display_film(const unsigned char *filmData)
 
         EPD_W21_WriteCMD(PON);
         lcd_chkstatus();
+
+        epd_power_off();
     }
 
     sys_logi(EPD_TAG, "Film display completed");
@@ -486,9 +515,7 @@ void hal_epd_display_film(const unsigned char *filmData)
 
 void hal_epd_sleep(void)
 {
-    lcd_chkstatus();
-    EPD_W21_WriteCMD(POF2);
-    EPD_W21_WriteDATA(0x00);
+    epd_power_off();
 
     sys_logi(EPD_TAG, "EPD sleep");
 }
