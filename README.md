@@ -128,15 +128,26 @@ FrameFilm/
 1. **环境要求**
    - ESP-IDF v5.3+
 
-2. **配置目标机型**
+2. **配置目标机型与屏幕**
    - 替换 `sdkconfig`：将 `firmware/frame_film/sdkconfig_<机型>` 复制为 `sdkconfig`
    - 修改设备类型宏：编辑 `firmware/frame_film/components/film_sys/inc/sys_cfg.h`，将对应机型宏置 1（三选一）
+   - 选择屏幕：编辑 `firmware/frame_film/components/film_hal/inc/hal_epd.h`，在对应机型分支内将目标屏幕的 `EPD_SELECT_E6_*` 置 1、其余置 0
 
-   | 机型 | 替换用的 sdkconfig | sys_cfg.h 宏 |
-   |------|--------------------|--------------|
-   | 基础版 | `sdkconfig_std` | `FRAMEFILM_STD` |
-   | Pro 版 | `sdkconfig_pro` | `FRAMEFILM_PRO` |
-   | Max 版 | `sdkconfig_max` | `FRAMEFILM_MAX` |
+   | 机型 | 替换用的 sdkconfig | sys_cfg.h 宏 | 默认屏幕 |
+   |------|--------------------|--------------|---------|
+   | 基础版 | `sdkconfig_std` | `FRAMEFILM_STD` | 3.6" 600×400 |
+   | Pro 版 | `sdkconfig_pro` | `FRAMEFILM_PRO` | 3.68" 792×528 |
+   | Max 版 | `sdkconfig_max` | `FRAMEFILM_MAX` | 7.09" 1200×1600 双面板 |
+
+   可选屏幕（`hal_epd.h` 的 `EPD_SELECT_E6_*` 宏）：
+
+   | 屏幕 | 分辨率 | 面板 ID | 宏 |
+   |------|--------|---------|-----|
+   | 3.68" | 792×528 | 0x01 | `EPD_SELECT_E6_3_68_792_528` |
+   | 3.70" | 720×480 | 0x02 | `EPD_SELECT_E6_3_70_720_480` |
+   | 3.6" | 600×400 | 0x03 | `EPD_SELECT_E6_3_60_600_400` |
+   | 1.54" | 240×240 | 0x04 | `EPD_SELECT_E6_1_54_240_240` |
+   | 7.09" 双面板 | 1200×1600 | 0x05 | `EPD_SELECT_E6_7_09_1600_1200` |
 
    ```bash
    cd firmware/frame_film

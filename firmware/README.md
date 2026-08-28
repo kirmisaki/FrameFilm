@@ -35,19 +35,32 @@ frame_film/
 └── sdkconfig_{std,pro,max}  # 各机型 SDK 配置
 ```
 
-## 机型（frame_film 多机型，三选一）
+## 机型与屏幕（三机型，屏幕可自由选择）
 
-统一固件 `frame_film/` 通过 `sys_cfg.h` 机型宏 + 对应 `sdkconfig` 区分机型：
+统一固件 `frame_film/` 的硬件由两处编译期配置共同决定：
 
-| 机型 | 机型宏 | sdkconfig | 屏幕 | EPD 驱动 |
+1. **机型**（`sys_cfg.h`，三选一）——决定输入设备、SD/电池/LED 引脚、Flash/PSRAM、设备名等
+2. **屏幕**（`hal_epd.h`）——在对应机型分支内，从屏幕支持列表里选一款，把对应 `EPD_SELECT_E6_*` 置 `1`、其余置 `0`
+
+| 机型 | 机型宏 | sdkconfig | 输入 | 默认屏幕 |
 |------|--------|-----------|------|----------|
-| 基础版 STD | `FRAMEFILM_STD` | `sdkconfig_std` | E6 3.6" 600×400 | `hal_epd_360.c` |
-| Pro 版 | `FRAMEFILM_PRO` | `sdkconfig_pro` | E6 3.68" 792×528（默认） | `hal_epd_368.c` |
-| Max 版 | `FRAMEFILM_MAX` | `sdkconfig_max` | E6 7.09" 1600×1200 双面板 | `hal_epd_709.c` |
+| 基础版 STD | `FRAMEFILM_STD` | `sdkconfig_std` | 旋转编码器 | E6 3.6" 600×400 |
+| Pro 版 | `FRAMEFILM_PRO` | `sdkconfig_pro` | 三按键 | E6 3.68" 792×528 |
+| Max 版 | `FRAMEFILM_MAX` | `sdkconfig_max` | 三按键 | E6 7.09" 1200×1600 双面板 |
 
-Pro 版支持第二种屏幕面板：在 `sys_cfg.h` 置 `FRAMEFILM_PRO_PANEL_720x480 = 1` 即切换为 E6 3.7" 720×480（`hal_epd_370.c`，原 SE 版屏幕），其余与 Pro 完全一致。
+屏幕支持列表（`hal_epd.h` 内 `EPD_SELECT_E6_*` 宏）：
 
-机型差异集中在 EPD 驱动、输入设备、SD/电池/LED 引脚，代码通过 `FRAMEFILM_STD/PRO/MAX` 宏编译隔离。修改机型相关代码时需确认三个机型分支是否齐全。
+| 宏 | 屏幕 | 分辨率 | 面板 ID | EPD 驱动 |
+|----|------|--------|---------|----------|
+| `EPD_SELECT_E6_3_68_792_528` | E6 3.68" | 792×528 | 0x01 | `hal_epd_368.c` |
+| `EPD_SELECT_E6_3_70_720_480` | E6 3.70" | 720×480 | 0x02 | `hal_epd_370.c` |
+| `EPD_SELECT_E6_3_60_600_400` | E6 3.6" | 600×400 | 0x03 | `hal_epd_360.c` |
+| `EPD_SELECT_E6_1_54_240_240` | E6 1.54" | 240×240 | 0x04 | — |
+| `EPD_SELECT_E6_7_09_1600_1200` | E6 7.09" 双面板 | 1200×1600 | 0x05 | `hal_epd_709.c` |
+
+> 例：Pro 版硬件若为 720×480 面板，在 `hal_epd.h` 的 `FRAMEFILM_PRO` 分支内把 `EPD_SELECT_E6_3_68_792_528` 改为 0、`EPD_SELECT_E6_3_70_720_480` 改为 1 即可。
+
+机型差异（输入设备、SD/电池/LED 引脚）用 `FRAMEFILM_STD/PRO/MAX` 宏隔离；屏幕差异用 `EPD_SELECT_E6_*` 宏隔离。
 
 ## 架构
 
@@ -79,7 +92,7 @@ film_service → film_hal → film_sys → ESP-IDF
 cd firmware/frame_film
 cp sdkconfig_std sdkconfig               # 按机型选 sdkconfig_{std,pro,max}
 # 编辑 components/film_sys/inc/sys_cfg.h，置对应机型宏为 1（三选一）
-# Pro 版如需 720×480 屏幕，另置 FRAMEFILM_PRO_PANEL_720x480 为 1
+# 编辑 components/film_hal/inc/hal_epd.h，在机型分支内选择目标屏幕（EPD_SELECT_E6_* 置 1）
 idf.py build flash monitor
 ```
 

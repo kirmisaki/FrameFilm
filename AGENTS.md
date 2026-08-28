@@ -11,19 +11,34 @@ FrameFilm 项目 AI 开发指南。
 
 ## 三机型（单固件）
 
-统一固件 `firmware/frame_film/`，通过 `sys_cfg.h` 机型宏 + 对应 `sdkconfig` 区分机型（三选一）：
+统一固件 `firmware/frame_film/`。硬件版本由两处编译期配置决定：**机型**（`sys_cfg.h`）+ **屏幕**（`hal_epd.h`）。
+
+### 机型（三选一）
 
 | | 基础版 STD | Pro 版 | Max 版 |
 |---|---|---|---|
 | 机型宏 | `FRAMEFILM_STD` | `FRAMEFILM_PRO` | `FRAMEFILM_MAX` |
 | sdkconfig | `sdkconfig_std` | `sdkconfig_pro` | `sdkconfig_max` |
-| 屏幕 | E6 3.6" 600×400 (WFT) | E6 3.68" 792×528 (SE0368-C) | E6 7.09" 1600×1200 双面板 (GDEB0709E01) |
-| EPD 驱动 | `hal_epd_360.c` | `hal_epd_368.c` | `hal_epd_709.c` |
 | 输入 | 旋转编码器 (GPIO6/4/5) | 三按键 (GPIO4/6/5) | 三按键 (GPIO12/14/13) |
 | Flash/PSRAM | 16MB / Octal SPI | 4MB / Quad SPI | 16MB / Octal SPI |
 | RGB LED | WS2812 (GPIO17) | WS2812 (GPIO17) | 无 |
+| 默认屏幕 | E6 3.6" 600×400 | E6 3.68" 792×528 | E6 7.09" 1200×1600 双面板 |
 
-> 机型差异集中在 EPD 驱动、输入设备、SD/电池/LED 引脚，代码用 `FRAMEFILM_STD/PRO/MAX` 宏编译隔离；改机型相关代码时确认三机型分支是否齐全。
+> 机型差异集中在输入设备、SD/电池/LED 引脚、Flash/PSRAM，代码用 `FRAMEFILM_STD/PRO/MAX` 宏编译隔离；改机型相关代码时确认三机型分支是否齐全。
+
+### 屏幕（每机型可从列表选择）
+
+屏幕不与机型绑定：在 `hal_epd.h` 的对应机型分支内，把目标 `EPD_SELECT_E6_*` 置 `1`、其余置 `0` 即可切换。
+
+| 宏 | 屏幕 | 分辨率 | 面板 ID | EPD 驱动 |
+|----|------|--------|---------|----------|
+| `EPD_SELECT_E6_3_60_600_400` | E6 3.6" | 600×400 | 0x03 | `hal_epd_360.c` |
+| `EPD_SELECT_E6_3_68_792_528` | E6 3.68" | 792×528 | 0x01 | `hal_epd_368.c` |
+| `EPD_SELECT_E6_3_70_720_480` | E6 3.70" | 720×480 | 0x02 | `hal_epd_370.c` |
+| `EPD_SELECT_E6_1_54_240_240` | E6 1.54" | 240×240 | 0x04 | — |
+| `EPD_SELECT_E6_7_09_1600_1200` | E6 7.09" 双面板 | 1200×1600 | 0x05 | `hal_epd_709.c` |
+
+> 切换硬件版本 = 改 `sys_cfg.h` 机型宏（+ 对应 `sdkconfig`）+ 改 `hal_epd.h` 屏幕宏。`EPD_PANEL_ID` 随屏幕返回给连接端（BLE `0x42`），用于客户端匹配屏幕。
 
 ## 架构约束
 
@@ -78,8 +93,9 @@ film_service → film_hal → film_sys → ESP-IDF
 | 要改什么 | 核心文件 |
 |---|---|
 | 机型配置 | `firmware/frame_film/components/film_sys/inc/sys_cfg.h` + `firmware/frame_film/sdkconfig_{std,pro,max}` |
+| 屏幕选择 | `firmware/frame_film/components/film_hal/inc/hal_epd.h`（`EPD_SELECT_E6_*` 宏） |
 | BLE 协议 | `firmware/frame_film/components/film_service/inc/service_ble.h` |
-| EPD 驱动 | `firmware/frame_film/components/film_hal/src/hal_epd_{360,368,709}.c` |
+| EPD 驱动 | `firmware/frame_film/components/film_hal/src/hal_epd_{360,368,370,709}.c` |
 | film 播放 | `firmware/frame_film/components/film_service/src/service_film.c` |
 | 固件入口 | `firmware/frame_film/main/main.c` |
 | 小程序 BLE | `tools/wechart/miniprogram/utils/ble-utils.js` |
@@ -129,6 +145,7 @@ film_service → film_hal → film_sys → ESP-IDF
 cd firmware/frame_film
 cp sdkconfig_std sdkconfig                 # 按机型选 sdkconfig_{std,pro,max}
 # 编辑 components/film_sys/inc/sys_cfg.h，置对应机型宏为 1（三选一）
+# 编辑 components/film_hal/inc/hal_epd.h，在机型分支内选屏幕（EPD_SELECT_E6_* 置 1）
 idf.py build flash monitor
 ```
 
