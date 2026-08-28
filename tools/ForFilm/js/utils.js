@@ -19,6 +19,12 @@ var DEVICE_CONFIGS = {
         screenHeight: 1600,
         displayName: 'FrameFilm Max',
         pixelLayout: 'row-major' // 行优先: (y * width) + x
+    },
+    FRAMEFILMDOCK: {
+        screenWidth: 760,
+        screenHeight: 568,
+        displayName: 'FrameFilm Dock',
+        pixelLayout: 'row-major' // 行优先: (y * width) + x
     }
 };
 
@@ -71,7 +77,8 @@ var PANEL_CONFIGS = {
     0x01: { deviceType: 'FRAMEFILMPRO', pixelLayout: 'row-major' },    // 3.68" 792×528
     0x02: { deviceType: 'FRAMEFILMPRO', pixelLayout: 'rotated-180' },  // 3.70" 720×480
     0x03: { deviceType: 'FRAMEFILM',    pixelLayout: 'rotated' },      // 3.60" 600×400
-    0x05: { deviceType: 'FRAMEFILMMAX', pixelLayout: 'row-major' }     // 7.09" 1200×1600
+    0x05: { deviceType: 'FRAMEFILMMAX', pixelLayout: 'row-major' },    // 7.09" 1200×1600
+    0x06: { deviceType: 'FRAMEFILMDOCK', pixelLayout: 'row-major' }    // 3.64" 760×568（底座）
 };
 
 // 根据设备回传的屏幕参数（面板 ID + 分辨率）更新机型、画布尺寸与像素排布
