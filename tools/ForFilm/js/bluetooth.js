@@ -75,6 +75,7 @@ const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL = 0x3E;
 const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET = 0x3F;
 const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL = 0x40;
 const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET = 0x41;
+const BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET = 0x42;
 
 const BLE_CMD_LEN_MIN = 4;
 
@@ -162,8 +163,6 @@ function initBluetooth() {
                 setDeviceType('FRAMEFILMMAX');
             } else if (upperName.indexOf('PRO') !== -1) {
                 setDeviceType('FRAMEFILMPRO');
-            } else if (upperName.indexOf('SE') !== -1) {
-                setDeviceType('FRAMEFILMSE');
             } else {
                 setDeviceType('FRAMEFILM');
             }
@@ -183,6 +182,7 @@ function initBluetooth() {
 
             setTimeout(() => {
                 debugLog('开始发送初始化命令...');
+                sendBleScreenResolutionGet();
                 sendBlePwrRead();
             }, 1000);
 
@@ -732,6 +732,17 @@ async function sendBlePwrRead() {
     }
 }
 
+async function sendBleScreenResolutionGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET);
+    } catch (error) {
+        debugLog('查询屏幕参数失败: ' + error.message, 'error');
+    }
+}
+
 async function sendBleSleepSet(onoff) {
     if (!device || !server || !characteristic) {
         showMessage('请先连接设备', 'error');
@@ -932,6 +943,13 @@ function setupBluetoothListener() {
         else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET && cmdLen === 2) {
             const timeMinutes = (data[3] << 8) | data[4];
             updateWakeDurationDisplay(timeMinutes);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET && cmdLen === 5) {
+            const panelId = data[3];
+            const width = (data[4] << 8) | data[5];
+            const height = (data[6] << 8) | data[7];
+            applyScreenParams(panelId, width, height);
+            debugLog('屏幕参数: panel_id=0x' + panelId.toString(16) + ', ' + width + 'x' + height);
         }
         // WiFi 通知处理
         else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET && cmdLen === 1) {

@@ -14,12 +14,6 @@ var DEVICE_CONFIGS = {
         displayName: 'FrameFilm Pro',
         pixelLayout: 'row-major' // 行优先: (y * width) + x
     },
-    FRAMEFILMSE: {
-        screenWidth: 720,
-        screenHeight: 480,
-        displayName: 'FrameFilm SE',
-        pixelLayout: 'rotated-180' // 180° 旋转: (height-1-y) * width + (width-1-x)
-    },
     FRAMEFILMMAX: {
         screenWidth: 1200,
         screenHeight: 1600,
@@ -70,6 +64,33 @@ function onDeviceTypeChanged() {
     }
     // SZ 增强算法仅 FrameFilm Pro 可用
     syncSzEnhancedAvailability();
+}
+
+// 屏幕面板 ID → 机型 + 像素排布（与固件 EPD_PANEL_ID 对应）
+var PANEL_CONFIGS = {
+    0x01: { deviceType: 'FRAMEFILMPRO', pixelLayout: 'row-major' },    // 3.68" 792×528
+    0x02: { deviceType: 'FRAMEFILMPRO', pixelLayout: 'rotated-180' },  // 3.70" 720×480
+    0x03: { deviceType: 'FRAMEFILM',    pixelLayout: 'rotated' },      // 3.60" 600×400
+    0x05: { deviceType: 'FRAMEFILMMAX', pixelLayout: 'row-major' }     // 7.09" 1200×1600
+};
+
+// 根据设备回传的屏幕参数（面板 ID + 分辨率）更新机型、画布尺寸与像素排布
+function applyScreenParams(panelId, width, height) {
+    var panel = PANEL_CONFIGS[panelId];
+    if (!panel) {
+        console.warn('[ForFilm] 未知屏幕面板 ID: 0x' + panelId.toString(16));
+        return false;
+    }
+    setDeviceType(panel.deviceType);
+    var cfg = getDeviceConfig();
+    if (cfg) {
+        cfg.screenWidth = width;
+        cfg.screenHeight = height;
+        cfg.pixelLayout = panel.pixelLayout;
+        onDeviceTypeChanged();
+    }
+    console.log('[ForFilm] 屏幕参数已更新: panelId=0x' + panelId.toString(16) + ', ' + width + 'x' + height + ' (' + cfg.displayName + ', ' + cfg.pixelLayout + ')');
+    return true;
 }
 
 // SZ 增强（结构感知六色量化）只对 FrameFilm Pro 生效：
@@ -130,7 +151,7 @@ function getPixelIndex(x, y, width, height) {
         return (x * height) + (height - 1 - y);
     }
     if (layout === 'rotated-180') {
-        // SE 版: 面板显示方向与画布差 180°
+        // 3.70" 720×480 面板: 显示方向与画布差 180°
         return (height - 1 - y) * width + (width - 1 - x);
     }
     // Pro 及默认: 行优先
