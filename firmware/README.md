@@ -6,7 +6,7 @@
 
 | 工程 | 用途 | 设备名 |
 |------|------|--------|
-| [`frame_film/`](frame_film/) | 冰箱贴本体固件（多机型） | `FRAMEFILM` / `FRAMEFILMPRO` / `FRAMEFILMSE` / `FRAMEFILMMAX` |
+| [`frame_film/`](frame_film/) | 冰箱贴本体固件（多机型） | `FRAMEFILM` / `FRAMEFILMPRO` / `FRAMEFILMMAX` |
 | [`frame_film_dock/`](frame_film_dock/) | 充电底座固件（单机型） | `FRAMEFILMDOCK` |
 
 两个工程均基于 ESP-IDF 构建，采用相同的三层分层架构。
@@ -32,21 +32,22 @@ frame_film/
 ├── partitions.csv        # 分区表（NVS + 双 OTA）
 ├── CMakeLists.txt
 ├── sdkconfig             # 当前生效的 SDK 配置
-└── sdkconfig_{std,pro,se,max}  # 各机型 SDK 配置
+└── sdkconfig_{std,pro,max}  # 各机型 SDK 配置
 ```
 
-## 机型（frame_film 多机型，四选一）
+## 机型（frame_film 多机型，三选一）
 
 统一固件 `frame_film/` 通过 `sys_cfg.h` 机型宏 + 对应 `sdkconfig` 区分机型：
 
 | 机型 | 机型宏 | sdkconfig | 屏幕 | EPD 驱动 |
 |------|--------|-----------|------|----------|
 | 基础版 STD | `FRAMEFILM_STD` | `sdkconfig_std` | E6 3.6" 600×400 | `hal_epd_360.c` |
-| Pro 版 | `FRAMEFILM_PRO` | `sdkconfig_pro` | E6 3.68" 792×528 | `hal_epd_368.c` |
-| SE 版 | `FRAMEFILM_SE` | `sdkconfig_se` | E6 3.7" 720×480（其余同 Pro） | `hal_epd_370.c` |
+| Pro 版 | `FRAMEFILM_PRO` | `sdkconfig_pro` | E6 3.68" 792×528（默认） | `hal_epd_368.c` |
 | Max 版 | `FRAMEFILM_MAX` | `sdkconfig_max` | E6 7.09" 1600×1200 双面板 | `hal_epd_709.c` |
 
-机型差异集中在 EPD 驱动、输入设备、SD/电池/LED 引脚，代码通过 `FRAMEFILM_STD/PRO/SE/MAX` 宏编译隔离。修改机型相关代码时需确认四个机型分支是否齐全。
+Pro 版支持第二种屏幕面板：在 `sys_cfg.h` 置 `FRAMEFILM_PRO_PANEL_720x480 = 1` 即切换为 E6 3.7" 720×480（`hal_epd_370.c`，原 SE 版屏幕），其余与 Pro 完全一致。
+
+机型差异集中在 EPD 驱动、输入设备、SD/电池/LED 引脚，代码通过 `FRAMEFILM_STD/PRO/MAX` 宏编译隔离。修改机型相关代码时需确认三个机型分支是否齐全。
 
 ## 架构
 
@@ -76,8 +77,9 @@ film_service → film_hal → film_sys → ESP-IDF
 
 ```bash
 cd firmware/frame_film
-cp sdkconfig_std sdkconfig               # 按机型选 sdkconfig_{std,pro,se,max}
-# 编辑 components/film_sys/inc/sys_cfg.h，置对应机型宏为 1（四选一）
+cp sdkconfig_std sdkconfig               # 按机型选 sdkconfig_{std,pro,max}
+# 编辑 components/film_sys/inc/sys_cfg.h，置对应机型宏为 1（三选一）
+# Pro 版如需 720×480 屏幕，另置 FRAMEFILM_PRO_PANEL_720x480 为 1
 idf.py build flash monitor
 ```
 

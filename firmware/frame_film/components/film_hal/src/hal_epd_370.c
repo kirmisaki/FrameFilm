@@ -20,7 +20,7 @@
  *
  * FileName : /film_hal/src/hal_epd_370.c
  * Author: kiritro  Version: v0.1  Date: 2026/8/24
- * Description: SE版 3.7寸 720x480 六色 EPD 驱动（JD7601, GDEH037E01），
+ * Description: Pro 版 3.7寸 720x480 六色 EPD 驱动（JD7601, GDEH037E01），
  *              基于官方参考驱动（MSP430 版 + ESP-IDF 版）移植
  * ChangeLog: Change Notes
  *

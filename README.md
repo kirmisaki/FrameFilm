@@ -66,20 +66,6 @@
 | 尺寸 | 约 90 × 59 × 5 mm |
 | 安装方式 | 背部磁吸 magasafe磁环 |
 
-### FrameFilm SE
-
-| 参数 | 规格 |
-|------|------|
-| 主控芯片 | ESP32-S3 mini N4R2 |
-| 显示屏 | 彩色电子纸 3.7" 720×480 (JD7601/GDEH037E01驱动) |
-| 存储 | 内置SDnand |
-| 通信 | 蓝牙 BLE 4.2 / WiFi |
-| 交互 | 三按键 |
-| 电池 | 锂电池 244147规格 |
-| 充电 | 支持无线充电（兼容 MagSafe 充电器） |
-| 尺寸 | 约 90 × 59 × 5 mm |
-| 安装方式 | 背部磁吸 magasafe磁环 |
-
 ## 硬件开源
 
 硬件设计已在立创开源硬件平台开源：
@@ -144,18 +130,17 @@ FrameFilm/
 
 2. **配置目标机型**
    - 替换 `sdkconfig`：将 `firmware/frame_film/sdkconfig_<机型>` 复制为 `sdkconfig`
-   - 修改设备类型宏：编辑 `firmware/frame_film/components/film_sys/inc/sys_cfg.h`，将对应机型宏置 1（四选一）
+   - 修改设备类型宏：编辑 `firmware/frame_film/components/film_sys/inc/sys_cfg.h`，将对应机型宏置 1（三选一）
 
    | 机型 | 替换用的 sdkconfig | sys_cfg.h 宏 |
    |------|--------------------|--------------|
    | 基础版 | `sdkconfig_std` | `FRAMEFILM_STD` |
    | Pro 版 | `sdkconfig_pro` | `FRAMEFILM_PRO` |
-   | SE 版 | `sdkconfig_se` | `FRAMEFILM_SE` |
    | Max 版 | `sdkconfig_max` | `FRAMEFILM_MAX` |
 
    ```bash
    cd firmware/frame_film
-   cp sdkconfig_std sdkconfig   # 示例：基础版；Pro/SE/Max 版同理
+   cp sdkconfig_std sdkconfig   # 示例：基础版；Pro/Max 版同理
    ```
 
 3. **编译固件**

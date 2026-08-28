@@ -35,13 +35,6 @@ extern "C" {
 #define EPD_SELECT_E6_1_54_240_240   0
 #define EPD_SELECT_E6_7_09_1600_1200 0
 #endif
-#if FRAMEFILM_SE == 1
-#define EPD_SELECT_E6_3_68_792_528   0
-#define EPD_SELECT_E6_3_70_720_480   1
-#define EPD_SELECT_E6_3_60_600_400   0
-#define EPD_SELECT_E6_1_54_240_240   0
-#define EPD_SELECT_E6_7_09_1600_1200 0
-#endif
 #if FRAMEFILM_MAX == 1
 #define EPD_SELECT_E6_3_68_792_528   0
 #define EPD_SELECT_E6_3_70_720_480   0
