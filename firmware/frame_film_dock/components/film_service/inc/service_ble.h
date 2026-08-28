@@ -71,6 +71,7 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET  (0x3F) // HTTP心跳地址查询
 #define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL     (0x40) // 心跳间隔设置（1字节，5-180秒）
 #define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET (0x41) // 心跳间隔查询
+#define BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET       (0x42) // 屏幕面板ID与分辨率查询（ID1字节+宽2字节+高2字节，大端）
 
 /*********************************************************************
 * TYPEDEFS

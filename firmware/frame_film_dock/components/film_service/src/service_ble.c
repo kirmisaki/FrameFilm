@@ -48,7 +48,7 @@
 #include "service_param.h"
 #include "service_wifi.h"
 
-#include "hal_sd.h"
+#include "hal_api.h"
 
 /*********************************************************************
  * MACROS
@@ -916,6 +916,22 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             resp_buf[3] = g_service_param.network.film_heartbeat_interval;
             resp_buf[4] = ble_checksum(resp_buf, 4);
             service_ble_msg_gatts_data_send(resp_buf, 5, MSG_BLE_CH1_OUT_DATA);
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET : // 查询屏幕面板 ID 与分辨率
+        {
+            uint8_t resp_buf[9];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET;
+            resp_buf[2] = 5;
+            resp_buf[3] = EPD_PANEL_ID;
+            resp_buf[4] = (EPD_WIDTH >> 8) & 0xFF;
+            resp_buf[5] = EPD_WIDTH & 0xFF;
+            resp_buf[6] = (EPD_HEIGHT >> 8) & 0xFF;
+            resp_buf[7] = EPD_HEIGHT & 0xFF;
+            resp_buf[8] = ble_checksum(resp_buf, 8);
+            service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
+            sys_logi(BEL_SERVICE_TAG, "Screen info: panel_id=0x%02x, %d x %d", EPD_PANEL_ID, EPD_WIDTH, EPD_HEIGHT);
             break;
         }
         default :

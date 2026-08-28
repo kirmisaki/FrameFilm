@@ -23,6 +23,7 @@ extern "C" {
 
 #define EPD_WIDTH                      760
 #define EPD_HEIGHT                     568
+#define EPD_PANEL_ID                   0x06    // 3.64" 760×568
 
 //IO settings
 //SCK--GPIO12(SCLK)
