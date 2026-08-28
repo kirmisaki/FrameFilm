@@ -53,18 +53,23 @@ extern "C" {
 #if EPD_SELECT_E6_3_68_792_528 == 1
 #define EPD_WIDTH                      792
 #define EPD_HEIGHT                     528
+#define EPD_PANEL_ID                   0x01    // 3.68" 792×528
 #elif EPD_SELECT_E6_3_70_720_480 == 1
 #define EPD_WIDTH                      720
 #define EPD_HEIGHT                     480
+#define EPD_PANEL_ID                   0x02    // 3.70" 720×480
 #elif EPD_SELECT_E6_3_60_600_400 == 1
 #define EPD_WIDTH                      600
 #define EPD_HEIGHT                     400
+#define EPD_PANEL_ID                   0x03    // 3.60" 600×400
 #elif EPD_SELECT_E6_1_54_240_240 == 1
 #define EPD_WIDTH                      240
 #define EPD_HEIGHT                     240
+#define EPD_PANEL_ID                   0x04    // 1.54" 240×240
 #elif EPD_SELECT_E6_7_09_1600_1200 == 1
 #define EPD_WIDTH                      1200
 #define EPD_HEIGHT                     1600
+#define EPD_PANEL_ID                   0x05    // 7.09" 1600×1200 双面板
 #endif
 
 //IO settings
