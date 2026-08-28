@@ -214,16 +214,7 @@ static void reset(void)
 
 static void lcd_chkstatus(void)
 {
-    int timeout = 0;
-    while (isEPD_W21_BUSY == 0)
-    {
-        vTaskDelay(1 / portTICK_PERIOD_MS);
-        if (++timeout > 90000)
-        {
-            sys_loge(EPD_TAG, "wait BUSY timeout");
-            break;
-        }
-    }
+    while(!isEPD_W21_BUSY);
 }
 
 /* 完整初始化命令序列（每次刷新前都会发送一次） */
