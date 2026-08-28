@@ -24,6 +24,7 @@ extern "C" {
 #if FRAMEFILM_STD == 1
 #define EPD_SELECT_E6_3_68_792_528   0
 #define EPD_SELECT_E6_3_70_720_480   0
+#define EPD_SELECT_E6_3_64_760_568   0
 #define EPD_SELECT_E6_3_60_600_400   1
 #define EPD_SELECT_E6_1_54_240_240   0
 #define EPD_SELECT_E6_7_09_1600_1200 0
@@ -31,6 +32,7 @@ extern "C" {
 #if FRAMEFILM_PRO == 1
 #define EPD_SELECT_E6_3_68_792_528   1
 #define EPD_SELECT_E6_3_70_720_480   0
+#define EPD_SELECT_E6_3_64_760_568   0
 #define EPD_SELECT_E6_3_60_600_400   0
 #define EPD_SELECT_E6_1_54_240_240   0
 #define EPD_SELECT_E6_7_09_1600_1200 0
@@ -38,6 +40,7 @@ extern "C" {
 #if FRAMEFILM_MAX == 1
 #define EPD_SELECT_E6_3_68_792_528   0
 #define EPD_SELECT_E6_3_70_720_480   0
+#define EPD_SELECT_E6_3_64_760_568   0
 #define EPD_SELECT_E6_3_60_600_400   0
 #define EPD_SELECT_E6_1_54_240_240   0
 #define EPD_SELECT_E6_7_09_1600_1200 1
@@ -63,6 +66,10 @@ extern "C" {
 #define EPD_WIDTH                      1200
 #define EPD_HEIGHT                     1600
 #define EPD_PANEL_ID                   0x05    // 7.09" 1600×1200 双面板
+#elif EPD_SELECT_E6_3_64_760_568 == 1
+#define EPD_WIDTH                      760
+#define EPD_HEIGHT                     568
+#define EPD_PANEL_ID                   0x06    // 3.64" 760×568
 #endif
 
 //IO settings
