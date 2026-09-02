@@ -42,6 +42,7 @@
 #include "service_file.h"
 #include "service_param.h"
 #include "service_film.h"
+#include "service_monitor.h"
 #include "service_wifi.h"
 
 /*********************************************************************
@@ -227,8 +228,11 @@ static void film_clear_event(void)
     g_service_param.film.play_mode = 0;
     service_param_save();
 
+    // 清屏刷新（刷新期间LED闪烁，完成后常亮）
+    service_monitor_set_film_refresh_state(1);
     hal_epd_display_init();
     hal_epd_display_white();
+    service_monitor_set_film_refresh_state(0);
     // hal_epd_pwroff();
 }
 
@@ -286,9 +290,11 @@ static void film_display_event(uint32_t file_id)
     g_service_param.film.load_complete = 0;
     service_param_save();
 
-    // 调用EPD显示接口
+    // 调用EPD显示接口（刷新期间LED闪烁，完成后常亮）
+    service_monitor_set_film_refresh_state(1);
     hal_epd_display_init();
     hal_epd_display_film(buffer);
+    service_monitor_set_film_refresh_state(0);
     // hal_epd_pwroff();
 
     // 更新状态

@@ -58,6 +58,10 @@
 #define MONITOR_LED_BLINK_OFF_TICKS              (0)      // LED闪烁熄灭tick数 (3 * 500ms = 1500ms灭)
 #define MONITOR_LED_BRIGHTNESS                   (30)     // LED亮度值
 
+// EPD刷新中LED闪烁参数
+#define MONITOR_LED_REFRESH_BLINK_ON_TICKS       (1)      // 刷新中点亮tick数
+#define MONITOR_LED_REFRESH_BLINK_OFF_TICKS      (1)      // 刷新中熄灭tick数
+
 #define MONITOR_TIMER_BASE_INTERVAL_MS           (100)
 #define MONITOR_LED_TICK_COUNT                   (MONITOR_LED_UPDATE_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
 
@@ -69,6 +73,7 @@ typedef struct
     uint8_t ble_connected;
     uint8_t led_state;
     uint32_t tick_counter;
+    uint8_t led_mode;       // LED工作模式（MONITOR_LED_MODE_*）
 } monitor_state_t;
 
 /*********************************************************************
@@ -108,6 +113,7 @@ void service_monitor_init(void)
     memset(&m_monitor_state, 0, sizeof(monitor_state_t));
     m_monitor_state.led_state = 0;
     m_monitor_state.tick_counter = 0;
+    m_monitor_state.led_mode = MONITOR_LED_MODE_NORMAL;
 
     if(m_monitor_task_hdl == NULL)
     {
@@ -180,7 +186,8 @@ static void monitor_timer_callback(TimerHandle_t xTimer)
 static void monitor_led_manage_event(void)
 {
     uint32_t led_color;
-    uint32_t blink_cycle = MONITOR_LED_BLINK_ON_TICKS + MONITOR_LED_BLINK_OFF_TICKS;
+    uint32_t blink_cycle;
+    uint32_t blink_on_ticks;
 
     m_monitor_state.ble_connected = service_ble_gatts_get_connect();
 
@@ -193,9 +200,22 @@ static void monitor_led_manage_event(void)
         led_color = LED_COLOR_WHITE;
     }
 
+    if(m_monitor_state.led_mode == MONITOR_LED_MODE_REFRESH)
+    {
+        // EPD刷新中：LED闪烁提示
+        blink_cycle = MONITOR_LED_REFRESH_BLINK_ON_TICKS + MONITOR_LED_REFRESH_BLINK_OFF_TICKS;
+        blink_on_ticks = MONITOR_LED_REFRESH_BLINK_ON_TICKS;
+    }
+    else
+    {
+        // 刷新完成：常亮
+        blink_cycle = MONITOR_LED_BLINK_ON_TICKS + MONITOR_LED_BLINK_OFF_TICKS;
+        blink_on_ticks = MONITOR_LED_BLINK_ON_TICKS;
+    }
+
     // 闪烁控制: led_state作为周期计数器
     m_monitor_state.led_state = (m_monitor_state.led_state + 1) % blink_cycle;
-    if(m_monitor_state.led_state < MONITOR_LED_BLINK_ON_TICKS)
+    if(m_monitor_state.led_state < blink_on_ticks)
     {
         hal_led_set_color(led_color);
         hal_led_set_brightness(MONITOR_LED_BRIGHTNESS);
@@ -204,4 +224,11 @@ static void monitor_led_manage_event(void)
     {
         hal_led_set_color(LED_COLOR_BLACK);
     }
+}
+
+void service_monitor_set_film_refresh_state(uint8_t refreshing)
+{
+    m_monitor_state.led_mode = refreshing ? MONITOR_LED_MODE_REFRESH : MONITOR_LED_MODE_NORMAL;
+    // 切换模式时归零，避免由熄灭相位切入导致瞬间熄灭
+    m_monitor_state.led_state = 0;
 }
