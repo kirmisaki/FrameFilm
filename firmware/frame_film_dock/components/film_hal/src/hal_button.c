@@ -40,7 +40,7 @@
  */
 #define BUTTON_TAG                        "HAL_BUTTON"
 
-#define BUTTON_PIN_CONFIRM                (5)    // 确认按键
+#define BUTTON_PIN_CONFIRM                (6)    // 确认按键
 #define BUTTON_ACTIVE_LEVEL               (0)    // 按键激活电平为低电平
 
 

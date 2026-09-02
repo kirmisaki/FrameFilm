@@ -229,7 +229,7 @@ static void film_clear_event(void)
 
     hal_epd_display_init();
     hal_epd_display_white();
-    hal_epd_pwroff();
+    // hal_epd_pwroff();
 }
 
 static void film_display_event(uint32_t file_id)
@@ -289,7 +289,7 @@ static void film_display_event(uint32_t file_id)
     // 调用EPD显示接口
     hal_epd_display_init();
     hal_epd_display_film(buffer);
-    hal_epd_pwroff();
+    // hal_epd_pwroff();
 
     // 更新状态
     g_service_param.film.load_complete = 1;

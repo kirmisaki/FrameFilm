@@ -55,7 +55,8 @@
 // LED管理参数
 #define MONITOR_LED_UPDATE_INTERVAL_MS           (500)    // LED状态更新间隔 500ms
 #define MONITOR_LED_BLINK_ON_TICKS               (1)      // LED闪烁点亮tick数 (1 * 500ms = 500ms亮)
-#define MONITOR_LED_BLINK_OFF_TICKS              (3)      // LED闪烁熄灭tick数 (3 * 500ms = 1500ms灭)
+#define MONITOR_LED_BLINK_OFF_TICKS              (0)      // LED闪烁熄灭tick数 (3 * 500ms = 1500ms灭)
+#define MONITOR_LED_BRIGHTNESS                   (30)     // LED亮度值
 
 #define MONITOR_TIMER_BASE_INTERVAL_MS           (100)
 #define MONITOR_LED_TICK_COUNT                   (MONITOR_LED_UPDATE_INTERVAL_MS / MONITOR_TIMER_BASE_INTERVAL_MS)
@@ -197,7 +198,7 @@ static void monitor_led_manage_event(void)
     if(m_monitor_state.led_state < MONITOR_LED_BLINK_ON_TICKS)
     {
         hal_led_set_color(led_color);
-        hal_led_set_brightness(5);
+        hal_led_set_brightness(MONITOR_LED_BRIGHTNESS);
     }
     else
     {

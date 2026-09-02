@@ -42,6 +42,9 @@
 #define EPD_INPUT_LINE      (EPD_WIDTH / 2)   // 380 bytes per line
 #define EPD_OUTPUT_LINE     (EPD_WIDTH / 4)   // 190 bytes per line
 
+// 忙等BUSY超时时间（1分钟）
+#define EPD_BUSY_TIMEOUT_MS                  (60000)
+
 #define FILM_HEADER_SIZE                  (32)
 #define FILM_COLOR_TABLE_SIZE             (16)
 #define FILM_OFFSET_FILESIZE              (0x00)
@@ -214,7 +217,17 @@ static void reset(void)
 
 static void lcd_chkstatus(void)
 {
-    while(!isEPD_W21_BUSY);
+    TickType_t start_ticks = xTaskGetTickCount();
+
+    while (!isEPD_W21_BUSY)
+    {
+        if ((xTaskGetTickCount() - start_ticks) >= pdMS_TO_TICKS(EPD_BUSY_TIMEOUT_MS))
+        {
+            sys_loge(EPD_TAG, "EPD busy wait timeout (%dms)!", EPD_BUSY_TIMEOUT_MS);
+            return;
+        }
+        vTaskDelay(1);
+    }
 }
 
 /* 完整初始化命令序列（每次刷新前都会发送一次） */

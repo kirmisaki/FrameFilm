@@ -43,6 +43,7 @@
 #define RGB_LED_WS2812_PIN             (GPIO_NUM_17)
 #define RGB_LED_NUMBERS                (2)
 #define RGB_LED_RMT_RES_HZ             (10 * 1000 * 1000)
+#define RGB_LED_DEFAULT_BRIGHTNESS     (30)
 
 #define LED_STRIP_USE_DMA              (0)
 #if LED_STRIP_USE_DMA
@@ -72,7 +73,7 @@ typedef struct
 static led_strip_handle_t m_rgb;
 static led_t m_led =
 {
-    .brightness = 10,
+    .brightness = RGB_LED_DEFAULT_BRIGHTNESS,
     .color = LED_COLOR_WHITE,
     .initialized = false
 };
