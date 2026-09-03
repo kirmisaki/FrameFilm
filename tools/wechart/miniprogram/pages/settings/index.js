@@ -1,5 +1,11 @@
 const bleUtils = require('../../utils/ble-utils');
+const filmUtils = require('../../utils/film-utils');
+const ditherConfig = require('../../utils/dither-config');
 const app = getApp();
+
+// 创作页默认转换算法：注册时按当前机型初始化（onShow 会按最新机型/已保存值刷新）
+var ditherCreateInit = ditherConfig.ditherOptionsFor(filmUtils.getDeviceType());
+var ditherCreateInitIndex = Math.max(0, ditherCreateInit.types.indexOf(ditherConfig.getCreateDitherType()));
 
 Page({
   // 唤醒时长点位：60分钟前每10分钟一档，之后每60分钟一档
@@ -40,6 +46,7 @@ Page({
     wifiSsid: '',
     wifiPassword: '',
     filmApiUrl: '',
+    heartbeatInterval: '60',
     wifiConnected: false,
     wifiStatusText: '未连接',
     networkExpanded: false,
@@ -47,6 +54,10 @@ Page({
     downloadState: 0,
     downloadProgress: 0,
     downloadStatusText: '',
+    // 创作页默认转换算法
+    ditherCreateTypes: ditherCreateInit.types,
+    ditherCreateNames: ditherCreateInit.names,
+    ditherCreateIndex: ditherCreateInitIndex,
     showDebug: false,
     debugLogs: [],
     otaFileName: '',
@@ -66,6 +77,8 @@ Page({
     this._syncFromGlobal();
     this._startSyncTimer();
     this._setupBleListener();
+    // 刷新创作页默认转换算法（机型可能随 0x42 校准变化，已保存值也需同步到当前机型可选清单）
+    this._refreshCreateDither();
     // 连接状态下查询WiFi配置
     if (app.globalData.isConnected) {
       this._queryWifiConfig();
@@ -136,6 +149,8 @@ Page({
     if (this.data.wifiSsid !== g.wifiSsid) updates.wifiSsid = g.wifiSsid;
     if (this.data.wifiPassword !== g.wifiPassword) updates.wifiPassword = g.wifiPassword;
     if (this.data.filmApiUrl !== g.filmApiUrl) updates.filmApiUrl = g.filmApiUrl;
+    var hi = (g.heartbeatInterval || g.heartbeatInterval === 0) ? g.heartbeatInterval : 60;
+    if (this.data.heartbeatInterval !== String(hi)) updates.heartbeatInterval = String(hi);
     var wConn = !!g.wifiConnected;
     if (this.data.wifiConnected !== wConn) {
       updates.wifiConnected = wConn;
@@ -155,6 +170,39 @@ Page({
     if (Object.keys(updates).length > 0) {
       this.setData(updates);
     }
+  },
+
+  // 创作页默认转换算法：按当前机型可选清单 + 已保存默认值刷新下拉
+  _refreshCreateDither: function () {
+    var opts = ditherConfig.ditherOptionsFor(filmUtils.getDeviceType());
+    var saved = ditherConfig.getCreateDitherType();
+    var idx = opts.types.indexOf(saved);
+    if (idx < 0) idx = Math.max(0, opts.types.indexOf(ditherConfig.DEFAULT_CREATE_DITHER_TYPE));
+    var same = this.data.ditherCreateIndex === idx && this.data.ditherCreateTypes.length === opts.types.length;
+    if (same) {
+      for (var i = 0; i < opts.types.length; i++) {
+        if (this.data.ditherCreateTypes[i] !== opts.types[i]) { same = false; break; }
+      }
+    }
+    if (!same) {
+      this.setData({
+        ditherCreateTypes: opts.types,
+        ditherCreateNames: opts.names,
+        ditherCreateIndex: idx
+      });
+    }
+  },
+
+  // 选择创作页默认转换算法（相册/拍照/一言/绘梦生效，模板走独立 E6Pro 分层转换不受影响）
+  onDitherCreateChange: function (e) {
+    var idx = parseInt(e.detail.value, 10);
+    var type = this.data.ditherCreateTypes[idx];
+    if (!type) return;
+    this.setData({ ditherCreateIndex: idx });
+    ditherConfig.setCreateDitherType(type);
+    var name = this.data.ditherCreateNames[idx];
+    this.debugLog('默认转换算法: ' + name, 'success');
+    wx.showToast({ title: '默认算法已设为 ' + name, icon: 'none' });
   },
 
   _startSyncTimer: function () {
@@ -293,6 +341,15 @@ Page({
           var furl = this._parseString(data, 3, cmdLen);
           this.setData({ filmApiUrl: furl });
           app.globalData.filmApiUrl = furl;
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET: // 0x41 心跳间隔
+        if (cmdLen >= 1) {
+          var hb = data[3];
+          this.setData({ heartbeatInterval: String(hb) });
+          app.globalData.heartbeatInterval = hb;
+          this.debugLog('心跳间隔: ' + hb + ' 秒', 'success');
         }
         break;
 
@@ -599,6 +656,7 @@ Page({
     app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET, null).catch(function () {});
     app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET, null).catch(function () {});
     app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET, null).catch(function () {});
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET, null).catch(function () {});
   },
 
   applyWifiSsid: function (e) {
@@ -640,6 +698,32 @@ Page({
     });
   },
 
+  applyHeartbeatInterval: function (e) {
+    var that = this;
+    var raw = (e && e.detail && e.detail.value) ? e.detail.value.trim() : '';
+    if (!raw) {
+      that.setData({ heartbeatInterval: String(app.globalData.heartbeatInterval || 60) });
+      return;
+    }
+    var sec = parseInt(raw, 10);
+    if (!(sec >= 5 && sec <= 180)) {
+      wx.showToast({ title: '心跳间隔需在 5-180 秒之间', icon: 'none' });
+      that.setData({ heartbeatInterval: String(app.globalData.heartbeatInterval || 60) });
+      return;
+    }
+    that.setData({ heartbeatInterval: String(sec) });
+    app.globalData.heartbeatInterval = sec;
+    that.debugLog('设置心跳间隔: ' + sec + ' 秒', 'info');
+    app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL, sec).then(function () {
+      that.debugLog('心跳间隔已发送，回读确认中…', 'success');
+      setTimeout(function () {
+        app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET, null).catch(function () {});
+      }, 600);
+    }).catch(function (err) {
+      that.debugLog('心跳间隔设置失败: ' + JSON.stringify(err), 'error');
+    });
+  },
+
   onWifiConnect: function () {
     var that = this;
     that.debugLog('开始连接WiFi...', 'info');
@@ -674,12 +758,13 @@ Page({
           app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR, null).then(function () {
             that.setData({
               wifiEnable: false, wifiSsid: '', wifiPassword: '',
-              filmApiUrl: '', wifiConnected: false, wifiStatusText: '已清除'
+              filmApiUrl: '', heartbeatInterval: '60', wifiConnected: false, wifiStatusText: '已清除'
             });
             app.globalData.wifiEnable = 0;
             app.globalData.wifiSsid = '';
             app.globalData.wifiPassword = '';
             app.globalData.filmApiUrl = '';
+            app.globalData.heartbeatInterval = 60;
             app.globalData.wifiConnected = false;
             // WiFi模式切换到本地轮播
             if (that.data.photoMode === 2) {

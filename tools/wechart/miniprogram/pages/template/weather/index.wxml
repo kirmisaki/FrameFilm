@@ -10,7 +10,7 @@
   </view>
 
   <view class="canvas-container">
-    <view class="canvas-wrap">
+    <view class="canvas-wrap" style="height: {{boxH}}rpx">
       <canvas type="2d" id="canvas-tpl" class="preview-canvas"></canvas>
     </view>
   </view>

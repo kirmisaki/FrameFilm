@@ -1,6 +1,6 @@
 <view class="container">
   <view class="canvas-container">
-    <view class="canvas-wrap">
+    <view class="canvas-wrap" style="height: {{boxH}}rpx">
       <canvas type="2d" id="canvas-upload" class="preview-canvas"
               bindtouchstart="onTouchStart" catchtouchmove="onTouchMove"
               bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd"></canvas>

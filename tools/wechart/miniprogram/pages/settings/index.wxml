@@ -40,6 +40,23 @@
     </view>
   </view>
 
+  <!-- 创作页默认转换算法（相册/拍照/一言/绘梦共用；模板为独立 E6Pro 分层转换不受此设置影响） -->
+  <view class="set-group">
+    <picker mode="selector" range="{{ditherCreateNames}}" value="{{ditherCreateIndex}}" bindchange="onDitherCreateChange">
+      <view class="set-row">
+        <view class="set-ic sc-pink"><image src="/images/icons/white/scan.svg" mode="aspectFit"></image></view>
+        <view class="create-info">
+          <view class="create-line">
+            <text class="create-title">默认转换算法</text>
+            <text class="create-val">{{ditherCreateNames[ditherCreateIndex]}}</text>
+          </view>
+          <text class="create-desc">相册 · 拍照 · 一言 · 绘梦</text>
+        </view>
+        <view class="set-a">›</view>
+      </view>
+    </picker>
+  </view>
+
   <!-- 组2 网络配置 -->
   <view class="set-group">
     <view class="set-row">
@@ -85,6 +102,15 @@
       <view class="button-row">
         <button class="btn-secondary" bindtap="applyFilmApiUrl" disabled="{{!isConnected}}">设置</button>
         <button class="btn-secondary" bindtap="onFilmDownload" disabled="{{!isConnected}}">下载测试</button>
+      </view>
+      <view class="divider"></view>
+      <!-- 心跳间隔 -->
+      <view class="network-input-group">
+        <text class="network-label">心跳间隔（秒）</text>
+        <input class="network-input" type="number" value="{{heartbeatInterval}}" placeholder="5-180" bindblur="applyHeartbeatInterval" disabled="{{!isConnected}}" />
+      </view>
+      <view class="wifi-status-row">
+        <text class="wifi-status-text download-text">心跳地址会自动拼接（/api/v1/device/heartbeat），间隔 5-180 秒</text>
       </view>
       <view class="wifi-status-row" wx:if="{{downloadStatusText}}">
         <text class="wifi-status-text download-text">{{downloadStatusText}}</text>

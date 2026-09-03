@@ -62,6 +62,22 @@ Page({
       case bleUtils.BLE_FILM_TRANS_CH_CTRL_PWRREAD:
         this.setData({ batteryLevel: app.globalData.batteryLevel, batteryFillWidth: app.globalData.batteryLevel });
         break;
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET: // 0x42
+        if (resp.cmdLen === 5) {
+          var d = resp.data;
+          var panelId = d[3];
+          var width = (d[4] << 8) | d[5];
+          var height = (d[6] << 8) | d[7];
+          if (filmUtils.applyScreenParams(panelId, width, height)) {
+            var cfg = filmUtils.getDeviceConfig();
+            app.globalData.deviceType = filmUtils.getDeviceType();
+            this.setData({
+              statusText: '已连接: ' + (app.globalData.deviceName || '') + ' (' + cfg.displayName + ' ' + cfg.screenWidth + 'x' + cfg.screenHeight + ')'
+            });
+            console.log('设备屏幕参数已校准: panelId=0x' + panelId.toString(16) + ' ' + width + 'x' + height + ' -> ' + cfg.displayName);
+          }
+        }
+        break;
       case bleUtils.BLE_FILM_TRANS_CH_FILE_LIST:
         // 文件列表更新，无需特殊UI处理
         break;
@@ -93,11 +109,21 @@ Page({
                   if (list[j].deviceId === d.deviceId) { exists = true; break; }
                 }
                 if (!exists) {
+                  var un = (name || '').toUpperCase();
+                  var modelTag = '';
+                  if (un.indexOf('MAX') !== -1) {
+                    modelTag = 'MAX';
+                  } else if (un.indexOf('DOCK') !== -1) {
+                    modelTag = 'DOCK';
+                  } else if (un.indexOf('PRO') !== -1) {
+                    modelTag = 'PRO';
+                  }
                   list.push({
                     name: name,
                     deviceId: d.deviceId,
                     RSSI: d.RSSI,
-                    isPro: name.toUpperCase().indexOf('PRO') !== -1
+                    isPro: modelTag === 'PRO',
+                    modelTag: modelTag
                   });
                 }
               }
@@ -247,8 +273,13 @@ Page({
           return;
         }
         // 检测设备类型
+        var upperName = (device.name || '').toUpperCase();
         var deviceType = 'FRAMEFILM';
-        if (device.name && device.name.toUpperCase().indexOf('PRO') !== -1) {
+        if (upperName.indexOf('MAX') !== -1) {
+          deviceType = 'FRAMEFILMMAX';
+        } else if (upperName.indexOf('DOCK') !== -1) {
+          deviceType = 'FRAMEFILMDOCK';
+        } else if (upperName.indexOf('PRO') !== -1) {
           deviceType = 'FRAMEFILMPRO';
         }
         filmUtils.setDeviceType(deviceType);
@@ -403,12 +434,17 @@ Page({
     // 7. 获取休眠时间
     setTimeout(function () {
       console.log('发送初始化命令: SLEEPMODE_TIME_GET');
-      app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET, null).then(function () {
-        setTimeout(function () {
-          that.setData({ statusText: '已连接: ' + that.data.connectedDeviceName });
-        }, 500);
-      }).catch(function (e) {
+      app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET, null).catch(function (e) {
         console.error('send SLEEPMODE_TIME_GET fail', e);
+      });
+    }, delay);
+    delay += step;
+
+    // 8. 获取屏幕分辨率（面板 ID + 宽高），据此校准机型与像素排布
+    setTimeout(function () {
+      console.log('发送初始化命令: SCREEN_RESOLUTION_GET(0x42)');
+      app.sendBleCmd(bleUtils.BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET, null).catch(function (e) {
+        console.error('send SCREEN_RESOLUTION_GET fail', e);
       });
     }, delay);
   },

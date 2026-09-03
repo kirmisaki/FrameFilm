@@ -9,6 +9,7 @@ var STORAGE_KEY = 'ff_tpl_memo';
 
 Page({
   data: {
+    boxH: 900,
     schemes: tplMemo.SCHEMES,
     schemeIndex: 0,
     items: [],
@@ -51,8 +52,13 @@ Page({
       if (!res || !res[0] || !res[0].node) return;
       var canvas = res[0].node;
       var ctx = canvas.getContext('2d');
-      canvas.width = filmUtils.getCanvasWidth();
-      canvas.height = filmUtils.getCanvasHeight();
+      var cw = filmUtils.getCanvasWidth();
+      var ch = filmUtils.getCanvasHeight();
+      // 预览容器高度随设备画布宽高比自适应（容器宽固定 600rpx），避免非 2:3 画布（Dock/Max）预览纵向拉伸
+      var boxH = Math.round(600 * ch / cw);
+      canvas.width = cw;
+      canvas.height = ch;
+      that.setData({ boxH: boxH });
       that._canvas = canvas;
       that._ctx = ctx;
       that._render();
