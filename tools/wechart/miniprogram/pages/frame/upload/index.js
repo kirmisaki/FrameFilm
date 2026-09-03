@@ -34,7 +34,13 @@ Page({
     isEditingName: false,
     customFileName: '',
     adjustOn: false,
-    showAdjustHint: false
+    showAdjustHint: false,
+    imgLoaded: false,
+    // 色彩调节（作用于默认转换算法的预览与发送）：对比度 0.5~2.0 / 饱和度 0~3.0，默认 1.0
+    contrast: 1.0,
+    contrastInt: 100,
+    saturation: 1.0,
+    saturationInt: 10
   },
 
   _canvas: null,
@@ -102,9 +108,11 @@ Page({
     }
     if (applyDither) {
       try {
-        // 使用设置页「默认转换算法」；强度/对比度/饱和度统一 1.0
+        // 使用设置页「默认转换算法」；强度固定 1.0，对比度/饱和度用本页滑块值（默认 1.0 即不加调整）
         var preset = ditherConfig.getCreateDitherParams();
-        filmUtils.processAndDisplay(canvas, ctx, preset.type, preset.strength, preset.contrast, preset.saturation);
+        var contrast = this.data.contrast || 1.0;
+        var saturation = this.data.saturation || 1.0;
+        filmUtils.processAndDisplay(canvas, ctx, preset.type, preset.strength, contrast, saturation);
       } catch (e) {
         console.error('processAndDisplay error:', e);
       }
@@ -129,6 +137,46 @@ Page({
       clearTimeout(this._editTimer);
       this._editTimer = null;
     }
+  },
+
+  // 滑块拖动中仅刷新数值，松手后才重新转换预览
+  onContrastChanging: function (e) {
+    var val = parseInt(e.detail.value, 10) / 100;
+    this.setData({ contrast: val, contrastInt: parseInt(e.detail.value, 10) });
+  },
+
+  onContrastChange: function (e) {
+    var val = parseInt(e.detail.value, 10) / 100;
+    this.setData({ contrast: val, contrastInt: parseInt(e.detail.value, 10) });
+    this._applyColorPreview();
+  },
+
+  onSaturationChanging: function (e) {
+    var val = parseInt(e.detail.value, 10) / 10;
+    this.setData({ saturation: val, saturationInt: parseInt(e.detail.value, 10) });
+  },
+
+  onSaturationChange: function (e) {
+    var val = parseInt(e.detail.value, 10) / 10;
+    this.setData({ saturation: val, saturationInt: parseInt(e.detail.value, 10) });
+    this._applyColorPreview();
+  },
+
+  resetColors: function () {
+    this.setData({ contrast: 1.0, contrastInt: 100, saturation: 1.0, saturationInt: 10 });
+    this._applyColorPreview();
+  },
+
+  // 色彩调节后立即刷新抖动预览；若处于位置调节（缩放/拖动）模式则先退出，避免与手势冲突
+  _applyColorPreview: function () {
+    var that = this;
+    that._cancelEditTimer();
+    if (!that._img) return;
+    that._gesture = null;
+    if (that.data.adjustOn) {
+      that.setData({ adjustOn: false, showAdjustHint: false });
+    }
+    that._drawPhoto(true);
   },
 
   toggleAdjust: function () {
@@ -267,7 +315,7 @@ Page({
       that._fit = fitImageToCanvas(drawImgW, drawImgH, CW, CH);
       that._drawPhoto(true);
 
-      that.setData({ sendDisabled: false, showFileName: true, customFileName: filmUtils.generateRandomFilename('upload'), isEditingName: false });
+      that.setData({ sendDisabled: false, showFileName: true, customFileName: filmUtils.generateRandomFilename('upload'), isEditingName: false, imgLoaded: true });
     };
     img.onerror = function () {
       wx.showToast({ title: '图片加载失败', icon: 'none' });

@@ -8,6 +8,24 @@
     </view>
   </view>
 
+  <!-- 色彩调节（作用于默认转换算法，对比度/饱和度默认 1.0） -->
+  <view class="color-panel" wx:if="{{imgLoaded}}">
+    <view class="color-head">
+      <text class="color-title">色彩调节</text>
+      <text class="color-reset" bindtap="resetColors">重置</text>
+    </view>
+    <view class="slider-row">
+      <text class="slider-label">对比度</text>
+      <slider min="50" max="200" step="10" value="{{contrastInt}}" bindchanging="onContrastChanging" bindchange="onContrastChange" activeColor="#FF6B6B" block-size="24" />
+      <text class="slider-value">{{contrast}}</text>
+    </view>
+    <view class="slider-row">
+      <text class="slider-label">饱和度</text>
+      <slider min="0" max="30" step="1" value="{{saturationInt}}" bindchanging="onSaturationChanging" bindchange="onSaturationChange" activeColor="#FF6B6B" block-size="24" />
+      <text class="slider-value">{{saturation}}</text>
+    </view>
+  </view>
+
   <view class="button-row">
     <button class="btn-secondary" bindtap="chooseImage">从相册选择</button>
     <button class="btn-secondary {{adjustOn ? 'btn-adjust-on' : ''}}" bindtap="toggleAdjust">{{adjustOn ? '✓ 调节中' : '调节'}}</button>

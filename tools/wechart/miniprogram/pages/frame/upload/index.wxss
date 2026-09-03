@@ -43,6 +43,67 @@
   margin: 40rpx auto 0;
 }
 
+/* 色彩调节面板（对比度/饱和度滑块） */
+.color-panel {
+  max-width: 668rpx;
+  margin: 24rpx auto 0;
+  background: #fff;
+  border: 2rpx solid #FFE3D8;
+  border-radius: 24rpx;
+  box-shadow: 0 8rpx 24rpx rgba(255, 107, 107, 0.08);
+  padding: 20rpx 30rpx 26rpx;
+}
+
+.color-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.color-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #111;
+}
+
+.color-reset {
+  font-size: 24rpx;
+  color: #FF6B6B;
+  padding: 4rpx 16rpx;
+  border: 2rpx solid #FFC7B8;
+  border-radius: 999rpx;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.slider-row + .slider-row {
+  margin-top: 8rpx;
+}
+
+.slider-label {
+  flex: 0 0 120rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #555;
+}
+
+.slider-row slider {
+  flex: 1;
+}
+
+.slider-value {
+  flex: 0 0 80rpx;
+  text-align: right;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #111;
+}
+
 .button-row .btn-primary,
 .button-row .btn-secondary {
   flex: 1;
