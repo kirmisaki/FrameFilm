@@ -576,7 +576,7 @@ Page({
   showAbout: function () {
     wx.showModal({
       title: '关于 FrameFilm',
-      content: 'FrameFilm v2.0\n开源彩色电子纸冰箱贴 · GPL-3.0\nBLE 传照片 · 本地草稿 · 批量上屏',
+      content: 'FrameFilm v3.0\n开源彩色电子纸冰箱贴 · GPL-3.0\nBLE 传照片 · 本地草稿 · 批量上屏',
       showCancel: false,
       confirmText: '知道了'
     });

@@ -216,7 +216,7 @@
     <view class="set-row" bindtap="showAbout">
       <view class="set-ic sc-yellow"><image src="/images/icons/white/about.svg" mode="aspectFit"></image></view>
       <view class="set-t">关于 FrameFilm
-        <text class="set-d">v2.0</text>
+        <text class="set-d">v3.0</text>
       </view>
       <view class="set-a">›</view>
     </view>
