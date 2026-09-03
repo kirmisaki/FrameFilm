@@ -17,19 +17,19 @@ Page({
   },
 
   goToUpload: function () {
-    wx.navigateTo({ url: '/pages/frame/upload/index' });
+    wx.navigateTo({ url: '/pkgCreate/frame/upload/index' });
   },
 
   goToCamera: function () {
-    wx.navigateTo({ url: '/pages/frame/camera/index' });
+    wx.navigateTo({ url: '/pkgCreate/frame/camera/index' });
   },
 
   goToQuote: function () {
-    wx.navigateTo({ url: '/pages/frame/quote/index' });
+    wx.navigateTo({ url: '/pkgCreate/frame/quote/index' });
   },
 
   goToDraw: function () {
-    wx.navigateTo({ url: '/pages/frame/draw/index' });
+    wx.navigateTo({ url: '/pkgCreate/frame/draw/index' });
   },
 
   // 模板：模板中心
@@ -44,6 +44,6 @@ Page({
 
   // 高级转换 → Film 工具页
   goToFilm: function () {
-    wx.navigateTo({ url: '/pages/film/index' });
+    wx.navigateTo({ url: '/pkgCreate/film/index' });
   }
 });

@@ -1,5 +1,7 @@
 // 一言 - 语录
 var filmUtils = require('../../../utils/film-utils');
+var ditherAdvanced = require('../../utils/dither-advanced'); // 分包高级算法引擎（含 AE LUT，不进主包）
+filmUtils.attachDitherAdvanced(ditherAdvanced);
 var bleUtils = require('../../../utils/ble-utils');
 var recentUtils = require('../../../utils/recent-utils');
 var ditherConfig = require('../../../utils/dither-config');

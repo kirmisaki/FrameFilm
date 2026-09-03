@@ -531,6 +531,21 @@ function getLastAdaptiveChoice() {
   return { type: _lastAdaptiveChoice.type, strength: _lastAdaptiveChoice.strength };
 }
 
+// 高级算法引擎由分包页面注入（pkgCreate/utils/dither-advanced.js）。
+// 避免把 1.4MB 的 Atkinson LUT 静态带进主包（主包不能依赖分包，故分包页面加载后主动注册）
+var _ditherAdvanced = null;
+
+function _getDitherAdvanced() {
+  if (!_ditherAdvanced) {
+    throw new Error('高级抖动引擎未注入，请先调用 filmUtils.attachDitherAdvanced()');
+  }
+  return _ditherAdvanced;
+}
+
+function attachDitherAdvanced(mod) {
+  _ditherAdvanced = mod;
+}
+
 function applyDitherByType(imageData, type, strength) {
   switch (type) {
     case 'adaptive': return adaptiveDither(imageData);
@@ -538,17 +553,17 @@ function applyDitherByType(imageData, type, strength) {
     case 'atkinson': return atkinsonDither(imageData, strength);
     case 'stucki': return stuckiDither(imageData, strength);
     case 'jarvis': return jarvisDither(imageData, strength);
-    // 高级算法（懒加载，避免模块循环依赖 + 拖慢页面冷启动）
+    // 高级算法（分包引擎，由页面在进入时注入）
     case 'gammaFloydSteinberg':
-      return require('./dither-advanced').gammaFloydSteinbergDither(imageData, strength);
+      return _getDitherAdvanced().gammaFloydSteinbergDither(imageData, strength);
     case 'bayer':
-      return require('./dither-advanced').bayerDither(imageData, strength);
+      return _getDitherAdvanced().bayerDither(imageData, strength);
     case 'atkinsonEnhanced':
-      return require('./dither-advanced').atkinsonEnhancedQuantize(imageData);
+      return _getDitherAdvanced().atkinsonEnhancedQuantize(imageData);
     case 'atkinsonSzCalib':
-      return require('./dither-advanced').atkinsonSzCalibQuantize(imageData);
+      return _getDitherAdvanced().atkinsonSzCalibQuantize(imageData);
     case 'szEnhanced':
-      return require('./dither-advanced').szEnhancedDither(imageData);
+      return _getDitherAdvanced().szEnhancedDither(imageData);
     default: return imageData;
   }
 }
@@ -857,6 +872,7 @@ module.exports = {
   adjustContrast, adjustSaturation,
   floydSteinbergDither, atkinsonDither, stuckiDither, jarvisDither,
   applyDitherByType,
+  attachDitherAdvanced,
   getLastAdaptiveChoice,
   processImageData, decodeProcessedData,
   extractLandscapeData,

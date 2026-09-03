@@ -10,7 +10,7 @@
 //  - gammaFS/bayer 复用 film-utils.findClosestColor（懒加载 require，避免模块循环）。
 var _filmUtils = null;
 function _fcc() {
-  if (!_filmUtils) _filmUtils = require('./film-utils');
+  if (!_filmUtils) _filmUtils = require('../../utils/film-utils'); // 主包共享工具（分包可引用主包）
   return _filmUtils.findClosestColor;
 }
 

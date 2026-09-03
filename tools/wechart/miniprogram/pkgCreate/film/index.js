@@ -1,4 +1,6 @@
 const filmUtils = require('../../utils/film-utils');
+const ditherAdvanced = require('../utils/dither-advanced'); // 分包高级算法引擎（含 AE LUT，不进主包）
+filmUtils.attachDitherAdvanced(ditherAdvanced);
 const bleUtils = require('../../utils/ble-utils');
 const app = getApp();
 
@@ -513,7 +515,7 @@ Page({
   onShareAppMessage: function () {
     return {
       title: 'FrameFilm - Film',
-      path: '/pages/film/index'
+      path: '/pkgCreate/film/index'
     };
   },
 

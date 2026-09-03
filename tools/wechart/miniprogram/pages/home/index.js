@@ -181,12 +181,12 @@ Page({
       wx.showToast({ title: '请先连接设备', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/pages/frame/upload/index' });
+    wx.navigateTo({ url: '/pkgCreate/frame/upload/index' });
   },
 
   // 拍一张 CTA → 相机页
   goCamera: function () {
-    wx.navigateTo({ url: '/pages/frame/camera/index' });
+    wx.navigateTo({ url: '/pkgCreate/frame/camera/index' });
   },
 
   // 模板卡 → 模板中心
