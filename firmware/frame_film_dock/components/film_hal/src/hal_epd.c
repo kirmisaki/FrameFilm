@@ -34,6 +34,9 @@
 
 #include "sys_log.h"
 #include "hal_epd.h"
+#if EPD_DETECT_ENABLE
+#include "driver/i2c_master.h"
+#endif
 
 /*********************************************************************
  * MACROS
@@ -75,6 +78,15 @@
 // Pack 4 identical 2-bit values into one byte
 #define PACK4(v)  (((v) << 6) | ((v) << 4) | ((v) << 2) | (v))
 
+#if EPD_DETECT_ENABLE
+// 屏幕插入检测（I2C 探测屏幕连接器上的检测从机，SCL=IO15，SDA=IO16，从机地址 0x50）
+#define EPD_DETECT_I2C_PORT            I2C_NUM_1
+#define EPD_DETECT_SCL_PIN             GPIO_NUM_15
+#define EPD_DETECT_SDA_PIN             GPIO_NUM_16
+#define EPD_DETECT_DEV_ADDR            0x50        // 7-bit 从机地址
+#define EPD_DETECT_TIMEOUT_MS          10          // 探测超时
+#endif
+
 /*********************************************************************
 * TYPEDEFS
 */
@@ -111,6 +123,11 @@ static const uint8_t color_map1[16] = {0, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
  * LOCAL VARIABLES
  */
 static spi_device_handle_t m_spi_device;
+#if EPD_DETECT_ENABLE
+static bool s_detect_i2c_ready = false;
+static bool s_screen_inserted = false;
+static i2c_master_bus_handle_t s_detect_bus = NULL;
+#endif
 
 /*********************************************************************
  * LOCAL FUNCTIONS
@@ -409,6 +426,12 @@ void hal_epd_init(void)
 
 void hal_epd_display_init(void)
 {
+    if (!hal_epd_is_inserted())
+    {
+        sys_loge(EPD_TAG, "screen not inserted");
+        return;
+    }
+
     reset();
     epd_init_seq();
 
@@ -472,6 +495,12 @@ void hal_epd_display_film(const unsigned char *filmData)
     if (filmData == NULL)
     {
         sys_loge(EPD_TAG, "filmData is NULL");
+        return;
+    }
+
+    if (!hal_epd_is_inserted())
+    {
+        sys_loge(EPD_TAG, "screen not inserted");
         return;
     }
 
@@ -550,6 +579,74 @@ void hal_epd_pwroff(void)
 
     sys_logi(EPD_TAG, "EPD power off");
 }
+
+/*********************************************************************
+ * 屏幕插入检测（I2C 探测屏幕连接器上的检测从机）
+ *********************************************************************/
+
+#if EPD_DETECT_ENABLE
+/* 初始化屏幕检测用的 I2C 总线（首次调用时创建，之后复用） */
+static esp_err_t epd_detect_i2c_init(void)
+{
+    if (s_detect_i2c_ready)
+    {
+        return ESP_OK;
+    }
+
+    i2c_master_bus_config_t bus_cfg =
+    {
+        .i2c_port = EPD_DETECT_I2C_PORT,
+        .sda_io_num = EPD_DETECT_SDA_PIN,
+        .scl_io_num = EPD_DETECT_SCL_PIN,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+
+    esp_err_t ret = i2c_new_master_bus(&bus_cfg, &s_detect_bus);
+    if (ret != ESP_OK)
+    {
+        sys_loge(EPD_TAG, "detect i2c bus create failed: %d", ret);
+        return ret;
+    }
+
+    s_detect_i2c_ready = true;
+    return ESP_OK;
+}
+
+/* 执行一次屏幕插入检测，并更新本地状态（仅供定时检测任务调用）
+ * 通过地址探测判断检测从机是否在位，从机不应答时返回 ESP_ERR_NOT_FOUND。 */
+void hal_epd_detect_insert(void)
+{
+    bool detected = false;
+
+    if (epd_detect_i2c_init() == ESP_OK)
+    {
+        detected = (i2c_master_probe(s_detect_bus, EPD_DETECT_DEV_ADDR,
+                                     EPD_DETECT_TIMEOUT_MS) == ESP_OK);
+    }
+
+    if (detected != s_screen_inserted)
+    {
+        s_screen_inserted = detected;
+        sys_logi(EPD_TAG, "screen %s", detected ? "inserted" : "removed");
+    }
+}
+
+bool hal_epd_is_inserted(void)
+{
+    return s_screen_inserted;
+}
+#else
+void hal_epd_detect_insert(void)
+{
+}
+
+bool hal_epd_is_inserted(void)
+{
+    return true;
+}
+#endif
 
 void hal_epd_deinit(void)
 {

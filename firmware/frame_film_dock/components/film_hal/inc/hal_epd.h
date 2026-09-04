@@ -37,6 +37,9 @@ extern "C" {
 
 #define EPD_SPI_HOST SPI2_HOST
 
+// 屏幕插入检测开关（1=启用，0=关闭，关闭后一律视为已插入）
+#define EPD_DETECT_ENABLE             1
+
 #define isEPD_W21_BUSY gpio_get_level(EPD_BUSY_PIN)
 #define EPD_W21_RST_0  gpio_set_level(EPD_RST_PIN, 0)
 #define EPD_W21_RST_1  gpio_set_level(EPD_RST_PIN, 1)
@@ -90,6 +93,23 @@ void hal_epd_init(void);
  * 此函数用于释放电子纸硬件资源，包括GPIO和SPI配置，使电子纸无法再使用。
  */
 void hal_epd_deinit(void);
+
+/**
+ * @brief 检测屏幕是否已插入
+ *
+ * 返回内部缓存的屏幕插入状态，由 hal_epd_detect_insert() 周期更新。
+ *
+ * @return true 屏幕已插入；false 屏幕未插入或检测失败
+ */
+bool hal_epd_is_inserted(void);
+
+/**
+ * @brief 执行一次屏幕插入检测并更新内部状态
+ *
+ * 实际 I2C 探测只在此函数中进行，应由监控任务周期调用，
+ * 避免多个线程同时访问 I2C 总线。
+ */
+void hal_epd_detect_insert(void);
 
 /**
  * @brief 初始化电子纸显示
