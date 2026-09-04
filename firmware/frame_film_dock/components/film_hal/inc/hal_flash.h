@@ -1,16 +1,11 @@
-#ifndef __HAL_API_H__
-#define __HAL_API_H__
+#ifndef __HAL_FLASH_H__
+#define __HAL_FLASH_H__
 
 
 /*********************************************************************
  * INCLUDES
  */
-#include "hal_init.h"
-#include "hal_input.h"
-#include "hal_led.h"
-#include "hal_sd.h"
-#include "hal_flash.h"
-#include "hal_epd.h"
+
 
 /*********************************************************************
  * CPPMIX
@@ -22,7 +17,9 @@ extern "C" {
 /*********************************************************************
  * MACROS
  */
-
+#define FLASH_MOUNT_POINT           "/spiffs"
+#define FLASH_MOUNT                 (1)
+#define FLASH_UNMOUNT               (0)
 
 /*********************************************************************
 * TYPEDEFS
@@ -52,11 +49,22 @@ extern "C" {
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
+/**
+ * @brief 初始化板载Flash存储
+ *
+ * 此函数用于挂载板载SPIFFS分区，作为无SD卡时的备用存储介质。
+ */
+extern void hal_flash_init(void);
 
-
+/**
+ * @brief 获取板载Flash存储的状态
+ *
+ * @return int 1:已挂载, 0:未挂载
+ */
+extern int hal_flash_get_status(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __HAL_API_H__ */
+#endif /* __HAL_FLASH_H__ */

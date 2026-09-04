@@ -49,7 +49,7 @@
 /*********************************************************************
  * MACROS
  */
-#define FILE_MSG_QUEUE_LENGTH       30
+#define FILE_MSG_QUEUE_LENGTH       120
 #define FILE_MSG_QUEUE_ITEM_SIZE    sizeof( file_msg_t )
 
 #define SYS_OS_PRI_FILE_TASK        (6)
@@ -59,6 +59,9 @@
 #define FILE_TIMER_BASE_INTERVAL_MS (1000)
 #define FILE_SD_CHECK_INTERVAL_MS   (5000)
 #define FILE_SD_CHECK_TICK_COUNT    (FILE_SD_CHECK_INTERVAL_MS / FILE_TIMER_BASE_INTERVAL_MS)
+
+/* 保存写聚合缓冲大小：攒满再整块写入，减少板载Flash(SPIFFS)小片写入次数 */
+#define FILE_SAVE_CACHE_SIZE        (4096)
 
 #define FILE_EPD_IMGAGE_WIDTH       (EPD_WIDTH)
 #define FILE_EPD_IMGAGE_HEIGHT      (EPD_HEIGHT)
@@ -82,6 +85,8 @@ typedef struct {
     uint32_t save_written;   // 已写入的字节数
     char save_filename[256]; // 当前保存的文件名
     uint8_t save_auto_load;  // 保存完成后是否自动加载显示（0：静默，1：自动加载）
+    uint8_t* save_cache;     // 保存写聚合缓冲（攒满一批再整块写入）
+    uint32_t save_cache_len; // 聚合缓冲中已积累的字节数
 } file_service_state_t;
 
 /*********************************************************************
@@ -133,6 +138,33 @@ static void file_list_unlock(void)
     }
 }
 
+/* 当前照片存储目录：优先SD卡，无SD卡时使用板载Flash(SPIFFS挂载根) */
+static const char *file_film_dir(void)
+{
+    return m_file_state.sd_mounted ? FILM_DIR : FLASH_MOUNT_POINT;
+}
+
+/* 是否存在可用存储介质（SD卡或板载Flash） */
+static int file_storage_ready(void)
+{
+    if(m_file_state.sd_mounted)
+    {
+        return 1;
+    }
+    return (hal_flash_get_status() == FLASH_MOUNT) ? 1 : 0;
+}
+
+/* 把保存聚合缓冲整块写入文件并清空缓冲 */
+static void file_save_cache_flush(void)
+{
+    if(m_file_state.save_file_handle && m_file_state.save_cache && m_file_state.save_cache_len > 0)
+    {
+        size_t written = fwrite(m_file_state.save_cache, 1, m_file_state.save_cache_len, m_file_state.save_file_handle);
+        m_file_state.save_written += written;
+        m_file_state.save_cache_len = 0;
+    }
+}
+
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
@@ -177,6 +209,12 @@ void service_file_init(void)
 
     // 检查SD卡状态
     file_sd_check_event();
+
+    // 首次启动同步刷新一次文件列表（消息队列可能尚未建立，不能仅依赖异步刷新）
+    if(file_storage_ready())
+    {
+        file_list_refresh_event();
+    }
 }
 
 static void file_task_handle(void *pvParameters)
@@ -210,22 +248,30 @@ static void file_task_handle(void *pvParameters)
                 break;
             case MSG_SD_UNMOUNTED:
                 file_free_buffer();
-                file_list_lock();
-                if(m_file_state.file_list)
+                if(file_storage_ready())
                 {
-                    free(m_file_state.file_list);
-                    m_file_state.file_list = NULL;
+                    // SD卡拔出但板载Flash可用：切换存储来源并刷新列表
+                    file_list_refresh_event();
                 }
-                m_file_state.file_count = 0;
-                m_file_state.current_file_id = 0;
-                file_list_unlock();
+                else
+                {
+                    file_list_lock();
+                    if(m_file_state.file_list)
+                    {
+                        free(m_file_state.file_list);
+                        m_file_state.file_list = NULL;
+                    }
+                    m_file_state.file_count = 0;
+                    m_file_state.current_file_id = 0;
+                    file_list_unlock();
+                }
                 break;
             case MSG_FILE_SAVE_START:
                 if(msg.file_size == FILE_EPD_IMGAGE_SIZE)
                 {
                     snprintf(m_file_state.save_filename, sizeof(m_file_state.save_filename), "%s", msg.pdata);
                     char filepath[512];
-                    snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, m_file_state.save_filename);
+                    snprintf(filepath, sizeof(filepath), "%s/%s", file_film_dir(), m_file_state.save_filename);
 
                     m_file_state.save_file_handle = fopen(filepath, "wb");
                     if(m_file_state.save_file_handle == NULL)
@@ -236,6 +282,11 @@ static void file_task_handle(void *pvParameters)
                     {
                         m_file_state.save_file_size = msg.file_size;
                         m_file_state.save_written = 0;
+                        if(m_file_state.save_cache == NULL)
+                        {
+                            m_file_state.save_cache = malloc(FILE_SAVE_CACHE_SIZE);
+                        }
+                        m_file_state.save_cache_len = 0;
                         sys_logi(FILE_TAG, "Start save file: %s, size: %d", filepath, msg.file_size);
                     }
                 }
@@ -251,9 +302,29 @@ static void file_task_handle(void *pvParameters)
             case MSG_FILE_SAVE_DATA:
                 if(m_file_state.save_file_handle && msg.pdata)
                 {
-                    size_t written = fwrite(msg.pdata, 1, msg.data_len, m_file_state.save_file_handle);
-                    m_file_state.save_written += written;
-                    // sys_logi(FILE_TAG, "Written %d bytes, total: %d/%d", written, m_file_state.save_written, m_file_state.save_file_size);
+                    if(m_file_state.save_cache)
+                    {
+                        // 小片数据先攒入聚合缓冲，攒满后整块写入，减少板载Flash写入次数
+                        uint32_t space = FILE_SAVE_CACHE_SIZE - m_file_state.save_cache_len;
+                        uint32_t copy_len = (msg.data_len < space) ? msg.data_len : space;
+                        memcpy(m_file_state.save_cache + m_file_state.save_cache_len, msg.pdata, copy_len);
+                        m_file_state.save_cache_len += copy_len;
+                        if(m_file_state.save_cache_len == FILE_SAVE_CACHE_SIZE)
+                        {
+                            file_save_cache_flush();
+                        }
+                        // 单片数据大于缓冲剩余空间时，剩余部分直接写入
+                        if(copy_len < msg.data_len)
+                        {
+                            size_t written = fwrite(msg.pdata + copy_len, 1, msg.data_len - copy_len, m_file_state.save_file_handle);
+                            m_file_state.save_written += written;
+                        }
+                    }
+                    else
+                    {
+                        size_t written = fwrite(msg.pdata, 1, msg.data_len, m_file_state.save_file_handle);
+                        m_file_state.save_written += written;
+                    }
                 }
                 if(msg.pdata)
                 {
@@ -263,6 +334,8 @@ static void file_task_handle(void *pvParameters)
             case MSG_FILE_SAVE_STOP:
                 if(m_file_state.save_file_handle)
                 {
+                    // 先把聚合缓冲中剩余数据写入文件再关闭
+                    file_save_cache_flush();
                     fclose(m_file_state.save_file_handle);
                     m_file_state.save_file_handle = NULL;
                     sys_logi(FILE_TAG, "Save file complete: %s, written: %d", m_file_state.save_filename, m_file_state.save_written);
@@ -293,6 +366,12 @@ static void file_task_handle(void *pvParameters)
                         }
                     }
                 }
+                if(m_file_state.save_cache)
+                {
+                    free(m_file_state.save_cache);
+                    m_file_state.save_cache = NULL;
+                }
+                m_file_state.save_cache_len = 0;
                 m_file_state.save_file_size = 0;
                 m_file_state.save_written = 0;
                 memset(m_file_state.save_filename, 0, sizeof(m_file_state.save_filename));
@@ -365,12 +444,15 @@ static void file_list_refresh_event(void)
 {
     file_list_lock();
 
-    if(!m_file_state.sd_mounted)
+    if(!file_storage_ready())
     {
-        sys_logw(FILE_TAG, "SD card not mounted");
+        sys_logw(FILE_TAG, "No storage device available");
         file_list_unlock();
         return;
     }
+
+    // 当前有效存储目录：SD卡优先，无SD卡时为板载Flash挂载根
+    const char* film_dir = file_film_dir();
 
     // 释放旧的文件列表
     if(m_file_state.file_list)
@@ -380,13 +462,19 @@ static void file_list_refresh_event(void)
     }
     m_file_state.file_count = 0;
 
-    // 检查目录是否存在，不存在则创建
-    DIR* dir = opendir(FILM_DIR);
+    // 检查目录是否存在，不存在则创建（SPIFFS根目录挂载后始终存在，仅SD卡需要创建）
+    DIR* dir = opendir(film_dir);
     if(dir == NULL)
     {
+        if(!m_file_state.sd_mounted)
+        {
+            sys_loge(FILE_TAG, "Open film directory failed: %s", film_dir);
+            file_list_unlock();
+            return;
+        }
         sys_logi(FILE_TAG, "Film directory not found, creating...");
         // 创建目录
-        if(mkdir(FILM_DIR, 0777) != 0)
+        if(mkdir(film_dir, 0777) != 0)
         {
             sys_loge(FILE_TAG, "Create film directory failed");
             file_list_unlock();
@@ -394,7 +482,7 @@ static void file_list_refresh_event(void)
         }
         sys_logi(FILE_TAG, "Film directory created successfully");
         // 重新打开目录
-        dir = opendir(FILM_DIR);
+        dir = opendir(film_dir);
         if(dir == NULL)
         {
             sys_logw(FILE_TAG, "Open film directory failed");
@@ -416,7 +504,7 @@ static void file_list_refresh_event(void)
             {
                 // 检查文件大小是否符合要求
                 char filepath[512];
-                snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, entry->d_name);
+                snprintf(filepath, sizeof(filepath), "%s/%s", film_dir, entry->d_name);
                 struct stat st;
                 if(stat(filepath, &st) == 0)
                 {
@@ -451,7 +539,7 @@ static void file_list_refresh_event(void)
         }
 
         // 重新扫描并填充文件列表
-        dir = opendir(FILM_DIR);
+        dir = opendir(film_dir);
         if(dir == NULL)
         {
             sys_logw(FILE_TAG, "Open film directory failed");
@@ -472,7 +560,7 @@ static void file_list_refresh_event(void)
                 {
                     // 检查文件大小
                     char filepath[512];
-                    snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, entry->d_name);
+                    snprintf(filepath, sizeof(filepath), "%s/%s", film_dir, entry->d_name);
                     struct stat st;
                     if(stat(filepath, &st) == 0)
                     {
@@ -526,9 +614,9 @@ static void file_free_buffer(void)
 
 static void file_load_event(uint32_t file_id)
 {
-    if(!m_file_state.sd_mounted)
+    if(!file_storage_ready())
     {
-        sys_logw(FILE_TAG, "SD card not mounted");
+        sys_logw(FILE_TAG, "No storage device available");
         return;
     }
 
@@ -547,7 +635,7 @@ static void file_load_event(uint32_t file_id)
 
     // 构建文件路径
     char filepath[512];
-    snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, m_file_state.file_list[file_id].filename);
+    snprintf(filepath, sizeof(filepath), "%s/%s", file_film_dir(), m_file_state.file_list[file_id].filename);
 
     // 打开文件
     FILE* file = fopen(filepath, "rb");
@@ -651,9 +739,9 @@ void service_file_load_next(void)
 
 int service_file_save_data(const char *pfilename, uint32_t file_size, uint8_t *pdata, uint32_t data_len)
 {
-    if(!m_file_state.sd_mounted)
+    if(!file_storage_ready())
     {
-        sys_logw(FILE_TAG, "SD card not mounted");
+        sys_logw(FILE_TAG, "No storage device available");
         return -1;
     }
 
@@ -668,9 +756,9 @@ int service_file_save_data(const char *pfilename, uint32_t file_size, uint8_t *p
 
 int service_file_save_start(const char *pfilename, uint32_t file_size)
 {
-    if(!m_file_state.sd_mounted)
+    if(!file_storage_ready())
     {
-        sys_logw(FILE_TAG, "SD card not mounted");
+        sys_logw(FILE_TAG, "No storage device available");
         return -1;
     }
 
@@ -778,7 +866,7 @@ int service_file_delete(uint32_t file_id)
     file_list_unlock();
 
     char filepath[512];
-    snprintf(filepath, sizeof(filepath), "%s/%s", FILM_DIR, filename);
+    snprintf(filepath, sizeof(filepath), "%s/%s", file_film_dir(), filename);
 
     if(remove(filepath) == 0)
     {

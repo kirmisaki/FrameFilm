@@ -18,9 +18,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- * FileName : /film_hal/src/hal_init.c
- * Author: Kiritro  Version: v0.1  Date: 2026/4/1
- * Description: Function introduction
+ * FileName : /film_hal/src/hal_flash.c
+ * Author: Kiritro  Version: v0.1  Date: 2026/9/4
+ * Description: 板载Flash(SPIFFS)存储挂载
  * ChangeLog: Change Notes
  *
  *********************************************************************/
@@ -28,19 +28,21 @@
 /*********************************************************************
  * INCLUDES
  */
-#include "hal_sd.h"
-#include "hal_flash.h"
-#include "hal_led.h"
-#include "hal_epd.h"
-#include "hal_input.h"
-#include "hal_init.h"
+#include <stdio.h>
+#include <string.h>
+
+#include "esp_spiffs.h"
 
 #include "sys_log.h"
+#include "hal_flash.h"
 
 /*********************************************************************
  * MACROS
  */
+#define FLASH_TAG           "HAL_FLASH"
 
+#define FLASH_PART_LABEL    "storage"
+#define FLASH_MAX_FILES     (8)
 
 /*********************************************************************
 * TYPEDEFS
@@ -55,7 +57,7 @@
 /*********************************************************************
  * LOCAL VARIABLES
  */
-
+static uint8_t flash_mount_status = 0;
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -71,18 +73,35 @@
  * GLOBAL FUNCTIONS
  */
 
-
-void film_hal_init(void)
+void hal_flash_init(void)
 {
-    // 初始化RGB LED
-    hal_led_init();
-    // 初始化SD卡
-    hal_sd_init();
-    // 初始化板载Flash存储
-    hal_flash_init();
-    // 初始化输入设备
-    hal_input_init();
-    // 初始化EPD
-    hal_epd_init();
+    esp_vfs_spiffs_conf_t conf =
+    {
+        .base_path = FLASH_MOUNT_POINT,
+        .partition_label = FLASH_PART_LABEL,
+        .max_files = FLASH_MAX_FILES,
+        .format_if_mount_failed = true,
+    };
+
+    sys_logi(FLASH_TAG, "Mounting SPIFFS partition: %s", FLASH_PART_LABEL);
+    esp_err_t ret = esp_vfs_spiffs_register(&conf);
+    if(ret != ESP_OK)
+    {
+        sys_loge(FLASH_TAG, "Failed to mount SPIFFS (%s)", esp_err_to_name(ret));
+        flash_mount_status = FLASH_UNMOUNT;
+        return;
+    }
+
+    size_t total = 0, used = 0;
+    if(esp_spiffs_info(FLASH_PART_LABEL, &total, &used) == ESP_OK)
+    {
+        sys_logi(FLASH_TAG, "SPIFFS mounted, total: %d KB, used: %d KB",
+                 (int)(total / 1024), (int)(used / 1024));
+    }
+    flash_mount_status = FLASH_MOUNT;
 }
 
+int hal_flash_get_status(void)
+{
+    return flash_mount_status;
+}

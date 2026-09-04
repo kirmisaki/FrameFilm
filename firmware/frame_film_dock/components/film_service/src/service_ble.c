@@ -60,7 +60,7 @@
  */
 #define BEL_SERVICE_TAG            "ble_service"
 
-#define BLE_MSG_QUEUE_LENGTH       50
+#define BLE_MSG_QUEUE_LENGTH       100
 #define BLE_MSG_QUEUE_ITEM_SIZE    sizeof( ble_msg_t )
 
 #define BLE_FILM_TRANS_IDLE       0
