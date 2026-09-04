@@ -1,26 +1,40 @@
 const filmUtils = require('../../utils/film-utils');
+const ditherAdvanced = require('../utils/dither-advanced'); // 分包高级算法引擎（含 AE LUT，不进主包）
+filmUtils.attachDitherAdvanced(ditherAdvanced);
 const bleUtils = require('../../utils/ble-utils');
 const app = getApp();
+
+// ===== 抖动算法目录（与 ForFilm Web 对齐 10 种）=====
+// 清单统一由 utils/dither-config.js 提供（film 页 / 设置页「创作页默认算法」/ 四个创作页共用，避免漂移）
+var ditherCfg = require('../../utils/dither-config');
+var DITHER_BASE = ditherCfg.DITHER_BASE;
+var STRENGTH_TYPES = ditherCfg.STRENGTH_TYPES;
 
 Page({
   data: {
     ditherEnabled: false,
     ditherTypeIndex: 0,
-    ditherTypes: ['adaptive', 'floydSteinberg', 'atkinson', 'stucki', 'jarvis'],
-    ditherTypeNames: ['自适应（推荐）', 'Floyd-Steinberg', 'Atkinson', 'Stucki', 'Jarvis-Judice-Ninke'],
+    ditherTypes: DITHER_BASE.map(function (it) { return it.type; }),
+    ditherTypeNames: DITHER_BASE.map(function (it) { return it.name; }),
     ditherStrength: 1.0,
     ditherStrengthDisplay: '1.0',
-    contrast: 1.2,
-    contrastInt: 120,
+    contrast: 1.0,
+    contrastInt: 100,
+    saturation: 1.0,
+    saturationInt: 10,
+    ditherChoice: '',
     fileName: filmUtils.generateRandomFilename('output'),
     rotation: 0,
     hasImage: false,
     showStrength: false,
+    showColorAdjust: true,
     transferStatus: '',
     transferProgress: 0,
     showTransfer: false,
     resultText: '',
-    isConnected: false
+    isConnected: false,
+    deviceName: '',
+    canvasBoxHeight: 810
   },
 
   canvas: null,
@@ -44,7 +58,69 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 2 });
     }
-    this.setData({ isConnected: app.globalData.isConnected });
+    this.setData({
+      isConnected: app.globalData.isConnected,
+      deviceName: app.globalData.deviceName || ''
+    });
+    // 设备类型可能变化（如重连 MAX/Dock），画布尺寸需要同步
+    this._syncCanvasToDevice();
+    this._refreshDitherLists();
+  },
+
+  // 按当前机型刷新抖动算法选择列表（SZ 增强/校色仅 Pro 可选，对齐 Web 端禁用逻辑）
+  _refreshDitherLists: function () {
+    var opts = ditherCfg.ditherOptionsFor(filmUtils.getDeviceType());
+    var ditherTypes = opts.types;
+    var ditherTypeNames = opts.names;
+    var oldTypes = this.data.ditherTypes || [];
+    var currentType = oldTypes[this.data.ditherTypeIndex];
+    var newIndex = ditherTypes.indexOf(currentType);
+    if (newIndex < 0) {
+      // 当前选中项在新列表不可用（非 Pro 下选中的 SZ 增强/校色）→ 回退 Floyd-Steinberg
+      newIndex = ditherTypes.indexOf('floydSteinberg');
+      if (newIndex < 0) newIndex = 0;
+    }
+    this.setData({
+      ditherTypes: ditherTypes,
+      ditherTypeNames: ditherTypeNames,
+      ditherTypeIndex: newIndex,
+      showStrength: STRENGTH_TYPES.indexOf(ditherTypes[newIndex]) >= 0,
+      showColorAdjust: ditherTypes[newIndex] !== 'szEnhanced'
+    });
+  },
+
+  // 画布尺寸与显示比例跟随当前设备配置（机型切换/0x42 校准后）
+  _syncCanvasToDevice: function () {
+    var cw = filmUtils.getCanvasWidth();
+    var ch = filmUtils.getCanvasHeight();
+    // CSS 宽度固定 540rpx，高度按画布宽高比换算保持不失真
+    var boxH = Math.round(540 * ch / cw);
+    if (this.data.canvasBoxHeight !== boxH) {
+      this.setData({ canvasBoxHeight: boxH });
+    }
+    if (!this.canvas) return;
+    if (this.canvas.width === cw && this.canvas.height === ch) return;
+    this.canvas.width = cw;
+    this.canvas.height = ch;
+    this.tempCanvas = wx.createOffscreenCanvas({ type: '2d', width: cw, height: ch });
+    this.tempCtx = this.tempCanvas.getContext('2d');
+    // 分辨率变化会打乱当前图片布局，重置编辑状态
+    if (this.imageNode) {
+      this.setData({
+        hasImage: false, rotation: 0, ditherEnabled: false,
+        ditherTypeIndex: 0, ditherStrength: 1.0,
+        contrast: 1.0, contrastInt: 100,
+        saturation: 1.0, saturationInt: 10,
+        showStrength: false, showColorAdjust: true
+      });
+      this.imageNode = null;
+      this.imageInfo = null;
+      this.scale = 1;
+      this.offsetX = 0;
+      this.offsetY = 0;
+      this.ctx.clearRect(0, 0, cw, ch);
+      wx.showToast({ title: '设备分辨率已变化，请重新选图', icon: 'none' });
+    }
   },
 
   onReady() {
@@ -75,6 +151,9 @@ Page({
       sourceType: ['album'],
       success: (res) => {
         const tempFilePath = res.tempFiles[0].tempFilePath;
+        // 文件名沿用原图名（与 ForFilm 一致）；chooseMedia 拿不到原名时退回随机名
+        const srcName = (res.tempFiles[0] && res.tempFiles[0].name) || '';
+        const fileName = srcName ? srcName.replace(/\.[^.]+$/, '') + '.film' : this.data.fileName;
         const img = this.canvas.createImage();
         img.onload = () => {
           this.imageNode = img;
@@ -89,9 +168,14 @@ Page({
             ditherTypeIndex: 0,
             ditherStrength: 1.0,
             ditherStrengthDisplay: '1.0',
-            contrast: 1.2,
-            contrastInt: 120,
+            contrast: 1.0,
+            contrastInt: 100,
+            saturation: 1.0,
+            saturationInt: 10,
+            ditherChoice: '',
             showStrength: false,
+            showColorAdjust: true,
+            fileName: fileName,
             resultText: ''
           });
           this.updateImage();
@@ -155,6 +239,7 @@ Page({
   updateImage() {
     this._drawToCanvas();
     this._applyProcessing();
+    this._syncAdaptiveChoice();
   },
 
   _applyProcessing() {
@@ -163,13 +248,25 @@ Page({
     var CH = filmUtils.getCanvasHeight();
     if (this.data.ditherEnabled) {
       var ditherType = this.data.ditherTypes[this.data.ditherTypeIndex];
-      filmUtils.processAndDisplay(this.tempCanvas, tctx, ditherType, this.data.ditherStrength, this.data.contrast);
+      filmUtils.processAndDisplay(this.tempCanvas, tctx, ditherType, this.data.ditherStrength, this.data.contrast, this.data.saturation);
     } else {
-      // 未开启抖动：仅调整对比度，显示原图
-      var imageData = tctx.getImageData(0, 0, CW, CH);
-      if (this.data.contrast !== 1.0) {
-        filmUtils.adjustContrast(imageData, this.data.contrast);
-        tctx.putImageData(imageData, 0, 0);
+      // 未开启抖动：仅调整对比度/饱和度，显示原图。
+      // szEnhanced 仍走原始图流水线（对齐 Web：该算法下整组色彩滑块隐藏且不生效）
+      var ditherType = this.data.ditherTypes[this.data.ditherTypeIndex];
+      if (ditherType !== 'szEnhanced') {
+        var imageData = tctx.getImageData(0, 0, CW, CH);
+        var touched = false;
+        if (this.data.contrast !== 1.0) {
+          filmUtils.adjustContrast(imageData, this.data.contrast);
+          touched = true;
+        }
+        if (this.data.saturation !== 1.0) {
+          filmUtils.adjustSaturation(imageData, this.data.saturation);
+          touched = true;
+        }
+        if (touched) {
+          tctx.putImageData(imageData, 0, 0);
+        }
       }
     }
 
@@ -179,15 +276,36 @@ Page({
     dctx.drawImage(this.tempCanvas, 0, 0, CW, CH, 0, 0, CW, CH);
   },
 
+  // 自适应算法结束后展示其选择结果（对齐 ForFilm 结果行「自适应选择：X，强度 Y」）
+  _syncAdaptiveChoice() {
+    var type = this.data.ditherTypes[this.data.ditherTypeIndex];
+    if (this.data.ditherEnabled && type === 'adaptive') {
+      var choice = filmUtils.getLastAdaptiveChoice();
+      var label = ditherCfg.ditherTypeLabel(choice.type);
+      var text = '自适应选择：' + label + '，强度 ' + Number(choice.strength).toFixed(1);
+      if (this.data.ditherChoice !== text) {
+        this.setData({ ditherChoice: text });
+      }
+    } else if (this.data.ditherChoice) {
+      this.setData({ ditherChoice: '' });
+    }
+  },
+
   toggleDither() {
     this.setData({ ditherEnabled: !this.data.ditherEnabled });
     this.updateImage();
   },
 
   onDitherTypeChange(e) {
-    const index = parseInt(e.detail.value);
-    const showStrength = index !== 0;
-    this.setData({ ditherTypeIndex: index, showStrength: showStrength });
+    var index = parseInt(e.detail.value);
+    var type = this.data.ditherTypes[index];
+    // 防御：列表不含该算法时不做切换（正常不会触发，双保险对齐 Web 禁用逻辑）
+    if (!type) return;
+    this.setData({
+      ditherTypeIndex: index,
+      showStrength: STRENGTH_TYPES.indexOf(type) >= 0,
+      showColorAdjust: type !== 'szEnhanced'
+    });
     this.updateImage();
   },
 
@@ -213,100 +331,15 @@ Page({
     this.setData({ contrast: val, contrastInt: parseInt(e.detail.value) });
   },
 
-  autoConfigure() {
-    if (!this.canvas || !this.imageNode) return;
-    const ctx = this.ctx;
-    var canvasW = filmUtils.getScreenWidth();
-    var canvasH = filmUtils.getScreenHeight();
-
-    // 绘制原图用于分析
-    ctx.clearRect(0, 0, canvasW, canvasH);
-    const img = this.imageNode;
-    const rotation = this.data.rotation;
-    const radians = (rotation * Math.PI) / 180;
-    const isRotated = rotation % 180 !== 0;
-    let drawW = isRotated ? img.height : img.width;
-    let drawH = isRotated ? img.width : img.height;
-    const ratioW = canvasW / drawW;
-    const ratioH = canvasH / drawH;
-    const fitScale = Math.min(ratioW, ratioH) * this.scale;
-    const finalW = drawW * fitScale;
-    const finalH = drawH * fitScale;
-    const cx = canvasW / 2 + this.offsetX;
-    const cy = canvasH / 2 + this.offsetY;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(radians);
-    ctx.drawImage(img, -finalW / 2, -finalH / 2, finalW, finalH);
-    ctx.restore();
-
-    const imageData = ctx.getImageData(0, 0, canvasW, canvasH);
-    const data = imageData.data;
-
-    // 计算亮度分布
-    let totalLum = 0;
-    let minLum = 255;
-    let maxLum = 0;
-    const lumValues = [];
-    for (let i = 0; i < data.length; i += 4) {
-      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      lumValues.push(lum);
-      totalLum += lum;
-      if (lum < minLum) minLum = lum;
-      if (lum > maxLum) maxLum = lum;
-    }
-    const avgLum = totalLum / lumValues.length;
-    const lumRange = maxLum - minLum;
-
-    // 计算标准差
-    let variance = 0;
-    for (let i = 0; i < lumValues.length; i++) {
-      variance += (lumValues[i] - avgLum) * (lumValues[i] - avgLum);
-    }
-    variance /= lumValues.length;
-    const stdDev = Math.sqrt(variance);
-
-    // 根据图像特征自动配置
-    let contrast = 1.2;
-    let ditherStrength = 1.0;
-    let ditherTypeIndex = 0;
-
-    // 低对比度图像增加对比度
-    if (lumRange < 100) {
-      contrast = 1.8;
-    } else if (lumRange < 150) {
-      contrast = 1.5;
-    } else if (stdDev < 40) {
-      contrast = 1.4;
-    }
-
-    // 根据细节程度选择抖动算法
-    if (stdDev > 60) {
-      // 高细节图像使用 Atkinson（减少噪点）
-      ditherTypeIndex = 2;
-      ditherStrength = 0.8;
-    } else if (stdDev > 40) {
-      // 中等细节使用 Floyd-Steinberg
-      ditherTypeIndex = 1;
-      ditherStrength = 1.0;
-    } else {
-      // 低细节使用自适应
-      ditherTypeIndex = 0;
-      ditherStrength = 1.2;
-    }
-
-    this.setData({
-      contrast: contrast,
-      contrastInt: Math.round(contrast * 100),
-      ditherEnabled: true,
-      ditherTypeIndex: ditherTypeIndex,
-      ditherStrength: ditherStrength,
-      ditherStrengthDisplay: ditherStrength.toFixed(1),
-      showStrength: ditherTypeIndex !== 0
-    });
-
-    wx.showToast({ title: '已自动配置参数', icon: 'success' });
+  onSaturationChange(e) {
+    var val = parseInt(e.detail.value) / 10;
+    this.setData({ saturation: val, saturationInt: parseInt(e.detail.value) });
     this.updateImage();
+  },
+
+  onSaturationChanging(e) {
+    var val = parseInt(e.detail.value) / 10;
+    this.setData({ saturation: val, saturationInt: parseInt(e.detail.value) });
   },
 
   rotateCanvas() {
@@ -318,6 +351,14 @@ Page({
     this.updateImage();
   },
 
+  // 重置缩放/位置：回到等比铺满并居中（对齐 ForFilm fit_screen 重置缩放）
+  resetZoom() {
+    this.scale = 1;
+    this.offsetX = 0;
+    this.offsetY = 0;
+    this.updateImage();
+  },
+
   resetImage() {
     this.setData({
       hasImage: false,
@@ -325,8 +366,13 @@ Page({
       ditherEnabled: false,
       ditherTypeIndex: 0,
       ditherStrength: 1.0,
-      contrast: 1.2,
+      contrast: 1.0,
+      contrastInt: 100,
+      saturation: 1.0,
+      saturationInt: 10,
+      ditherChoice: '',
       showStrength: false,
+      showColorAdjust: true,
       resultText: ''
     });
     this.imageNode = null;
@@ -369,7 +415,8 @@ Page({
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const scaleChange = dist / this._startDist;
-      this.scale = Math.max(0.1, Math.min(5, this._startScale * scaleChange));
+      // 缩放范围与 ForFilm 对齐：0.05~10
+      this.scale = Math.max(0.05, Math.min(10, this._startScale * scaleChange));
       this._quickDraw();
     }
   },
@@ -468,7 +515,7 @@ Page({
   onShareAppMessage: function () {
     return {
       title: 'FrameFilm - Film',
-      path: '/pages/film/index'
+      path: '/pkgCreate/film/index'
     };
   },
 

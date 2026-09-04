@@ -18,6 +18,7 @@ App({
     wifiSsid: '',
     wifiPassword: '',
     filmApiUrl: '',
+    heartbeatInterval: 60,
     wifiConnected: false,
     // 下载状态
     downloadState: 0,
@@ -220,6 +221,12 @@ App({
       case bleUtils.BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET: // 0x3A
         if (cmdLen === 1) {
           this.globalData.wifiConnected = (data[3] === 1);
+        }
+        break;
+
+      case bleUtils.BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET: // 0x41
+        if (cmdLen === 1) {
+          this.globalData.heartbeatInterval = data[3];
         }
         break;
 

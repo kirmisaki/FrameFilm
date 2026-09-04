@@ -82,6 +82,14 @@
   color: #000;
 }
 
+/* 自适应算法选择结果（对齐 ForFilm 结果行） */
+.adaptive-choice {
+  color: #1a936f;
+  font-size: 24rpx;
+  margin: -4rpx 0 12rpx;
+  word-break: break-all;
+}
+
 /* 按钮组 */
 .btn-group {
   display: grid !important;

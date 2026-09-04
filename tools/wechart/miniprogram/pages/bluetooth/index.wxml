@@ -48,7 +48,7 @@
       <view class="device-info">
         <view class="device-name">
           <text>{{item.name || '未知设备'}}</text>
-          <text class="dev-tag" wx:if="{{item.isPro}}">PRO</text>
+          <text class="dev-tag" wx:if="{{item.modelTag}}">{{item.modelTag}}</text>
         </view>
         <view class="device-id">{{item.deviceId}}</view>
       </view>

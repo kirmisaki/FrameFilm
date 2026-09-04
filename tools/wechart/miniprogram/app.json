@@ -2,12 +2,7 @@
   "pages": [
     "pages/home/index",
     "pages/frame/index",
-    "pages/frame/upload/index",
-    "pages/frame/camera/index",
-    "pages/frame/quote/index",
-    "pages/frame/draw/index",
     "pages/filmlist/index",
-    "pages/film/index",
     "pages/template/index",
     "pages/template/calendar/index",
     "pages/template/sign/index",
@@ -16,6 +11,18 @@
     "pages/template/memo/index",
     "pages/settings/index",
     "pages/bluetooth/index"
+  ],
+  "subPackages": [
+    {
+      "root": "pkgCreate",
+      "pages": [
+        "film/index",
+        "frame/upload/index",
+        "frame/camera/index",
+        "frame/quote/index",
+        "frame/draw/index"
+      ]
+    }
   ],
   "window": {
     "backgroundColor": "#FFF6EE",

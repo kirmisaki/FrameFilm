@@ -2,6 +2,8 @@
 const FILM_HEADER_SIZE = 32;
 
 // 设备配置表
+// canvasWidth/Height = 竖屏编辑画布尺寸（内容呈竖屏方向）；screenWidth/Height = film 原生宽高
+// isPortraitPanel：内容是否需要额外旋转 90°（物理面板横置，按竖屏产品使用）
 const DEVICE_CONFIGS = {
   FRAMEFILM: {
     screenWidth: 600, screenHeight: 400,
@@ -16,7 +18,30 @@ const DEVICE_CONFIGS = {
     displayName: 'FrameFilm Pro',
     isPortraitPanel: true,     // 物理竖屏面板，需要旋转显示
     pixelLayout: 'row-major'   // 行优先: (y * width) + x，设备端采样方式不同无需旋转
+  },
+  FRAMEFILMMAX: {
+    screenWidth: 1200, screenHeight: 1600,
+    canvasWidth: 1200, canvasHeight: 1600,
+    displayName: 'FrameFilm Max',
+    isPortraitPanel: false,    // 原生即竖屏 1200×1600，无需旋转
+    pixelLayout: 'row-major'
+  },
+  FRAMEFILMDOCK: {
+    screenWidth: 760, screenHeight: 568,
+    canvasWidth: 568, canvasHeight: 760,
+    displayName: 'FrameFilm Dock',
+    isPortraitPanel: true,     // 竖屏面板，需要旋转显示
+    pixelLayout: 'row-major'
   }
+};
+
+// 屏幕面板 ID → 机型 + 像素排布（与固件 EPD_PANEL_ID 对应，同 ForFilm）
+const PANEL_CONFIGS = {
+  0x01: { deviceType: 'FRAMEFILMPRO', pixelLayout: 'row-major' },    // 3.68" 792×528
+  0x02: { deviceType: 'FRAMEFILMPRO', pixelLayout: 'rotated-180' },  // 3.70" 720×480
+  0x03: { deviceType: 'FRAMEFILM', pixelLayout: 'rotated' },         // 3.60" 600×400
+  0x05: { deviceType: 'FRAMEFILMMAX', pixelLayout: 'row-major' },    // 7.09" 1200×1600
+  0x06: { deviceType: 'FRAMEFILMDOCK', pixelLayout: 'row-major' }    // 3.64" 760×568（底座）
 };
 
 var currentDeviceType = 'FRAMEFILM';
@@ -33,6 +58,46 @@ function setDeviceType(type) {
 
 function getDeviceType() {
   return currentDeviceType;
+}
+
+// 根据面板 ID 回传的屏幕参数（0x42 响应）更新机型、画布尺寸与像素排布
+function applyScreenParams(panelId, width, height) {
+  var panel = PANEL_CONFIGS[panelId];
+  if (!panel) {
+    console.warn('[film-utils] 未知屏幕面板 ID: 0x' + (panelId || 0).toString(16));
+    return false;
+  }
+  setDeviceType(panel.deviceType);
+  var cfg = getDeviceConfig();
+  cfg.screenWidth = width;
+  cfg.screenHeight = height;
+  cfg.pixelLayout = panel.pixelLayout;
+  // 画布保持竖屏方向：竖屏面板（旋转显示）宽高互换，否则原生竖屏直接使用
+  cfg.canvasWidth = cfg.isPortraitPanel ? height : width;
+  cfg.canvasHeight = cfg.isPortraitPanel ? width : height;
+  console.log('[film-utils] 屏幕参数已更新: panelId=0x' + (panelId || 0).toString(16) + ', ' + width + 'x' + height + ' (' + cfg.displayName + ', ' + cfg.pixelLayout + ')');
+  return true;
+}
+
+// 根据像素排布返回线性索引（film 文件字节序）
+function layoutIndex(layout, x, y, width, height) {
+  if (layout === 'rotated') {
+    // 老设备 FrameFilm: 列优先翻转
+    return (x * height) + (height - 1 - y);
+  }
+  if (layout === 'rotated-180') {
+    // 3.70" 720×480 面板: 与画布差 180°
+    return (height - 1 - y) * width + (width - 1 - x);
+  }
+  // Pro/Max/Dock 及默认: 行优先
+  return (y * width) + x;
+}
+
+// 由 film 文件宽高推导像素排布（文件头不含面板 ID，按已知分辨率匹配）
+function layoutFromSize(sw, sh) {
+  if (sw === 600 && sh === 400) return 'rotated';          // FrameFilm
+  if (sw === 720 && sh === 480) return 'rotated-180';      // Pro 3.70"
+  return 'row-major';                                      // Pro/Max/Dock
 }
 
 // 动态尺寸 getter（向后兼容旧页面引用）
@@ -151,6 +216,21 @@ function adjustContrast(imageData, factor) {
     data[i] = Math.min(255, Math.max(0, (data[i] - 128) * factor + 128));
     data[i + 1] = Math.min(255, Math.max(0, (data[i + 1] - 128) * factor + 128));
     data[i + 2] = Math.min(255, Math.max(0, (data[i + 2] - 128) * factor + 128));
+  }
+  return imageData;
+}
+
+// 饱和度调整（与 ForFilm adjustSaturation 一致：灰度加权 0.299/0.587/0.114）
+function adjustSaturation(imageData, saturation) {
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    data[i] = Math.min(255, Math.max(0, gray + (r - gray) * saturation));
+    data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * saturation));
+    data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * saturation));
   }
   return imageData;
 }
@@ -420,6 +500,8 @@ function evaluateDitherResult(original, dithered) {
   return { score: score, avgLabError: avgLabError, edgePreservation: edgePreservation, colorBalance: colorBalance, maxError: maxError };
 }
 
+var _lastAdaptiveChoice = { type: 'floydSteinberg', strength: 1.0 };
+
 function adaptiveDither(imageData) {
   var width = imageData.width, height = imageData.height;
   var evalScale = 3;
@@ -440,7 +522,28 @@ function adaptiveDither(imageData) {
       bestConfig = config;
     }
   }
+  // 记录本次自适应选择（供 UI 展示「自适应选择：X，强度 Y」，与 ForFilm 结果行一致）
+  _lastAdaptiveChoice = { type: bestConfig.type, strength: bestConfig.strength };
   return applyDitherByType(imageData, bestConfig.type, bestConfig.strength);
+}
+
+function getLastAdaptiveChoice() {
+  return { type: _lastAdaptiveChoice.type, strength: _lastAdaptiveChoice.strength };
+}
+
+// 高级算法引擎由分包页面注入（pkgCreate/utils/dither-advanced.js）。
+// 避免把 1.4MB 的 Atkinson LUT 静态带进主包（主包不能依赖分包，故分包页面加载后主动注册）
+var _ditherAdvanced = null;
+
+function _getDitherAdvanced() {
+  if (!_ditherAdvanced) {
+    throw new Error('高级抖动引擎未注入，请先调用 filmUtils.attachDitherAdvanced()');
+  }
+  return _ditherAdvanced;
+}
+
+function attachDitherAdvanced(mod) {
+  _ditherAdvanced = mod;
 }
 
 function applyDitherByType(imageData, type, strength) {
@@ -450,6 +553,17 @@ function applyDitherByType(imageData, type, strength) {
     case 'atkinson': return atkinsonDither(imageData, strength);
     case 'stucki': return stuckiDither(imageData, strength);
     case 'jarvis': return jarvisDither(imageData, strength);
+    // 高级算法（分包引擎，由页面在进入时注入）
+    case 'gammaFloydSteinberg':
+      return _getDitherAdvanced().gammaFloydSteinbergDither(imageData, strength);
+    case 'bayer':
+      return _getDitherAdvanced().bayerDither(imageData, strength);
+    case 'atkinsonEnhanced':
+      return _getDitherAdvanced().atkinsonEnhancedQuantize(imageData);
+    case 'atkinsonSzCalib':
+      return _getDitherAdvanced().atkinsonSzCalibQuantize(imageData);
+    case 'szEnhanced':
+      return _getDitherAdvanced().szEnhancedDither(imageData);
     default: return imageData;
   }
 }
@@ -476,7 +590,7 @@ function extractLandscapeData(portraitCanvas) {
 }
 
 // 处理图像数据为 Film 格式并回显到画布
-function processAndDisplay(portraitCanvas, portraitCtx, ditherType, ditherStrength, contrast) {
+function processAndDisplay(portraitCanvas, portraitCtx, ditherType, ditherStrength, contrast, saturation) {
   var cfg = getDeviceConfig();
   var sw = cfg.screenWidth;
   var sh = cfg.screenHeight;
@@ -484,9 +598,16 @@ function processAndDisplay(portraitCanvas, portraitCtx, ditherType, ditherStreng
   var ch = cfg.canvasHeight;
 
   var landscapeData = extractLandscapeData(portraitCanvas);
-  // 与原版 ForFrame 一致：先应用外部对比度，再抖动
-  if (contrast && contrast !== 1.0) {
-    adjustContrast(landscapeData, contrast);
+  // 与原版 ForFrame 一致：先应用外部对比度/饱和度，再抖动。
+  // SZ 增强例外：其流水线以原始 cover 图输入（对应 Web 端隐藏对比度/饱和度），
+  // 叠加会破坏 V5 seed 的压缩动态范围前提，故跳过。
+  if (ditherType !== 'szEnhanced') {
+    if (contrast && contrast !== 1.0) {
+      adjustContrast(landscapeData, contrast);
+    }
+    if (saturation && saturation !== 1.0) {
+      adjustSaturation(landscapeData, saturation);
+    }
   }
   if (ditherType === 'adaptive') {
     landscapeData = adaptiveDither(landscapeData);
@@ -529,14 +650,7 @@ function processImageData(imageData) {
       const index = (y * width + x) * 4;
       const closest = findClosestColor(data[index], data[index + 1], data[index + 2]);
       const code = closest.code;
-      var newIndex;
-      if (cfg.pixelLayout === 'row-major') {
-        // Pro版：行优先，设备端采样方式不同无需旋转
-        newIndex = (y * width) + x;
-      } else {
-        // 标准版：列优先翻转，产生90°旋转
-        newIndex = (x * height) + (height - 1 - y);
-      }
+      var newIndex = layoutIndex(cfg.pixelLayout, x, y, width, height);
       const byteIndex = Math.floor(newIndex / 2);
       if (newIndex % 2 === 0) {
         processedData[byteIndex] = (code << 4) | (processedData[byteIndex] & 0x0F);
@@ -553,12 +667,7 @@ function decodeProcessedData(processedData, width, height) {
   const pixels = new Uint8ClampedArray(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      var newIndex;
-      if (cfg.pixelLayout === 'row-major') {
-        newIndex = (y * width) + x;
-      } else {
-        newIndex = (x * height) + (height - 1 - y);
-      }
+      var newIndex = layoutIndex(cfg.pixelLayout, x, y, width, height);
       const byteIndex = Math.floor(newIndex / 2);
       const byte = processedData[byteIndex];
       const code = (newIndex % 2 === 0) ? (byte >> 4) & 0x0F : byte & 0x0F;
@@ -637,13 +746,16 @@ function decodeFilmFile(fileData) {
   var sw = fileData[4] | (fileData[5] << 8);
   var sh = fileData[6] | (fileData[7] << 8);
   if (!sw || !sh) return null;
-  // 标准版(600x400)为列优先翻转布局，Pro(792x528)为行优先
-  var portrait = (sw === 600 && sh === 400);
+  // 由文件宽高推导像素排布：标准版(600x400)为列优先翻转、Pro 3.70"(720x480)为 180° 旋转，其余按行优先
+  var layout = layoutFromSize(sw, sh);
+  // 竖版产品（STD/Pro/Dock）的 film 原生为横屏数据（宽>高，物理面板横置），
+  // 预览/缩略图需旋转回竖屏显示；Max 原生即竖屏（1200×1600），无需旋转
+  var portrait = (sw > sh);
   var pixelData = fileData.subarray(FILM_HEADER_SIZE);
   var pixels = new Uint8ClampedArray(sw * sh * 4);
   for (var y = 0; y < sh; y++) {
     for (var x = 0; x < sw; x++) {
-      var newIndex = portrait ? (x * sh) + (sh - 1 - y) : (y * sw) + x;
+      var newIndex = layoutIndex(layout, x, y, sw, sh);
       var byteIndex = newIndex >> 1;
       var byte = byteIndex < pixelData.length ? pixelData[byteIndex] : 0;
       var code = (newIndex % 2 === 0) ? (byte >> 4) & 0x0F : byte & 0x0F;
@@ -751,15 +863,17 @@ module.exports = {
   CANVAS_WIDTH, CANVAS_HEIGHT,
   FILM_SCREEN_WIDTH, FILM_SCREEN_HEIGHT,
   FILM_HEADER_SIZE, FILM_PIXEL_DATA_SIZE, FILM_FILE_TOTAL_SIZE,
-  DEVICE_CONFIGS,
-  setDeviceType, getDeviceType, getDeviceConfig,
+  DEVICE_CONFIGS, PANEL_CONFIGS,
+  setDeviceType, getDeviceType, getDeviceConfig, applyScreenParams,
   getCanvasWidth, getCanvasHeight, getScreenWidth, getScreenHeight,
   getFilmPixelDataSize, getFilmFileTotalSize,
   rgbPalette,
   findClosestColor,
-  adjustContrast,
+  adjustContrast, adjustSaturation,
   floydSteinbergDither, atkinsonDither, stuckiDither, jarvisDither,
   applyDitherByType,
+  attachDitherAdvanced,
+  getLastAdaptiveChoice,
   processImageData, decodeProcessedData,
   extractLandscapeData,
   processAndDisplay,

@@ -1,7 +1,10 @@
 // 定影 - 拍照上传
 var filmUtils = require('../../../utils/film-utils');
+var ditherAdvanced = require('../../utils/dither-advanced'); // 分包高级算法引擎（含 AE LUT，不进主包）
+filmUtils.attachDitherAdvanced(ditherAdvanced);
 var bleUtils = require('../../../utils/ble-utils');
 var recentUtils = require('../../../utils/recent-utils');
+var ditherConfig = require('../../../utils/dither-config');
 var app = getApp();
 
 var FILM_HEADER_SIZE = filmUtils.FILM_HEADER_SIZE;
@@ -24,6 +27,7 @@ function fitImageToCanvas(imgW, imgH, canvasW, canvasH) {
 
 Page({
   data: {
+    boxH: 900,
     sendDisabled: true,
     showTransfer: false,
     transferStatus: '',
@@ -50,6 +54,8 @@ Page({
       var ctx = canvas.getContext('2d');
       var CW = filmUtils.getCanvasWidth();
       var CH = filmUtils.getCanvasHeight();
+      // 预览容器高度随设备画布宽高比自适应（容器宽固定 600rpx），避免非 2:3 画布（Dock/Max）预览纵向拉伸
+      that.setData({ boxH: Math.round(600 * CH / CW) });
       canvas.width = CW;
       canvas.height = CH;
       that._canvas = canvas;
@@ -93,7 +99,9 @@ Page({
       ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
 
       try {
-        filmUtils.processAndDisplay(canvas, ctx, 'adaptive', 1.0, 1.2);
+        // 使用设置页「默认转换算法」；强度/对比度/饱和度统一 1.0
+        var preset = ditherConfig.getCreateDitherParams();
+        filmUtils.processAndDisplay(canvas, ctx, preset.type, preset.strength, preset.contrast, preset.saturation);
       } catch (e) {
         console.error('processAndDisplay error:', e);
       }

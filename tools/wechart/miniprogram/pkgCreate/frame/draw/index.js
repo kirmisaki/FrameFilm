@@ -1,7 +1,10 @@
 // 绘梦 - 画板涂鸦
 var filmUtils = require('../../../utils/film-utils');
+var ditherAdvanced = require('../../utils/dither-advanced'); // 分包高级算法引擎（含 AE LUT，不进主包）
+filmUtils.attachDitherAdvanced(ditherAdvanced);
 var bleUtils = require('../../../utils/ble-utils');
 var recentUtils = require('../../../utils/recent-utils');
+var ditherConfig = require('../../../utils/dither-config');
 var app = getApp();
 
 var FILM_HEADER_SIZE = filmUtils.FILM_HEADER_SIZE;
@@ -29,6 +32,7 @@ function padHex(n) {
 
 Page({
   data: {
+    boxH: 900,
     tool: 'pen',
     brushSize: 3,
     currentColor: '#000000',
@@ -64,21 +68,25 @@ Page({
   _initCanvas: function () {
     var that = this;
     if (that._canvas) return;
-    var query = wx.createSelectorQuery();
-    query.select('#draw-canvas').fields({ node: true, size: true }).exec(function (res) {
-      if (!res || !res[0] || !res[0].node) return;
-      var canvas = res[0].node;
-      var ctx = canvas.getContext('2d');
-      var CW = filmUtils.getCanvasWidth();
-      var CH = filmUtils.getCanvasHeight();
-      canvas.width = CW;
-      canvas.height = CH;
-      that._canvas = canvas;
-      that._ctx = ctx;
-      that._canvasCssW = res[0].width;
-      that._canvasCssH = res[0].height;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, CW, CH);
+    // 预览容器高度随设备画布宽高比自适应（容器宽固定 600rpx），避免非 2:3 画布（Dock/Max）预览纵向拉伸；
+    // 先更新容器高度，待重排后再测量画布实际 CSS 尺寸，保证触摸坐标换算不失真
+    var CW = filmUtils.getCanvasWidth();
+    var CH = filmUtils.getCanvasHeight();
+    that.setData({ boxH: Math.round(600 * CH / CW) }, function () {
+      var query = wx.createSelectorQuery();
+      query.select('#draw-canvas').fields({ node: true, size: true }).exec(function (res) {
+        if (!res || !res[0] || !res[0].node) return;
+        var canvas = res[0].node;
+        var ctx = canvas.getContext('2d');
+        canvas.width = CW;
+        canvas.height = CH;
+        that._canvas = canvas;
+        that._ctx = ctx;
+        that._canvasCssW = res[0].width;
+        that._canvasCssH = res[0].height;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, CW, CH);
+      });
     });
   },
 
@@ -257,7 +265,9 @@ Page({
       // 保存原始数据
       that._originalData = ctx.getImageData(0, 0, filmUtils.getCanvasWidth(), filmUtils.getCanvasHeight());
       try {
-        filmUtils.processAndDisplay(canvas, ctx, 'adaptive', 1.0, 1.2);
+        // 使用设置页「默认转换算法」；强度/对比度/饱和度统一 1.0
+        var preset = ditherConfig.getCreateDitherParams();
+        filmUtils.processAndDisplay(canvas, ctx, preset.type, preset.strength, preset.contrast, preset.saturation);
         that.setData({ converted: true, showFileName: true, customFileName: '', isEditingName: false });
       } catch (e) {
         console.error('convertDither error:', e);

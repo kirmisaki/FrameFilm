@@ -14,18 +14,28 @@
         </picker>
       </view>
 
-      <!-- 抖动强度滑块（非自适应时显示） -->
+      <!-- 自适应算法选择结果（对齐 ForFilm 结果行） -->
+      <view class="adaptive-choice" wx:if="{{ditherChoice}}">{{ditherChoice}}</view>
+
+      <!-- 抖动强度滑块（自适应/AE/SZ/校色 强度固定，不显示） -->
       <view class="slider-row" wx:if="{{showStrength}}">
         <text class="slider-label">抖动强度</text>
         <slider min="0" max="5" step="0.1" value="{{ditherStrength}}" bindchanging="onDitherStrengthChanging" bindchange="onDitherStrengthChange" activeColor="#4ECDC4" />
         <text class="slider-value">{{ditherStrengthDisplay}}</text>
       </view>
 
-      <!-- 对比度滑块 -->
-      <view class="slider-row">
+      <!-- 对比度滑块（SZ 增强为原始图流水线，隐藏色彩调整组，与 Web 一致） -->
+      <view class="slider-row" wx:if="{{showColorAdjust}}">
         <text class="slider-label">对比度</text>
         <slider min="50" max="200" step="10" value="{{contrastInt}}" bindchanging="onContrastChanging" bindchange="onContrastChange" activeColor="#4ECDC4" />
         <text class="slider-value">{{contrast}}</text>
+      </view>
+
+      <!-- 饱和度滑块（与 ForFilm 一致：0~3.0，默认 1.0） -->
+      <view class="slider-row" wx:if="{{showColorAdjust}}">
+        <text class="slider-label">饱和度</text>
+        <slider min="0" max="30" step="1" value="{{saturationInt}}" bindchanging="onSaturationChanging" bindchange="onSaturationChange" activeColor="#4ECDC4" />
+        <text class="slider-value">{{saturation}}</text>
       </view>
     </view>
   </view>
@@ -35,22 +45,23 @@
     <button class="btn-secondary {{ditherEnabled ? 'active' : ''}}" bindtap="toggleDither">
       {{ditherEnabled ? '关闭抖动' : '开启抖动'}}
     </button>
-    <button class="btn-secondary" bindtap="autoConfigure">自动配置</button>
     <button class="btn-secondary" bindtap="rotateCanvas">旋转90°</button>
+    <button class="btn-secondary" bindtap="resetZoom">重置缩放</button>
     <button class="btn-secondary warning" bindtap="resetImage">重置</button>
   </view>
 
   <!-- Canvas 容器（宝丽来风格） -->
   <view class="canvas-container">
     <view class="canvas-wrap"
+      style="height: {{canvasBoxHeight}}rpx"
       bindtouchstart="onTouchStart"
       bindtouchmove="onTouchMove"
       bindtouchend="onTouchEnd">
-      <canvas type="2d" id="film-canvas" class="film-canvas"></canvas>
+      <canvas type="2d" id="film-canvas" class="film-canvas" style="height: {{canvasBoxHeight}}rpx"></canvas>
     </view>
   </view>
 
-  <view class="info-text">选择照片后自动转换并显示，双指缩放调整大小，拖动调整位置</view>
+  <view class="info-text">双指缩放调整大小，拖动调整位置（开启抖动后需先关闭才能编辑，重置缩放可一键铺满居中）</view>
 
   <!-- 文件名输入 -->
   <view class="setting-item file-name-row">

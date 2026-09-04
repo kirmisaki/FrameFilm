@@ -1,29 +1,25 @@
 <view class="container">
   <view class="canvas-container">
-    <view class="canvas-wrap">
-      <canvas type="2d" id="canvas-upload" class="preview-canvas"
-              bindtouchstart="onTouchStart" catchtouchmove="onTouchMove"
-              bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd"></canvas>
-      <view wx:if="{{showAdjustHint}}" class="adjust-hint">双指缩放 · 单指拖动 · 松手 1s 后刷新</view>
+    <view class="canvas-wrap" style="height: {{boxH}}rpx">
+      <canvas type="2d" id="canvas-camera" class="preview-canvas"></canvas>
     </view>
   </view>
 
   <view class="button-row">
-    <button class="btn-secondary" bindtap="chooseImage">从相册选择</button>
-    <button class="btn-secondary {{adjustOn ? 'btn-adjust-on' : ''}}" bindtap="toggleAdjust">{{adjustOn ? '✓ 调节中' : '调节'}}</button>
-    <button class="btn-primary btn-send" disabled="{{sendDisabled}}" bindtap="sendToDevice">发送到设备</button>
+    <button class="btn-secondary" bindtap="openCamera">拍照</button>
+    <button class="btn-primary" disabled="{{sendDisabled}}" bindtap="sendToDevice">发送到设备</button>
   </view>
 
   <!-- 文件名重命名 -->
   <view wx:if="{{showFileName}}" class="filename-area">
     <view wx:if="{{!isEditingName}}" class="filename-display" bindtap="startEditName">
       <text class="filename-label">文件名</text>
-      <text class="filename-value">{{customFileName || 'upload.film'}}</text>
+      <text class="filename-value">{{customFileName || 'camera.film'}}</text>
       <text class="filename-edit">修改</text>
     </view>
     <view wx:else class="filename-edit-row">
       <text class="filename-label">文件名</text>
-      <input class="filename-input" value="{{customFileName}}" placeholder="upload" bindinput="onFileNameInput" bindblur="onFileNameBlur" focus="{{isEditingName}}" />
+      <input class="filename-input" value="{{customFileName}}" placeholder="camera" bindinput="onFileNameInput" bindblur="onFileNameBlur" focus="{{isEditingName}}" />
       <text class="filename-ext">.film</text>
     </view>
   </view>
