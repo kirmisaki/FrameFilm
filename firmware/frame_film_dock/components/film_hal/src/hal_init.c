@@ -28,14 +28,17 @@
 /*********************************************************************
  * INCLUDES
  */
+#include "sys_log.h"
+
 #include "hal_sd.h"
 #include "hal_flash.h"
 #include "hal_led.h"
 #include "hal_epd.h"
 #include "hal_input.h"
+#if SYS_FUNC_AUDIO_EN
+#include "hal_audio.h"
+#endif
 #include "hal_init.h"
-
-#include "sys_log.h"
 
 /*********************************************************************
  * MACROS
@@ -82,6 +85,10 @@ void film_hal_init(void)
     hal_flash_init();
     // 初始化输入设备
     hal_input_init();
+#if SYS_FUNC_AUDIO_EN
+    // 初始化音频模块（ES8311 + NS4150B）
+    hal_audio_init();
+#endif
     // 初始化EPD
     hal_epd_init();
 }

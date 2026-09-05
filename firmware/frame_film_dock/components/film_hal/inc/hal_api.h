@@ -11,6 +11,10 @@
 #include "hal_sd.h"
 #include "hal_flash.h"
 #include "hal_epd.h"
+#include "sys_cfg.h"
+#if SYS_FUNC_AUDIO_EN
+#include "hal_audio.h"
+#endif
 
 /*********************************************************************
  * CPPMIX

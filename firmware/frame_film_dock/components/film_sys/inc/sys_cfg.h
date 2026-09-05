@@ -31,6 +31,10 @@ extern "C" {
 // spiffs
 #define BACE_PATH                      "/spiffs"
 
+// 功能开关：音频模块（ES8311+NS4150B CODEC，dock 可选外设）
+// 置 1：启用音频（采集/播放）；置 0：关闭（无音频模块的 dock 节省资源）
+#define SYS_FUNC_AUDIO_EN              (0)
+
 
 /*********************************************************************
 * TYPEDEFS

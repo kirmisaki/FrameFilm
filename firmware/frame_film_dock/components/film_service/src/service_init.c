@@ -28,6 +28,8 @@
 /*********************************************************************
  * INCLUDES
  */
+#include "sys_cfg.h"
+
 #include "service_init.h"
 #include "service_ble.h"
 #include "service_param.h"
@@ -35,6 +37,9 @@
 #include "service_file.h"
 #include "service_film.h"
 #include "service_wifi.h"
+#if SYS_FUNC_AUDIO_EN
+#include "service_audio.h"
+#endif
 
 
 /*********************************************************************
@@ -87,5 +92,9 @@ void film_service_init(void)
     service_file_init();
     // 初始化照片服务
     service_film_init();
+#if SYS_FUNC_AUDIO_EN
+    // 初始化音频服务（可选功能）
+    service_audio_init();
+#endif
 }
 

@@ -1,0 +1,7 @@
+## IDF Component Manager Manifest File
+dependencies:
+  ## Required IDF version
+  idf:
+    version: '>=5.5.2'
+  ## ES8311 音频编解码器驱动（乐鑫官方封装，含寄存器初始化序列）
+  espressif/esp_codec_dev: ~1.5.6
