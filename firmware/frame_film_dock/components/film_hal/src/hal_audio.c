@@ -405,6 +405,10 @@ esp_err_t hal_audio_capture_start(void)
             s_capture_active = false;
             return ESP_ERR_INVALID_STATE;
         }
+
+        // 录音时静音 DAC，切断"喇叭→麦克风"声学回授，
+        // 避免每次录音把喇叭声音录进去、再次回放/再次录音逐次叠加而成啸叫。
+        esp_codec_dev_set_out_mute(s_dev, true);
     }
     return ESP_OK;
 }

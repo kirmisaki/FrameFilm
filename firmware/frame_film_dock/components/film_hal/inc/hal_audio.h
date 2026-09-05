@@ -72,7 +72,7 @@ extern "C" {
 #define AUDIO_I2S_TIMEOUT_MS             (1000)
 
 // 软音量默认（0-100）
-#define AUDIO_DEFAULT_VOLUME             (80)
+#define AUDIO_DEFAULT_VOLUME             (100)
 // 输入增益默认（dB，写 ES8311 0x1C 寄存器，需按 datasheet 校准）
 #define AUDIO_DEFAULT_INPUT_GAIN_DB      (30)
 
