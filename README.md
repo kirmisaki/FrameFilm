@@ -71,8 +71,10 @@
 硬件设计已在立创开源硬件平台开源：
 
 👉 [立创开源硬件平台 - FrameFilm](https://oshwhub.com/kiritro/project_ttfkoxxv)  
-👉 [立创开源硬件平台 - FrameFilmPro](https://oshwhub.com/kiritro/project_wgzqduhs)
-👉 [立创开源硬件平台 - FrameFilm星火版](https://oshwhub.com/kiritro/project_uaqmgawa)
+👉 [立创开源硬件平台 - FrameFilmPro](https://oshwhub.com/kiritro/project_wgzqduhs)  
+👉 [立创开源硬件平台 - FrameFilm星火版](https://oshwhub.com/kiritro/project_uaqmgawa)  
+👉 [立创开源硬件平台 - FrameFilm通行证](https://oshwhub.com/kiritro/project_omlonirf)  
+👉 [立创开源硬件平台 - FrameFilmDock](https://oshwhub.com/kiritro/project_pgrmtgch)  
 
 💬 复刻交流 QQ 群：**1103626779**（欢迎入群交流制作经验）
 
