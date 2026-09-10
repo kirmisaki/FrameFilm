@@ -6,7 +6,6 @@ set(srcs "src/service_init.c"
          "src/service_monitor.c"
          "src/service_file.c"
          "src/service_film.c"
-         "src/service_audio.c"
          "src/service_wifi.c"
          )
 

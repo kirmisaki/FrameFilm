@@ -16,3 +16,5 @@ dependencies:
   #   public: true
   espressif/led_strip: ^3.0.1
   espressif/button: ^3.5.0
+  espressif/esp_codec_dev: ~1.5.6
+  espressif/usb_device_uac: ^1.0.0

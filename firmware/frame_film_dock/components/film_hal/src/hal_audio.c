@@ -34,6 +34,7 @@
  */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_err.h"
 
 #include "driver/i2c_master.h"
@@ -78,8 +79,12 @@ static esp_codec_dev_handle_t s_dev = NULL;             // 统一 codec 设备
 static bool s_initialized = false;
 static bool s_capture_active = false;
 static bool s_playback_active = false;
+static bool s_duplex_active = false;                    // 全双工（USB UAC）模式
 static uint8_t s_volume = AUDIO_DEFAULT_VOLUME;         // 音量 0-100
 static uint8_t s_input_gain_db = AUDIO_DEFAULT_INPUT_GAIN_DB; // 输入增益 dB
+
+// 保护设备状态切换（USB 声卡录音/播放回调分属两个任务，可能并发进入）
+static SemaphoreHandle_t s_lock = NULL;
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -256,7 +261,7 @@ static esp_err_t audio_codec_create(void)
  */
 static void audio_update_device_state(void)
 {
-    bool need_open = (s_capture_active || s_playback_active);
+    bool need_open = (s_capture_active || s_playback_active || s_duplex_active);
 
     if (need_open && s_dev == NULL)
     {
@@ -326,6 +331,16 @@ esp_err_t hal_audio_init(void)
         return ret;
     }
 
+    if (s_lock == NULL)
+    {
+        s_lock = xSemaphoreCreateMutex();
+        if (s_lock == NULL)
+        {
+            sys_loge(AUDIO_TAG, "create lock failed");
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
     s_initialized = true;
     sys_logi(AUDIO_TAG, "audio initialized (esp_codec_dev)");
     return ESP_OK;
@@ -382,6 +397,16 @@ void hal_audio_deinit(void)
     }
 
     s_initialized = false;
+    s_capture_active = false;
+    s_playback_active = false;
+    s_duplex_active = false;
+
+    if (s_lock != NULL)
+    {
+        vSemaphoreDelete(s_lock);
+        s_lock = NULL;
+    }
+
     sys_logi(AUDIO_TAG, "audio deinitialized");
 }
 
@@ -391,8 +416,8 @@ esp_err_t hal_audio_capture_start(void)
     {
         return ESP_ERR_INVALID_STATE;
     }
-    // 采集与播放互斥：同一时刻单一数据流
-    if (s_playback_active)
+    // 采集、播放与全双工互斥
+    if (s_playback_active || s_duplex_active)
     {
         return ESP_ERR_INVALID_STATE;
     }
@@ -433,7 +458,7 @@ esp_err_t hal_audio_playback_start(void)
     {
         return ESP_ERR_INVALID_STATE;
     }
-    if (s_capture_active)
+    if (s_capture_active || s_duplex_active)
     {
         return ESP_ERR_INVALID_STATE;
     }
@@ -472,9 +497,52 @@ esp_err_t hal_audio_playback_stop(void)
     return ESP_OK;
 }
 
+esp_err_t hal_audio_duplex_start(void)
+{
+    if (!s_initialized)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    // 全双工与单向采集/播放互斥
+    if (s_capture_active || s_playback_active)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!s_duplex_active)
+    {
+        s_duplex_active = true;
+        audio_update_device_state();
+        if (s_dev == NULL)
+        {
+            s_duplex_active = false;
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        // 全双工用于 USB 声卡：DAC 必须解除静音，否则 USB 扬声器无声
+        esp_codec_dev_set_out_mute(s_dev, false);
+        sys_logi(AUDIO_TAG, "duplex started");
+    }
+    return ESP_OK;
+}
+
+esp_err_t hal_audio_duplex_stop(void)
+{
+    if (!s_initialized)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (s_duplex_active)
+    {
+        s_duplex_active = false;
+        audio_update_device_state();
+        sys_logi(AUDIO_TAG, "duplex stopped");
+    }
+    return ESP_OK;
+}
+
 int32_t hal_audio_read_stream(int16_t *buf, uint32_t frames)
 {
-    if (!s_initialized || !s_capture_active || buf == NULL || s_dev == NULL)
+    if (!s_initialized || !(s_capture_active || s_duplex_active) || buf == NULL || s_dev == NULL)
     {
         return -1;
     }
@@ -489,7 +557,7 @@ int32_t hal_audio_read_stream(int16_t *buf, uint32_t frames)
 
 int32_t hal_audio_write_stream(const int16_t *buf, uint32_t frames)
 {
-    if (!s_initialized || !s_playback_active || buf == NULL || s_dev == NULL)
+    if (!s_initialized || !(s_playback_active || s_duplex_active) || buf == NULL || s_dev == NULL)
     {
         return -1;
     }
@@ -525,6 +593,15 @@ void hal_audio_set_volume(uint8_t vol)
         esp_codec_dev_set_out_vol(s_dev, vol);
     }
     sys_logi(AUDIO_TAG, "volume set to %d", vol);
+}
+
+void hal_audio_set_mute(bool mute)
+{
+    if (s_initialized && s_dev != NULL)
+    {
+        esp_codec_dev_set_out_mute(s_dev, mute);
+    }
+    sys_logi(AUDIO_TAG, "mute set to %d", mute);
 }
 
 #endif /* SYS_FUNC_AUDIO_EN */

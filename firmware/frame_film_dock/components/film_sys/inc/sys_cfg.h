@@ -34,6 +34,14 @@ extern "C" {
 // 功能开关：音频模块（ES8311+NS4150B CODEC，dock 可选外设）
 // 置 1：启用音频（采集/播放）；置 0：关闭（无音频模块的 dock 节省资源）
 #define SYS_FUNC_AUDIO_EN              (0)
+#if SYS_FUNC_AUDIO_EN
+// 功能开关：USB 声卡（插入电脑后作为 USB 麦克风 + 扬声器）
+// 置 1：启用（依赖 SYS_FUNC_AUDIO_EN，复用 IO19/IO20）
+// 置 0：关闭
+#define SYS_FUNC_AUDIO_USB_EN          (1)
+#else
+#define SYS_FUNC_AUDIO_USB_EN          (0)
+#endif /* SYS_FUNC_AUDIO_EN */
 
 
 /*********************************************************************

@@ -1,23 +1,13 @@
-#ifndef __HAL_API_H__
-#define __HAL_API_H__
-
+#ifndef __HAL_USB_H__
+#define __HAL_USB_H__
 
 /*********************************************************************
  * INCLUDES
  */
-#include "hal_init.h"
-#include "hal_input.h"
-#include "hal_led.h"
-#include "hal_sd.h"
-#include "hal_flash.h"
-#include "hal_epd.h"
+#include "esp_err.h"
 #include "sys_cfg.h"
-#if SYS_FUNC_AUDIO_EN
-#include "hal_audio.h"
-#endif
+
 #if SYS_FUNC_AUDIO_USB_EN
-#include "hal_usb.h"
-#endif
 
 /*********************************************************************
  * CPPMIX
@@ -30,40 +20,45 @@ extern "C" {
  * MACROS
  */
 
-
 /*********************************************************************
 * TYPEDEFS
 */
-
 
 /*********************************************************************
  * CONSTANTS
  */
 
-
 /*********************************************************************
  * LOCAL VARIABLES
  */
-
 
 /*********************************************************************
  * GLOBAL VARIABLES
  */
 
-
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
-
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
 
-
+/**
+ * @brief 初始化 USB 声卡（USB 麦克风 + 扬声器）
+ *
+ * 内部先开启 I2S 全双工通道，再初始化 usb_device_uac；插入电脑后
+ * 系统会枚举出一个 USB 音频设备（麦克风 + 扬声器）。
+ * 注意：占用 IO19(D-)/IO20(D+)。
+ *
+ * @return ESP_OK 成功；其它失败
+ */
+esp_err_t hal_usb_init(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __HAL_API_H__ */
+#endif /* SYS_FUNC_AUDIO_USB_EN */
+
+#endif /* __HAL_USB_H__ */

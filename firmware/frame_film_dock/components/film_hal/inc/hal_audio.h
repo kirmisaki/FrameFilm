@@ -159,6 +159,21 @@ esp_err_t hal_audio_playback_start(void);
 esp_err_t hal_audio_playback_stop(void);
 
 /**
+ * @brief 开启全双工通道（采集 + 播放同时工作，供 USB UAC 声卡使用）
+ *
+ * 与 hal_audio_capture_start()/hal_audio_playback_start() 互斥；
+ * 全双工模式下不静音 DAC（否则 USB 扬声器无声）。
+ *
+ * @return ESP_OK 成功；ESP_ERR_INVALID_STATE 已处于其它音频模式或未初始化
+ */
+esp_err_t hal_audio_duplex_start(void);
+
+/**
+ * @brief 关闭全双工通道
+ */
+esp_err_t hal_audio_duplex_stop(void);
+
+/**
  * @brief 设置 ES8311 输入增益（麦克风）
  *
  * @param db 增益（dB），默认 30dB
@@ -171,6 +186,13 @@ void hal_audio_set_input_gain(uint8_t db);
  * @param vol 音量（0-100），默认 80
  */
 void hal_audio_set_volume(uint8_t vol);
+
+/**
+ * @brief 设置输出静音（USB 声卡音量控件用）
+ *
+ * @param mute true 静音；false 取消静音
+ */
+void hal_audio_set_mute(bool mute);
 
 #ifdef __cplusplus
 }
