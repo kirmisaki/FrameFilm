@@ -46,6 +46,7 @@
 #include "sys_com.h"
 #include "service_param.h"
 #include "service_file.h"
+#include "service_film.h"
 #include "service_wifi.h"
 
 /*********************************************************************
@@ -675,6 +676,8 @@ static void wifi_heartbeat_exec_cmd(cJSON *cmd)
         {
             sys_logi(WIFI_SERVICE_TAG, "Heartbeat cmd: set_config applied");
             service_param_save();
+            // play_mode / sleep_time 可能变更，刷新本地轮播定时器
+            service_film_refresh_auto_timer();
         }
     }
     else if(strcmp(name, "set_heartbeat") == 0)

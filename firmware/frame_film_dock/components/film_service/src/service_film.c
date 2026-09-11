@@ -55,6 +55,9 @@
 #define SYS_OS_SIZE_FILM_TASK       (4096)
 #define SYS_OS_NAME_FILM_TASK       "film_task"
 
+#define FILM_AUTO_TIMER_NAME        "film_auto"
+#define FILM_AUTO_PLAY_DEFAULT_MIN  (10)    // 本地轮播默认切换间隔（分钟）
+
 /*********************************************************************
 * TYPEDEFS
 */
@@ -69,6 +72,7 @@
  */
 static TaskHandle_t m_film_task_hdl = NULL;
 static QueueHandle_t m_film_msg_hdl = NULL;
+static TimerHandle_t m_film_auto_timer = NULL;
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -79,6 +83,7 @@ static QueueHandle_t m_film_msg_hdl = NULL;
  */
 static void film_task_handle(void *pvParameters);
 static void film_msg_send(void *p_msg, bool in_isr);
+static void film_auto_timer_callback(TimerHandle_t xTimer);
 
 static void film_display_event(uint32_t file_id);
 static void film_next_event(void);
@@ -144,6 +149,9 @@ static void film_task_handle(void *pvParameters)
             case MSG_FILM_INIT:
                 film_init_event();
                 break;
+            case MSG_FILM_AUTO_PLAY:
+                film_next_event();
+                break;
             case MSG_FILM_CLEAR:
                 film_clear_event();
                 break;
@@ -173,6 +181,22 @@ static void film_msg_send(void *p_msg, bool in_isr)
             portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
         }
     }
+}
+
+static void film_auto_timer_callback(TimerHandle_t xTimer)
+{
+    (void)xTimer;
+
+    // 仅本地轮播模式下定时切换图片
+    if(g_service_param.film.play_mode != FILM_PLAY_MODE_AUTO)
+    {
+        return;
+    }
+
+    film_msg_t msg;
+    msg.ID = MSG_FILM_AUTO_PLAY;
+    msg.file_id = 0;
+    film_msg_send(&msg, 0);
 }
 
 static void film_init_event(void)
@@ -217,6 +241,9 @@ static void film_init_event(void)
         sys_logi(FILM_TAG, "Load not complete, refreshing image");
         film_display_event(g_service_param.film.current_file_id);
     }
+
+    // 本地轮播模式下启动定时切换
+    service_film_refresh_auto_timer();
 }
 
 static void film_clear_event(void)
@@ -234,6 +261,9 @@ static void film_clear_event(void)
     hal_epd_display_white();
     service_monitor_set_film_refresh_state(0);
     // hal_epd_pwroff();
+
+    // 停止本地轮播定时切换
+    service_film_refresh_auto_timer();
 }
 
 static void film_display_event(uint32_t file_id)
@@ -424,8 +454,44 @@ void service_film_set_play_mode(uint8_t mode)
 {
     g_service_param.film.play_mode = mode;
     service_param_save();
-    
+
     sys_logi(FILM_TAG, "Set play mode: %d", mode);
+
+    // 本地轮播模式下启动定时切换，其它模式停止
+    service_film_refresh_auto_timer();
+}
+
+void service_film_refresh_auto_timer(void)
+{
+    // 本地轮播切换间隔复用 sleep_time（单位：分钟）
+    uint16_t interval_min = g_service_param.sleep.sleep_time;
+    if(interval_min == 0)
+    {
+        interval_min = FILM_AUTO_PLAY_DEFAULT_MIN;
+    }
+    TickType_t period = pdMS_TO_TICKS((uint32_t)interval_min * 60U * 1000U);
+
+    if(g_service_param.film.play_mode == FILM_PLAY_MODE_AUTO && m_film_msg_hdl != NULL)
+    {
+        if(m_film_auto_timer == NULL)
+        {
+            m_film_auto_timer = xTimerCreate(FILM_AUTO_TIMER_NAME, period, pdTRUE, NULL, film_auto_timer_callback);
+            if(m_film_auto_timer == NULL)
+            {
+                sys_loge(FILM_TAG, "film auto timer create error!");
+                return;
+            }
+        }
+        // 更新周期并启动，sleep_time 运行时变更可即时生效
+        xTimerChangePeriod(m_film_auto_timer, period, 0);
+        xTimerStart(m_film_auto_timer, 0);
+        sys_logi(FILM_TAG, "Auto play timer start, interval %d min", interval_min);
+    }
+    else if(m_film_auto_timer != NULL)
+    {
+        xTimerStop(m_film_auto_timer, 0);
+        sys_logi(FILM_TAG, "Auto play timer stop");
+    }
 }
 
 uint32_t service_film_get_current_id(void)

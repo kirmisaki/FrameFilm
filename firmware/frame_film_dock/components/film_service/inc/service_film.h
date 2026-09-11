@@ -111,6 +111,14 @@ extern void service_film_clear(void);
 extern void service_film_set_play_mode(uint8_t mode);
 
 /**
+ * @brief 刷新本地轮播定时器
+ *
+ * 根据当前播放模式和 sleep_time（单位分钟，作为切换间隔）
+ * 启动或停止本地轮播定时切换。play_mode 或 sleep_time 变更后需调用。
+ */
+extern void service_film_refresh_auto_timer(void);
+
+/**
  * @brief 获取当前显示的文件ID
  *
  * 此函数用于获取当前显示的文件ID。

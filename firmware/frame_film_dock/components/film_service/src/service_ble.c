@@ -543,8 +543,8 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             {
                 uint8_t mode = cmd->pdata[0];
                 sys_logi(BEL_SERVICE_TAG, "Set play mode: %d", mode);
-                g_service_param.film.play_mode = mode;
-                service_param_save();
+                // 通过接口设置，同步刷新本地轮播定时器
+                service_film_set_play_mode(mode);
             }
             break;
         }
@@ -648,6 +648,8 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                     sys_logi(BEL_SERVICE_TAG, "Set sleep wake time: %d min", time_min);
                     g_service_param.sleep.sleep_time = time_min;
                     service_param_save();
+                    // 本地轮播间隔复用该参数，刷新定时器周期
+                    service_film_refresh_auto_timer();
                 }
             }
             break;
