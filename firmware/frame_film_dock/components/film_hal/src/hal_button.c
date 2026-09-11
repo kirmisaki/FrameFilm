@@ -115,6 +115,7 @@ void hal_input_init(void)
     if (m_button_mgr.buttons[0].handle)
     {
         iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_SINGLE_CLICK, button_confirm_cb, NULL);
+        iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_DOUBLE_CLICK, button_confirm_cb, NULL);
         iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_LONG_PRESS_START, button_confirm_cb, NULL);
         m_button_mgr.buttons[0].initialized = true;
         sys_logi(BUTTON_TAG, "CONFIRM button initialized");
@@ -167,6 +168,11 @@ static void button_confirm_cb(void *button_handle, void *usr_data)
     {
         sys_logi(BUTTON_TAG, "CONFIRM SHORT PRESS");
         trigger_callbacks(INPUT_PRESS_SHORT);
+    }
+    else if (event == BUTTON_DOUBLE_CLICK)
+    {
+        sys_logi(BUTTON_TAG, "CONFIRM DOUBLE PRESS");
+        trigger_callbacks(INPUT_PRESS_DOUBLE);
     }
     else if (event == BUTTON_LONG_PRESS_START)
     {

@@ -67,11 +67,14 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD           (0x3C) // 开始下载film文件
 #define BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE     (0x3D) // 查询下载状态
 
-#define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL      (0x3E) // HTTP心跳地址设置
-#define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET  (0x3F) // HTTP心跳地址查询
+#define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL          (0x3E) // HTTP心跳地址设置
+#define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET      (0x3F) // HTTP心跳地址查询
 #define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL     (0x40) // 心跳间隔设置（1字节，5-180秒）
 #define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET (0x41) // 心跳间隔查询
 #define BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET       (0x42) // 屏幕面板ID与分辨率查询（ID1字节+宽2字节+高2字节，大端）
+// USB HID 键盘键值（单击/双击/长按）
+#define BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_SET            (0x43) // 设置键值（事件1字节+修饰键1字节+键数1字节+键码n字节）
+#define BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET            (0x44) // 查询键值（无数据查询三组；1字节指定事件查询一组）
 
 /*********************************************************************
 * TYPEDEFS

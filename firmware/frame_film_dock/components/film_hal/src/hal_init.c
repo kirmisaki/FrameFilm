@@ -37,9 +37,9 @@
 #include "hal_input.h"
 #if SYS_FUNC_AUDIO_EN
 #include "hal_audio.h"
-#if SYS_FUNC_AUDIO_USB_EN
-#include "hal_usb.h"
 #endif
+#if SYS_FUNC_USB_DEV_EN
+#include "hal_usb.h"
 #endif
 #include "hal_init.h"
 
@@ -91,10 +91,10 @@ void film_hal_init(void)
 #if SYS_FUNC_AUDIO_EN
     // 初始化音频模块（ES8311 + NS4150B）
     hal_audio_init();
-#if SYS_FUNC_AUDIO_USB_EN
-    // 初始化 USB 声卡（麦克风 + 扬声器，复用 IO19/IO20）
-    hal_usb_init();
 #endif
+#if SYS_FUNC_USB_DEV_EN
+    // 初始化 USB 设备（USB 声卡 / HID 键盘 / 两者复合，复用 IO19/IO20）
+    hal_usb_init();
 #endif
     // 初始化EPD
     hal_epd_init();

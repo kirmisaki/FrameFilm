@@ -158,6 +158,15 @@ static void service_param_set_default(void)
     // BLE参数重置
     g_service_param.ble.ble_enable = 1; // BLE默认开启
     g_service_param.ble.ble_mode = 0; // BLE默认常开
+
+    // USB HID 键盘键值重置（HID Usage ID，可单键或组合键）
+    memset(&g_service_param.key, 0, sizeof(g_service_param.key));
+    g_service_param.key.short_press.key_num = 1;
+    g_service_param.key.short_press.keycode[0] = 0x4F; // Right Arrow
+    g_service_param.key.double_press.key_num = 1;
+    g_service_param.key.double_press.keycode[0] = 0x28; // Enter
+    g_service_param.key.long_press.key_num = 1;
+    g_service_param.key.long_press.keycode[0] = 0x4C; // Delete
 }
 
 /**
@@ -185,7 +194,8 @@ static void nvs_init(void)
         size_t required_size = sizeof(g_service_param);
         err = nvs_get_blob(my_nvs_handle, SYS_M_NVS_KEY_NAME, &g_service_param, &required_size);
 
-        if(err == ESP_ERR_NVS_NOT_FOUND || g_service_param.factory_flag != SERVICE_FACTORY_DEFAULT_FLAG) //FACTORY RESET
+        // 参数结构发生变化（存储长度不一致）时同样按出厂值重置
+        if(err == ESP_ERR_NVS_NOT_FOUND || required_size != sizeof(g_service_param) || g_service_param.factory_flag != SERVICE_FACTORY_DEFAULT_FLAG) //FACTORY RESET
         {
             service_param_set_default();
 

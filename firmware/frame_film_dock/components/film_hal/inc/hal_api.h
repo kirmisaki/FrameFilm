@@ -15,7 +15,7 @@
 #if SYS_FUNC_AUDIO_EN
 #include "hal_audio.h"
 #endif
-#if SYS_FUNC_AUDIO_USB_EN
+#if SYS_FUNC_USB_DEV_EN
 #include "hal_usb.h"
 #endif
 

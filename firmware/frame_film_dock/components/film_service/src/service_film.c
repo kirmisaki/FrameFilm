@@ -125,10 +125,12 @@ static void film_task_handle(void *pvParameters)
     msg.ID = MSG_FILM_INIT;
     film_msg_send(&msg, 0);
 
-    // 注册编码器回调
+    // 注册编码器回调（键盘模式下确认键作为 PC HID 键盘，不再触发本机操作）
+#if !SYS_FUNC_KEYBOARD_USB_EN
     hal_input_register_cb(INPUT_PRESS_SHORT, service_film_next);
     hal_input_register_cb(INPUT_PRESS_LONG, service_film_clear);
     // hal_input_register_cb(INPUT_PRESS_SHORT, film_download_event);
+#endif
 
     for(;;)
     {

@@ -26,6 +26,7 @@ typedef enum {
     INPUT_PRESS_NONE = 0,
     INPUT_PRESS_SHORT,  // 编码器短按
     INPUT_PRESS_LONG ,  // 编码器长按
+    INPUT_PRESS_DOUBLE, // 编码器双击
     INPUT_PRESS_UP,     // 编码器+
     INPUT_PRESS_DOWN,   // 编码器-
     INPUT_PRESS_PRESSED,

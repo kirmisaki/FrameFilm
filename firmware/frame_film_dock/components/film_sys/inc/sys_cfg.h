@@ -33,7 +33,7 @@ extern "C" {
 
 // 功能开关：音频模块（ES8311+NS4150B CODEC，dock 可选外设）
 // 置 1：启用音频（采集/播放）；置 0：关闭（无音频模块的 dock 节省资源）
-#define SYS_FUNC_AUDIO_EN              (0)
+#define SYS_FUNC_AUDIO_EN             (0)
 #if SYS_FUNC_AUDIO_EN
 // 功能开关：USB 声卡（插入电脑后作为 USB 麦克风 + 扬声器）
 // 置 1：启用（依赖 SYS_FUNC_AUDIO_EN，复用 IO19/IO20）
@@ -42,7 +42,14 @@ extern "C" {
 #else
 #define SYS_FUNC_AUDIO_USB_EN          (0)
 #endif /* SYS_FUNC_AUDIO_EN */
+// USB键盘功能开关，可将dock的按键变成一个pc的hid键盘设备
+// 置 1：启用；置 0：关闭
+// 说明：与 USB 声卡开关相互独立，可单独开启。
+//       两者同时开启时组成 HID + UAC 复合设备；仅开键盘时 USB 只枚举出一个 HID 键盘。
+#define SYS_FUNC_KEYBOARD_USB_EN       (0)
 
+// USB 设备栈总开关（声卡或键盘任一开启即需要，置 0 表示完全不使用 USB 设备）
+#define SYS_FUNC_USB_DEV_EN           (SYS_FUNC_AUDIO_USB_EN || SYS_FUNC_KEYBOARD_USB_EN)
 
 /*********************************************************************
 * TYPEDEFS

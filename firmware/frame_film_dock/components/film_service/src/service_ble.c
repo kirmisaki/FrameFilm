@@ -95,6 +95,13 @@ static uint8_t m_ota_trans_state = BLE_OTA_TRANS_IDLE;
 static uint32_t m_ota_trans_file_size = 0;
 static uint32_t m_ota_trans_received = 0;
 
+// 按键事件 -> HID 键值配置映射（下标为 service_key_event_t）
+static ServiceKey_Def_t *const m_key_map[SERVICE_KEY_EVENT_MAX] = {
+    &g_service_param.key.short_press,
+    &g_service_param.key.double_press,
+    &g_service_param.key.long_press,
+};
+
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -934,6 +941,66 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             resp_buf[8] = ble_checksum(resp_buf, 8);
             service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
             sys_logi(BEL_SERVICE_TAG, "Screen info: panel_id=0x%02x, %d x %d", EPD_PANEL_ID, EPD_WIDTH, EPD_HEIGHT);
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_SET : // 设置单击/双击/长按 HID 键值
+        {
+            // 数据：事件(1) + 修饰键(1) + 键数(1) + 键码(n)
+            if(cmd->len >= 3)
+            {
+                uint8_t event    = cmd->pdata[0];
+                uint8_t modifier = cmd->pdata[1];
+                uint8_t key_num  = cmd->pdata[2];
+                ServiceKey_Def_t *pkey = (event < SERVICE_KEY_EVENT_MAX) ? m_key_map[event] : NULL;
+
+                if(pkey != NULL && key_num <= SERVICE_KEY_MAX_NUM && cmd->len == (3 + key_num))
+                {
+                    pkey->modifier = modifier;
+                    memset(pkey->keycode, 0, sizeof(pkey->keycode));
+                    pkey->key_num = key_num;
+                    if(key_num > 0)
+                    {
+                        memcpy(pkey->keycode, &cmd->pdata[3], key_num);
+                    }
+                    service_param_save();
+                    sys_logi(BEL_SERVICE_TAG, "Set keyboard key: event=%d modifier=0x%02x num=%d", event, modifier, key_num);
+                }
+                else
+                {
+                    sys_logw(BEL_SERVICE_TAG, "Invalid keyboard key set: event=%d len=%d num=%d", event, cmd->len, key_num);
+                }
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET : // 查询单击/双击/长按 HID 键值
+        {
+            // 请求无数据返回三组；1字节指定事件则只返回该组
+            uint8_t start = 0;
+            uint8_t count = SERVICE_KEY_EVENT_MAX;
+            if(cmd->len == 1 && cmd->pdata[0] < SERVICE_KEY_EVENT_MAX)
+            {
+                start = cmd->pdata[0];
+                count = 1;
+            }
+
+            uint8_t resp_buf[3 + SERVICE_KEY_EVENT_MAX * (2 + SERVICE_KEY_MAX_NUM) + 1];
+            uint8_t pos = 3;
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET;
+
+            for(uint8_t i = 0; i < count; i++)
+            {
+                ServiceKey_Def_t *pkey = m_key_map[start + i];
+                resp_buf[pos++] = pkey->modifier;
+                resp_buf[pos++] = pkey->key_num;
+                memcpy(&resp_buf[pos], pkey->keycode, SERVICE_KEY_MAX_NUM);
+                pos += SERVICE_KEY_MAX_NUM;
+            }
+
+            resp_buf[2] = pos - 3;
+            resp_buf[pos] = ble_checksum(resp_buf, pos);
+            service_ble_msg_gatts_data_send(resp_buf, pos + 1, MSG_BLE_CH1_OUT_DATA);
+            sys_logi(BEL_SERVICE_TAG, "Get keyboard key: start=%d count=%d", start, count);
             break;
         }
         default :

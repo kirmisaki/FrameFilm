@@ -17,11 +17,38 @@ extern "C" {
 /*********************************************************************
  * MACROS
  */
+#define SERVICE_KEY_MAX_NUM            (6)   // 单次组合键最多同时按下的键数
 
 
 /*********************************************************************
 * TYPEDEFS
 */
+
+// USB HID 键盘键值事件（与单击/双击/长按一一对应）
+typedef enum
+{
+    SERVICE_KEY_EVENT_SHORT = 0,   // 单击
+    SERVICE_KEY_EVENT_DOUBLE,      // 双击
+    SERVICE_KEY_EVENT_LONG,        // 长按
+    SERVICE_KEY_EVENT_MAX,
+} service_key_event_t;
+
+// USB HID 键盘单组键值（单键或组合键）
+typedef struct
+{
+    uint8_t modifier;                     // HID 修饰键位掩码（bit0 Ctrl / bit1 Shift / bit2 Alt / bit3 GUI）
+    uint8_t key_num;                      // 有效键码数量 0 - SERVICE_KEY_MAX_NUM
+    uint8_t keycode[SERVICE_KEY_MAX_NUM]; // HID 键码（Usage ID），组合键时多个键同时按下
+} ServiceKey_Def_t;
+
+// USB HID 键盘键值配置（单击/双击/长按各一组）
+typedef struct
+{
+    ServiceKey_Def_t short_press;   // 单击键值
+    ServiceKey_Def_t double_press;  // 双击键值
+    ServiceKey_Def_t long_press;    // 长按键值
+} ServiceKeyCfg_Def_t;
+
 typedef struct
 {
     uint32_t current_file_id;  // 当前显示的文件ID
@@ -62,6 +89,7 @@ typedef struct
     ServiceSleep_Def_t sleep;
     ServiceNetwork_Def_t network;
     ServiceBle_Def_t ble;
+    ServiceKeyCfg_Def_t key;   // USB HID 键盘键值（单击/双击/长按）
 } ServiceParam_Def_t; /*服务参数*/
 #pragma pack()
 

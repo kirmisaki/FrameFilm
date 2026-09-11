@@ -39,6 +39,7 @@
 #include "hal_api.h"
 #include "service_ble_gatts.h"
 #include "service_wifi.h"
+#include "service_param.h"
 #include "service_monitor.h"
 
 /*********************************************************************
@@ -118,7 +119,14 @@ static void monitor_task_handle(void *pvParameters);
 static void monitor_msg_send(void *p_msg, bool in_isr);
 static void monitor_timer_callback(TimerHandle_t xTimer);
 
+#if SYS_FUNC_KEYBOARD_USB_EN
+static void keyboard_short_cb(void);
+static void keyboard_double_cb(void);
+static void keyboard_long_cb(void);
+static void keyboard_key_send(const ServiceKey_Def_t *pkey);
+#else
 static void monitor_button_press_cb(void);
+#endif
 static void monitor_mark_activity(void);
 static void monitor_poll_state(void);
 static void monitor_led_manage_event(void);
@@ -135,9 +143,16 @@ void service_monitor_init(void)
     m_monitor_state.last_color = LED_COLOR_BLACK;
     m_monitor_state.led_mode = MONITOR_LED_MODE_NORMAL;
 
+#if SYS_FUNC_KEYBOARD_USB_EN
+    // 键盘模式：确认键作为 PC HID 键盘，不再触发本机操作
+    hal_input_register_cb(INPUT_PRESS_SHORT,  keyboard_short_cb);
+    hal_input_register_cb(INPUT_PRESS_DOUBLE, keyboard_double_cb);
+    hal_input_register_cb(INPUT_PRESS_LONG,   keyboard_long_cb);
+#else
     // 按键（短按/长按）也属于"操作"，用于唤醒与刷新空闲计时
     hal_input_register_cb(INPUT_PRESS_SHORT, monitor_button_press_cb);
-    hal_input_register_cb(INPUT_PRESS_LONG, monitor_button_press_cb);
+    hal_input_register_cb(INPUT_PRESS_LONG,  monitor_button_press_cb);
+#endif
 
     // 先同步一次状态，避免把开机时已插着的屏幕误判为插入事件触发闪灯
     hal_epd_detect_insert();
@@ -215,11 +230,52 @@ static void monitor_timer_callback(TimerHandle_t xTimer)
     monitor_msg_send(&msg, 0);
 }
 
+#if !SYS_FUNC_KEYBOARD_USB_EN
 static void monitor_button_press_cb(void)
 {
     monitor_mark_activity();
     sys_logi(MONITOR_TAG, "button press activity");
 }
+#endif
+
+#if SYS_FUNC_KEYBOARD_USB_EN
+static void keyboard_short_cb(void)
+{
+    keyboard_key_send(&g_service_param.key.short_press);
+}
+
+static void keyboard_double_cb(void)
+{
+    keyboard_key_send(&g_service_param.key.double_press);
+}
+
+static void keyboard_long_cb(void)
+{
+    keyboard_key_send(&g_service_param.key.long_press);
+}
+
+/* 通过 USB HID 向 PC 发送一组键值（支持单键/组合键） */
+static void keyboard_key_send(const ServiceKey_Def_t *pkey)
+{
+    // 按键同样视为"操作"，用于唤醒与刷新空闲计时
+    monitor_mark_activity();
+
+    if(pkey->key_num == 0 || pkey->key_num > SERVICE_KEY_MAX_NUM)
+    {
+        sys_logw(MONITOR_TAG, "keyboard key invalid: num=%d", pkey->key_num);
+        return;
+    }
+
+    uint8_t keycode[SERVICE_KEY_MAX_NUM] = { 0 };
+    memcpy(keycode, pkey->keycode, pkey->key_num);
+
+    esp_err_t ret = hal_usb_hid_key_send(pkey->modifier, keycode);
+    if(ret != ESP_OK)
+    {
+        sys_logw(MONITOR_TAG, "hid key send failed: ret=%d", ret);
+    }
+}
+#endif /* SYS_FUNC_KEYBOARD_USB_EN */
 
 /* 记录一次操作：点亮 LED 并重置空闲计时（按键等异步事件置位，由 LED 任务消费） */
 static void monitor_mark_activity(void)
