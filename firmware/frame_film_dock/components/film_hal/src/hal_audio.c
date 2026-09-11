@@ -147,6 +147,9 @@ static esp_err_t audio_i2c_bus_init(void)
 static esp_err_t audio_i2s_channel_init(void)
 {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(AUDIO_I2S_HOST, I2S_ROLE_MASTER);
+    // TX 欠载（USB 主机停发 PCM）时由驱动自动把 DMA buffer 清零，
+    // 避免环形缓冲无限重放最后一段音频而出现持续尾音
+    chan_cfg.auto_clear = true;
 
     esp_err_t ret = i2s_new_channel(&chan_cfg, &s_tx_chan, &s_rx_chan);
     if (ret != ESP_OK)
