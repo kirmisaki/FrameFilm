@@ -32,10 +32,12 @@
 
 #include "service_init.h"
 #include "service_ble.h"
+#include "service_cmd.h"
 #include "service_param.h"
 #include "service_monitor.h"
 #include "service_file.h"
 #include "service_film.h"
+#include "service_usb.h"
 #include "service_wifi.h"
 
 
@@ -81,8 +83,14 @@ void film_service_init(void)
     service_param_init();
     // 初始化WiFi服务
     service_wifi_init();
+    // 初始化命令服务（BLE / USB 共用的命令解析与分发）
+    service_cmd_init();
     // 初始化ble服务
     service_ble_init();
+#if SYS_FUNC_USB_CDC_EN
+    // 初始化USB(CDC)服务
+    service_usb_init();
+#endif
     // 初始化监控服务
     service_monitor_init();
     // 初始化文件服务

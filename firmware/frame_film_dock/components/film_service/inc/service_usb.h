@@ -1,5 +1,5 @@
-#ifndef __SERVICE_BLE_H__
-#define __SERVICE_BLE_H__
+#ifndef __SERVICE_USB_H__
+#define __SERVICE_USB_H__
 
 #ifdef __cplusplus
 extern "C"{
@@ -8,29 +8,20 @@ extern "C"{
 /*********************************************************************
  * INCLUDES
  */
-#include <stdbool.h>
 #include <stdint.h>
 
-// 命令帧协议与链路无关，定义见 service_cmd.h（BLE / USB 共用）
-#include "service_cmd.h"
+#include "sys_cfg.h"
 
 /*********************************************************************
  * MACROS
  */
-#define SYS_OS_PRI_BLE_TASK            (8)
-#define SYS_OS_SIZE_BLE_TASK           (4096)
-#define SYS_OS_NAME_BLE_TASK           "ble_task"
+#define SYS_OS_PRI_USB_TASK            (7)
+#define SYS_OS_SIZE_USB_TASK           (4096)
+#define SYS_OS_NAME_USB_TASK           "usb_task"
 
 /*********************************************************************
 * TYPEDEFS
 */
-typedef struct
-{
-    uint8_t ID;
-    uint8_t subID;
-    uint8_t len;
-    uint8_t *pdata;
-} ble_msg_t;
 
 /*********************************************************************
  * CONSTANTS
@@ -51,14 +42,19 @@ typedef struct
 /*********************************************************************
  * GLOBAL FUNCTIONS
  */
-extern void service_ble_init(void);
-extern void service_ble_msg_send(void *p_msg, bool in_isr);
-extern void service_ble_msg_gatts_cmd_send( uint8_t const *p_data, uint16_t len );
-extern void service_ble_msg_gatts_data_send( uint8_t const *p_data, uint16_t len, uint8_t ch);
+#if SYS_FUNC_USB_CDC_EN
+/**
+ * @brief 初始化USB(CDC)服务
+ *
+ * 创建收发任务与消息队列，把CDC收发接入统一的命令服务，
+ * 使USB与BLE共用同一套命令解析与业务处理。
+ */
+extern void service_usb_init(void);
+#endif /* SYS_FUNC_USB_CDC_EN */
 
 
 #ifdef __cplusplus
-extern "C"}
+}
 #endif
 
-#endif /* __SERVICE_BLE_H__ */
+#endif /* __SERVICE_USB_H__ */

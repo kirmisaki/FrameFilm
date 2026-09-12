@@ -20,7 +20,7 @@
  *
  * FileName : /film_hal/src/hal_usb.c
  * Author: Kiritro  Version: v0.1  Date: 2026/9/10
- * Description: USB 设备驱动（USB 声卡 / HID 键盘，可单独或复合）及 USB 描述符
+ * Description: USB 设备驱动（USB 声卡 / HID 键盘 / CDC 虚拟串口，可单独或复合）及 USB 描述符
  *              说明：开启 CONFIG_USB_DEVICE_UAC_AS_PART 后 usb_device_uac 组件不再
  *                    提供描述符与 mount/umount 回调，需由本文件自行实现。
  * ChangeLog: Change Notes
@@ -49,8 +49,8 @@
 #include "hal_audio.h"
 #endif
 
-#if SYS_FUNC_KEYBOARD_USB_EN && !SYS_FUNC_AUDIO_USB_EN
-// 仅开键盘时需自行拉起 USB 设备栈（声卡模式下由 usb_device_uac 负责）
+#if SYS_FUNC_USB_DEV_EN && !SYS_FUNC_AUDIO_USB_EN
+// 未开声卡时需自行拉起 USB 设备栈（声卡模式下由 usb_device_uac 负责）
 #include "freertos/task.h"
 #include "esp_private/usb_phy.h"
 #endif
@@ -75,6 +75,12 @@
 #if SYS_FUNC_KEYBOARD_USB_EN
 #define EPNUM_HID_IN                     (0x83)
 #endif
+#if SYS_FUNC_USB_CDC_EN
+// 说明：ESP32-S3 的 IN 端点总数上限为 5（含 EP0），本工程 HID + 音频 mic + 音频反馈
+//       已占用 4 个，故 CDC 不再提供可选的通知端点，只占 1 个数据 IN 端点。
+#define EPNUM_CDC_IN                     (0x84)
+#define EPNUM_CDC_OUT                    (0x02)
+#endif
 
 // 字符串描述符索引
 #if SYS_FUNC_KEYBOARD_USB_EN
@@ -84,14 +90,38 @@
 #define STRIDX_UAC                       (4)
 #endif
 
-// 配置描述符总长度
-#if SYS_FUNC_KEYBOARD_USB_EN && SYS_FUNC_AUDIO_USB_EN
-#define CONFIG_TOTAL_LEN                 (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + CFG_TUD_AUDIO * TUD_AUDIO_DEVICE_DESC_LEN)
-#elif SYS_FUNC_KEYBOARD_USB_EN
-#define CONFIG_TOTAL_LEN                 (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN)
+#if SYS_FUNC_USB_CDC_EN
+// 精简版 CDC-ACM 描述符（省略可选的“通知端点”）：长度 8+9+5+5+4+5+9+7+7 = 59 字节
+// 参数：接口号, 字符串索引, 数据端点(OUT/IN)地址, 端点大小
+#define CDC_DESC_LEN                     (8 + 9 + 5 + 5 + 4 + 5 + 9 + 7 + 7)
+#define CDC_DESCRIPTOR(_itfnum, _stridx, _epout, _epin, _epsize) \
+    /* Interface Association */ \
+    8, TUSB_DESC_INTERFACE_ASSOCIATION, _itfnum, 2, TUSB_CLASS_CDC, CDC_COMM_SUBCLASS_ABSTRACT_CONTROL_MODEL, CDC_COMM_PROTOCOL_NONE, 0, \
+    /* CDC Control Interface（无端点） */ \
+    9, TUSB_DESC_INTERFACE, _itfnum, 0, 0, TUSB_CLASS_CDC, CDC_COMM_SUBCLASS_ABSTRACT_CONTROL_MODEL, CDC_COMM_PROTOCOL_NONE, _stridx, \
+    /* CDC Header */ \
+    5, TUSB_DESC_CS_INTERFACE, CDC_FUNC_DESC_HEADER, U16_TO_U8S_LE(0x0120), \
+    /* CDC Call Management */ \
+    5, TUSB_DESC_CS_INTERFACE, CDC_FUNC_DESC_CALL_MANAGEMENT, 0, (uint8_t)((_itfnum) + 1), \
+    /* CDC Abstract Control Management */ \
+    4, TUSB_DESC_CS_INTERFACE, CDC_FUNC_DESC_ABSTRACT_CONTROL_MANAGEMENT, 6, \
+    /* CDC Union */ \
+    5, TUSB_DESC_CS_INTERFACE, CDC_FUNC_DESC_UNION, _itfnum, (uint8_t)((_itfnum) + 1), \
+    /* CDC Data Interface */ \
+    9, TUSB_DESC_INTERFACE, (uint8_t)((_itfnum) + 1), 0, 2, TUSB_CLASS_CDC_DATA, 0, 0, 0, \
+    /* Endpoint Out */ \
+    7, TUSB_DESC_ENDPOINT, _epout, TUSB_XFER_BULK, U16_TO_U8S_LE(_epsize), 0, \
+    /* Endpoint In */ \
+    7, TUSB_DESC_ENDPOINT, _epin, TUSB_XFER_BULK, U16_TO_U8S_LE(_epsize), 0
 #else
-#define CONFIG_TOTAL_LEN                 (TUD_CONFIG_DESC_LEN + CFG_TUD_AUDIO * TUD_AUDIO_DEVICE_DESC_LEN)
+#define CDC_DESC_LEN                     (0)
 #endif
+
+// 配置描述符总长度（按功能开关累加各功能描述符）
+#define CONFIG_TOTAL_LEN                 (TUD_CONFIG_DESC_LEN \
+                                          + (SYS_FUNC_KEYBOARD_USB_EN ? TUD_HID_DESC_LEN : 0) \
+                                          + (SYS_FUNC_AUDIO_USB_EN ? CFG_TUD_AUDIO * TUD_AUDIO_DEVICE_DESC_LEN : 0) \
+                                          + (SYS_FUNC_USB_CDC_EN ? CDC_DESC_LEN : 0))
 
 // 按键按下后自动释放的时间，形成完整的“按下-抬起”
 #define HID_KEY_RELEASE_MS               (30)
@@ -110,15 +140,20 @@
 static bool s_usb_initialized = false;
 static uint16_t s_desc_str[32];
 
+#if SYS_FUNC_USB_CDC_EN
+static hal_usb_cdc_rx_cb_t s_cdc_rx_cb = NULL;
+#endif
+
 #if SYS_FUNC_KEYBOARD_USB_EN
 static TimerHandle_t s_hid_release_timer = NULL;
+#endif
 
-#if !SYS_FUNC_AUDIO_USB_EN
+#if SYS_FUNC_USB_DEV_EN && !SYS_FUNC_AUDIO_USB_EN
 static usb_phy_handle_t s_usb_phy_hdl = NULL;
 static bool s_usb_stack_inited = false;
 static void usb_device_task(void *arg);
-#endif /* !SYS_FUNC_AUDIO_USB_EN */
-#endif /* SYS_FUNC_KEYBOARD_USB_EN */
+static esp_err_t hal_usb_stack_init(void);
+#endif
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -132,6 +167,10 @@ enum {
     ITF_NUM_AUDIO_CONTROL,
     ITF_NUM_AUDIO_STREAMING_SPK,
     ITF_NUM_AUDIO_STREAMING_MIC,
+#endif
+#if SYS_FUNC_USB_CDC_EN
+    ITF_NUM_CDC,
+    ITF_NUM_CDC_DATA,
 #endif
     ITF_NUM_TOTAL
 };
@@ -150,8 +189,8 @@ tusb_desc_device_t const desc_device = {
     .bDescriptorType    = TUSB_DESC_DEVICE,
     .bcdUSB             = 0x0200,
 
-    // 组合了 UAC 时需要 IAD（复合设备）；仅 HID 时类信息在接口描述符中定义
-#if SYS_FUNC_AUDIO_USB_EN
+    // 组合了 UAC/CDC 时需要 IAD（复合设备）；仅 HID 时类信息在接口描述符中定义
+#if SYS_FUNC_AUDIO_USB_EN || SYS_FUNC_USB_CDC_EN
     .bDeviceClass       = TUSB_CLASS_MISC,
     .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
     .bDeviceProtocol    = MISC_PROTOCOL_IAD,
@@ -195,6 +234,10 @@ uint8_t const desc_configuration[] = {
 #if SYS_FUNC_AUDIO_USB_EN
     // 接口号, 字符串索引, EP Out & EP In 地址, 反馈端点
     TUD_AUDIO_DESCRIPTOR(ITF_NUM_AUDIO_CONTROL, STRIDX_UAC, EPNUM_AUDIO_OUT, EPNUM_AUDIO_IN, EPNUM_AUDIO_FB),
+#endif
+#if SYS_FUNC_USB_CDC_EN
+    // 虚拟串口(CDC-ACM，含 IAD，无通知端点)：接口号, 字符串索引(0=无), 数据端点(OUT/IN)及大小
+    CDC_DESCRIPTOR(ITF_NUM_CDC, 0, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
 #endif
 };
 
@@ -389,9 +432,7 @@ static void usb_uac_set_volume_cb(uint32_t volume, void *cb_ctx)
 
 #endif /* SYS_FUNC_AUDIO_USB_EN */
 
-#if SYS_FUNC_KEYBOARD_USB_EN
-
-#if !SYS_FUNC_AUDIO_USB_EN
+#if SYS_FUNC_USB_DEV_EN && !SYS_FUNC_AUDIO_USB_EN
 static void usb_device_task(void *arg)
 {
     (void)arg;
@@ -400,8 +441,49 @@ static void usb_device_task(void *arg)
         tud_task();
     }
 }
-#endif /* !SYS_FUNC_AUDIO_USB_EN */
 
+/**
+ * @brief 未开声卡时自行拉起 USB PHY 与 TinyUSB 任务（HID/CDC 共用）
+ */
+static esp_err_t hal_usb_stack_init(void)
+{
+    if (s_usb_stack_inited)
+    {
+        return ESP_OK;
+    }
+
+    usb_phy_config_t phy_conf = {
+        .controller = USB_PHY_CTRL_OTG,
+        .otg_mode = USB_OTG_MODE_DEVICE,
+        .target = USB_PHY_TARGET_INT,
+#if CONFIG_TINYUSB_RHPORT_HS
+        .otg_speed = USB_PHY_SPEED_HIGH,
+#endif
+    };
+    if (usb_new_phy(&phy_conf, &s_usb_phy_hdl) != ESP_OK)
+    {
+        sys_loge(USB_TAG, "usb phy init failed");
+        return ESP_FAIL;
+    }
+
+    if (!tusb_init())
+    {
+        sys_loge(USB_TAG, "tinyusb init failed");
+        return ESP_FAIL;
+    }
+
+    if (xTaskCreatePinnedToCore(usb_device_task, "TinyUSB", 4096, NULL,
+                                CONFIG_UAC_TINYUSB_TASK_PRIORITY, NULL, tskNO_AFFINITY) != pdPASS)
+    {
+        sys_loge(USB_TAG, "create tinyusb task failed");
+        return ESP_FAIL;
+    }
+    s_usb_stack_inited = true;
+    return ESP_OK;
+}
+#endif /* SYS_FUNC_USB_DEV_EN && !SYS_FUNC_AUDIO_USB_EN */
+
+#if SYS_FUNC_KEYBOARD_USB_EN
 static void hid_key_release_cb(TimerHandle_t xTimer)
 {
     (void)xTimer;
@@ -419,40 +501,6 @@ esp_err_t hal_usb_hid_init(void)
     {
         return ESP_OK;
     }
-
-#if !SYS_FUNC_AUDIO_USB_EN
-    // 仅键盘模式：自行初始化 USB PHY 与 TinyUSB 任务
-    if (!s_usb_stack_inited)
-    {
-        usb_phy_config_t phy_conf = {
-            .controller = USB_PHY_CTRL_OTG,
-            .otg_mode = USB_OTG_MODE_DEVICE,
-            .target = USB_PHY_TARGET_INT,
-#if CONFIG_TINYUSB_RHPORT_HS
-            .otg_speed = USB_PHY_SPEED_HIGH,
-#endif
-        };
-        if (usb_new_phy(&phy_conf, &s_usb_phy_hdl) != ESP_OK)
-        {
-            sys_loge(USB_TAG, "usb phy init failed");
-            return ESP_FAIL;
-        }
-
-        if (!tusb_init())
-        {
-            sys_loge(USB_TAG, "tinyusb init failed");
-            return ESP_FAIL;
-        }
-
-        if (xTaskCreatePinnedToCore(usb_device_task, "TinyUSB", 4096, NULL,
-                                    CONFIG_UAC_TINYUSB_TASK_PRIORITY, NULL, tskNO_AFFINITY) != pdPASS)
-        {
-            sys_loge(USB_TAG, "create tinyusb task failed");
-            return ESP_FAIL;
-        }
-        s_usb_stack_inited = true;
-    }
-#endif /* !SYS_FUNC_AUDIO_USB_EN */
 
     s_hid_release_timer = xTimerCreate("hid_rel", pdMS_TO_TICKS(HID_KEY_RELEASE_MS), pdFALSE, NULL, hid_key_release_cb);
     if (s_hid_release_timer == NULL)
@@ -492,6 +540,62 @@ esp_err_t hal_usb_hid_key_send(uint8_t modifier, const uint8_t keycode[6])
 
 #endif /* SYS_FUNC_KEYBOARD_USB_EN */
 
+#if SYS_FUNC_USB_CDC_EN
+/**
+ * @brief CDC 接收回调：读取收到的数据并转交已注册的接收回调
+ *
+ * 运行在 TinyUSB 任务中，只做搬运，业务处理由上层任务完成。
+ */
+void tud_cdc_rx_cb(uint8_t itf)
+{
+    (void)itf;
+
+    uint8_t buf[64];
+    uint32_t n;
+    while ((n = tud_cdc_read(buf, sizeof(buf))) > 0)
+    {
+        if (s_cdc_rx_cb != NULL)
+        {
+            s_cdc_rx_cb(buf, n);
+        }
+    }
+}
+
+void hal_usb_cdc_register_rx_cb(hal_usb_cdc_rx_cb_t cb)
+{
+    s_cdc_rx_cb = cb;
+}
+
+esp_err_t hal_usb_cdc_write(const uint8_t *p_data, uint32_t len)
+{
+    if (p_data == NULL || len == 0)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!tud_ready())
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    uint32_t written = tud_cdc_write(p_data, len);
+    tud_cdc_write_flush();
+
+    if (written != len)
+    {
+        sys_logw(USB_TAG, "cdc write incomplete: %u/%u", (unsigned)written, (unsigned)len);
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
+bool hal_usb_cdc_connected(void)
+{
+    return tud_cdc_connected();
+}
+#endif /* SYS_FUNC_USB_CDC_EN */
+
 esp_err_t hal_usb_init(void)
 {
     if (s_usb_initialized)
@@ -527,10 +631,17 @@ esp_err_t hal_usb_init(void)
         hal_audio_duplex_stop();
         return ret;
     }
+#else
+    // 未开声卡：由本文件自行拉起 USB 设备栈（HID / CDC 共用）
+    esp_err_t stack_ret = hal_usb_stack_init();
+    if (stack_ret != ESP_OK)
+    {
+        return stack_ret;
+    }
 #endif /* SYS_FUNC_AUDIO_USB_EN */
 
 #if SYS_FUNC_KEYBOARD_USB_EN
-    // HID 键盘：与声卡共用同一 USB 设备栈；未开声卡时由该接口自行拉起设备栈
+    // HID 键盘：与声卡/虚拟串口共用同一 USB 设备栈
     esp_err_t hid_ret = hal_usb_hid_init();
     if (hid_ret != ESP_OK)
     {

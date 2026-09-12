@@ -4,6 +4,7 @@
 /*********************************************************************
  * INCLUDES
  */
+#include <stdbool.h>
 #include "esp_err.h"
 #include "sys_cfg.h"
 
@@ -47,10 +48,11 @@ extern "C" {
 /**
  * @brief 初始化 USB 设备
  *
- * 按 SYS_FUNC_AUDIO_USB_EN / SYS_FUNC_KEYBOARD_USB_EN 的组合初始化：开声卡时先开启
- * I2S 全双工通道，再初始化 usb_device_uac（麦克风 + 扬声器）；开键盘时初始化 HID
- * 键盘，若未开声卡则由键盘侧自行拉起 USB 设备栈。
- * 插入电脑后系统会枚举出 USB 音频设备 / HID 键盘 / 两者复合设备。
+ * 按 SYS_FUNC_AUDIO_USB_EN / SYS_FUNC_KEYBOARD_USB_EN / SYS_FUNC_USB_CDC_EN 的组合初始化：
+ * 开声卡时先开启 I2S 全双工通道，再初始化 usb_device_uac（麦克风 + 扬声器）；开键盘时初始化
+ * HID 键盘；开虚拟串口时在配置描述符中增加 CDC-ACM 接口。若未开声卡，则由本文件自行拉起
+ * USB 设备栈（HID / CDC 共用）。
+ * 插入电脑后系统会枚举出 USB 音频设备 / HID 键盘 / 虚拟串口 / 其复合设备。
  * 注意：占用 IO19(D-)/IO20(D+)。
  *
  * @return ESP_OK 成功；其它失败
@@ -86,6 +88,36 @@ esp_err_t hal_usb_hid_init(void);
  */
 esp_err_t hal_usb_hid_key_send(uint8_t modifier, const uint8_t keycode[6]);
 #endif /* SYS_FUNC_KEYBOARD_USB_EN */
+
+#if SYS_FUNC_USB_CDC_EN
+/* CDC 接收回调：在 TinyUSB 任务上下文中被调用，回调内不要做耗时/阻塞操作 */
+typedef void (*hal_usb_cdc_rx_cb_t)(const uint8_t *p_data, uint32_t len);
+
+/**
+ * @brief 注册 CDC 接收回调
+ *
+ * @param cb 接收回调，NULL 表示注销
+ */
+void hal_usb_cdc_register_rx_cb(hal_usb_cdc_rx_cb_t cb);
+
+/**
+ * @brief 通过 CDC 发送数据
+ *
+ * 可在任意任务上下文调用（内部写入 TinyUSB 发送 FIFO 并触发发送）。
+ *
+ * @param p_data 数据指针
+ * @param len    数据长度
+ * @return ESP_OK 成功；ESP_ERR_INVALID_STATE 未连接；ESP_FAIL 发送失败
+ */
+esp_err_t hal_usb_cdc_write(const uint8_t *p_data, uint32_t len);
+
+/**
+ * @brief 查询 CDC 是否已连接主机
+ *
+ * @return true 已连接；false 未连接
+ */
+bool hal_usb_cdc_connected(void);
+#endif /* SYS_FUNC_USB_CDC_EN */
 
 #ifdef __cplusplus
 }
