@@ -41,6 +41,10 @@ DOCK_WIDTH = 760
 DOCK_HEIGHT = 568
 DOCK_FILE_SIZE = 32 + (DOCK_WIDTH * DOCK_HEIGHT) // 2  # 215872
 
+# Dock 竖屏使用：物理面板横置，内容需按竖版画布 568x760 排版后逆时针旋转 90° 送屏
+# （与小程序 film-utils.js 的 isPortraitPanel 处理一致）
+ROTATE_DEFAULT = 90
+
 # USB 设备标识（与固件 hal_usb.c 一致）
 ESPRESSIF_VID = 0x303A
 DOCK_PID = 0x8000
@@ -220,8 +224,12 @@ def find_repo_root():
 
 
 def image_to_film(path, dither="floyd_steinberg", strength=80, contrast=100,
-                  brightness=0, saturation=100, palette="6color"):
-    """复用仓库已有的转换实现，保证与 ForFilm / 服务端出图一致"""
+                  brightness=0, saturation=100, palette="6color", rotate=ROTATE_DEFAULT):
+    """复用仓库已有的转换实现，保证与 ForFilm / 服务端出图一致
+
+    Dock 竖屏使用：先按竖版画布 568x760 裁剪填充，再逆时针旋转 rotate 度，
+    得到面板的 760x568 数据（rotate=90 即竖屏正常显示）。
+    """
     repo = find_repo_root()
     if repo is None:
         raise RuntimeError(
@@ -234,12 +242,20 @@ def image_to_film(path, dither="floyd_steinberg", strength=80, contrast=100,
         sys.path.insert(0, backend)
 
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
     except ImportError:
         raise RuntimeError("缺少依赖 Pillow，请先执行: pip install pyserial Pillow")
-    from app.services.film_convert import convert_image
+    from app.services.film_convert import convert_image, fit_cover
 
-    img = Image.open(path)
+    rotate = rotate % 360
+    # 旋转 90/270 时用竖版画布（宽高互换），0/180 用面板原生尺寸
+    canvas_w, canvas_h = (DOCK_HEIGHT, DOCK_WIDTH) if rotate % 180 else (DOCK_WIDTH, DOCK_HEIGHT)
+    img = fit_cover(ImageOps.exif_transpose(Image.open(path)), canvas_w, canvas_h)
+
+    transpose = {90: Image.ROTATE_90, 180: Image.ROTATE_180, 270: Image.ROTATE_270}.get(rotate)
+    if transpose is not None:
+        img = img.transpose(transpose)
+
     film, _preview = convert_image(
         img, DOCK_WIDTH, DOCK_HEIGHT,
         {
@@ -273,6 +289,8 @@ def main():
     ap.add_argument("--brightness", type=int, default=0, help="亮度 -100~100")
     ap.add_argument("--saturation", type=int, default=100, help="饱和度 0-200")
     ap.add_argument("--bw", action="store_true", help="黑白模式（2 色）")
+    ap.add_argument("--rotate", type=int, default=ROTATE_DEFAULT, choices=[0, 90, 180, 270],
+                    help="内容旋转角度：90=Dock 竖屏（默认），0=面板原生横屏")
     ap.add_argument("--delay", type=float, default=CHUNK_DELAY, help="每块数据间隔秒数（限速）")
     ap.add_argument("--save-film", help="把转换出的 .film 另存到该路径")
     ap.add_argument("--list", action="store_true", help="只列出设备上的文件后退出")
@@ -310,9 +328,11 @@ def main():
                 film = f.read()
             filename = args.name or os.path.basename(args.film)
             print("读取 %s (%d 字节)" % (args.film, len(film)))
+            if args.rotate != ROTATE_DEFAULT:
+                print("提示: --film 传入的是现成的面板数据，不做旋转，--rotate %d 已忽略。" % args.rotate)
         else:
             filename = args.name or (os.path.splitext(os.path.basename(args.image))[0] + ".film")
-            print("转换图片: %s (dither=%s)" % (args.image, args.dither))
+            print("转换图片: %s (dither=%s, rotate=%d)" % (args.image, args.dither, args.rotate))
             film = image_to_film(
                 args.image,
                 dither=args.dither,
@@ -321,6 +341,7 @@ def main():
                 brightness=args.brightness,
                 saturation=args.saturation,
                 palette="bw" if args.bw else "6color",
+                rotate=args.rotate,
             )
 
         if not filename.lower().endswith(".film"):

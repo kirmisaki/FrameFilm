@@ -55,14 +55,15 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py photo.jpg --bw        
 
 | 参数 | 说明 | 默认 |
 | --- | --- | --- |
-| `image` | 待上传图片（jpg/png/bmp/webp），自动裁剪填充到 760×568 | — |
-| `--film` | 直接上传现成 `.film`，跳过转换 | — |
+| `image` | 待上传图片（jpg/png/bmp/webp），自动按**竖版画布 568×760**裁剪填充，再逆时针旋转 90° 送屏（Dock 是竖屏使用） | — |
+| `--film` | 直接上传现成 `.film`，跳过转换（不做旋转） | — |
 | `--port` | 串口号；不填则按 VID=0x303A / PID=0x8000 自动查找 | 自动 |
 | `--name` | 设备上的文件名，自动补 `.film` 后缀 | 图片名 |
 | `--dither` | 抖动算法：`floyd_steinberg`/`atkinson`/`stucki`/`jarvis`/`bayer`/`gamma_floyd_steinberg`/`adaptive`/`smart_adaptive`/`none` | `floyd_steinberg` |
 | `--strength` | 抖动强度 0-200 | 80 |
 | `--contrast` / `--brightness` / `--saturation` | 画面调整 | 100 / 0 / 100 |
 | `--bw` | 黑白（2 色）模式 | 关 |
+| `--rotate` | 内容旋转角度：`90`=Dock 竖屏（默认）/ `0`=面板原生横屏 / `180` / `270` | 90 |
 | `--delay` | 每 192 字节块的间隔（秒），用于限速 | 0.002 |
 | `--save-film` | 把转换结果另存一份 `.film` | — |
 | `--list` | 只列设备文件后退出 | 关 |
@@ -85,6 +86,7 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py photo.jpg --bw        
 | `找不到仓库中的转换实现` | 在仓库外运行了；设置 `FRAMEFILM_REPO` 或回到仓库内运行 |
 | 上传后屏幕没变化 | 检查文件列表输出；确认名字带 `.film` 后缀（设备只把 `.film` 计入列表）；EPD 刷新本身要几秒 |
 | 文件传上去但花屏/错位 | 图片转换参数不匹配该机型；确认握手时收到的是 `panel=0x06` |
+| 上屏内容横着/倒着 | 旋转角不对：默认 `--rotate 90` 适配 Dock 竖屏；设备改成横放时试 `0`/`180`/`270` |
 | 大文件传输容易失败 | 加大 `--delay`（如 `0.005`）降速重试，避免设备接收队列溢出丢数据 |
 
 ## 实现说明（维护用）
@@ -92,5 +94,6 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py photo.jpg --bw        
 - 帧格式：`HEAD(0x55) | CH | LEN | DATA | SUM`，SUM 为前面所有字节之和；与 BLE 链路完全一致。
 - 上传时序：`FILE_START(0x03)` → `FILE_NAME(0x00)` → `FILE_LEN(0x01，大端 4 字节)` → `FILE_DATA(0x02，分块，≤255 字节/帧)` → `FILE_STOP(0x04)`。
 - 屏幕参数查询 `0x42` 的应答为 `panelId(1) + width(2, 大端) + height(2, 大端)`，用于确认对端是 Dock。
+- 方向：Dock 面板物理横置、产品竖屏使用，出图先把图片按 568×760 竖版画布裁剪填充，再逆时针旋转 90° 得到 760×568 面板数据（`--rotate`，对齐小程序 `film-utils.js` 的 `isPortraitPanel` 处理）。
 - 文件列表 `0x06` 会按设备上每个文件回一帧：`id(1) + nameLen(1) + name(nameLen)`，帧之间有约 50ms 间隔。
 - 必须限速：dock 侧接收队列有限（CDC FIFO + 两级任务队列），全速灌数据会丢包导致文件损坏。
