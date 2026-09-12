@@ -76,6 +76,8 @@ const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET = 0x3F;
 const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL = 0x40;
 const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET = 0x41;
 const BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET = 0x42;
+const BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_SET = 0x43;
+const BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET = 0x44;
 
 const BLE_CMD_LEN_MIN = 4;
 
@@ -126,6 +128,90 @@ async function processQueue() {
     }
 }
 
+// 连接成功后的统一初始化流程（蓝牙 / USB 共用）
+// 依赖调用方已把 device/server/characteristic 准备好
+async function onDeviceConnected(deviceName) {
+    // 根据设备名称检测设备类型（USB 无名称时，随后会由屏幕参数查询纠正）
+    var upperName = (deviceName || '').toUpperCase();
+    if (upperName.indexOf('MAX') !== -1) {
+        setDeviceType('FRAMEFILMMAX');
+    } else if (upperName.indexOf('PRO') !== -1) {
+        setDeviceType('FRAMEFILMPRO');
+    } else if (upperName.indexOf('DOCK') !== -1) {
+        setDeviceType('FRAMEFILMDOCK');
+    } else {
+        setDeviceType('FRAMEFILM');
+    }
+    var devCfg = getDeviceConfig();
+
+    const status = document.getElementById('connection-status');
+    const deviceList = document.getElementById('device-list');
+
+    if (status) {
+        status.textContent = '已连接 - ' + devCfg.displayName;
+        status.className = 'status connected';
+    }
+
+    if (deviceList) {
+        deviceList.innerHTML = '<div class="device-item connected-device"><div class="device-info"><strong>' + (deviceName || '已连接设备') + '</strong><p class="device-id">' + devCfg.displayName + ' | ' + devCfg.screenWidth + 'x' + devCfg.screenHeight + '</p></div><button class="disconnect-btn" onclick="disconnectDevice()">断开</button></div>';
+    }
+
+    if (device && device.addEventListener) {
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+    }
+    console.log('设备已连接:', deviceName);
+
+    setupBluetoothListener();
+    window.fileListBuffer = [];
+    bleCmdQueue = [];
+
+    setTimeout(() => {
+        debugLog('开始发送初始化命令...');
+        sendBleScreenResolutionGet();
+        sendBlePwrRead();
+    }, 1000);
+
+    setTimeout(() => {
+        sendBleFileList();
+    }, 2000);
+
+    setTimeout(() => {
+        sendBleFileDisplayGet();
+    }, 3000);
+
+    setTimeout(() => {
+        sendBleModeGet();
+    }, 3500);
+
+    setTimeout(() => {
+        sendBleSleepOnOffGet();
+    }, 4000);
+
+    setTimeout(() => {
+        sendBleSleepModeGet();
+    }, 4500);
+
+    setTimeout(() => {
+        sendBleSleepTimeGet();
+    }, 5000);
+
+    setTimeout(() => {
+        queryWifiConfig();
+    }, 5500);
+
+    setTimeout(() => {
+        // 键值查询仅支持机型（底座）需要
+        if (getDeviceConfig().hasKeyboard) {
+            sendBleKeyboardKeyGet().catch(err => debugLog('查询键值失败: ' + err.message, 'error'));
+        }
+    }, 5800);
+
+    // 显示网络配置面板（默认折叠，wifi使能后自动展开）
+    var netSection = document.getElementById('network-section');
+    if (netSection) netSection.style.display = 'block';
+    collapseNetworkSection();
+}
+
 function initBluetooth() {
     const scanButton = document.getElementById('scan-button');
     if (!scanButton) return;
@@ -156,70 +242,7 @@ function initBluetooth() {
             service = await server.getPrimaryService(BLE_SERVICE_UUID);
             characteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
 
-            // 根据设备名称检测设备类型
-            var deviceName = device.name || '';
-            var upperName = deviceName.toUpperCase();
-            if (upperName.indexOf('MAX') !== -1) {
-                setDeviceType('FRAMEFILMMAX');
-            } else if (upperName.indexOf('PRO') !== -1) {
-                setDeviceType('FRAMEFILMPRO');
-            } else if (upperName.indexOf('DOCK') !== -1) {
-                setDeviceType('FRAMEFILMDOCK');
-            } else {
-                setDeviceType('FRAMEFILM');
-            }
-            var devCfg = getDeviceConfig();
-
-            status.textContent = '已连接 - ' + devCfg.displayName;
-            status.className = 'status connected';
-
-            deviceList.innerHTML = '<div class="device-item connected-device"><div class="device-info"><strong>' + (device.name || '已连接设备') + '</strong><p class="device-id">' + devCfg.displayName + ' | ' + devCfg.screenWidth + 'x' + devCfg.screenHeight + '</p></div><button class="disconnect-btn" onclick="disconnectDevice()">断开</button></div>';
-
-            device.addEventListener('gattserverdisconnected', onDisconnected);
-            console.log('设备已连接:', device.name);
-
-            setupBluetoothListener();
-            window.fileListBuffer = [];
-            bleCmdQueue = [];
-
-            setTimeout(() => {
-                debugLog('开始发送初始化命令...');
-                sendBleScreenResolutionGet();
-                sendBlePwrRead();
-            }, 1000);
-
-            setTimeout(() => {
-                sendBleFileList();
-            }, 2000);
-
-            setTimeout(() => {
-                sendBleFileDisplayGet();
-            }, 3000);
-
-            setTimeout(() => {
-                sendBleModeGet();
-            }, 3500);
-
-            setTimeout(() => {
-                sendBleSleepOnOffGet();
-            }, 4000);
-
-            setTimeout(() => {
-                sendBleSleepModeGet();
-            }, 4500);
-
-            setTimeout(() => {
-                sendBleSleepTimeGet();
-            }, 5000);
-
-            setTimeout(() => {
-                queryWifiConfig();
-            }, 5500);
-
-            // 显示网络配置面板（默认折叠，wifi使能后自动展开）
-            var netSection = document.getElementById('network-section');
-            if (netSection) netSection.style.display = 'block';
-            collapseNetworkSection();
+            await onDeviceConnected(device.name || '');
 
         } catch (error) {
             console.error('连接错误:', error);
@@ -301,7 +324,7 @@ function uploadToDevice() {
         return;
     }
 
-    var fileName = document.getElementById('fileName').value || 'output.film';
+    var fileName = normalizeFilmFileName(document.getElementById('fileName').value, 'output.film');
     var pixelData = window.processedDataForDownload;
 
     // 生成文件头并合并
@@ -745,6 +768,47 @@ async function sendBleScreenResolutionGet() {
     }
 }
 
+// 设置设备按键（单击/双击/长按）的 HID 键值
+// 数据：事件(1) + 修饰键(1) + 键数(1) + 键码(n)
+async function sendBleKeyboardKeySet(event, modifier, keycodes) {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+
+    const keys = keycodes || [];
+    const packet = new Uint8Array(7 + keys.length);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_SET;
+    packet[2] = 3 + keys.length;
+    packet[3] = event & 0xFF;
+    packet[4] = modifier & 0xFF;
+    packet[5] = keys.length;
+    for (let i = 0; i < keys.length; i++) {
+        packet[6 + i] = keys[i] & 0xFF;
+    }
+    packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+
+    debugLog('设置键值: event=' + event + ' modifier=0x' + (modifier & 0xFF).toString(16) + ' keys=' + keys.length);
+    await characteristic.writeValue(packet);
+    await delay(BLE_CTRL_DELAY);
+}
+
+// 查询设备按键键值（不带参数返回单击/双击/长按三组）
+async function sendBleKeyboardKeyGet() {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+
+    const packet = new Uint8Array(4);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET;
+    packet[2] = 0;
+    packet[3] = calculateChecksum(packet, 3);
+
+    await characteristic.writeValue(packet);
+    await delay(BLE_CTRL_DELAY);
+}
+
 async function sendBleSleepSet(onoff) {
     if (!device || !server || !characteristic) {
         showMessage('请先连接设备', 'error');
@@ -952,6 +1016,21 @@ function setupBluetoothListener() {
             const height = (data[6] << 8) | data[7];
             applyScreenParams(panelId, width, height);
             debugLog('屏幕参数: panel_id=0x' + panelId.toString(16) + ', ' + width + 'x' + height);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET && cmdLen >= 8) {
+            // 每组：修饰键(1) + 键数(1) + 键码(6)，共 8 字节
+            var keyGroups = [];
+            for (var kp = 3; kp + 8 <= 3 + cmdLen; kp += 8) {
+                var keyNum = data[kp + 1];
+                keyGroups.push({
+                    modifier: data[kp],
+                    keycodes: Array.prototype.slice.call(data, kp + 2, kp + 2 + keyNum)
+                });
+            }
+            debugLog('键值: ' + keyGroups.length + ' 组');
+            if (typeof onKeyboardKeyReceived === 'function') {
+                onKeyboardKeyReceived(keyGroups);
+            }
         }
         // WiFi 通知处理
         else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET && cmdLen === 1) {

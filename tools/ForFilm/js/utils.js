@@ -24,7 +24,8 @@ var DEVICE_CONFIGS = {
         screenWidth: 760,
         screenHeight: 568,
         displayName: 'FrameFilm Dock',
-        pixelLayout: 'row-major' // 行优先: (y * width) + x
+        pixelLayout: 'row-major', // 行优先: (y * width) + x
+        hasKeyboard: true // 仅有底座支持设备按键键值（USB HID 键盘）
     }
 };
 
@@ -70,6 +71,10 @@ function onDeviceTypeChanged() {
     }
     // SZ 增强算法仅 FrameFilm Pro 可用
     syncSzEnhancedAvailability();
+    // 按键键值设置仅支持的机型可见
+    if (typeof syncKeyboardAvailability === 'function') {
+        syncKeyboardAvailability();
+    }
 }
 
 // 屏幕面板 ID → 机型 + 像素排布（与固件 EPD_PANEL_ID 对应）
@@ -148,6 +153,24 @@ function getFilmFileTotalSize() {
     var total = 32 + getFilmPixelDataSize();
     console.log('[DEBUG] getFilmFileTotalSize() = ' + total + ' | deviceType=' + currentDeviceType);
     return total;
+}
+
+// 规范化发送到设备的 film 文件名
+// 1) 去首尾空格，为空则使用默认名
+// 2) 统一补齐 .film 后缀（设备只把 .film 文件计入文件列表）
+// 3) 限长 64 字节，避免超出设备端文件名/列表缓冲
+function normalizeFilmFileName(raw, fallback) {
+    var name = (raw || '').trim();
+    if (!name) {
+        name = fallback || 'output.film';
+    }
+    if (!/\.film$/i.test(name)) {
+        name = name.replace(/\.[^.\/\\]+$/, '') + '.film';
+    }
+    if (name.length > 64) {
+        name = name.substring(0, 59) + '.film';
+    }
+    return name;
 }
 
 // 根据设备类型返回正确的像素索引

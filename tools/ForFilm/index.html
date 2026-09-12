@@ -5,22 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm Web工具</title>
     <link id="style-sheet" rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/keyboard.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
 </head>
 <body>
     <div class="container">
         <!-- 页面内容 -->
         <div id="page-content">
-            <!-- 蓝牙连接页面 -->
+            <!-- 设备连接页面 -->
             <div id="bluetooth-page" class="page active">
-                <h1>蓝牙连接</h1>
+                <h1>设备连接</h1>
                 <div class="bluetooth-container">
                     <div id="connection-status" class="status">未连接</div>
                     <div id="device-type-info" class="device-type-info" style="display:none;">
                         <span class="device-type-badge" id="device-type-badge"></span>
                         <span class="device-resolution" id="device-resolution"></span>
                     </div>
-                    <button id="scan-button" class="primary-button">扫描设备</button>
+                    <button id="scan-button" class="primary-button">蓝牙扫描设备</button>
+                    <button id="usb-button" class="primary-button" style="margin-top:8px;">USB 连接</button>
                     <div id="device-list" class="device-list"></div>
 
                     <!-- 网络配置面板 -->
@@ -208,6 +210,30 @@
                         </div>
                     </div>
 
+                    <!-- 按键设置模块（仅 FrameFilm Dock 支持，默认隐藏） -->
+                    <div id="keyboard-settings-section" class="settings-section" style="display:none;">
+                        <div class="section-header">
+                            <i class="material-icons">keyboard</i>
+                            <span>按键设置</span>
+                        </div>
+                        <div class="section-content">
+                            <div class="setting-item switch-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">设备按键键值</span>
+                                    <span class="setting-hint-icon" onclick="showHint(this)">
+                                        <i class="material-icons">error_outline</i>
+                                        <span class="hint-tooltip">设置设备单击/双击/长按对应发送到电脑的键盘键值，需将设备通过 USB 连接电脑</span>
+                                    </span>
+                                </div>
+                                <button class="secondary-button" onclick="openKeyboardSetting()">
+                                    <i class="material-icons">keyboard</i>
+                                    键值设置
+                                </button>
+                            </div>
+                            <div id="keyboard-key-summary" class="keyboard-key-summary"></div>
+                        </div>
+                    </div>
+
                     <!-- 主题切换模块 -->
                     <div class="settings-section">
                         <div class="section-header">
@@ -318,6 +344,10 @@
                             </div>
                         </div>
                         <p class="info frame-hint">选择照片后自动转换并显示</p>
+                        <div class="form-group">
+                            <label for="frameFileName">文件名：</label>
+                            <input type="text" id="frameFileName" value="frame.film">
+                        </div>
                         <button type="button" class="primary-button frame-send-btn" id="frameUploadBtn" disabled>
                             <i class="material-icons">send</i> 发送到设备
                         </button>
@@ -348,6 +378,10 @@
                             </div>
                         </div>
                         <p class="info frame-hint">拍照后自动转换并显示</p>
+                        <div class="form-group">
+                            <label for="frameCameraFileName">文件名：</label>
+                            <input type="text" id="frameCameraFileName" value="camera.film">
+                        </div>
                         <button type="button" class="primary-button frame-send-btn" id="frameCameraUploadBtn" disabled>
                             <i class="material-icons">send</i> 发送到设备
                         </button>
@@ -382,6 +416,10 @@
                             <div class="polaroid-inner">
                                 <canvas id="frame-quote-canvas" width="600" height="400"></canvas>
                             </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="frameQuoteFileName">文件名：</label>
+                            <input type="text" id="frameQuoteFileName" value="quote.film">
                         </div>
                         <button type="button" class="primary-button frame-send-btn" id="frameQuoteUploadBtn">
                             <i class="material-icons">send</i> 发送到设备
@@ -478,7 +516,7 @@
                         </div>
 
                         <button type="button" class="primary-button" onclick="downloadFilmFile()">下载</button>
-                        <button type="button" class="primary-button" id="upload-btn" onclick="uploadToDevice()">蓝牙上传</button>
+                        <button type="button" class="primary-button" id="upload-btn" onclick="uploadToDevice()">发送到设备</button>
 
                         <div id="transfer-container" class="transfer-container" style="display: none;">
                             <div id="transfer-status" class="transfer-status">准备传输...</div>
@@ -515,10 +553,46 @@
         </nav>
     </div>
 
+    <!-- 键值设置弹窗 -->
+    <div id="keyboard-modal" class="kb-modal">
+        <div class="kb-modal-mask" onclick="closeKeyboardSetting()"></div>
+        <div class="kb-modal-panel">
+            <div class="kb-modal-header">
+                <span>键值设置</span>
+                <button class="icon-button" onclick="closeKeyboardSetting()" title="关闭">
+                    <i class="material-icons">close</i>
+                </button>
+            </div>
+            <div class="kb-modal-body">
+                <div id="kb-event-tabs" class="kb-event-tabs">
+                    <button type="button" class="kb-event-tab active" data-event="0" onclick="switchKeyboardEvent(0)">单击</button>
+                    <button type="button" class="kb-event-tab" data-event="1" onclick="switchKeyboardEvent(1)">双击</button>
+                    <button type="button" class="kb-event-tab" data-event="2" onclick="switchKeyboardEvent(2)">长按</button>
+                </div>
+
+                <div class="kb-current">
+                    <span class="kb-current-label">当前键值</span>
+                    <div id="kb-current-chips" class="kb-chips"><span class="kb-chip-empty">未设置</span></div>
+                    <button type="button" class="kb-current-clear" onclick="clearKeyboardSelection()">清空</button>
+                </div>
+
+                <div id="kb-board" class="kb-board"></div>
+
+                <div class="kb-tip">点击下方键盘选择键值：修饰键（Ctrl/Shift/Alt/Win）可多选，普通键最多同时 6 个；再次点击可取消。</div>
+            </div>
+            <div class="kb-modal-footer">
+                <button type="button" class="secondary-button" onclick="readKeyboardSetting()">读取</button>
+                <button type="button" class="primary-button" onclick="saveKeyboardSetting()">保存</button>
+            </div>
+        </div>
+    </div>
+
     <script src="js/utils.js"></script>
     <script src="js/atkinson_enhanced_lut.js"></script>
     <script src="js/sz_enhanced.js"></script>
     <script src="js/bluetooth.js"></script>
+    <script src="js/usb.js"></script>
+    <script src="js/keyboard.js"></script>
     <script src="js/convert.js"></script>
     <script src="js/frame.js"></script>
     <script src="js/main.js"></script>

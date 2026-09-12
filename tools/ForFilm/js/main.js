@@ -69,6 +69,8 @@ function initApp() {
     initStyleSwitcher();
     initNavigation();
     initBluetooth();
+    initUsb();
+    initKeyboardSetting();
     initConvertTool();
 }
 

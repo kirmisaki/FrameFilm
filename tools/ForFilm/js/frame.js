@@ -55,7 +55,7 @@ function initFrameUpload() {
     });
 
     document.getElementById('frameUploadBtn').addEventListener('click', function() {
-        frameUploadToDevice('frame-canvas', 'frame-transfer-');
+        frameUploadToDevice('frame-canvas', 'frame-transfer-', 'frameFileName', 'frame.film');
     });
 }
 
@@ -72,7 +72,7 @@ function initFrameCamera() {
     });
 
     document.getElementById('frameCameraUploadBtn').addEventListener('click', function() {
-        frameUploadToDevice('frame-camera-canvas', 'frame-camera-transfer-');
+        frameUploadToDevice('frame-camera-canvas', 'frame-camera-transfer-', 'frameCameraFileName', 'camera.film');
     });
 }
 
@@ -203,7 +203,7 @@ function frameUpdateImage(canvasId) {
     updateCanvasScale();
 }
 
-function frameUploadToDevice(canvasId, prefix) {
+function frameUploadToDevice(canvasId, prefix, fileNameInputId, defaultFileName) {
     if (typeof device === 'undefined' || !device || !server || !characteristic) {
         showMessage('请先连接设备', 'error');
         return;
@@ -227,7 +227,9 @@ function frameUploadToDevice(canvasId, prefix) {
         fileData.set(header, 0);
         fileData.set(processedData, 32);
 
-        frameUploadViaBle('frame.film', fileData, prefix);
+        var nameInput = fileNameInputId ? document.getElementById(fileNameInputId) : null;
+        var fileName = normalizeFilmFileName(nameInput ? nameInput.value : '', defaultFileName);
+        frameUploadViaBle(fileName, fileData, prefix);
     } catch (error) {
         showMessage('转换失败: ' + error.message, 'error');
     }
@@ -252,7 +254,9 @@ function frameQuoteUploadToDevice() {
         fileData.set(header, 0);
         fileData.set(processedData, 32);
 
-        frameUploadViaBle('quote.film', fileData, 'frame-quote-transfer-');
+        var quoteNameInput = document.getElementById('frameQuoteFileName');
+        var quoteFileName = normalizeFilmFileName(quoteNameInput ? quoteNameInput.value : '', 'quote.film');
+        frameUploadViaBle(quoteFileName, fileData, 'frame-quote-transfer-');
     } catch (error) {
         showMessage('转换失败: ' + error.message, 'error');
     }
