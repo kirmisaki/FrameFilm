@@ -48,8 +48,13 @@ extern "C" {
 //       两者同时开启时组成 HID + UAC 复合设备；仅开键盘时 USB 只枚举出一个 HID 键盘。
 #define SYS_FUNC_KEYBOARD_USB_EN       (0)
 
-// USB 设备栈总开关（声卡或键盘任一开启即需要，置 0 表示完全不使用 USB 设备）
-#define SYS_FUNC_USB_DEV_EN           (SYS_FUNC_AUDIO_USB_EN || SYS_FUNC_KEYBOARD_USB_EN)
+// USB虚拟串口(CDC-ACM)功能开关，供上位机配置设备与传输film文件
+// 置 1：启用；置 0：关闭
+// 说明：与 USB 声卡/键盘开关相互独立，可单独开启，也可组成 HID + UAC + CDC 复合设备。
+#define SYS_FUNC_USB_CDC_EN            (0)
+
+// USB 设备栈总开关（声卡/键盘/虚拟串口任一开启即需要，置 0 表示完全不使用 USB 设备）
+#define SYS_FUNC_USB_DEV_EN           (SYS_FUNC_AUDIO_USB_EN || SYS_FUNC_KEYBOARD_USB_EN || SYS_FUNC_USB_CDC_EN)
 
 /*********************************************************************
 * TYPEDEFS
