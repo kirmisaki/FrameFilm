@@ -45,6 +45,9 @@ DOCK_FILE_SIZE = 32 + (DOCK_WIDTH * DOCK_HEIGHT) // 2  # 215872
 # （与小程序 film-utils.js 的 isPortraitPanel 处理一致）
 ROTATE_DEFAULT = 90
 
+# 本工具内置的 Atkinson 增强（与 ForFilm / 小程序默认算法一致，见 ae_dither.py）
+AE_DITHER = "atkinson_enhanced"
+
 # USB 设备标识（与固件 hal_usb.c 一致）
 ESPRESSIF_VID = 0x303A
 DOCK_PID = 0x8000
@@ -229,6 +232,9 @@ def image_to_film(path, dither="floyd_steinberg", strength=80, contrast=100,
 
     Dock 竖屏使用：先按竖版画布 568x760 裁剪填充，再逆时针旋转 rotate 度，
     得到面板的 760x568 数据（rotate=90 即竖屏正常显示）。
+
+    dither=atkinson_enhanced 走本工具内置的 Atkinson 增强（ae_dither.py），
+    与 ForFilm / 小程序的 atkinsonEnhanced 逐像素一致。
     """
     repo = find_repo_root()
     if repo is None:
@@ -256,6 +262,19 @@ def image_to_film(path, dither="floyd_steinberg", strength=80, contrast=100,
     if transpose is not None:
         img = img.transpose(transpose)
 
+    if dither == AE_DITHER:
+        from ae_dither import load_lut, quantize
+        from app.services.film_convert import (COLOR_TABLE, adjust_image, apply_saturation,
+                                               build_film)
+
+        correction, selection = load_lut(repo)
+        if correction is None:
+            print("提示: 未找到 Atkinson 增强 LUT（tools/ForFilm/js/atkinson_enhanced_lut.js），"
+                  "蓝/青区域回退 CIELAB 选色。")
+        img = apply_saturation(adjust_image(img, contrast, brightness), saturation)
+        indices = quantize(img.tobytes(), DOCK_WIDTH, DOCK_HEIGHT, correction, selection)
+        return build_film(indices, DOCK_WIDTH, DOCK_HEIGHT, COLOR_TABLE)
+
     film, _preview = convert_image(
         img, DOCK_WIDTH, DOCK_HEIGHT,
         {
@@ -282,8 +301,10 @@ def main():
     ap.add_argument("--name", help="设备上的文件名，默认取图片名并补 .film")
     ap.add_argument("--dither", default="floyd_steinberg",
                     choices=["none", "floyd_steinberg", "atkinson", "stucki", "jarvis",
-                             "bayer", "gamma_floyd_steinberg", "adaptive", "smart_adaptive"],
-                    help="抖动算法")
+                             "bayer", "gamma_floyd_steinberg", "adaptive", "smart_adaptive",
+                             AE_DITHER],
+                    help="抖动算法（%s = 本工具内置的 Atkinson 增强，六色专用，无强度参数）"
+                         % AE_DITHER)
     ap.add_argument("--strength", type=int, default=80, help="抖动强度 0-200")
     ap.add_argument("--contrast", type=int, default=100, help="对比度 0-200")
     ap.add_argument("--brightness", type=int, default=0, help="亮度 -100~100")
@@ -299,6 +320,8 @@ def main():
 
     if not args.list and not args.image and not args.film:
         ap.error("请给出要上传的图片，或用 --film 指定 .film，或用 --list 列出设备文件")
+    if args.bw and args.dither == AE_DITHER:
+        ap.error("%s 是六色算法，不能与 --bw 同用" % AE_DITHER)
 
     ser = open_port(args.port)
     print("串口已打开: %s" % ser.port)
@@ -333,6 +356,9 @@ def main():
         else:
             filename = args.name or (os.path.splitext(os.path.basename(args.image))[0] + ".film")
             print("转换图片: %s (dither=%s, rotate=%d)" % (args.image, args.dither, args.rotate))
+            if args.dither == AE_DITHER and args.strength != 80:
+                print("提示: %s 的强度由算法内部固定，--strength %d 已忽略。"
+                      % (AE_DITHER, args.strength))
             film = image_to_film(
                 args.image,
                 dither=args.dither,

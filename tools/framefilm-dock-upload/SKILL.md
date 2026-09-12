@@ -40,6 +40,9 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py photo.jpg
 # 指定串口 / 指定设备上的文件名 / 换抖动算法
 python tools/framefilm-dock-upload/scripts/dock_upload.py photo.jpg --port COM7 --name holiday.film --dither atkinson
 
+# Atkinson 增强（与 ForFilm / 小程序默认算法一致，观感最好）
+python tools/framefilm-dock-upload/scripts/dock_upload.py photo.jpg --dither atkinson_enhanced
+
 # 只列出设备上已有的文件
 python tools/framefilm-dock-upload/scripts/dock_upload.py --list
 
@@ -59,7 +62,7 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py photo.jpg --bw        
 | `--film` | 直接上传现成 `.film`，跳过转换（不做旋转） | — |
 | `--port` | 串口号；不填则按 VID=0x303A / PID=0x8000 自动查找 | 自动 |
 | `--name` | 设备上的文件名，自动补 `.film` 后缀 | 图片名 |
-| `--dither` | 抖动算法：`floyd_steinberg`/`atkinson`/`stucki`/`jarvis`/`bayer`/`gamma_floyd_steinberg`/`adaptive`/`smart_adaptive`/`none` | `floyd_steinberg` |
+| `--dither` | 抖动算法：`floyd_steinberg`/`atkinson`/`atkinson_enhanced`/`stucki`/`jarvis`/`bayer`/`gamma_floyd_steinberg`/`adaptive`/`smart_adaptive`/`none` | `floyd_steinberg` |
 | `--strength` | 抖动强度 0-200 | 80 |
 | `--contrast` / `--brightness` / `--saturation` | 画面调整 | 100 / 0 / 100 |
 | `--bw` | 黑白（2 色）模式 | 关 |
@@ -97,3 +100,4 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py photo.jpg --bw        
 - 方向：Dock 面板物理横置、产品竖屏使用，出图先把图片按 568×760 竖版画布裁剪填充，再逆时针旋转 90° 得到 760×568 面板数据（`--rotate`，对齐小程序 `film-utils.js` 的 `isPortraitPanel` 处理）。
 - 文件列表 `0x06` 会按设备上每个文件回一帧：`id(1) + nameLen(1) + name(nameLen)`，帧之间有约 50ms 间隔。
 - 必须限速：dock 侧接收队列有限（CDC FIFO + 两级任务队列），全速灌数据会丢包导致文件损坏。
+- Atkinson 增强：实现在本工具侧 `scripts/ae_dither.py`（不依赖服务端算法实现），与 ForFilm `convert.js` 的 `atkinsonEnhancedQuantize` / 小程序 `dither-advanced.js` 逐像素一致——CIELAB 加权选色 + 蓝/青区双 LUT 查表 + 墨水屏校准色残差 + Atkinson 六邻域 1/8 扩散；LUT 数据（786432 B 修正表 + 262144 B 选色表）直接复用仓库里的 `tools/ForFilm/js/atkinson_enhanced_lut.js`，取不到时退化到纯 CIELAB 选色。六色专用，与 `--bw` 互斥，忽略 `--strength`。
