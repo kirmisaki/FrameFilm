@@ -1,0 +1,1735 @@
+// 蓝牙功能实现
+let device = null;
+let server = null;
+let service = null;
+let characteristic = null;
+let deviceBatteryLevel = 0; // 设备电量，0-100
+
+function debugLog(message, type = 'info') {
+    console.log(message);
+    const debugEl = document.getElementById('debug-log');
+    if (debugEl) {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry ' + type;
+        entry.textContent = new Date().toLocaleTimeString() + ' ' + message;
+        debugEl.appendChild(entry);
+        debugEl.scrollTop = debugEl.scrollHeight;
+    }
+}
+
+function toggleDebugLog() {
+    const debugEl = document.getElementById('debug-log');
+    if (debugEl) {
+        debugEl.classList.toggle('show');
+    }
+}
+
+const BLE_SERVICE_UUID = '00002000-0000-1000-8000-00805f9b34fb';
+const BLE_CHARACTERISTIC_UUID = '00002001-0000-1000-8000-00805f9b34fb';
+
+const BLE_CMD_HEAD = 0x55;
+
+const BLE_FILM_TRANS_CH_FILE_START = 0x03;
+const BLE_FILM_TRANS_CH_FILE_NAME = 0x00;
+const BLE_FILM_TRANS_CH_FILE_LEN = 0x01;
+const BLE_FILM_TRANS_CH_FILE_DATA = 0x02;
+const BLE_FILM_TRANS_CH_FILE_STOP = 0x04;
+const BLE_FILM_TRANS_CH_FILE_DELETE = 0x05;
+const BLE_FILM_TRANS_CH_FILE_LIST = 0x06;
+const BLE_FILM_TRANS_CH_FILE_DISPLAY = 0x07;
+const BLE_FILM_TRANS_CH_FILE_DISPLAY_GET = 0x08;
+
+const BLE_FILM_TRANS_CH_OTA_LEN = 0x10;
+const BLE_FILM_TRANS_CH_OTA_DATA = 0x11;
+const BLE_FILM_TRANS_CH_OTA_START = 0x12;
+const BLE_FILM_TRANS_CH_OTA_STOP = 0x13;
+
+const BLE_FILM_TRANS_CH_CTRL_MODE = 0x20;
+const BLE_FILM_TRANS_CH_CTRL_MODE_GET = 0x21;
+const BLE_FILM_TRANS_CH_CTRL_RESET = 0x22;
+const BLE_FILM_TRANS_CH_CTRL_PWRREAD = 0x23;
+const BLE_FILM_TRANS_CH_CTRL_REBOOT = 0x24;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF = 0x25;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET = 0x26;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE = 0x27;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET = 0x28;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME = 0x29;
+const BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET = 0x2A;
+const BLE_FILM_TRANS_CH_CTRL_SDRESET = 0x2B;
+
+const BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE = 0x30;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET = 0x31;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_SSID = 0x32;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET = 0x33;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD = 0x34;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET = 0x35;
+const BLE_FILM_TRANS_CH_CTRL_FILM_API_URL = 0x36;
+const BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET = 0x37;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT = 0x38;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_DISCONNECT = 0x39;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET = 0x3A;
+const BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR = 0x3B;
+const BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD = 0x3C;
+const BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE = 0x3D;
+const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL = 0x3E;
+const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_URL_GET = 0x3F;
+const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL = 0x40;
+const BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET = 0x41;
+const BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET = 0x42;
+const BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_SET = 0x43;
+const BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET = 0x44;
+
+const BLE_CMD_LEN_MIN = 4;
+
+const BLE_FILM_TRANS_STATE_IDLE = 0;
+const BLE_FILM_TRANS_STATE_STARTED = 1;
+const BLE_FILM_TRANS_STATE_RECV_NAME = 2;
+const BLE_FILM_TRANS_STATE_RECV_LEN = 3;
+const BLE_FILM_TRANS_STATE_RECV_DATA = 4;
+const BLE_FILM_TRANS_STATE_STOPPED = 5;
+
+const BLE_OTA_TRANS_STATE_IDLE = 0;
+const BLE_OTA_TRANS_STATE_STARTED = 1;
+const BLE_OTA_TRANS_STATE_RECV_LEN = 2;
+const BLE_OTA_TRANS_STATE_RECV_DATA = 3;
+const BLE_OTA_TRANS_STATE_STOPPED = 4;
+
+const BLE_CHUNK_SIZE = 192;
+const BLE_CTRL_DELAY = 50;
+const BLE_DATA_DELAY = 2;
+
+let filmTransState = BLE_FILM_TRANS_STATE_IDLE;
+let filmTransFileName = '';
+let filmTransFileSize = 0;
+let filmTransSentBytes = 0;
+
+let otaTransState = BLE_OTA_TRANS_STATE_IDLE;
+let otaTransFileSize = 0;
+let otaTransSentBytes = 0;
+
+let bleCmdQueue = [];
+
+async function queueBleCmd(fn) {
+    bleCmdQueue.push(fn);
+    if (bleCmdQueue.length === 1) {
+        processQueue();
+    }
+}
+
+async function processQueue() {
+    while (bleCmdQueue.length > 0) {
+        const fn = bleCmdQueue[0];
+        try {
+            await fn();
+        } catch (err) {
+            console.error('BLE命令错误:', err);
+        }
+        bleCmdQueue.shift();
+    }
+}
+
+// 连接成功后的统一初始化流程（蓝牙 / USB 共用）
+// 依赖调用方已把 device/server/characteristic 准备好
+async function onDeviceConnected(deviceName) {
+    // 根据设备名称检测设备类型（USB 无名称时，随后会由屏幕参数查询纠正）
+    var upperName = (deviceName || '').toUpperCase();
+    if (upperName.indexOf('MAX') !== -1) {
+        setDeviceType('FRAMEFILMMAX');
+    } else if (upperName.indexOf('PRO') !== -1) {
+        setDeviceType('FRAMEFILMPRO');
+    } else if (upperName.indexOf('DOCK') !== -1) {
+        setDeviceType('FRAMEFILMDOCK');
+    } else {
+        setDeviceType('FRAMEFILM');
+    }
+    var devCfg = getDeviceConfig();
+
+    const status = document.getElementById('connection-status');
+    const deviceList = document.getElementById('device-list');
+
+    if (status) {
+        status.textContent = '已连接 - ' + devCfg.displayName;
+        status.className = 'status connected';
+    }
+
+    if (deviceList) {
+        deviceList.innerHTML = '<div class="device-item connected-device"><div class="device-info"><strong>' + (deviceName || '已连接设备') + '</strong><p class="device-id">' + devCfg.displayName + ' | ' + devCfg.screenWidth + 'x' + devCfg.screenHeight + '</p></div><button class="disconnect-btn" onclick="disconnectDevice()">断开</button></div>';
+    }
+
+    if (device && device.addEventListener) {
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+    }
+    console.log('设备已连接:', deviceName);
+
+    setupBluetoothListener();
+    window.fileListBuffer = [];
+    bleCmdQueue = [];
+
+    setTimeout(() => {
+        debugLog('开始发送初始化命令...');
+        sendBleScreenResolutionGet();
+        sendBlePwrRead();
+    }, 1000);
+
+    setTimeout(() => {
+        sendBleFileList();
+    }, 2000);
+
+    setTimeout(() => {
+        sendBleFileDisplayGet();
+    }, 3000);
+
+    setTimeout(() => {
+        sendBleModeGet();
+    }, 3500);
+
+    setTimeout(() => {
+        sendBleSleepOnOffGet();
+    }, 4000);
+
+    setTimeout(() => {
+        sendBleSleepModeGet();
+    }, 4500);
+
+    setTimeout(() => {
+        sendBleSleepTimeGet();
+    }, 5000);
+
+    setTimeout(() => {
+        queryWifiConfig();
+    }, 5500);
+
+    setTimeout(() => {
+        // 键值查询仅支持机型（底座）需要
+        if (getDeviceConfig().hasKeyboard) {
+            sendBleKeyboardKeyGet().catch(err => debugLog('查询键值失败: ' + err.message, 'error'));
+        }
+    }, 5800);
+
+    // 显示网络配置面板（默认折叠，wifi使能后自动展开）
+    var netSection = document.getElementById('network-section');
+    if (netSection) netSection.style.display = 'block';
+    collapseNetworkSection();
+}
+
+function initBluetooth() {
+    const scanButton = document.getElementById('scan-button');
+    if (!scanButton) return;
+
+    scanButton.addEventListener('click', async function() {
+        const deviceList = document.getElementById('device-list');
+        const status = document.getElementById('connection-status');
+
+        try {
+            if (!navigator.bluetooth) {
+                status.textContent = '浏览器不支持蓝牙';
+                return;
+            }
+
+            status.textContent = '正在扫描...';
+            deviceList.innerHTML = '<div class="scanning-indicator"><span class="pulse"></span>扫描中...</div>';
+
+            device = await navigator.bluetooth.requestDevice({
+                filters: [{ namePrefix: 'FRAMEFILM' }],
+                optionalServices: [BLE_SERVICE_UUID]
+            });
+
+            if (device.gatt.connected) {
+                device.gatt.disconnect();
+            }
+
+            server = await device.gatt.connect();
+            service = await server.getPrimaryService(BLE_SERVICE_UUID);
+            characteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
+
+            await onDeviceConnected(device.name || '');
+
+        } catch (error) {
+            console.error('连接错误:', error);
+            status.textContent = '连接失败: ' + error.message;
+            status.className = 'status';
+            deviceList.innerHTML = '<div class="no-devices">连接已取消或失败</div>';
+        }
+    });
+}
+
+function onDisconnected(event) {
+    filmTransState = BLE_FILM_TRANS_STATE_IDLE;
+    setDeviceType('FRAMEFILM');
+    var status = document.getElementById('connection-status');
+    if (status) {
+        status.textContent = '设备已断开';
+        status.className = 'status';
+    }
+    var deviceList = document.getElementById('device-list');
+    if (deviceList) {
+        deviceList.innerHTML = '<div class="no-devices">设备已断开连接</div>';
+    }
+    var netSection = document.getElementById('network-section');
+    if (netSection) netSection.style.display = 'none';
+}
+
+async function disconnectDevice() {
+    filmTransState = BLE_FILM_TRANS_STATE_IDLE;
+    if (device && device.gatt && device.gatt.connected) {
+        device.gatt.disconnect();
+        const status = document.getElementById('connection-status');
+        if (status) {
+            status.textContent = '未连接';
+            status.className = 'status';
+        }
+        const deviceList = document.getElementById('device-list');
+        if (deviceList) {
+            deviceList.innerHTML = '<div class="no-devices">已断开连接</div>';
+        }
+        var netSection = document.getElementById('network-section');
+        if (netSection) netSection.style.display = 'none';
+    }
+}
+
+async function sendDataViaBluetooth(data) {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+    if (!characteristic.properties.write) {
+        throw new Error('特征值不支持写入操作');
+    }
+    const chunkSize = 512;
+    for (let i = 0; i < data.length; i += chunkSize) {
+        await characteristic.writeValue(data.slice(i, i + chunkSize));
+    }
+    return true;
+}
+
+function uploadToDevice() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+
+    if (!originalImage) {
+        showMessage('请先上传图片', 'error');
+        return;
+    }
+
+    try {
+        var canvas = document.getElementById('canvas');
+        var canvasWidth = getCanvasWidth();
+        var canvasHeight = getCanvasHeight();
+        var ctx = canvas.getContext('2d');
+        var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        window.processedDataForDownload = processImageData(imageData);
+    } catch (error) {
+        showMessage('转换失败: ' + error.message, 'error');
+        return;
+    }
+
+    var fileName = normalizeFilmFileName(document.getElementById('fileName').value, 'output.film');
+    var pixelData = window.processedDataForDownload;
+
+    // 生成文件头并合并
+    var header = generateFilmHeader();
+    var totalSize = getFilmFileTotalSize();
+    var headerSize = 32;
+    var fileData = new Uint8Array(totalSize);
+    fileData.set(header, 0);
+    fileData.set(pixelData, headerSize);
+
+    uploadFilmFileViaBle(fileName, fileData);
+}
+
+async function uploadFilmFileViaBle(fileName, fileData) {
+    var expectedSize = getFilmFileTotalSize();
+
+    if (fileData.length !== expectedSize) {
+        showMessage(`文件大小不符合要求(应为${expectedSize}字节)`, 'error');
+        return;
+    }
+
+    const transferContainer = document.getElementById('transfer-container');
+    if (transferContainer) {
+        transferContainer.style.display = 'block';
+    }
+
+    try {
+        updateTransferStatus('准备传输...', 0);
+
+        filmTransState = BLE_FILM_TRANS_STATE_STARTED;
+        filmTransFileName = fileName;
+        filmTransFileSize = fileData.length;
+        filmTransSentBytes = 0;
+
+        await sendBleFileStart();
+
+        await sendBleFileName(fileName);
+
+        await sendBleFileLen(fileData.length);
+
+        const chunkSize = BLE_CHUNK_SIZE;
+        let sentBytes = 0;
+        for (let i = 0; i < fileData.length; i += chunkSize) {
+            const chunk = fileData.slice(i, i + chunkSize);
+            await sendBleFileData(chunk);
+            sentBytes += chunk.length;
+            filmTransSentBytes = sentBytes;
+
+            const progress = Math.round((sentBytes / fileData.length) * 100);
+            updateTransferStatus(`传输中: ${sentBytes}/${fileData.length} 字节`, progress);
+
+            await delay(BLE_DATA_DELAY);
+        }
+
+        await sendBleFileStop();
+
+        filmTransState = BLE_FILM_TRANS_STATE_STOPPED;
+        updateTransferStatus('传输完成', 100);
+        showMessage('文件传输成功!', 'success');
+
+    } catch (error) {
+        console.error('传输失败:', error);
+        filmTransState = BLE_FILM_TRANS_STATE_IDLE;
+        updateTransferStatus('传输失败', 0);
+        showMessage('传输失败: ' + error.message, 'error');
+    }
+}
+
+function calculateChecksum(data, len) {
+    let sum = 0;
+    for (let i = 0; i < len; i++) {
+        sum += data[i];
+    }
+    return sum & 0xFF;
+}
+
+async function sendBleFileStart() {
+    const packet = new Uint8Array(4);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_FILE_START;
+    packet[2] = 0;
+    packet[3] = calculateChecksum(packet, 3);
+
+    await characteristic.writeValue(packet);
+    console.log('发送 FILE_START');
+    await delay(BLE_CTRL_DELAY);
+}
+
+async function sendBleFileName(fileName) {
+    const nameBytes = new TextEncoder().encode(fileName);
+    const packet = new Uint8Array(4 + nameBytes.length);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_FILE_NAME;
+    packet[2] = nameBytes.length;
+    packet.set(nameBytes, 3);
+    packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+
+    await characteristic.writeValue(packet);
+    console.log('发送 FILE_NAME:', fileName);
+    await delay(BLE_CTRL_DELAY);
+}
+
+async function sendBleFileLen(fileSize) {
+    const packet = new Uint8Array(8);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_FILE_LEN;
+    packet[2] = 4;
+    packet[3] = (fileSize >> 24) & 0xFF;
+    packet[4] = (fileSize >> 16) & 0xFF;
+    packet[5] = (fileSize >> 8) & 0xFF;
+    packet[6] = fileSize & 0xFF;
+    packet[7] = calculateChecksum(packet, 7);
+
+    await characteristic.writeValue(packet);
+    console.log('发送 FILE_LEN:', fileSize);
+    await delay(BLE_CTRL_DELAY);
+}
+
+async function sendBleFileData(data) {
+    const packet = new Uint8Array(4 + data.length);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_FILE_DATA;
+    packet[2] = data.length;
+    packet.set(data, 3);
+    packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+
+    await characteristic.writeValue(packet);
+    await delay(BLE_DATA_DELAY);
+}
+
+async function sendBleFileStop(silent) {
+    // silent=true 时带静默 flag（55 04 01 01 SUM），设备保存后不自动加载显示
+    const len = silent ? 1 : 0;
+    const packet = new Uint8Array(4 + len);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_FILE_STOP;
+    packet[2] = len;
+    if (silent) packet[3] = 0x01;
+    packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+
+    await characteristic.writeValue(packet);
+    console.log('发送 FILE_STOP');
+    await delay(BLE_CTRL_DELAY);
+}
+
+function updateTransferStatus(message, progress) {
+    const statusEl = document.getElementById('transfer-status');
+    const progressEl = document.getElementById('transfer-progress');
+    const progressBarEl = document.getElementById('transfer-progress-bar');
+
+    if (statusEl) {
+        statusEl.textContent = message;
+    }
+
+    if (progressBarEl) {
+        progressBarEl.style.width = progress + '%';
+    }
+
+    if (progressEl) {
+        progressEl.textContent = progress + '%';
+    }
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function checkBluetoothStatus() {
+    const status = document.getElementById('connection-status');
+    if (status && device && device.gatt && device.gatt.connected) {
+        status.textContent = '已连接';
+        status.className = 'status connected';
+    }
+}
+
+setInterval(checkBluetoothStatus, 5000);
+
+async function sendBleOtaStart() {
+    const packet = new Uint8Array(4);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_OTA_START;
+    packet[2] = 0;
+    packet[3] = calculateChecksum(packet, 3);
+
+    await characteristic.writeValue(packet);
+    console.log('发送 OTA_START');
+    await delay(BLE_CTRL_DELAY);
+}
+
+async function sendBleOtaLen(fileSize) {
+    const packet = new Uint8Array(8);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_OTA_LEN;
+    packet[2] = 4;
+    packet[3] = (fileSize >> 24) & 0xFF;
+    packet[4] = (fileSize >> 16) & 0xFF;
+    packet[5] = (fileSize >> 8) & 0xFF;
+    packet[6] = fileSize & 0xFF;
+    packet[7] = calculateChecksum(packet, 7);
+
+    await characteristic.writeValue(packet);
+    console.log('发送 OTA_LEN:', fileSize);
+    await delay(BLE_CTRL_DELAY);
+}
+
+async function sendBleOtaData(data) {
+    const packet = new Uint8Array(4 + data.length);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_OTA_DATA;
+    packet[2] = data.length;
+    packet.set(data, 3);
+    packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+
+    await characteristic.writeValue(packet);
+    await delay(BLE_DATA_DELAY);
+}
+
+async function sendBleOtaStop() {
+    const packet = new Uint8Array(4);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_OTA_STOP;
+    packet[2] = 0;
+    packet[3] = calculateChecksum(packet, 3);
+
+    await characteristic.writeValue(packet);
+    console.log('发送 OTA_STOP');
+    await delay(BLE_CTRL_DELAY);
+}
+
+function updateOtaTransferStatus(message, progress) {
+    const statusEl = document.getElementById('ota-transfer-status');
+    const progressEl = document.getElementById('ota-transfer-progress');
+    const progressBarEl = document.getElementById('ota-transfer-progress-bar');
+
+    if (statusEl) {
+        statusEl.textContent = message;
+    }
+
+    if (progressBarEl) {
+        progressBarEl.style.width = progress + '%';
+    }
+
+    if (progressEl) {
+        progressEl.textContent = progress + '%';
+    }
+}
+
+async function uploadOtaFileViaBle(fileData) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+
+    const transferContainer = document.getElementById('ota-transfer-container');
+    if (transferContainer) {
+        transferContainer.style.display = 'block';
+    }
+
+    try {
+        updateOtaTransferStatus('准备传输...', 0);
+
+        otaTransState = BLE_OTA_TRANS_STATE_STARTED;
+        otaTransFileSize = fileData.length;
+        otaTransSentBytes = 0;
+
+        await sendBleOtaLen(fileData.length);
+
+        await delay(50);
+
+        const chunkSize = BLE_CHUNK_SIZE;
+        let sentBytes = 0;
+        for (let i = 0; i < fileData.length; i += chunkSize) {
+            const chunk = fileData.slice(i, i + chunkSize);
+            await sendBleOtaData(chunk);
+            sentBytes += chunk.length;
+            otaTransSentBytes = sentBytes;
+
+            const progress = Math.round((sentBytes / fileData.length) * 100);
+            updateOtaTransferStatus(`传输中: ${sentBytes}/${fileData.length} 字节`, progress);
+
+            await delay(BLE_DATA_DELAY);
+        }
+
+        await sendBleOtaStop();
+
+        otaTransState = BLE_OTA_TRANS_STATE_STOPPED;
+        updateOtaTransferStatus('传输完成', 100);
+        showMessage('OTA升级文件传输成功!', 'success');
+
+    } catch (error) {
+        console.error('OTA传输失败:', error);
+        otaTransState = BLE_OTA_TRANS_STATE_IDLE;
+        updateOtaTransferStatus('传输失败', 0);
+        showMessage('OTA传输失败: ' + error.message, 'error');
+    }
+}
+
+function selectOtaFile() {
+    const fileInput = document.getElementById('ota-file-input');
+    if (fileInput) {
+        fileInput.click();
+    }
+}
+
+function handleOtaFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const arrayBuffer = e.target.result;
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        const sizeInfo = document.getElementById('ota-file-size');
+        if (sizeInfo) {
+            sizeInfo.textContent = `文件大小: ${uint8Array.length} 字节`;
+        }
+
+        window.selectedOtaData = uint8Array;
+
+        event.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function startOtaUpgrade() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+
+    if (!window.selectedOtaData) {
+        showMessage('请先选择OTA升级文件', 'error');
+        return;
+    }
+
+    uploadOtaFileViaBle(window.selectedOtaData);
+}
+
+async function sendBleCmd(cmdType, data = null) {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+
+    debugLog('sendBleCmd: cmd=' + cmdType.toString(16) + ', data=' + data);
+
+    return queueBleCmd(async () => {
+        let packet;
+        if (data === null) {
+            packet = new Uint8Array(4);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = cmdType;
+            packet[2] = 0;
+            packet[3] = calculateChecksum(packet, 3);
+        } else {
+            packet = new Uint8Array(5);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = cmdType;
+            packet[2] = 1;
+            packet[3] = data;
+            packet[4] = calculateChecksum(packet, 4);
+        }
+
+        debugLog('发送数据包: ' + Array.from(packet).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+        try {
+            await characteristic.writeValue(packet);
+            debugLog('BLE写入成功', 'success');
+        } catch (err) {
+            debugLog('BLE写入失败: ' + err.message, 'error');
+            throw err;
+        }
+
+        console.log('发送命令:', cmdType.toString(16), data !== null ? '数据:' + data : '');
+        await delay(BLE_CTRL_DELAY);
+    });
+}
+
+async function sendBleReboot() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_REBOOT);
+    showMessage('重启命令已发送', 'success');
+}
+
+async function sendBleReset() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    if (!confirm('确定要重置设备吗？设备将恢复出厂设置并重启。')) {
+        return;
+    }
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_RESET);
+    showMessage('重置命令已发送，设备将重启', 'success');
+}
+
+async function sendBleSdReset() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    if (!confirm('确定要格式化SD卡吗？此操作将清除SD卡上所有数据。')) {
+        return;
+    }
+    if (!confirm('再次确认：格式化后SD卡所有数据将永久丢失，确定继续吗？')) {
+        return;
+    }
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SDRESET);
+    showMessage('格式化命令已发送，设备将重启', 'success');
+}
+
+async function sendBlePwrRead() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        debugLog('电量读取失败: 未连接设备', 'error');
+        return null;
+    }
+    try {
+        debugLog('发送电量读取命令...');
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_PWRREAD);
+        debugLog('电量读取命令已发送', 'success');
+        return true;
+    } catch (error) {
+        showMessage('发送电量读取命令失败', 'error');
+        debugLog('电量读取失败: ' + error.message, 'error');
+        return null;
+    }
+}
+
+async function sendBleScreenResolutionGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET);
+    } catch (error) {
+        debugLog('查询屏幕参数失败: ' + error.message, 'error');
+    }
+}
+
+// 设置设备按键（单击/双击/长按）的 HID 键值
+// 数据：事件(1) + 修饰键(1) + 键数(1) + 键码(n)
+async function sendBleKeyboardKeySet(event, modifier, keycodes) {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+
+    const keys = keycodes || [];
+    const packet = new Uint8Array(7 + keys.length);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_SET;
+    packet[2] = 3 + keys.length;
+    packet[3] = event & 0xFF;
+    packet[4] = modifier & 0xFF;
+    packet[5] = keys.length;
+    for (let i = 0; i < keys.length; i++) {
+        packet[6 + i] = keys[i] & 0xFF;
+    }
+    packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+
+    debugLog('设置键值: event=' + event + ' modifier=0x' + (modifier & 0xFF).toString(16) + ' keys=' + keys.length);
+    await characteristic.writeValue(packet);
+    await delay(BLE_CTRL_DELAY);
+}
+
+// 查询设备按键键值（不带参数返回单击/双击/长按三组）
+async function sendBleKeyboardKeyGet() {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+
+    const packet = new Uint8Array(4);
+    packet[0] = BLE_CMD_HEAD;
+    packet[1] = BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET;
+    packet[2] = 0;
+    packet[3] = calculateChecksum(packet, 3);
+
+    await characteristic.writeValue(packet);
+    await delay(BLE_CTRL_DELAY);
+}
+
+async function sendBleSleepSet(onoff) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF, onoff ? 1 : 0);
+        showMessage(onoff ? '休眠模式已开启' : '休眠模式已关闭', 'success');
+    } catch (error) {
+        showMessage('发送休眠设置命令失败', 'error');
+    }
+}
+
+async function sendBleSleepModeSet(mode) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPMODE, mode ? 1 : 0);
+        showMessage(mode ? '自动唤醒已开启' : '自动唤醒已关闭', 'success');
+    } catch (error) {
+        showMessage('发送自动唤醒设置命令失败', 'error');
+    }
+}
+
+async function sendBleSleepTimeSet(timeMinutes) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    try {
+        const packet = new Uint8Array(6);
+        packet[0] = BLE_CMD_HEAD;
+        packet[1] = BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME;
+        packet[2] = 2;
+        packet[3] = (timeMinutes >> 8) & 0xFF;
+        packet[4] = timeMinutes & 0xFF;
+        packet[5] = calculateChecksum(packet, 5);
+
+        await characteristic.writeValue(packet);
+        debugLog('发送唤醒时间设置: ' + timeMinutes + ' min', 'success');
+        showMessage('唤醒时间已设置: ' + formatDuration(timeMinutes), 'success');
+    } catch (error) {
+        debugLog('发送唤醒时间设置命令失败: ' + error.message, 'error');
+        showMessage('发送唤醒时间设置命令失败', 'error');
+    }
+}
+
+async function sendBleSleepOnOffGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET);
+    } catch (error) {
+        debugLog('查询休眠开关失败: ' + error.message, 'error');
+    }
+}
+
+async function sendBleSleepModeGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET);
+    } catch (error) {
+        debugLog('查询自动唤醒开关失败: ' + error.message, 'error');
+    }
+}
+
+async function sendBleSleepTimeGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET);
+    } catch (error) {
+        debugLog('查询唤醒时间失败: ' + error.message, 'error');
+    }
+}
+
+async function sendBleModeGet() {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return null;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_MODE_GET);
+        return true;
+    } catch (error) {
+        showMessage('发送模式查询命令失败', 'error');
+        return null;
+    }
+}
+
+async function sendBleModeSet(mode) {
+    if (!device || !server || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_MODE, mode);
+        const names = {0: '关闭', 1: '本地轮播', 2: 'WiFi轮播'};
+        showMessage('已切换到' + (names[mode] || '未知') + '模式', 'success');
+    } catch (error) {
+        showMessage('发送模式设置命令失败', 'error');
+    }
+}
+
+async function sendBleModeGet() {
+    if (!device || !server || !characteristic) {
+        return;
+    }
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_MODE_GET);
+    } catch (error) {
+        console.error('查询模式失败:', error);
+    }
+}
+
+function updatePhotoModeDisplay(mode) {
+    document.querySelectorAll('.mode-button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    var modeMap = {0: 'manual', 1: 'auto', 2: 'wifi'};
+    var modeStr = modeMap[mode] || 'manual';
+    var activeBtn = document.querySelector('.mode-button[data-mode="' + modeStr + '"]');
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+    }
+}
+
+function setPhotoMode(mode) {
+    var modeMap = { manual: 0, auto: 1, wifi: 2 };
+    var modeValue = modeMap[mode] || 0;
+
+    // 如果选择WiFi轮播但WiFi未启用，不允许
+    if (modeValue === 2 && !document.getElementById('wifi-enable-switch').checked) {
+        showMessage('请先启用WiFi', 'error');
+        return;
+    }
+
+    sendBleModeSet(modeValue);
+}
+
+function setupBluetoothListener() {
+    if (!characteristic) return;
+
+    characteristic.addEventListener('characteristicvaluechanged', function(event) {
+        const value = event.target.value;
+        if (!value || value.byteLength < 4) return;
+
+        const data = new Uint8Array(value.buffer);
+        console.log('收到蓝牙数据:', Array.from(data).map(b => b.toString(16)).join(' '));
+
+        const cmdType = data[1];
+        const cmdLen = data[2];
+
+        if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_PWRREAD && cmdLen === 1) {
+            const batteryLevel = data[3];
+            updateBatteryDisplay(batteryLevel);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_MODE_GET && cmdLen === 1) {
+            const mode = data[3];
+            updatePhotoModeDisplay(mode);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_LIST && cmdLen >= 2) {
+            const fileId = data[3];
+            const nameLen = data[4];
+
+            if (nameLen > 0 && nameLen < 64 && 5 + nameLen <= data.length) {
+                const filenameBytes = data.slice(5, 5 + nameLen);
+                const filename = String.fromCharCode.apply(null, filenameBytes).replace(/\0.*$/, '');
+
+                console.log('FILE_LIST: id=' + fileId + ', name="' + filename + '"');
+
+                if (window.fileListBuffer === undefined) {
+                    window.fileListBuffer = [];
+                }
+                window.fileListBuffer.push({ id: fileId, filename: filename });
+
+                updateFileListDisplay(window.fileListBuffer);
+            }
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_DISPLAY_GET && cmdLen === 1) {
+            const currentId = data[3];
+            updateCurrentDisplayId(currentId);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET && cmdLen === 1) {
+            const onoff = data[3];
+            updateSleepSwitchDisplay(onoff);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_GET && cmdLen === 1) {
+            const mode = data[3];
+            updateAutoWakeSwitchDisplay(mode);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SLEEPMODE_TIME_GET && cmdLen === 2) {
+            const timeMinutes = (data[3] << 8) | data[4];
+            updateWakeDurationDisplay(timeMinutes);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET && cmdLen === 5) {
+            const panelId = data[3];
+            const width = (data[4] << 8) | data[5];
+            const height = (data[6] << 8) | data[7];
+            applyScreenParams(panelId, width, height);
+            debugLog('屏幕参数: panel_id=0x' + panelId.toString(16) + ', ' + width + 'x' + height);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET && cmdLen >= 8) {
+            // 每组：修饰键(1) + 键数(1) + 键码(6)，共 8 字节
+            var keyGroups = [];
+            for (var kp = 3; kp + 8 <= 3 + cmdLen; kp += 8) {
+                var keyNum = data[kp + 1];
+                keyGroups.push({
+                    modifier: data[kp],
+                    keycodes: Array.prototype.slice.call(data, kp + 2, kp + 2 + keyNum)
+                });
+            }
+            debugLog('键值: ' + keyGroups.length + ' 组');
+            if (typeof onKeyboardKeyReceived === 'function') {
+                onKeyboardKeyReceived(keyGroups);
+            }
+        }
+        // WiFi 通知处理
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET && cmdLen === 1) {
+            const enable = data[3];
+            const sw = document.getElementById('wifi-enable-switch');
+            if (sw) sw.checked = (enable === 1);
+            updateWifiModeButton(enable === 1);
+            if (enable === 0) collapseNetworkSection();
+            else expandNetworkSection(); // 使能时展开
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET) {
+            const ssid = String.fromCharCode.apply(null, data.slice(3, 3 + cmdLen)).replace(/\0.*$/, '');
+            const el = document.getElementById('wifi-ssid-input');
+            if (el) el.value = ssid;
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET) {
+            const pwd = String.fromCharCode.apply(null, data.slice(3, 3 + cmdLen)).replace(/\0.*$/, '');
+            const el = document.getElementById('wifi-password-input');
+            if (el) el.value = pwd;
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET) {
+            const url = String.fromCharCode.apply(null, data.slice(3, 3 + cmdLen)).replace(/\0.*$/, '');
+            const el = document.getElementById('film-api-url-input');
+            if (el) el.value = url;
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET && cmdLen === 1) {
+            const el = document.getElementById('film-heartbeat-interval-input');
+            if (el) el.value = String(data[3]);
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET && cmdLen === 1) {
+            const status = data[3];
+            updateWifiConnectStatus(status === 1);
+            updateWifiStatusText(status === 1 ? '已连接' : '未连接');
+            if (status === 1) stopWifiStatusPoll();
+        }
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE && cmdLen === 2) {
+            const state = data[3];
+            const progress = data[4];
+            console.log(`下载状态: state=${state}, progress=${progress}%`);
+            updateDownloadStatus(state, progress);
+        }
+    });
+
+    characteristic.startNotifications().then(() => {
+        console.log('蓝牙通知已开启');
+    }).catch(err => {
+        console.error('开启蓝牙通知失败:', err);
+    });
+}
+
+function updateBatteryDisplay(level) {
+    const batteryIconText = document.getElementById('battery-icon-text');
+    const batteryFillIcon = document.getElementById('battery-fill-icon');
+
+    // 更新全局电量变量
+    deviceBatteryLevel = level;
+
+    if (batteryIconText) {
+        batteryIconText.textContent = level + '%';
+    }
+    if (batteryFillIcon) {
+        const maxWidth = 21;
+        const fillWidth = Math.round((level / 100) * maxWidth);
+        batteryFillIcon.setAttribute('width', fillWidth);
+    }
+}
+
+function updateSleepSwitchDisplay(onoff) {
+    const switchEl = document.getElementById('sleep-switch');
+    if (switchEl) {
+        switchEl.checked = onoff === 1;
+    }
+    debugLog('休眠模式: ' + (onoff ? '开启' : '关闭'));
+}
+
+function updateAutoWakeSwitchDisplay(mode) {
+    const switchEl = document.getElementById('auto-wake-switch');
+    if (switchEl) {
+        switchEl.checked = mode === 1;
+    }
+    debugLog('自动唤醒: ' + (mode ? '开启' : '关闭'));
+}
+
+function updateWakeDurationDisplay(minutes) {
+    const slider = document.getElementById('wake-duration');
+    const valueDisplay = document.getElementById('wake-duration-value');
+    if (slider) {
+        slider.value = minutes;
+    }
+    if (valueDisplay) {
+        valueDisplay.textContent = formatDuration(minutes);
+    }
+    debugLog('唤醒时间: ' + formatDuration(minutes));
+}
+
+function toggleSleepSwitch() {
+    const switchEl = document.getElementById('sleep-switch');
+    if (switchEl) {
+        sendBleSleepSet(switchEl.checked);
+    }
+}
+
+function toggleAutoWakeSwitch() {
+    const switchEl = document.getElementById('auto-wake-switch');
+    if (switchEl) {
+        sendBleSleepModeSet(switchEl.checked);
+    }
+}
+
+function formatDuration(minutes) {
+    if (minutes < 60) {
+        return minutes + '分钟';
+    } else if (minutes === 60) {
+        return '1小时';
+    } else {
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        if (mins === 0) {
+            return hours + '小时';
+        }
+        return hours + '小时' + mins + '分钟';
+    }
+}
+
+function updateWakeDurationSlider() {
+    const slider = document.getElementById('wake-duration');
+    const valueDisplay = document.getElementById('wake-duration-value');
+    if (slider && valueDisplay) {
+        const minutes = parseInt(slider.value);
+        valueDisplay.textContent = formatDuration(minutes);
+    }
+}
+
+function getWakeDurationInMinutes() {
+    const slider = document.getElementById('wake-duration');
+    return slider ? parseInt(slider.value) : 60;
+}
+
+function applyWakeDuration() {
+    const minutes = getWakeDurationInMinutes();
+    sendBleSleepTimeSet(minutes);
+}
+
+function setPhotoMode(mode) {
+    var modeMap = { manual: 0, auto: 1, wifi: 2 };
+    var modeValue = modeMap[mode] || 0;
+    if (modeValue === 2 && !document.getElementById('wifi-enable-switch').checked) {
+        showMessage('请先启用WiFi', 'error');
+        return;
+    }
+    sendBleModeSet(modeValue);
+
+    document.querySelectorAll('.mode-button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`.mode-button[data-mode="${mode}"]`).classList.add('active');
+}
+
+function sendBleFileList() {
+    return new Promise((resolve, reject) => {
+        if (!device || !server || !characteristic) {
+            showMessage('请先连接设备', 'error');
+            reject(new Error('未连接设备'));
+            return;
+        }
+        queueBleCmd(async () => {
+            debugLog('开始发送文件列表请求...');
+            let packet = new Uint8Array(4);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = BLE_FILM_TRANS_CH_FILE_LIST;
+            packet[2] = 0;
+            packet[3] = calculateChecksum(packet, 3);
+
+            try {
+                await characteristic.writeValue(packet);
+                debugLog('文件列表请求已发送', 'success');
+            } catch (err) {
+                debugLog('文件列表请求失败: ' + err.message, 'error');
+                reject(err);
+                return;
+            }
+            await delay(BLE_CTRL_DELAY);
+            resolve();
+        });
+    });
+}
+
+function sendBleFileDelete(fileId) {
+    return new Promise((resolve, reject) => {
+        if (!device || !server || !characteristic) {
+            showMessage('请先连接设备', 'error');
+            reject(new Error('未连接设备'));
+            return;
+        }
+        queueBleCmd(async () => {
+            let packet = new Uint8Array(5);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = BLE_FILM_TRANS_CH_FILE_DELETE;
+            packet[2] = 1;
+            packet[3] = fileId & 0xFF;
+            packet[4] = calculateChecksum(packet, 4);
+
+            try {
+                await characteristic.writeValue(packet);
+                debugLog('删除文件命令已发送', 'success');
+            } catch (err) {
+                debugLog('删除文件命令失败: ' + err.message, 'error');
+                reject(err);
+                return;
+            }
+            await delay(BLE_CTRL_DELAY);
+            resolve();
+        });
+    });
+}
+
+function sendBleFileDisplay(fileId) {
+    return new Promise((resolve, reject) => {
+        if (!device || !server || !characteristic) {
+            showMessage('请先连接设备', 'error');
+            reject(new Error('未连接设备'));
+            return;
+        }
+        queueBleCmd(async () => {
+            let packet = new Uint8Array(5);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = BLE_FILM_TRANS_CH_FILE_DISPLAY;
+            packet[2] = 1;
+            packet[3] = fileId & 0xFF;
+            packet[4] = calculateChecksum(packet, 4);
+
+            try {
+                await characteristic.writeValue(packet);
+                debugLog('显示文件命令已发送', 'success');
+            } catch (err) {
+                debugLog('显示文件命令失败: ' + err.message, 'error');
+                reject(err);
+                return;
+            }
+            await delay(BLE_CTRL_DELAY);
+            resolve();
+        });
+    });
+}
+
+function sendBleFileDisplayGet() {
+    return new Promise((resolve, reject) => {
+        if (!device || !server || !characteristic) {
+            showMessage('请先连接设备', 'error');
+            reject(new Error('未连接设备'));
+            return;
+        }
+        queueBleCmd(async () => {
+            let packet = new Uint8Array(4);
+            packet[0] = BLE_CMD_HEAD;
+            packet[1] = BLE_FILM_TRANS_CH_FILE_DISPLAY_GET;
+            packet[2] = 0;
+            packet[3] = calculateChecksum(packet, 3);
+
+            try {
+                await characteristic.writeValue(packet);
+                debugLog('查询显示状态已发送', 'success');
+            } catch (err) {
+                debugLog('查询显示状态失败: ' + err.message, 'error');
+                reject(err);
+                return;
+            }
+            await delay(BLE_CTRL_DELAY);
+            resolve();
+        });
+    });
+}
+
+async function sendBleCmdWithData(cmdType, value, dataLen = 4) {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+
+    return queueBleCmd(async () => {
+        const packet = new Uint8Array(4 + dataLen);
+        packet[0] = BLE_CMD_HEAD;
+        packet[1] = cmdType;
+        packet[2] = dataLen;
+
+        if (dataLen === 1) {
+            packet[3] = value & 0xFF;
+        } else {
+            packet[3] = (value >> 24) & 0xFF;
+            packet[4] = (value >> 16) & 0xFF;
+            packet[5] = (value >> 8) & 0xFF;
+            packet[6] = value & 0xFF;
+        }
+
+        packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+
+        debugLog('sendBleCmdWithData: ' + Array.from(packet).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+        try {
+            await characteristic.writeValue(packet);
+            debugLog('BLE写入成功', 'success');
+        } catch (err) {
+            debugLog('BLE写入失败: ' + err.message, 'error');
+            throw err;
+        }
+
+        console.log('发送命令:', cmdType.toString(16), '数据:' + value);
+        await delay(BLE_CTRL_DELAY);
+    });
+}
+
+// ==================== WiFi 配网功能 ====================
+
+async function sendBleCmdString(cmdType, str, maxLen) {
+    if (!device || !server || !characteristic) {
+        throw new Error('请先连接设备');
+    }
+    return queueBleCmd(async () => {
+        const enc = new TextEncoder();
+        const bytes = enc.encode(str);
+        const dataLen = Math.min(bytes.length, maxLen - 1);
+        const packet = new Uint8Array(4 + dataLen);
+        packet[0] = BLE_CMD_HEAD;
+        packet[1] = cmdType;
+        packet[2] = dataLen;
+        packet.set(bytes.slice(0, dataLen), 3);
+        packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+        debugLog('sendBleCmdString: cmd=' + cmdType.toString(16) + ' str=' + str);
+        try {
+            await characteristic.writeValue(packet);
+            debugLog('BLE写入成功', 'success');
+        } catch (err) {
+            debugLog('BLE写入失败: ' + err.message, 'error');
+            throw err;
+        }
+        await delay(BLE_CTRL_DELAY);
+    });
+}
+
+async function sendBleWifiEnable(enable) {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE, enable ? 1 : 0);
+}
+
+async function sendBleWifiEnableGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_ENABLE_GET);
+}
+
+async function sendBleWifiSsidSet(ssid) {
+    await sendBleCmdString(BLE_FILM_TRANS_CH_CTRL_WIFI_SSID, ssid, 64);
+}
+
+async function sendBleWifiSsidGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_SSID_GET);
+}
+
+async function sendBleWifiPasswordSet(password) {
+    await sendBleCmdString(BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD, password, 64);
+}
+
+async function sendBleWifiPasswordGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_PASSWORD_GET);
+}
+
+async function sendBleFilmApiUrlSet(url) {
+    await sendBleCmdString(BLE_FILM_TRANS_CH_CTRL_FILM_API_URL, url, 128);
+}
+
+async function sendBleFilmApiUrlGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_API_URL_GET);
+}
+
+async function sendBleHeartbeatIntervalSet(sec) {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL, sec);
+}
+
+async function sendBleHeartbeatIntervalGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET);
+}
+
+async function sendBleFilmDownload() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD);
+}
+
+async function sendBleFilmDownloadStateGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE);
+}
+
+async function sendBleWifiConnect() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT);
+}
+
+async function sendBleWifiDisconnect() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_DISCONNECT);
+}
+
+async function sendBleWifiConnectGet() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_CONNECT_GET);
+}
+
+async function sendBleWifiClear() {
+    await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_WIFI_CLEAR);
+}
+
+// WiFi UI 事件处理
+function toggleWifiSwitch() {
+    const sw = document.getElementById('wifi-enable-switch');
+    if (!sw) return;
+    const enable = sw.checked;
+    sendBleWifiEnable(enable).catch(err => console.error(err));
+    if (enable) {
+        updateWifiStatusText('初始化中...');
+        updateWifiModeButton(true);
+    } else {
+        updateWifiStatusText('已关闭');
+        updateWifiConnectStatus(false);
+        updateWifiModeButton(false);
+        // WiFi禁用时，如果当前是WiFi轮播模式，改成本地轮播
+        var activeBtn = document.querySelector('.mode-button.active');
+        if (activeBtn && activeBtn.dataset.mode === 'wifi') {
+            setPhotoMode('auto');
+        }
+    }
+}
+
+function updateWifiModeButton(wifiEnabled) {
+    var btn = document.getElementById('mode-wifi-btn');
+    if (btn) {
+        btn.style.display = wifiEnabled ? '' : 'none';
+    }
+}
+
+function applyWifiSsid() {
+    const el = document.getElementById('wifi-ssid-input');
+    if (!el || !el.value.trim()) return;
+    sendBleWifiSsidSet(el.value.trim()).catch(err => console.error(err));
+}
+
+function applyWifiPassword() {
+    const el = document.getElementById('wifi-password-input');
+    if (!el) return;
+    sendBleWifiPasswordSet(el.value).catch(err => console.error(err));
+}
+
+function applyFilmApiUrl() {
+    const el = document.getElementById('film-api-url-input');
+    if (!el || !el.value.trim()) return;
+    sendBleFilmApiUrlSet(el.value.trim()).catch(err => console.error(err));
+}
+
+function applyHeartbeatInterval() {
+    const el = document.getElementById('film-heartbeat-interval-input');
+    if (!el || !el.value.trim()) return;
+    const sec = parseInt(el.value.trim(), 10);
+    if (!(sec >= 5 && sec <= 180)) { showMessage('心跳间隔需在 5–180 秒之间', 'error'); return; }
+    sendBleHeartbeatIntervalSet(sec)
+        .then(() => {
+            showMessage('已发送，回读确认中…', 'success');
+            // 设置后回读一次：输入框值不变说明固件不支持该命令（需烧录新固件）
+            setTimeout(() => sendBleHeartbeatIntervalGet().catch(err => console.error(err)), 600);
+        })
+        .catch(err => console.error(err));
+}
+
+let downloadPollTimer = null;
+
+function onFilmDownload() {
+    if (!device || !server || !characteristic) return;
+    sendBleFilmDownload().catch(err => console.error(err));
+    // 开始轮询下载状态
+    if (downloadPollTimer) clearInterval(downloadPollTimer);
+    updateDownloadStatusText('下载中... 0%');
+    downloadPollTimer = setInterval(() => {
+        sendBleFilmDownloadStateGet().catch(err => console.error(err));
+    }, 1000);
+}
+
+function stopDownloadPoll() {
+    if (downloadPollTimer) {
+        clearInterval(downloadPollTimer);
+        downloadPollTimer = null;
+    }
+}
+
+function updateDownloadStatus(state, progress) {
+    switch (state) {
+    case 0: // IDLE
+        updateDownloadStatusText('就绪');
+        stopDownloadPoll();
+        break;
+    case 1: // DOWNLOADING
+        updateDownloadStatusText(`下载中... ${progress}%`);
+        break;
+    case 2: // DONE
+        updateDownloadStatusText('下载完成');
+        stopDownloadPoll();
+        break;
+    case 3: // ERROR
+        updateDownloadStatusText('下载失败');
+        stopDownloadPoll();
+        break;
+    }
+}
+
+function updateDownloadStatusText(text) {
+    const el = document.getElementById('download-status-text');
+    if (el) el.textContent = text;
+}
+
+function onWifiConnect() {
+    sendBleWifiConnect().catch(err => console.error(err));
+    updateWifiStatusText('连接中...');
+    startWifiStatusPoll();
+}
+
+function onWifiDisconnect() {
+    stopWifiStatusPoll();
+    sendBleWifiDisconnect().catch(err => console.error(err));
+    updateWifiStatusText('已断开');
+    updateWifiConnectStatus(false);
+}
+
+function onWifiClear() {
+    stopWifiStatusPoll();
+    if (!confirm('确定要清除所有网络配置吗？')) return;
+    sendBleWifiClear().catch(err => console.error(err));
+    document.getElementById('wifi-ssid-input').value = '';
+    document.getElementById('wifi-password-input').value = '';
+    document.getElementById('film-api-url-input').value = '';
+    document.getElementById('wifi-enable-switch').checked = false;
+    updateWifiStatusText('已清除');
+    updateWifiConnectStatus(false);
+    updateWifiModeButton(false);
+    // 如果当前是WiFi轮播模式，改成本地轮播
+    var activeBtn = document.querySelector('.mode-button.active');
+    if (activeBtn && activeBtn.dataset.mode === 'wifi') {
+        setPhotoMode('auto');
+    }
+}
+
+var wifiStatusPollTimer = null;
+var wifiStatusPollCount = 0;
+const WIFI_STATUS_POLL_MAX = 60; // 60 * 500ms = 30s 超时
+
+function startWifiStatusPoll() {
+    stopWifiStatusPoll();
+    wifiStatusPollCount = 0;
+    wifiStatusPollTimer = setInterval(function() {
+        wifiStatusPollCount++;
+        if (wifiStatusPollCount > WIFI_STATUS_POLL_MAX) {
+            stopWifiStatusPoll();
+            updateWifiStatusText('连接超时');
+            updateWifiConnectStatus(false);
+            return;
+        }
+        sendBleWifiConnectGet().catch(function(err) { console.error(err); });
+    }, 500);
+}
+
+function stopWifiStatusPoll() {
+    if (wifiStatusPollTimer) {
+        clearInterval(wifiStatusPollTimer);
+        wifiStatusPollTimer = null;
+    }
+}
+
+function updateWifiStatusText(text) {
+    const el = document.getElementById('wifi-status-text');
+    if (el) el.textContent = text;
+}
+
+function updateWifiConnectStatus(connected) {
+    const dot = document.getElementById('wifi-status-dot');
+    if (dot) {
+        dot.className = connected ? 'wifi-status-dot connected' : 'wifi-status-dot';
+    }
+}
+
+function toggleNetworkSection() {
+    const content = document.getElementById('network-content');
+    const arrow = document.querySelector('.network-arrow');
+    if (content && arrow) {
+        const hidden = content.style.display === 'none';
+        content.style.display = hidden ? 'block' : 'none';
+        arrow.style.transform = hidden ? '' : 'rotate(-90deg)';
+    }
+}
+
+function expandNetworkSection() {
+    const content = document.getElementById('network-content');
+    const arrow = document.querySelector('.network-arrow');
+    if (content && arrow) {
+        content.style.display = 'block';
+        arrow.style.transform = '';
+    }
+}
+
+function collapseNetworkSection() {
+    const content = document.getElementById('network-content');
+    const arrow = document.querySelector('.network-arrow');
+    if (content && arrow) {
+        content.style.display = 'none';
+        arrow.style.transform = 'rotate(-90deg)';
+    }
+}
+
+// 连接后初始化查询 WiFi 配置
+function queryWifiConfig() {
+    sendBleWifiEnableGet().catch(err => console.error(err));
+    sendBleWifiSsidGet().catch(err => console.error(err));
+    sendBleWifiConnectGet().catch(err => console.error(err));
+    sendBleFilmApiUrlGet().catch(err => console.error(err));
+    sendBleHeartbeatIntervalGet().catch(err => console.error(err));
+}
+
+function updateFileListDisplay(fileList) {
+    const fileListEl = document.getElementById('film-file-list');
+    if (!fileListEl) return;
+
+    if (fileList.length === 0) {
+        fileListEl.innerHTML = '<div class="empty-state">暂无文件</div>';
+        return;
+    }
+
+    let html = '';
+    fileList.forEach(file => {
+        html += `<div class="file-item" data-id="${file.id}">
+            <input type="checkbox" class="file-checkbox" data-id="${file.id}">
+            <span class="file-id">${file.id}</span>
+            <span class="file-name" title="${file.filename}">${file.filename}</span>
+        </div>`;
+    });
+    fileListEl.innerHTML = html;
+
+    document.querySelectorAll('.file-checkbox').forEach(cb => {
+        cb.addEventListener('change', function() {
+            const id = parseInt(this.dataset.id);
+            if (this.checked) {
+                window.selectedFileId = id;
+                document.querySelectorAll('.file-checkbox').forEach(c => {
+                    if (c !== this) c.checked = false;
+                });
+            }
+        });
+    });
+
+    if (window.currentDisplayFileId !== undefined) {
+        updateCurrentDisplayId(window.currentDisplayFileId);
+    }
+}
+
+function updateCurrentDisplayId(id) {
+    window.currentDisplayFileId = id;
+    document.querySelectorAll('.file-item').forEach(item => {
+        const itemId = parseInt(item.dataset.id);
+        if (itemId === id) {
+            item.classList.add('displaying');
+        } else {
+            item.classList.remove('displaying');
+        }
+    });
+}
+
+function refreshFileList() {
+    window.fileListBuffer = [];
+    const fileListEl = document.getElementById('film-file-list');
+    if (fileListEl) {
+        fileListEl.innerHTML = '<div class="empty-state">正在加载...</div>';
+    }
+    sendBleFileList().then(() => {
+        setTimeout(() => {
+            sendBleFileDisplayGet();
+        }, 500);
+    }).catch(err => console.error('刷新文件列表失败:', err));
+}
+
+function deleteSelectedFile() {
+    if (window.selectedFileId === undefined || window.selectedFileId === null) {
+        showMessage('请先选择要删除的文件', 'error');
+        return;
+    }
+    if (!confirm('确定要删除选中的文件吗？')) {
+        return;
+    }
+    sendBleFileDelete(window.selectedFileId).then(() => {
+        showMessage('删除命令已发送', 'success');
+        setTimeout(() => {
+            refreshFileList();
+        }, 500);
+    });
+}
+
+function selectDisplayFile() {
+    if (window.selectedFileId === undefined || window.selectedFileId === null) {
+        showMessage('请先选择要显示的文件', 'error');
+        return;
+    }
+    sendBleFileDisplay(window.selectedFileId).then(() => {
+        showMessage('显示命令已发送', 'success');
+        setTimeout(() => {
+            sendBleFileDisplayGet();
+        }, 500);
+    });
+}
