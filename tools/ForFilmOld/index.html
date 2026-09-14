@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ForFilm Web工具</title>
+    <link id="style-sheet" rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/keyboard.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+</head>
+<body>
+    <div class="container">
+        <!-- 页面内容 -->
+        <div id="page-content">
+            <!-- 设备连接页面 -->
+            <div id="bluetooth-page" class="page active">
+                <h1>设备连接</h1>
+                <div class="bluetooth-container">
+                    <div id="connection-status" class="status">未连接</div>
+                    <div id="device-type-info" class="device-type-info" style="display:none;">
+                        <span class="device-type-badge" id="device-type-badge"></span>
+                        <span class="device-resolution" id="device-resolution"></span>
+                    </div>
+                    <button id="scan-button" class="primary-button">蓝牙扫描设备</button>
+                    <button id="usb-button" class="primary-button" style="margin-top:8px;">USB 连接</button>
+                    <div id="device-list" class="device-list"></div>
+
+                    <!-- 网络配置面板 -->
+                    <div id="network-section" class="network-section" style="display:none;">
+                        <div class="network-header" onclick="toggleNetworkSection()">
+                            <i class="material-icons">wifi</i>
+                            <span>网络配置</span>
+                            <i class="material-icons network-arrow">expand_less</i>
+                        </div>
+                        <div id="network-content" class="network-content">
+                            <div class="network-switch-row">
+                                <span class="network-label">WiFi</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="wifi-enable-switch" onchange="toggleWifiSwitch()">
+                                    <span class="slider-toggle"></span>
+                                </label>
+                            </div>
+                            <div class="network-input-group">
+                                <label class="network-label">SSID</label>
+                                <input type="text" id="wifi-ssid-input" placeholder="输入WiFi名称" onchange="applyWifiSsid()">
+                            </div>
+                            <div class="network-input-group">
+                                <label class="network-label">密码</label>
+                                <input type="password" id="wifi-password-input" placeholder="输入WiFi密码" onchange="applyWifiPassword()">
+                            </div>
+                            <div class="network-btn-row">
+                                <button class="secondary-button" onclick="onWifiConnect()">
+                                    <i class="material-icons">link</i> 连接
+                                </button>
+                                <button class="secondary-button" onclick="onWifiDisconnect()">
+                                    <i class="material-icons">link_off</i> 断开
+                                </button>
+                            </div>
+                            <div class="wifi-status-row">
+                                <span id="wifi-status-dot" class="wifi-status-dot"></span>
+                                <span id="wifi-status-text">未连接</span>
+                            </div>
+                            <div class="network-divider"></div>
+                            <div class="network-input-group">
+                                <label class="network-label">API地址</label>
+                                <div class="api-url-row">
+                                    <input type="text" id="film-api-url-input" placeholder="http://服务器IP:8000">
+                                    <button class="secondary-button" onclick="applyFilmApiUrl()" style="width:auto;padding:8px 14px;">
+                                        <i class="material-icons">check</i> 设置
+                                    </button>
+                                </div>
+                                <div class="api-url-hint">心跳地址会自动拼接（/api/v1/device/heartbeat）</div>
+                            </div>
+                            <div class="network-input-group">
+                                <label class="network-label">心跳间隔（秒）</label>
+                                <div class="api-url-row">
+                                    <input type="number" id="film-heartbeat-interval-input" placeholder="5-180" min="5" max="180">
+                                    <button class="secondary-button" onclick="applyHeartbeatInterval()" style="width:auto;padding:8px 14px;">
+                                        <i class="material-icons">check</i> 设置
+                                    </button>
+                                </div>
+                                <div class="api-url-hint">设备主动上报频率，默认 5 秒</div>
+                            </div>
+                            <button class="secondary-button" onclick="onFilmDownload()" style="width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:4px;">
+                                <i class="material-icons">cloud_download</i> 下载测试
+                            </button>
+                            <div class="wifi-status-row" style="margin-top:8px;">
+                                <span id="download-status-text" style="font-size:12px;color:#999;">就绪</span>
+                            </div>
+                            <button class="secondary-button danger" onclick="onWifiClear()" style="width:100%;margin-top:10px;">
+                                <i class="material-icons">delete_forever</i> 清除网络配置
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="bluetooth-info" class="info">
+                        <p>点击扫描按钮开始搜索FrameFilm设备</p>
+                        <p class="device-hint">支持 FrameFilm、FrameFilm Pro 和 FrameFilm Max</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 设置页面 -->
+            <div id="config-page" class="page">
+                <div class="page-header">
+                    <h1>设置</h1>
+                    <div id="battery-icon" class="battery-icon" onclick="sendBlePwrRead()" title="点击刷新电量">
+                        <svg class="battery-svg" viewBox="0 0 28 14" xmlns="http://www.w3.org/2000/svg">
+                            <rect class="battery-outline" x="0.5" y="0.5" width="24" height="13" rx="2" ry="2"/>
+                            <rect class="battery-cap" x="25" y="4" width="2.5" height="6" rx="1"/>
+                            <rect id="battery-fill-icon" class="battery-fill-icon" x="2" y="2" width="0" height="10" rx="1"/>
+                        </svg>
+                        <span id="battery-icon-text" class="battery-icon-text">--%</span>
+                    </div>
+                </div>
+                <div class="settings-container">
+
+                    <!-- FILM设置模块 -->
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <i class="material-icons">movie</i>
+                            <span>FILM设置</span>
+                        </div>
+                        <div class="section-content">
+                            <div class="file-list-header">
+                                <span>文件列表</span>
+                                <button class="icon-button" onclick="refreshFileList()" title="刷新">
+                                    <i class="material-icons">refresh</i>
+                                </button>
+                            </div>
+                            <div id="film-file-list" class="file-list">
+                                <div class="empty-state">暂无文件</div>
+                            </div>
+                            <div class="button-row">
+                                <button class="secondary-button danger" onclick="deleteSelectedFile()">
+                                    <i class="material-icons">delete</i>
+                                    删除文件
+                                </button>
+                                <button class="secondary-button" onclick="selectDisplayFile()">
+                                    <i class="material-icons">check_circle</i>
+                                    选择显示
+                                </button>
+                            </div>
+                            <div class="setting-item">
+                                <span class="setting-label">照片切换模式</span>
+                            </div>
+                            <div class="mode-selector">
+                                <button class="mode-button" data-mode="wifi" onclick="setPhotoMode('wifi')" id="mode-wifi-btn" style="display:none;">
+                                    <i class="material-icons">wifi</i>
+                                    WiFi轮播
+                                </button>
+                                <button class="mode-button" data-mode="auto" onclick="setPhotoMode('auto')">
+                                    <i class="material-icons">schedule</i>
+                                    本地轮播
+                                </button>
+                                <button class="mode-button" data-mode="manual" onclick="setPhotoMode('manual')">
+                                    <i class="material-icons">touch_app</i>
+                                    关闭
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 休眠设置模块 -->
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <i class="material-icons">bedtime</i>
+                            <span>休眠设置</span>
+                        </div>
+                        <div class="section-content">
+                            <div class="setting-item switch-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">休眠开关</span>
+                                    <span class="setting-hint-icon" onclick="showHint(this)">
+                                        <i class="material-icons">error_outline</i>
+                                        <span class="hint-tooltip">开启后将在3分钟内自动休眠</span>
+                                    </span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="sleep-switch" onchange="toggleSleepSwitch()">
+                                    <span class="slider-toggle"></span>
+                                </label>
+                            </div>
+                            <div class="setting-item switch-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">休眠自动唤醒</span>
+                                    <span class="setting-hint-icon" onclick="showHint(this)">
+                                        <i class="material-icons">error_outline</i>
+                                        <span class="hint-tooltip">开启后将在设置时间内自动唤醒</span>
+                                    </span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="auto-wake-switch" onchange="toggleAutoWakeSwitch()">
+                                    <span class="slider-toggle"></span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">自动唤醒时长</span>
+                                    <span id="wake-duration-value" class="setting-value">1小时</span>
+                                </div>
+                                <div class="wake-slider-wrapper">
+                                    <span class="wake-min">10分钟</span>
+                                    <div class="slider-container">
+                                        <input type="range" id="wake-duration" min="10" max="2880" step="10" value="60" oninput="updateWakeDurationSlider()" onchange="applyWakeDuration()">
+                                    </div>
+                                    <span class="wake-max">48小时</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 按键设置模块（仅 FrameFilm Dock 支持，默认隐藏） -->
+                    <div id="keyboard-settings-section" class="settings-section" style="display:none;">
+                        <div class="section-header">
+                            <i class="material-icons">keyboard</i>
+                            <span>按键设置</span>
+                        </div>
+                        <div class="section-content">
+                            <div class="setting-item switch-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">设备按键键值</span>
+                                    <span class="setting-hint-icon" onclick="showHint(this)">
+                                        <i class="material-icons">error_outline</i>
+                                        <span class="hint-tooltip">设置设备单击/双击/长按对应发送到电脑的键盘键值，需将设备通过 USB 连接电脑</span>
+                                    </span>
+                                </div>
+                                <button class="secondary-button" onclick="openKeyboardSetting()">
+                                    <i class="material-icons">keyboard</i>
+                                    键值设置
+                                </button>
+                            </div>
+                            <div id="keyboard-key-summary" class="keyboard-key-summary"></div>
+                        </div>
+                    </div>
+
+                    <!-- 主题切换模块 -->
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <i class="material-icons">palette</i>
+                            <span>主题切换</span>
+                        </div>
+                        <div class="section-content">
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <span class="setting-label">选择主题</span>
+                                </div>
+                                <select id="style-selector" class="theme-select">
+                                    <option value="style.css">默认</option>
+                                    <option value="style_bw.css">B&W</option>
+                                    <option value="style_arcade.css">Arcade</option>
+                                    <option value="style_stardew.css">Stardew</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 设备控制模块 -->
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <i class="material-icons">devices</i>
+                            <span>设备控制</span>
+                            <button class="icon-button debug-toggle" onclick="toggleDebugLog()" title="调试日志">
+                                <i class="material-icons">bug_report</i>
+                            </button>
+                        </div>
+                        <div class="section-content">
+                            <div id="debug-log" class="debug-log"></div>
+                            <div class="device-actions">
+                                <div class="action-item">
+                                    <div class="action-header">
+                                        <i class="material-icons">system_update</i>
+                                        <span>固件升级</span>
+                                    </div>
+                                    <input type="file" id="ota-file-input" accept=".bin" style="display: none;" onchange="handleOtaFileSelect(event)">
+                                    <div class="action-controls">
+                                        <button class="secondary-button" onclick="selectOtaFile()">选择文件</button>
+                                        <span id="ota-file-size" class="file-size-text">未选择</span>
+                                        <button class="secondary-button" onclick="startOtaUpgrade()" id="ota-upgrade-btn">开始升级</button>
+                                    </div>
+                                    <div id="ota-transfer-container" class="transfer-container" style="display: none;">
+                                        <div id="ota-transfer-status" class="transfer-status">准备传输...</div>
+                                        <div class="progress-bar">
+                                            <div id="ota-transfer-progress-bar" class="progress-fill"></div>
+                                        </div>
+                                        <div id="ota-transfer-progress" class="transfer-progress">0%</div>
+                                    </div>
+                                </div>
+                                <div class="action-divider"></div>
+                                <div class="action-item">
+                                    <div class="action-header">
+                                        <i class="material-icons">build</i>
+                                        <span>设备管理</span>
+                                    </div>
+                                    <div class="action-controls">
+                                        <button class="secondary-button" onclick="sendBleReboot()">
+                                            <i class="material-icons">refresh</i>
+                                            重启
+                                        </button>
+                                        <button class="secondary-button warning" onclick="sendBleReset()">
+                                            <i class="material-icons">restart_alt</i>
+                                            重置
+                                        </button>
+                                        <button class="secondary-button danger" onclick="sendBleSdReset()">
+                                            <i class="material-icons">sd_card</i>
+                                            SD卡格式化
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Frame页面 -->
+            <div id="frame-page" class="page">
+                <div class="frame-container">
+                    <div class="frame-tabs">
+                        <div class="frame-tab active" data-frame-tab="frame-upload">
+                            <i class="material-icons">photo_library</i>
+                            <span>拾光</span>
+                        </div>
+                        <div class="frame-tab" data-frame-tab="frame-camera">
+                            <i class="material-icons">camera_alt</i>
+                            <span>定影</span>
+                        </div>
+                        <div class="frame-tab" data-frame-tab="frame-quote">
+                            <i class="material-icons">format_quote</i>
+                            <span>一言</span>
+                        </div>
+                    </div>
+
+                    <!-- 选图直印 -->
+                    <div id="frame-upload" class="frame-tab-content active">
+                        <input type="file" id="frameFileInput" accept="image/*" style="display:none">
+                        <button class="primary-button frame-action-btn" id="frameSelectBtn">
+                            <i class="material-icons">photo_library</i> 选择照片
+                        </button>
+                        <div class="polaroid-frame">
+                            <div class="polaroid-inner">
+                                <canvas id="frame-canvas" width="600" height="400"></canvas>
+                            </div>
+                        </div>
+                        <p class="info frame-hint">选择照片后自动转换并显示</p>
+                        <div class="form-group">
+                            <label for="frameFileName">文件名：</label>
+                            <input type="text" id="frameFileName" value="frame.film">
+                        </div>
+                        <button type="button" class="primary-button frame-send-btn" id="frameUploadBtn" disabled>
+                            <i class="material-icons">send</i> 发送到设备
+                        </button>
+                        <div id="frame-transfer-container" class="transfer-container" style="display: none;">
+                            <div id="frame-transfer-status" class="transfer-status">准备传输...</div>
+                            <div class="progress-bar">
+                                <div id="frame-transfer-progress-bar" class="progress-fill"></div>
+                            </div>
+                            <div id="frame-transfer-progress" class="transfer-progress">0%</div>
+                        </div>
+                        <div id="frame-result"></div>
+                    </div>
+
+                    <!-- 即拍即印 -->
+                    <div id="frame-camera" class="frame-tab-content">
+                        <button class="primary-button frame-action-btn" id="frameCaptureBtn">
+                            <i class="material-icons">camera_alt</i> 打开相机
+                        </button>
+                        <div id="frame-video-container" style="display:none;">
+                            <video id="frameVideo" autoplay playsinline></video>
+                            <button class="primary-button frame-capture-confirm" id="frameCaptureConfirm">
+                                <i class="material-icons">photo_camera</i> 拍照
+                            </button>
+                        </div>
+                        <div class="polaroid-frame">
+                            <div class="polaroid-inner">
+                                <canvas id="frame-camera-canvas" width="600" height="400"></canvas>
+                            </div>
+                        </div>
+                        <p class="info frame-hint">拍照后自动转换并显示</p>
+                        <div class="form-group">
+                            <label for="frameCameraFileName">文件名：</label>
+                            <input type="text" id="frameCameraFileName" value="camera.film">
+                        </div>
+                        <button type="button" class="primary-button frame-send-btn" id="frameCameraUploadBtn" disabled>
+                            <i class="material-icons">send</i> 发送到设备
+                        </button>
+                        <div id="frame-camera-transfer-container" class="transfer-container" style="display: none;">
+                            <div id="frame-camera-transfer-status" class="transfer-status">准备传输...</div>
+                            <div class="progress-bar">
+                                <div id="frame-camera-transfer-progress-bar" class="progress-fill"></div>
+                            </div>
+                            <div id="frame-camera-transfer-progress" class="transfer-progress">0%</div>
+                        </div>
+                        <div id="frame-camera-result"></div>
+                    </div>
+
+                    <!-- 拾句 -->
+                    <div id="frame-quote" class="frame-tab-content">
+                        <div class="quote-btn-group">
+                            <button class="primary-button frame-action-btn" id="frameQuoteBtn">
+                                <i class="material-icons">refresh</i> 换一句
+                            </button>
+                            <button class="primary-button frame-action-btn" id="frameCustomQuoteToggle">
+                                <i class="material-icons">edit</i> 自定义
+                            </button>
+                        </div>
+                        <div id="frame-custom-quote-panel" class="custom-quote-panel" style="display: none;">
+                            <textarea id="frameCustomText" class="quote-input" placeholder="输入名言..." maxlength="100" rows="3"></textarea>
+                            <input type="text" id="frameCustomAuthor" class="quote-input" placeholder="输入作者（可选）" maxlength="30">
+                            <button class="primary-button frame-action-btn" id="frameCustomQuoteBtn">
+                                <i class="material-icons">check</i> 生成
+                            </button>
+                        </div>
+                        <div class="polaroid-frame">
+                            <div class="polaroid-inner">
+                                <canvas id="frame-quote-canvas" width="600" height="400"></canvas>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="frameQuoteFileName">文件名：</label>
+                            <input type="text" id="frameQuoteFileName" value="quote.film">
+                        </div>
+                        <button type="button" class="primary-button frame-send-btn" id="frameQuoteUploadBtn">
+                            <i class="material-icons">send</i> 发送到设备
+                        </button>
+                        <div class="dither-toggle">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="frameQuoteDither" checked>
+                                <span class="toggle-text">抖动</span>
+                            </label>
+                        </div>
+                        <div id="frame-quote-transfer-container" class="transfer-container" style="display: none;">
+                            <div id="frame-quote-transfer-status" class="transfer-status">准备传输...</div>
+                            <div class="progress-bar">
+                                <div id="frame-quote-transfer-progress-bar" class="progress-fill"></div>
+                            </div>
+                            <div id="frame-quote-transfer-progress" class="transfer-progress">0%</div>
+                        </div>
+                        <div id="frame-quote-result"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 照片转换页面 -->
+            <div id="convert-page" class="page">
+                <h1>照片转换</h1>
+                <div class="convert-container">
+                    <!-- 图片转换内容 -->
+                    <div id="image" class="tab-content active">
+                        <div class="form-group">
+                            <label for="imageFile">上传图像</label>
+                            <input type="file" id="imageFile" accept="image/*">
+                            <div class="info">支持各种常见图片格式</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="ditherType">抖动算法：</label>
+                            <select id="ditherType">
+                                <option value="atkinsonEnhanced">Atkinson 增强</option>
+                                <option value="adaptive">自适应</option>
+                                <option value="floydSteinberg">Floyd-Steinberg</option>
+                                <option value="atkinson">Atkinson</option>
+                                <option value="stucki">Stucki</option>
+                                <option value="jarvis">Jarvis-Judice-Ninke</option>
+                                <option value="gammaFloydSteinberg">Gamma 感知 FS（线性）</option>
+                                <option value="bayer">Bayer 4×4 有序抖动</option>
+                                <option value="szEnhanced" disabled>SZ 增强（Pro）</option>
+                                <option value="atkinsonSzCalib" disabled>Atkinson·SZ校色（Pro）</option>
+                            </select>
+                        </div>
+
+                        <div id="ditherStrengthContainer" class="slider-container">
+                            <label for="ditherStrength">抖动强度：</label>
+                            <input type="range" id="ditherStrength" min="0" max="5" step="0.1" value="1.0">
+                            <span id="ditherStrengthValue">1.0</span>
+                        </div>
+
+                        <div id="colorAdjustContainer">
+                            <div class="slider-container">
+                                <label for="contrast">对比度：</label>
+                                <input type="range" id="contrast" min="0.5" max="2" step="0.1" value="1">
+                                <span id="contrastValue">1</span>
+                            </div>
+
+                            <div class="slider-container">
+                                <label for="saturation">饱和度：</label>
+                                <input type="range" id="saturation" min="0" max="3" step="0.1" value="1.0">
+                                <span id="saturationValue">1.0</span>
+                            </div>
+                        </div>
+
+                        <div class="button-group">
+                            <button id="toggleDither" class="secondary-button" onclick="toggleDither()">启用抖动</button>
+                            <!-- 自动配置暂未使用，已隐藏：<button class="secondary-button" onclick="autoConfigureDither()">自动配置</button> -->
+                            <button class="secondary-button" onclick="rotateCanvas()">旋转90度</button>
+                            <button class="secondary-button" onclick="resetImage()">重置</button>
+                        </div>
+
+                        <div class="form-group">
+                            <p class="info">提示：双指缩放调整图片大小，拖动调整位置</p>
+                            <button type="button" class="icon-button reset-zoom-btn" onclick="resetZoom()" title="重置缩放">
+                                <i class="material-icons">fit_screen</i>
+                            </button>
+                        </div>
+
+                        <div class="polaroid-frame">
+                            <div class="polaroid-inner">
+                                <canvas id="canvas" width="600" height="400"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fileName">文件名：</label>
+                            <input type="text" id="fileName" value="output.film">
+                        </div>
+
+                        <button type="button" class="primary-button" onclick="downloadFilmFile()">下载</button>
+                        <button type="button" class="primary-button" id="upload-btn" onclick="uploadToDevice()">发送到设备</button>
+
+                        <div id="transfer-container" class="transfer-container" style="display: none;">
+                            <div id="transfer-status" class="transfer-status">准备传输...</div>
+                            <div class="progress-bar">
+                                <div id="transfer-progress-bar" class="progress-fill"></div>
+                            </div>
+                            <div id="transfer-progress" class="transfer-progress">0%</div>
+                        </div>
+
+                        <div class="result" id="imageResult"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部导航栏 -->
+        <nav class="bottom-nav">
+            <a href="#" class="nav-item active" data-page="bluetooth-page">
+                <i class="material-icons">bluetooth</i>
+                <span>蓝牙</span>
+            </a>
+            <a href="#" class="nav-item" data-page="frame-page">
+                <i class="material-icons">movie</i>
+                <span>Frame</span>
+            </a>
+            <a href="#" class="nav-item" data-page="convert-page">
+                <i class="material-icons">image</i>
+                <span>Film</span>
+            </a>
+            <a href="#" class="nav-item" data-page="config-page">
+                <i class="material-icons">settings</i>
+                <span>设置</span>
+            </a>
+        </nav>
+    </div>
+
+    <!-- 键值设置弹窗 -->
+    <div id="keyboard-modal" class="kb-modal">
+        <div class="kb-modal-mask" onclick="closeKeyboardSetting()"></div>
+        <div class="kb-modal-panel">
+            <div class="kb-modal-header">
+                <span>键值设置</span>
+                <button class="icon-button" onclick="closeKeyboardSetting()" title="关闭">
+                    <i class="material-icons">close</i>
+                </button>
+            </div>
+            <div class="kb-modal-body">
+                <div id="kb-event-tabs" class="kb-event-tabs">
+                    <button type="button" class="kb-event-tab active" data-event="0" onclick="switchKeyboardEvent(0)">单击</button>
+                    <button type="button" class="kb-event-tab" data-event="1" onclick="switchKeyboardEvent(1)">双击</button>
+                    <button type="button" class="kb-event-tab" data-event="2" onclick="switchKeyboardEvent(2)">长按</button>
+                </div>
+
+                <div class="kb-current">
+                    <span class="kb-current-label">当前键值</span>
+                    <div id="kb-current-chips" class="kb-chips"><span class="kb-chip-empty">未设置</span></div>
+                    <button type="button" class="kb-current-clear" onclick="clearKeyboardSelection()">清空</button>
+                </div>
+
+                <div id="kb-board" class="kb-board"></div>
+
+                <div class="kb-tip">点击下方键盘选择键值：修饰键（Ctrl/Shift/Alt/Win）可多选，普通键最多同时 6 个；再次点击可取消。</div>
+            </div>
+            <div class="kb-modal-footer">
+                <button type="button" class="secondary-button" onclick="readKeyboardSetting()">读取</button>
+                <button type="button" class="primary-button" onclick="saveKeyboardSetting()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/atkinson_enhanced_lut.js"></script>
+    <script src="js/sz_enhanced.js"></script>
+    <script src="js/bluetooth.js"></script>
+    <script src="js/usb.js"></script>
+    <script src="js/keyboard.js"></script>
+    <script src="js/convert.js"></script>
+    <script src="js/frame.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

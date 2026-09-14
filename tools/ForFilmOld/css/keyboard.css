@@ -1,0 +1,238 @@
+/* 键值设置弹窗（屏幕键盘）
+ *
+ * 独立于主题样式表，作为通用组件在各主题下都能正常显示。
+ */
+
+.kb-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+}
+
+.kb-modal.show {
+    display: block;
+}
+
+.kb-modal-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.kb-modal-panel {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(820px, calc(100vw - 20px));
+    max-height: calc(100vh - 30px);
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    color: #333333;
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.kb-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid #eeeeee;
+    font-size: 17px;
+    font-weight: 600;
+}
+
+.kb-modal-header .icon-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #888888;
+    display: flex;
+    align-items: center;
+}
+
+.kb-modal-body {
+    padding: 14px 16px;
+    overflow: auto;
+}
+
+.kb-modal-footer {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid #eeeeee;
+}
+
+.kb-modal-footer .secondary-button,
+.kb-modal-footer .primary-button {
+    margin: 0;
+    flex: 1;
+    padding: 10px 0;
+}
+
+/* 事件切换 */
+.kb-event-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.kb-event-tab {
+    flex: 1;
+    padding: 8px 0;
+    border: 1px solid #dddddd;
+    background: #fafafa;
+    color: #555555;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.kb-event-tab.active {
+    background: #4CAF50;
+    border-color: #4CAF50;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+/* 当前键值 */
+.kb-current {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.kb-current-label {
+    font-size: 14px;
+    color: #666666;
+    white-space: nowrap;
+}
+
+.kb-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    flex: 1;
+    min-height: 30px;
+}
+
+.kb-chip {
+    display: inline-block;
+    padding: 4px 10px;
+    background: #eef7ee;
+    color: #2e7d32;
+    border: 1px solid #b7dfb9;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.kb-chip-empty {
+    font-size: 13px;
+    color: #aaaaaa;
+}
+
+.kb-current-clear {
+    padding: 6px 12px;
+    border: 1px solid #dddddd;
+    background: #fafafa;
+    color: #555555;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+/* 键盘 */
+.kb-board {
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.kb-row {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: 6px;
+    min-width: max-content;
+}
+
+.kb-key {
+    min-width: 40px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid #dddddd;
+    background: #ffffff;
+    color: #333333;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.kb-key:hover {
+    background: #f0f0f0;
+}
+
+.kb-key.kb-key-mod {
+    color: #1976d2;
+    border-color: #bbdefb;
+}
+
+.kb-key.kb-key-space {
+    min-width: 240px;
+}
+
+.kb-key.active {
+    background: #4CAF50;
+    border-color: #4CAF50;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.kb-key.kb-key-mod.active {
+    background: #1976d2;
+    border-color: #1976d2;
+    color: #ffffff;
+}
+
+.kb-tip {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #999999;
+    line-height: 1.5;
+}
+
+/* 设置页中的键值摘要 */
+.keyboard-key-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #666666;
+}
+
+.keyboard-key-summary .kbs-row {
+    display: flex;
+    gap: 8px;
+}
+
+.keyboard-key-summary .kbs-name {
+    width: 40px;
+    color: #999999;
+    flex-shrink: 0;
+}
+
+.keyboard-key-summary .kbs-val {
+    color: #333333;
+    word-break: break-all;
+}

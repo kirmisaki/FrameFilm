@@ -1613,7 +1613,7 @@ function toggleNetworkSection() {
     if (content && arrow) {
         const hidden = content.style.display === 'none';
         content.style.display = hidden ? 'block' : 'none';
-        arrow.style.transform = hidden ? '' : 'rotate(-90deg)';
+        arrow.textContent = hidden ? 'expand_less' : 'expand_more';
     }
 }
 
@@ -1622,7 +1622,7 @@ function expandNetworkSection() {
     const arrow = document.querySelector('.network-arrow');
     if (content && arrow) {
         content.style.display = 'block';
-        arrow.style.transform = '';
+        arrow.textContent = 'expand_less';
     }
 }
 
@@ -1631,7 +1631,7 @@ function collapseNetworkSection() {
     const arrow = document.querySelector('.network-arrow');
     if (content && arrow) {
         content.style.display = 'none';
-        arrow.style.transform = 'rotate(-90deg)';
+        arrow.textContent = 'expand_more';
     }
 }
 
