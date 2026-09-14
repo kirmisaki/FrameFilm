@@ -1207,11 +1207,13 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
     html, body {
         height: auto;
         min-height: 100%;
-        overflow-x: hidden;
-        overflow-y: auto;
     }
 
-    body { padding: 104px 32px 80px; }
+    /* overflow 只能设在 html 上：body 一旦成为滚动容器，
+       里面的 position: sticky（左侧导航卡）就完全失效，
+       top 偏移会退化成「向下位移 top 像素」 */
+    html { overflow-x: hidden; overflow-y: auto; }
+    body { overflow: visible; padding: 104px 32px 80px; }
 
     .container {
         width: 100%;
