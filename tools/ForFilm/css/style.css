@@ -1064,6 +1064,9 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
 .action-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .action-controls .secondary-button { flex: 0 0 auto; width: auto; margin: 0; padding: 9px 13px; font-size: 13px; }
 
+/* 外链按钮：a 标签复用按钮样式，去掉下划线 */
+.action-controls a.secondary-button { text-decoration: none; }
+
 .file-size-text { flex: 1; min-width: 70px; font-size: 12px; color: var(--ink-soft); }
 
 /* 调试日志 */
