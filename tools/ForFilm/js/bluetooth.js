@@ -212,6 +212,19 @@ async function onDeviceConnected(deviceName) {
     collapseNetworkSection();
 }
 
+// 设备回传真实屏幕参数（0x42）后，同步「附近设备」里已连接条目的机型与分辨率。
+// 连接瞬间只知道机型名，只能先按机型默认分辨率显示（Pro 默认 792x528），
+// 真实面板参数要等设备回包，例如 0x02 面板是 720x480。
+function syncConnectedDeviceInfo() {
+    const item = document.querySelector('#device-list .connected-device');
+    if (!item) return; // 已断开则不处理
+    const devCfg = getDeviceConfig();
+    const idLine = item.querySelector('.device-id');
+    if (idLine) {
+        idLine.textContent = devCfg.displayName + ' | ' + devCfg.screenWidth + 'x' + devCfg.screenHeight;
+    }
+}
+
 function initBluetooth() {
     const scanButton = document.getElementById('scan-button');
     if (!scanButton) return;
@@ -1015,6 +1028,7 @@ function setupBluetoothListener() {
             const width = (data[4] << 8) | data[5];
             const height = (data[6] << 8) | data[7];
             applyScreenParams(panelId, width, height);
+            syncConnectedDeviceInfo();
             debugLog('屏幕参数: panel_id=0x' + panelId.toString(16) + ', ' + width + 'x' + height);
         }
         else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_KEYBOARD_KEY_GET && cmdLen >= 8) {
