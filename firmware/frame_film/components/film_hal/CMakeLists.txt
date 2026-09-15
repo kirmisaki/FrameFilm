@@ -4,6 +4,7 @@ set(srcs "src/hal_init.c"
          "src/hal_bat.c"
          "src/hal_led.c"
          "src/hal_sd.c"
+         "src/hal_nand.c"
          "src/hal_pwr.c"
          "src/hal_epd_360.c"
          "src/hal_epd_364.c"
@@ -14,7 +15,7 @@ set(srcs "src/hal_init.c"
 
 set(public_include "inc")
 
-set(requires film_sys led_strip driver fatfs esp_adc encoder button)
+set(requires film_sys led_strip driver fatfs esp_adc encoder button spi_nand_flash spi_nand_flash_fatfs)
 
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS ${public_include}

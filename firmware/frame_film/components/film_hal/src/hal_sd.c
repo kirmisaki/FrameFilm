@@ -28,6 +28,10 @@
 /*********************************************************************
  * INCLUDES
  */
+#include "sys_cfg.h"
+
+#if FRAMEFILM_STORAGE_SDNAND == 1
+
 #include <string.h>
 #include <sys/unistd.h>
 #include <sys/stat.h>
@@ -292,4 +296,6 @@ int hal_sd_format(void)
     sys_logi(TF_TAG, "SD card formatted successfully");
     return 0;
 }
+
+#endif /* FRAMEFILM_STORAGE_SDNAND */
 

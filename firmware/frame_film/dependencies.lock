@@ -41,6 +41,13 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 0.5.3
+  espressif/dhara:
+    component_hash: 88968cff2e88853a29366ad556e9c27596d18e15028b6e9f3cd627665f914440
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.0.0
   espressif/led_strip:
     component_hash: b578eb926d9f6402fd45398b53c9bd5d1b7a15c1b2974d25aa3088e6c79b0b4c
     dependencies:
@@ -51,6 +58,34 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 3.0.1
+  espressif/spi_nand_flash:
+    component_hash: aa7bae693eee90b2e5e7cd63e67d41f5c30e61a501873b5c2d02838b1b9df6b8
+    dependencies:
+    - name: espressif/dhara
+      registry_url: https://components.espressif.com
+      require: private
+      version: 1.*
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.4.4
+  espressif/spi_nand_flash_fatfs:
+    component_hash: c72443b207b655172127f15b497c84ff98ef881557581378b37b4d845bf74472
+    dependencies:
+    - name: espressif/spi_nand_flash
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.1.2
   idf:
     source:
       type: idf
@@ -59,7 +94,9 @@ direct_dependencies:
 - esp-idf-lib/encoder
 - espressif/button
 - espressif/led_strip
+- espressif/spi_nand_flash
+- espressif/spi_nand_flash_fatfs
 - idf
-manifest_hash: 5862631a241e372f871ceca548d4884b967002bb3c427f0f30c229cb388db51c
+manifest_hash: 491a07f334f63b43ee3dbf03091b7a4135bee99e8ff1149b38272893a69a0252
 target: esp32s3
 version: 2.0.0

@@ -2475,6 +2475,12 @@ CONFIG_CU_DIAGNOSTICS_COLOR_ALWAYS=y
 # CONFIG_CU_GCC_LTO_ENABLE is not set
 # CONFIG_CU_GCC_STRING_1BYTE_ALIGN is not set
 # end of CMake Utilities
+
+#
+# SPI NAND Flash configuration
+#
+# CONFIG_NAND_FLASH_VERIFY_WRITE is not set
+# end of SPI NAND Flash configuration
 # end of Component config
 
 # CONFIG_IDF_EXPERIMENTAL_FEATURES is not set

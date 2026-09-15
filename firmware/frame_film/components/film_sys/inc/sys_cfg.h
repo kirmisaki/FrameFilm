@@ -31,6 +31,15 @@ extern "C" {
 #error "机型配置错误：只能选择一个机型"
 #endif
 
+// 存储介质二选一（与机型无关，按单板上实际贴的物料选择）
+// SD NAND：SDMMC 四线模式
+// #define FRAMEFILM_STORAGE_SDNAND      1
+// SPI NAND：W25N01G，复用 SD NAND 的走线，走 SPI3
+#define FRAMEFILM_STORAGE_SPINAND     1
+#if (FRAMEFILM_STORAGE_SDNAND + FRAMEFILM_STORAGE_SPINAND) != 1
+#error "存储介质配置错误：只能选择一种"
+#endif
+
 #if FRAMEFILM_STD == 1
 #define SYS_DEVICE_NAME                "FRAMEFILM"
 #define SYS_MANUFACTURER_NAME          "FRAMEFILM"

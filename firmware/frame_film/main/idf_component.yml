@@ -17,3 +17,7 @@ dependencies:
   espressif/led_strip: ^3.0.1
   esp-idf-lib/encoder: ^3.0.2
   espressif/button: ^3.5.0
+  # SPI NAND Flash（W25N01G）驱动，内置 dhara 磨损均衡与坏块管理
+  espressif/spi_nand_flash: ^1.0.0
+  # SPI NAND Flash 的 FatFS 挂载适配层（esp_vfs_fat_nand_mount）
+  espressif/spi_nand_flash_fatfs: ^1.0.0
