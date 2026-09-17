@@ -691,6 +691,25 @@ void hal_epd_display_film(const unsigned char *filmData)
     sys_logi(EPD_TAG, "EPD 709 film display completed");
 }
 
+uint32_t hal_epd_get_capabilities(void)
+{
+    // 7.09" 1200x1600 双面板：支持 v1 4bpp + 局部刷新
+    return (uint32_t)(EPD_CAP_4BPP | EPD_CAP_PARTIAL);
+}
+
+void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode)
+{
+    (void)index8Data;
+    (void)mode;
+    sys_logw(EPD_TAG, "8bpp mode not supported on this panel");
+}
+
+void hal_epd_display_mono(const unsigned char *mono_bitmap)
+{
+    (void)mono_bitmap;
+    sys_logw(EPD_TAG, "MonoFast not supported on this panel");
+}
+
 void hal_epd_sleep(void)
 {
     check_busy();

@@ -41,6 +41,7 @@
 #include "esp_app_format.h"
 
 #include "sys_log.h"
+#include "sys_event.h"
 #include "sys_com.h"
 #include "service_ota.h"
 
@@ -60,6 +61,7 @@
  */
 typedef struct {
     uint8_t state;
+    uint8_t last_progress;              // 上次广播的进度百分比（按 10% 分档去重）
     uint32_t total_size;
     uint32_t received_size;
     const esp_partition_t *update_partition;
@@ -135,6 +137,7 @@ void service_ota_start(void)
 
     m_ota_state.state = OTA_STATE_STARTED;
     m_ota_state.received_size = 0;
+    m_ota_state.last_progress = 0;   // 每次 OTA 会话复位进度去重基准
     sys_logi(OTA_TAG, "OTA begin successful, waiting for data...");
 }
 
@@ -196,10 +199,12 @@ void service_ota_write(uint8_t *data, uint16_t len)
 
     if(m_ota_state.total_size > 0)
     {
-        uint8_t progress = (m_ota_state.received_size * 100) / m_ota_state.total_size;
-        if(progress % 10 == 0)
+        uint8_t progress = (uint8_t)((m_ota_state.received_size * 100) / m_ota_state.total_size);
+        /* 每跨 10% 广播一次进度，避免逐包刷屏，payload: u8 percent */
+        if((progress / 10) != (m_ota_state.last_progress / 10))
         {
-            // sys_logi(OTA_TAG, "OTA progress: %d%% (%d/%d bytes)", progress, m_ota_state.received_size, m_ota_state.total_size);
+            m_ota_state.last_progress = progress;
+            sys_event_publish(SYS_EVT_OTA_PROGRESS, &progress, sizeof(progress));
         }
     }
     else

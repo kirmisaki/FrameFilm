@@ -30,8 +30,8 @@ extern "C" {
 #define EPD_SELECT_E6_7_09_1600_1200 0
 #endif
 #if FRAMEFILM_PRO == 1
-#define EPD_SELECT_E6_3_68_792_528   1
-#define EPD_SELECT_E6_3_70_720_480   0
+#define EPD_SELECT_E6_3_68_792_528   0
+#define EPD_SELECT_E6_3_70_720_480   1
 #define EPD_SELECT_E6_3_64_760_568   0
 #define EPD_SELECT_E6_3_60_600_400   0
 #define EPD_SELECT_E6_1_54_240_240   0
@@ -114,6 +114,17 @@ extern "C" {
 /*********************************************************************
 * TYPEDEFS
 */
+
+/**
+ * @brief 电子纸能力位（hal_epd_get_capabilities 返回）
+ */
+typedef enum
+{
+    EPD_CAP_4BPP     = 1 << 0,  // 所有屏都有（v1 4bpp）
+    EPD_CAP_8BPP     = 1 << 1,  // 3.7 屏 8bpp 索引色（ColorQual/ColorFast）
+    EPD_CAP_MONOFAST = 1 << 2,  // 3.7 屏 MonoFast 差分局刷
+    EPD_CAP_PARTIAL  = 1 << 3,  // 局部窗口刷新
+} epd_cap_t;
 
 /*********************************************************************
  * CONSTANTS
@@ -219,26 +230,41 @@ void hal_epd_display_pic(const unsigned char* picData);
 void hal_epd_display_film(const unsigned char* filmData);
 
 /**
- * @brief 局部窗口刷新（单面板）
+ * @brief 查询电子纸能力位
  *
- * 仅对指定面板的局部窗口更新图像，可用于时钟等小区域动态刷新。
- * 窗口坐标以单面板为参考：整屏 1200 宽由 CS0(左)/CS1(右) 两块各 600 宽的面板拼接，
- * 左半屏局部窗口用 panel=0，右半屏用 panel=1（x_start 相对该面板）。
- * 约束（与官方驱动一致）：x_start 为 4 的倍数，x_start+width <= 600，
- * y_start 为 2 的倍数，y_start+height <= 1600 且为 2 的倍数。
+ * 返回 EPD_CAP_* 组合，供 app 层决定渲染路径：
+ * - EPD_CAP_4BPP     所有屏支持（v1 4bpp）
+ * - EPD_CAP_8BPP     3.7 屏 8bpp 索引色
+ * - EPD_CAP_MONOFAST 3.7 屏 MonoFast 差分局刷
+ * - EPD_CAP_PARTIAL  709 双面板局部刷新
  *
- * @param panel 面板编号：0=CS0(左面板)，1=CS1(右面板)
- * @param x_start 窗口起始 X（像素，相对该面板，需为 4 的倍数）
- * @param y_start 窗口起始 Y（像素，需为 2 的倍数）
- * @param width 窗口宽度（像素，需满足 x_start+width <= 600）
- * @param height 窗口高度（像素，需满足 y_start+height <= 1600）
- * @param data 窗口图像数据（4bpp，字节数 = width*height/2）
- * @param display_enable 非 0 时立即执行刷新（PON/DRF/POF），否则只写入窗口数据
- * @return 0 成功；负数参数错误（-1~-8 与官方驱动一致，-9 data 为空）
+ * @return 能力位组合
  */
-int32_t hal_epd_partial_update(uint8_t panel, uint16_t x_start, uint16_t y_start,
-                               uint16_t width, uint16_t height,
-                               const unsigned char* data, uint8_t display_enable);
+uint32_t hal_epd_get_capabilities(void);
+
+/**
+ * @brief 显示 8bpp 索引色图片（带刷新模式，仅 E6 3.70" 720x480）
+ *
+ * 输入为 720x480 个 8bpp 颜色索引（取值范围 0-63），驱动按 spectra
+ * 算法拆成高/低两个 3bit 平面，配合波形表多相位刷新，用时间
+ * 抖动在 6 色硬件上混出中间色。
+ *
+ * @param index8Data 720*480 字节的 8bpp 颜色索引缓冲
+ * @param mode 刷新模式：0=ColorFast（2 相），1=ColorQual（3 相）
+ */
+void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode);
+
+/**
+ * @brief 黑白快刷（MonoFast 局刷，仅 E6 3.70" 720x480）
+ *
+ * 输入 1bpp 位图（720*480/8 = 43200 字节，每字节 8 像素、MSB 在前，
+ * 1 为黑、0 为白）。驱动对每个像素编码 (上一帧, 当前帧) 的 2bit 跳变，
+ * 配合 mono_fast 波形只驱动变化的像素，实现快速、无闪烁的差分刷新。
+ * 首次调用会自动初始化 spectra，之后跨调用保持上一帧状态。
+ *
+ * @param mono_bitmap 1bpp 位图缓冲（720*480/8 字节）
+ */
+void hal_epd_display_mono(const unsigned char *mono_bitmap);
 
 /**
  * @brief 电子纸进入睡眠模式

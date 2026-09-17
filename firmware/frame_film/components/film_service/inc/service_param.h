@@ -5,6 +5,7 @@
 /*********************************************************************
  * INCLUDES
  */
+#include <stdint.h>
 
 
 /*********************************************************************
@@ -17,18 +18,25 @@ extern "C" {
 /*********************************************************************
  * MACROS
  */
+/* ServiceParam_Def_t 布局版本：1 = 含 film 成员的旧布局；2 = 移除 film + app 参数外置 */
+#define SERVICE_PARAM_VER                                          (2)
+
+/* app 状态持久化：app_id 数值必须与 film_app/inc/app_interface.h 的 app_id_t 对齐
+ * （service 层看不到 app_id_t，这里用裸数值常量） */
+#define SERVICE_PARAM_APP_ID_IMAGE                                 (0)
+#define SERVICE_PARAM_APP_ID_TEMPLATE                              (1)
+#define SERVICE_PARAM_APP_ID_CLOCK                                 (2)
+#define SERVICE_PARAM_APP_ID_ANIMATION                             (3)
+#define SERVICE_PARAM_APP_NUM                                      (4)
+
+/* 单个 app 状态 blob 中 app 数据的最大字节数（不含 6 字节头）。
+ * 各 app 的状态结构体大小不得超过该值，app 侧以 _Static_assert 自行校验。 */
+#define SERVICE_PARAM_APP_DATA_MAX                                 (64)
 
 
 /*********************************************************************
 * TYPEDEFS
 */
-typedef struct
-{
-    uint32_t current_file_id;  // 当前显示的文件ID
-    uint8_t load_complete;     // 加载完成标志
-    uint8_t play_mode;         // FILM模式（0：手动，1：本地切换 2.网络拉取）
-} ServiceFilm_Def_t;
-
 typedef struct
 {
     uint8_t sleep_mode;        // 休眠模式开关 0：关闭 1：开启
@@ -57,8 +65,8 @@ typedef struct
 #pragma pack(4)
 typedef struct
 {
+    uint8_t param_ver;         // 结构体版本，与 nvs 内不一致则重建默认值
     uint8_t factory_flag;
-    ServiceFilm_Def_t film;
     ServiceSleep_Def_t sleep;
     ServiceNetwork_Def_t network;
     ServiceBle_Def_t ble;
@@ -92,6 +100,22 @@ extern void service_param_init(void);
 extern void service_param_save(void);
 extern void service_param_reset(void);
 extern void service_param_ensure_device_id(void);
+
+/* ---------------- app 状态持久化（blob = 6B 头 + app 数据） ----------------
+ * app 侧只声明结构体指针/大小/版本/默认值，NVS 读写全部由这里的接口完成。
+ * 校验失败（key 不存在 / magic 不符 / size 或 version 不匹配）一律视为“无数据”，
+ * 静默回落到默认值并返回负值，不终止启动。
+ *
+ * 调用上下文约束：以上接口均无内部锁，依赖“只在 app 任务上下文串行调用”来保证
+ * 一致性（框架已把 on_exit / 参数回调 / on_tick 全部收敛到 app 任务）。
+ * 请勿在 BLE / 定时器 / 中断等其他任务上下文直接调用，否则会绕过该串行化保证。
+ */
+extern int service_param_app_load(uint8_t app_id, void *buf, uint16_t size, uint8_t ver);
+extern int service_param_app_save(uint8_t app_id, const void *buf, uint16_t size, uint8_t ver);
+extern int service_param_app_erase(uint8_t app_id);
+extern void service_param_app_erase_all(void);
+extern int service_param_app_current_get(void);
+extern int service_param_app_current_set(uint8_t app_id);
 
 
 #ifdef __cplusplus

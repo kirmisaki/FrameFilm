@@ -49,6 +49,7 @@
 #include "sdkconfig.h"
 
 #include "sys_log.h"
+#include "sys_event.h"
 #include "service_ble_gatts.h"
 
 /*********************************************************************
@@ -686,6 +687,7 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
             esp_ble_gap_update_conn_params(&conn_params);
             ble_gatts_connect = BLE_GATTS_CONNECT;
             ble_gatts_notify_mask = 0x00;
+            sys_event_publish(SYS_EVT_BLE_CONN, NULL, 0);
         }
         break;
     }
@@ -697,6 +699,7 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
             ble_gatts_notify_mask = 0x00;
             sys_logi(GATTS_TAG, "ESP_GATTS_DISCONNECT_EVT, disconnect reason 0x%x", param->disconnect.reason);
             esp_ble_gap_start_advertising(&adv_params);
+            sys_event_publish(SYS_EVT_BLE_DISCONN, NULL, 0);
         }
         break;
     }

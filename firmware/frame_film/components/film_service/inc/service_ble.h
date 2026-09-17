@@ -39,8 +39,10 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_OTA_START                    (0x12)
 #define BLE_FILM_TRANS_CH_OTA_STOP                     (0x13)
 // FILM控制               
-#define BLE_FILM_TRANS_CH_CTRL_MODE                    (0x20) // Film模式切换 （0：手动，1：自动）
-#define BLE_FILM_TRANS_CH_CTRL_MODE_GET                (0x21) // Film模式查询 （0：手动，1：自动）
+// 0x20 / 0x21 已废弃：播放模式语义已下移到图片 app 参数通道（0x45），
+// 命令号按“命令值一旦定义不再变更”原则保留，收到后忽略/回 0xFF
+#define BLE_FILM_TRANS_CH_CTRL_MODE                    (0x20) // [已废弃] Film模式切换
+#define BLE_FILM_TRANS_CH_CTRL_MODE_GET                (0x21) // [已废弃] Film模式查询
 #define BLE_FILM_TRANS_CH_CTRL_RESET                   (0x22) // 重置设备到出厂
 #define BLE_FILM_TRANS_CH_CTRL_PWRREAD                 (0x23) // 获取电量
 #define BLE_FILM_TRANS_CH_CTRL_REBOOT                  (0x24) // 重启设备
@@ -73,9 +75,35 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_CTRL_FILM_HEARTBEAT_INTERVAL_GET (0x41) // 心跳间隔查询
 #define BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET       (0x42) // 屏幕分辨率查询（宽2字节+高2字节，大端）
 
+// 注意：0x43 / 0x44 归 dock 底座固件（USB HID 键盘键值设置/查询，见 frame_film_dock 的
+// service_cmd.h），冰箱贴固件不使用这两个命令号。app 控制通道排在 app 参数通道之后，
+// 使 0x45~0x4C 成为连续的 app 通道区间。
+#define BLE_FILM_TRANS_CH_CTRL_APP_SWITCH                  (0x4B) // 切换 app（1字节 app_id，app 层消费）
+#define BLE_FILM_TRANS_CH_CTRL_APP_CURRENT_GET             (0x4C) // 查询当前 app（返回 1字节 app_id）
+
+// app 参数通道（0x45~0x4A）：payload 为 TLV 列表，BLE 层不解析语义，只整包上浮给 app 层
+// 约定：设置通道 = param_ch，查询通道 = param_ch + 1
+#define BLE_FILM_TRANS_CH_APP_IMAGE_PARAM                  (0x45) // 图片 app 参数设置
+#define BLE_FILM_TRANS_CH_APP_IMAGE_PARAM_GET              (0x46) // 图片 app 参数查询
+#define BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM               (0x47) // 模板 app 参数设置
+#define BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM_GET           (0x48) // 模板 app 参数查询
+#define BLE_FILM_TRANS_CH_APP_ANIM_PARAM                   (0x49) // 动图 app 参数设置
+#define BLE_FILM_TRANS_CH_APP_ANIM_PARAM_GET               (0x4A) // 动图 app 参数查询
+
+#define BLE_APP_PARAM_CH_FIRST                             (BLE_FILM_TRANS_CH_APP_IMAGE_PARAM)
+#define BLE_APP_PARAM_CH_LAST                              (BLE_FILM_TRANS_CH_APP_ANIM_PARAM_GET)
+
 /*********************************************************************
 * TYPEDEFS
 */
+
+/**
+ * @brief 当前 app 查询回调（由 app 层注册）
+ *
+ * @return 当前 app_id（未注册时返回 0xFF）
+ */
+typedef uint8_t (*service_ble_app_id_get_cb_t)(void);
+
 typedef struct
 {
     uint8_t ID;
@@ -120,6 +148,24 @@ extern void service_ble_init(void);
 extern void service_ble_msg_send(void *p_msg, bool in_isr);
 extern void service_ble_msg_gatts_cmd_send( uint8_t const *p_data, uint16_t len );
 extern void service_ble_msg_gatts_data_send( uint8_t const *p_data, uint16_t len, uint8_t ch);
+
+/**
+ * @brief 按 BLE 帧格式回发一包数据（内部拼 0x55 / CH / LEN / 校验和）
+ *
+ * @param ch   通道号
+ * @param data 数据负载，可为 NULL
+ * @param len  数据长度，超过上限自动截断
+ */
+extern void service_ble_send_resp(uint8_t ch, const uint8_t *data, uint8_t len);
+
+/**
+ * @brief 注册当前 app 查询回调
+ *
+ * 供 APP_CURRENT_GET 命令回包使用。
+ *
+ * @param cb 回调函数指针（NULL 取消注册）
+ */
+extern void service_ble_set_app_id_get_cb(service_ble_app_id_get_cb_t cb);
 
 
 #ifdef __cplusplus

@@ -30,9 +30,11 @@
  */
 #include "sys_log.h"
 #include "sys_init.h"
+#include "sys_event.h"
 
 #include "hal_init.h"
 #include "service_init.h"
+#include "app_init.h"
 
 /*********************************************************************
  * MACROS
@@ -72,8 +74,12 @@
 
 void film_sys_init(void)
 {
+    // 全局事件总线（须先于各层发布/订阅）
+    sys_event_init();
     // 抽象层初始化
     film_hal_init();
     // 服务层初始化
     film_service_init();
+    // 应用层初始化（调度器 + 默认进入图片 app）
+    film_app_init();
 }

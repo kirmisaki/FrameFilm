@@ -39,6 +39,7 @@
 #include "esp_system.h"
 
 #include "sys_log.h"
+#include "sys_event.h"
 
 #include "service_ble_gatts.h"
 #include "service_ble.h"
@@ -53,6 +54,7 @@
 /*********************************************************************
  * MACROS
  */
+#define BLE_RESP_DATA_MAX          (60)   /* 回包数据长度上限（含 TLV），用于栈上组帧 */
 
 
 /*********************************************************************
@@ -94,6 +96,7 @@ static uint32_t m_film_trans_received = 0;
 static uint8_t m_ota_trans_state = BLE_OTA_TRANS_IDLE;
 static uint32_t m_ota_trans_file_size = 0;
 static uint32_t m_ota_trans_received = 0;
+static service_ble_app_id_get_cb_t m_app_id_get_cb = NULL;
 
 
 /*********************************************************************
@@ -178,21 +181,25 @@ void service_ble_msg_gatts_cmd_send( uint8_t const *p_data, uint16_t len )
     /* The queue could not be created. */
     if(m_ble_msg_hdl != NULL)
     {
-        BaseType_t pxHigherPriorityTaskWoken = pdFALSE;
-
         ble_msg_t msg = {0};
 
         msg.ID = MSG_BLE_CH1_IN_CMD;
-        msg.pdata = pvPortMalloc(len);
         msg.len = len;
-
-        if(msg.pdata)
+        msg.pdata = pvPortMalloc(len);
+        if(msg.pdata == NULL)
         {
-            memcpy(msg.pdata, p_data, len);
-            msg.len = len;
+            sys_loge(BEL_SERVICE_TAG, "cmd msg malloc %u failed, drop", (unsigned)len);
+            return;
         }
-        xQueueSendFromISR( m_ble_msg_hdl, &msg, &pxHigherPriorityTaskWoken );
-        portYIELD_FROM_ISR( pxHigherPriorityTaskWoken );
+        memcpy(msg.pdata, p_data, len);
+
+        /* 调用方为 GATTS 写事件回调（BLE 栈任务上下文），故用非阻塞 xQueueSend；
+           队列满则回收内存并丢弃，避免阻塞 BLE 栈，也不会把 NULL 负载投递出去 */
+        if(xQueueSend(m_ble_msg_hdl, &msg, 0) != pdPASS)
+        {
+            sys_logw(BEL_SERVICE_TAG, "ble cmd queue full, drop len=%u", (unsigned)len);
+            vPortFree(msg.pdata);
+        }
     }
 }
 
@@ -207,21 +214,25 @@ void service_ble_msg_gatts_data_send( uint8_t const *p_data, uint16_t len, uint8
     /* The queue could not be created. */
     if(m_ble_msg_hdl != NULL)
     {
-        BaseType_t pxHigherPriorityTaskWoken = pdFALSE;
-
         ble_msg_t msg = {0};
 
         msg.ID = ch;
-        msg.pdata = pvPortMalloc(len);
         msg.len = len;
-
-        if(msg.pdata)
+        msg.pdata = pvPortMalloc(len);
+        if(msg.pdata == NULL)
         {
-            memcpy(msg.pdata, p_data, len);
-            msg.len = len;
+            sys_loge(BEL_SERVICE_TAG, "msg malloc %u failed, drop ch=0x%02X", (unsigned)len, ch);
+            return;
         }
-        xQueueSendFromISR( m_ble_msg_hdl, &msg, &pxHigherPriorityTaskWoken );
-        portYIELD_FROM_ISR( pxHigherPriorityTaskWoken );
+        memcpy(msg.pdata, p_data, len);
+
+        /* 调用方均为任务上下文（ble 任务 / app 任务），故用非阻塞 xQueueSend；
+           队列满则回收内存并丢弃，既不阻塞发布方，也不会把 NULL 负载投递出去 */
+        if(xQueueSend(m_ble_msg_hdl, &msg, 0) != pdPASS)
+        {
+            sys_logw(BEL_SERVICE_TAG, "ble msg queue full, drop ch=0x%02X len=%u", ch, (unsigned)len);
+            vPortFree(msg.pdata);
+        }
     }
 }
 
@@ -357,7 +368,16 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                 m_film_trans_state = BLE_FILM_TRANS_RECV_LEN;
                 sys_logi(BEL_SERVICE_TAG, "Received file size: %d", m_film_trans_file_size);
 
-                service_file_save_start((const char*)m_film_trans_filename, m_film_trans_file_size);
+                // 文件名含 '/' 视为显式相对路径（如 app/image/cover.film），
+                // 写入 /sdcard/<相对路径>，不参与图片/动图列表与事件
+                if(strchr((const char*)m_film_trans_filename, '/') != NULL)
+                {
+                    service_file_save_start_to((const char*)m_film_trans_filename, m_film_trans_file_size);
+                }
+                else
+                {
+                    service_file_save_start((const char*)m_film_trans_filename, m_film_trans_file_size);
+                }
             }
             else
             {
@@ -465,10 +485,10 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_FILE_DISPLAY_GET : // 查询当前显示的文件id
         {
-            uint32_t current_id = service_film_get_current_id();
+            uint32_t current_id = service_file_get_current_id();
             sys_logi(BEL_SERVICE_TAG, "Current display file id: %d", current_id);
 
-            uint8_t cmd_buf[6];
+            uint8_t cmd_buf[5];
             cmd_buf[0] = BLE_CMD_HEAD;
             cmd_buf[1] = BLE_FILM_TRANS_CH_FILE_DISPLAY_GET;
             cmd_buf[2] = 1;
@@ -537,27 +557,19 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             }
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_MODE : // Film模式切换
+        case BLE_FILM_TRANS_CH_CTRL_MODE : // [已废弃] Film模式切换
         {
-            if(cmd->len == 1 && (cmd->pdata[0] == 0 || cmd->pdata[0] == 1 || cmd->pdata[0] == 2))
-            {
-                uint8_t mode = cmd->pdata[0];
-                sys_logi(BEL_SERVICE_TAG, "Set play mode: %d", mode);
-                g_service_param.film.play_mode = mode;
-                service_param_save();
-            }
+            // 播放模式语义已下移到图片 app 参数通道（0x45），此命令号按"命令值不再变更"原则保留，收到后忽略
+            sys_logw(BEL_SERVICE_TAG, "Deprecated cmd 0x%02X ignored, use app param channel instead", cmd->ch);
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_MODE_GET : // Film模式查询
+        case BLE_FILM_TRANS_CH_CTRL_MODE_GET : // [已废弃] Film模式查询
         {
-            sys_logi(BEL_SERVICE_TAG, "Current play mode: %d", g_service_param.film.play_mode);
-            uint8_t cmd_buf[6];
-            cmd_buf[0] = BLE_CMD_HEAD;
-            cmd_buf[1] = BLE_FILM_TRANS_CH_CTRL_MODE_GET;
-            cmd_buf[2] = 1;
-            cmd_buf[3] = g_service_param.film.play_mode & 0xFF;
-            cmd_buf[4] = ble_checksum(cmd_buf, 4);
-            service_ble_msg_gatts_data_send(cmd_buf, sizeof(cmd_buf), MSG_BLE_CH1_OUT_DATA);
+            // 回 0xFF 表示已废弃
+            sys_logw(BEL_SERVICE_TAG, "Deprecated cmd 0x%02X, reply 0xFF", cmd->ch);
+            uint8_t resp[1];
+            resp[0] = 0xFF;
+            service_ble_send_resp(BLE_FILM_TRANS_CH_CTRL_MODE_GET, resp, sizeof(resp));
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_RESET : // 重置
@@ -934,11 +946,59 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             sys_logi(BEL_SERVICE_TAG, "Screen info: panel_id=0x%02x, %d x %d", EPD_PANEL_ID, EPD_WIDTH, EPD_HEIGHT);
             break;
         }
+        // app 相关通道（0x4B 切 app / 0x45~0x4A 参数通道）：BLE 层不解析语义，整包上浮给 app 层，
+        // 由 app_manager 按 ch 归属路由（0x4B 走切换逻辑，0x45~0x4A 走目标 app 的参数读写）
+        case BLE_FILM_TRANS_CH_CTRL_APP_SWITCH :
+        case BLE_FILM_TRANS_CH_APP_IMAGE_PARAM :
+        case BLE_FILM_TRANS_CH_APP_IMAGE_PARAM_GET :
+        case BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM :
+        case BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM_GET :
+        case BLE_FILM_TRANS_CH_APP_ANIM_PARAM :
+        case BLE_FILM_TRANS_CH_APP_ANIM_PARAM_GET :
+        {
+            /* payload: [0]=ch, [1..]=命令数据，值语义拷贝，app 侧在自身任务执行 */
+            uint8_t evt[SYS_EVENT_PAYLOAD_MAX];
+            uint8_t n = cmd->len;
+            if(n > SYS_EVENT_PAYLOAD_MAX - 1)
+            {
+                sys_logw(BEL_SERVICE_TAG, "app cmd 0x%02X len=%u exceeds event payload %u, truncate",
+                         cmd->ch, (unsigned)cmd->len, (unsigned)(SYS_EVENT_PAYLOAD_MAX - 1));
+                n = SYS_EVENT_PAYLOAD_MAX - 1;
+            }
+            evt[0] = cmd->ch;
+            if(n > 0 && cmd->pdata != NULL)
+            {
+                memcpy(&evt[1], cmd->pdata, n);
+            }
+            sys_event_publish(SYS_EVT_BLE_APP_CMD, evt, (uint16_t)(n + 1));
+            break;
+        }
+        case BLE_FILM_TRANS_CH_CTRL_APP_CURRENT_GET : // 查询当前 app
+        {
+            uint8_t app_id = m_app_id_get_cb ? m_app_id_get_cb() : 0xFF;
+            uint8_t resp_buf[5];
+            resp_buf[0] = BLE_CMD_HEAD;
+            resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_APP_CURRENT_GET;
+            resp_buf[2] = 1;
+            resp_buf[3] = app_id;
+            resp_buf[4] = ble_checksum(resp_buf, 4);
+            service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);
+            sys_logi(BEL_SERVICE_TAG, "Current app id: %d", app_id);
+            break;
+        }
         default :
         {
             break;
         }
     }
+}
+
+/**
+ * [service_ble_set_app_id_get_cb 注册当前 app 查询回调]
+ */
+void service_ble_set_app_id_get_cb(service_ble_app_id_get_cb_t cb)
+{
+    m_app_id_get_cb = cb;
 }
 
 /**
@@ -955,4 +1015,31 @@ static uint8_t ble_checksum(uint8_t arr[], int len)
         sum += arr[i];
     }
     return sum;
+}
+
+/**
+ * [service_ble_send_resp 按 BLE 帧格式回发一包数据]
+ * @param  ch   [通道]
+ * @param  data [数据负载，可为 NULL]
+ * @param  len  [数据长度，超过上限自动截断]
+ */
+void service_ble_send_resp(uint8_t ch, const uint8_t *data, uint8_t len)
+{
+    uint8_t buf[BLE_RESP_DATA_MAX + 4];
+
+    if(len > BLE_RESP_DATA_MAX)
+    {
+        len = BLE_RESP_DATA_MAX;
+    }
+
+    buf[0] = BLE_CMD_HEAD;
+    buf[1] = ch;
+    buf[2] = len;
+    if(len > 0 && data != NULL)
+    {
+        memcpy(&buf[3], data, len);
+    }
+    buf[3 + len] = ble_checksum(buf, 3 + len);
+
+    service_ble_msg_gatts_data_send(buf, (uint16_t)(4 + len), MSG_BLE_CH1_OUT_DATA);
 }

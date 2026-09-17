@@ -43,6 +43,7 @@
 #include "cJSON.h"
 
 #include "sys_log.h"
+#include "sys_event.h"
 #include "sys_com.h"
 #include "hal_bat.h"
 #include "service_param.h"
@@ -329,6 +330,8 @@ static esp_err_t wifi_http_event_handler(esp_http_client_event_t *evt)
             g_download_state = WIFI_DOWNLOAD_DONE;
             g_download_progress = 100;
         }
+        /* 下载字节接收完成（与文件落盘完成 SYS_EVT_FILE_SAVED 区分），payload: u32 字节数 */
+        sys_event_publish(SYS_EVT_WIFI_DL_DONE, &g_download_received, sizeof(g_download_received));
         break;
 
     case HTTP_EVENT_DISCONNECTED:
@@ -609,15 +612,6 @@ static void wifi_heartbeat_exec_cmd(cJSON *cmd)
         if(cJSON_IsObject(params))
         {
             cJSON *item = NULL;
-            item = cJSON_GetObjectItem(params, "play_mode");
-            if(cJSON_IsNumber(item) && (item->valueint == 0 || item->valueint == 1 || item->valueint == 2))
-            {
-                if(g_service_param.film.play_mode != (uint8_t)item->valueint)
-                {
-                    g_service_param.film.play_mode = (uint8_t)item->valueint;
-                    changed = true;
-                }
-            }
             item = cJSON_GetObjectItem(params, "wifi_enable");
             if(cJSON_IsNumber(item) && (item->valueint == 0 || item->valueint == 1))
             {
@@ -793,20 +787,19 @@ static void wifi_heartbeat_once(void)
     const char *token = g_service_param.network.film_token;
 
     int n = snprintf(url, sizeof(url),
-        "%s?device_id=%s&token=%s&battery=%d&play_mode=%d&wifi_enable=%d"
+        "%s?device_id=%s&token=%s&battery=%d&wifi_enable=%d"
         "&sleep_mode=%d&sleep_auto=%d&sleep_time=%d&ble_enable=%d"
         "&current_file_id=%lu&state=idle&heartbeat_interval=%d",
         hb_base,
         g_service_param.network.film_device_id,
         (token != NULL && token[0] != '\0') ? token : "",
         hal_bat_get_percent(),
-        g_service_param.film.play_mode,
         g_service_param.network.wifi_enable,
         g_service_param.sleep.sleep_mode,
         g_service_param.sleep.sleep_auto,
         g_service_param.sleep.sleep_time,
         g_service_param.ble.ble_enable,
-        g_service_param.film.current_file_id,
+        (unsigned long)service_file_get_current_id(),
         g_service_param.network.film_heartbeat_interval);
 
     if(n <= 0 || n >= (int)sizeof(url))

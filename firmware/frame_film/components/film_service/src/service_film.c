@@ -40,9 +40,7 @@
 #include "sys_log.h"
 #include "hal_api.h"
 #include "service_file.h"
-#include "service_param.h"
 #include "service_film.h"
-#include "service_wifi.h"
 
 /*********************************************************************
  * MACROS
@@ -53,6 +51,11 @@
 #define SYS_OS_PRI_FILM_TASK        (5)
 #define SYS_OS_SIZE_FILM_TASK       (4096)
 #define SYS_OS_NAME_FILM_TASK       "film_task"
+
+#define FILM_HDR_SIZE               (32)      // .film 文件头字节数
+// .film 文件头关键字段偏移（与 docs/film/film.md 一致）
+#define FILM_HDR_OFFSET_FORMAT      (0x09)    // 格式判别码
+#define FILM_HDR_OFFSET_FRAMECOUNT  (0x0A)    // 帧数（小端）
 
 /*********************************************************************
 * TYPEDEFS
@@ -80,11 +83,70 @@ static void film_task_handle(void *pvParameters);
 static void film_msg_send(void *p_msg, bool in_isr);
 
 static void film_display_event(uint32_t file_id);
-static void film_next_event(void);
-static void film_prev_event(void);
-static void film_init_event(void);
-static void film_clear_event(void);
-static void film_download_event(void);
+static void film_render_frame_event(uint32_t file_id, uint32_t frame_idx);
+
+/*********************************************************************
+ * LOCAL HELPERS
+ */
+
+/**
+ * @brief 等待文件加载完成（最多 3s）
+ */
+static void film_wait_load_done(void)
+{
+    uint32_t wait_count = 0;
+    while((service_file_get_load_complete() != FILE_LOAD_STATE_DONE) && wait_count < 300)
+    {
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+        wait_count++;
+    }
+}
+
+/**
+ * @brief 确保指定文件已加载到 PSRAM 缓冲
+ * @return 0 成功，-1 失败
+ */
+static int film_ensure_loaded(uint32_t file_id)
+{
+    if(service_file_get_current_id() != file_id ||
+       service_file_get_load_complete() != FILE_LOAD_STATE_DONE)
+    {
+        if(service_file_load(file_id) != 0)
+        {
+            sys_loge(FILM_TAG, "load file %d failed", file_id);
+            return -1;
+        }
+        film_wait_load_done();
+    }
+
+    if(service_file_get_load_complete() != FILE_LOAD_STATE_DONE)
+    {
+        sys_loge(FILM_TAG, "load file %d timeout", file_id);
+        return -1;
+    }
+
+    return service_file_get_buffer() ? 0 : -1;
+}
+
+/**
+ * @brief 读取单帧主体大小
+ * @return 帧大小，或 0（未知格式）
+ */
+static uint32_t film_frame_size_by_format(uint8_t format)
+{
+    switch(format)
+    {
+    case 0x00:  // v1 4bpp
+        return (EPD_WIDTH * EPD_HEIGHT) / 2;
+    case 0x01:  // v2 MonoFast 1bpp
+        return (EPD_WIDTH * EPD_HEIGHT) / 8;
+    case 0x02:  // v2 ColorQual 8bpp
+    case 0x03:  // v2 ColorFast 8bpp
+        return EPD_WIDTH * EPD_HEIGHT;
+    default:
+        return 0;
+    }
+}
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
@@ -111,21 +173,6 @@ static void film_task_handle(void *pvParameters)
         return;
     }
 
-    // 等待文件完成加载
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-
-    // 发送初始化消息
-    film_msg_t msg;
-    msg.ID = MSG_FILM_INIT;
-    film_msg_send(&msg, 0);
-
-    // 注册编码器回调
-    // hal_input_register_cb(INPUT_PRESS_SHORT, service_film_next);
-    hal_input_register_cb(INPUT_PRESS_UP, service_film_prev);
-    hal_input_register_cb(INPUT_PRESS_DOWN, service_film_next);
-    hal_input_register_cb(INPUT_PRESS_LONG, service_film_clear);
-    hal_input_register_cb(INPUT_PRESS_SHORT, film_download_event);
-
     for(;;)
     {
         film_msg_t msg;
@@ -136,17 +183,8 @@ static void film_task_handle(void *pvParameters)
             case MSG_FILM_DISPLAY:
                 film_display_event(msg.file_id);
                 break;
-            case MSG_FILM_NEXT:
-                film_next_event();
-                break;
-            case MSG_FILM_PREV:
-                film_prev_event();
-                break;
-            case MSG_FILM_INIT:
-                film_init_event();
-                break;
-            case MSG_FILM_CLEAR:
-                film_clear_event();
+            case MSG_FILM_RENDER:
+                film_render_frame_event(msg.file_id, msg.frame_idx);
                 break;
             default:
                 break;
@@ -176,64 +214,6 @@ static void film_msg_send(void *p_msg, bool in_isr)
     }
 }
 
-static void film_init_event(void)
-{
-    sys_logi(FILM_TAG, "Film init event complete %d play mode %d", g_service_param.film.load_complete, g_service_param.film.play_mode);
-
-    // 检查服务参数
-    if(g_service_param.film.load_complete)
-    {
-        // 加载完成
-        if(g_service_param.film.play_mode == FILM_PLAY_MODE_AUTO)
-        {
-            // 本地轮播模式下，每次芯片启动后自动播放下一张照片
-            sys_logi(FILM_TAG, " local play mode, displaying next image");
-            film_next_event();
-        }
-        else if(g_service_param.film.play_mode == FILM_PLAY_MODE_WIFI)
-        {
-            // WiFi轮播模式下，等待WiFi连接建立（最长10s）
-            sys_logi(FILM_TAG, "WiFi play mode, waiting for WiFi connection...");
-            int retry = 0;
-            while(retry < 100 && !service_wifi_get_connect_status())
-            {
-                vTaskDelay(pdMS_TO_TICKS(100));
-                retry++;
-            }
-            if(service_wifi_get_connect_status())
-            {
-                sys_logi(FILM_TAG, "WiFi connected, starting download");
-                service_wifi_download_start();
-            }
-            else
-            {
-                sys_logw(FILM_TAG, "WiFi connection timeout, fallback to local mode");
-                film_next_event();
-            }
-        }
-    }
-    else
-    {
-        // 未加载完成，刷新照片
-        sys_logi(FILM_TAG, "Load not complete, refreshing image");
-        film_display_event(g_service_param.film.current_file_id);
-    }
-}
-
-static void film_clear_event(void)
-{
-    sys_logi(FILM_TAG, "Film clear event");
-    
-    g_service_param.film.load_complete = 0;
-    g_service_param.film.current_file_id = 0;
-    g_service_param.film.play_mode = 0;
-    service_param_save();
-
-    hal_epd_display_init();
-    hal_epd_display_white();
-    hal_epd_pwroff();
-}
-
 static void film_display_event(uint32_t file_id)
 {
     sys_logi(FILM_TAG, "Displaying file: %d", file_id);
@@ -259,23 +239,16 @@ static void film_display_event(uint32_t file_id)
         sys_loge(FILM_TAG, "Failed to load file: %d", file_id);
         return;
     }
-    else
+
+    char filename[256];
+    if(service_file_get_filename_safe(file_id, filename, sizeof(filename)) == 0)
     {
-        char filename[256];
-        if(service_file_get_filename_safe(file_id, filename, sizeof(filename)) == 0)
-        {
-            sys_logi(FILM_TAG, "File name: %s", filename);
-        }
+        sys_logi(FILM_TAG, "File name: %s", filename);
     }
 
     // 等待文件加载完成（最多等待3秒）
-    uint32_t wait_count = 0;
-    while((service_file_get_load_complete() != FILE_LOAD_STATE_DONE) && wait_count < 300)
-    {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-        wait_count++;
-    }
-    
+    film_wait_load_done();
+
     uint8_t* buffer = NULL;
     if((buffer = service_file_get_buffer()) == NULL)
     {
@@ -283,154 +256,112 @@ static void film_display_event(uint32_t file_id)
         return;
     }
 
-    // 更新状态
-    g_service_param.film.current_file_id = file_id;
-    g_service_param.film.load_complete = 0;
-    service_param_save();
+    // 面板能力守卫：非 3.7" 驱动的 hal_epd_display_film() 只解析 v1 4bpp，
+    // 若目录混入 v2 单帧（mono/8bpp）会被当作 4bpp 误解析而花屏，这里提前拦截
+    uint8_t format = buffer[FILM_HDR_OFFSET_FORMAT];
+    uint32_t caps = hal_epd_get_capabilities();
+    if((format == 0x01 && !(caps & EPD_CAP_MONOFAST))
+    || ((format == 0x02 || format == 0x03) && !(caps & EPD_CAP_8BPP)))
+    {
+        sys_logw(FILM_TAG, "display: format 0x%02X unsupported on this panel", format);
+        return;
+    }
 
     // 调用EPD显示接口
     hal_epd_display_init();
     hal_epd_display_film(buffer);
     hal_epd_pwroff();
 
-    // 更新状态
-    g_service_param.film.load_complete = 1;
-    service_param_save();
-
     sys_logi(FILM_TAG, "Refresh event completed");
 }
 
-static void film_next_event(void)
+static void film_render_frame_event(uint32_t file_id, uint32_t frame_idx)
 {
-    // 获取文件总数
-    uint32_t file_count = service_file_get_count();
-    if(file_count == 0)
+    if(film_ensure_loaded(file_id) != 0)
     {
-        sys_logw(FILM_TAG, "No files available");
         return;
     }
 
-    // 计算下一张图片ID
-    uint32_t current_id = g_service_param.film.current_file_id;
-    uint32_t next_id = (current_id + 1) % file_count;
-
-    // 显示下一张图片
-    if(g_service_param.film.load_complete)
+    uint8_t *buffer = service_file_get_buffer();
+    if(buffer == NULL)
     {
-        // 加载完成，直接显示下一张图片
-        film_display_event(next_id);
-    }
-    else
-    {
-        // 未加载完成，更新无效
-        sys_logi(FILM_TAG, "Load not complete, updating invalid");
-    }
-}
-
-static void film_prev_event(void)
-{
-    // 获取文件总数
-    uint32_t file_count = service_file_get_count();
-    if(file_count == 0)
-    {
-        sys_logw(FILM_TAG, "No files available");
+        sys_loge(FILM_TAG, "render_frame: buffer NULL");
         return;
     }
 
-    // 计算上一张图片ID
-    uint32_t current_id = g_service_param.film.current_file_id;
-    uint32_t prev_id = (current_id == 0) ? (file_count - 1) : (current_id - 1);
+    uint8_t format = buffer[FILM_HDR_OFFSET_FORMAT];
+    uint16_t frame_count = (uint16_t)(buffer[FILM_HDR_OFFSET_FRAMECOUNT]
+                                     | (buffer[FILM_HDR_OFFSET_FRAMECOUNT + 1] << 8));
+    uint32_t count = (frame_count == 0) ? 1u : (uint32_t)frame_count;
 
-    // 显示上一张图片
-    if(g_service_param.film.load_complete)
+    if(frame_idx >= count)
     {
-        // 加载完成，直接显示上一张图片
-        film_display_event(prev_id);
+        sys_loge(FILM_TAG, "render_frame: frame %d out of %d", frame_idx, count);
+        return;
     }
-    else
+
+    uint32_t frame_size = film_frame_size_by_format(format);
+    if(frame_size == 0)
     {
-        // 未加载完成，更新无效
-        sys_logi(FILM_TAG, "Load not complete, updating invalid");
+        sys_loge(FILM_TAG, "render_frame: unknown format 0x%02X", format);
+        return;
     }
+
+    const unsigned char *frame_ptr = buffer + FILM_HDR_SIZE + frame_idx * frame_size;
+
+    sys_logi(FILM_TAG, "Render frame %d/%d, format 0x%02X", frame_idx, count, format);
+
+    hal_epd_display_init();
+    switch(format)
+    {
+    case 0x01:  // v2 MonoFast
+        hal_epd_display_mono(frame_ptr);
+        break;
+    case 0x02:  // v2 ColorQual（3 相）
+        hal_epd_display_8bpp_mode(frame_ptr, 1);
+        break;
+    case 0x03:  // v2 ColorFast（2 相）
+        hal_epd_display_8bpp_mode(frame_ptr, 0);
+        break;
+    default:    // v1 4bpp 单帧
+        hal_epd_display_film(buffer);
+        break;
+    }
+    hal_epd_pwroff();
 }
-
-static void film_download_event(void)
-{
-    if(g_service_param.film.load_complete)
-    {
-        service_wifi_download_start();
-    }
-}
-
 
 void service_film_display(uint32_t file_id)
 {
     film_msg_t msg;
     msg.ID = MSG_FILM_DISPLAY;
     msg.file_id = file_id;
+    msg.frame_idx = 0;
     film_msg_send(&msg, 0);
 }
 
-void service_film_next(void)
+void service_film_render_frame(uint32_t file_id, uint32_t frame_idx)
 {
-    if(g_service_param.film.load_complete)
-    {
-        // 加载完成，显示下一张图片
-        film_msg_t msg;
-        msg.ID = MSG_FILM_NEXT;
-        film_msg_send(&msg, 0);
-    }
-    else
-    {
-        sys_logi(FILM_TAG, "Load not complete, next event invalid");
-    }
+    film_msg_t msg;
+    msg.ID = MSG_FILM_RENDER;
+    msg.file_id = file_id;
+    msg.frame_idx = frame_idx;
+    film_msg_send(&msg, 0);
 }
 
-void service_film_prev(void)
+uint32_t service_film_get_frame_count(uint32_t file_id)
 {
-    if(g_service_param.film.load_complete)
+    if(film_ensure_loaded(file_id) != 0)
     {
-        // 加载完成，显示上一张图片
-        film_msg_t msg;
-        msg.ID = MSG_FILM_PREV;
-        film_msg_send(&msg, 0);
+        return 1;
     }
-    else
+
+    uint8_t *buffer = service_file_get_buffer();
+    if(buffer == NULL)
     {
-        sys_logi(FILM_TAG, "Load not complete, prev event invalid");
+        return 1;
     }
-}
 
-void service_film_clear(void)
-{
-    if(g_service_param.film.load_complete)
-    {
-        // 加载完成，清除显示
-        film_msg_t msg;
-        msg.ID = MSG_FILM_CLEAR;
-        film_msg_send(&msg, 0);
-    }
-    else
-    {
-        sys_logi(FILM_TAG, "Load not complete, clear event invalid");
-    }
+    uint16_t frame_count = (uint16_t)(buffer[FILM_HDR_OFFSET_FRAMECOUNT]
+                                     | (buffer[FILM_HDR_OFFSET_FRAMECOUNT + 1] << 8));
+    return (frame_count == 0) ? 1u : (uint32_t)frame_count;
 }
-
-void service_film_set_play_mode(uint8_t mode)
-{
-    g_service_param.film.play_mode = mode;
-    service_param_save();
-    
-    sys_logi(FILM_TAG, "Set play mode: %d", mode);
-}
-
-uint32_t service_film_get_current_id(void)
-{
-    return g_service_param.film.current_file_id;
-}
-
-uint8_t service_film_get_load_complete(void)
-{
-    return g_service_param.film.load_complete;
-}
-

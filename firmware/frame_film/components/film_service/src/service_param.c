@@ -45,10 +45,20 @@
  */
 #define SERVICE_FACTORY_DEFAULT_FLAG                            (0x22)
 
+/* app 状态 blob：6 字节头 + app 数据（app 数据上限见 service_param.h 的
+ * SERVICE_PARAM_APP_DATA_MAX，各 app 以 _Static_assert 校验自身结构体不超限） */
+#define SERVICE_PARAM_APP_MAGIC                                 (0xA55A)
+
 /*********************************************************************
 * TYPEDEFS
 */
-
+typedef struct __attribute__((packed))
+{
+    uint16_t magic;    // 0xA55A，不匹配视为无数据
+    uint16_t size;     // 后续 app 数据有效字节数
+    uint8_t  version;  // app 状态结构体版本
+    uint8_t  rsvd;
+} service_param_app_hdr_t;
 
 /*********************************************************************
  * CONSTANTS
@@ -61,6 +71,8 @@
 static void nvs_init(void);
 static void nvs_param_save(void);
 static void service_param_set_default(void);
+static esp_err_t app_nvs_open(nvs_handle_t *handle);
+static void app_key_build(char *key, size_t key_size, uint8_t app_id);
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -120,11 +132,18 @@ void service_param_save(void)
 
 /**
  * [service_param_reset 重置服务参数]
+ *
+ * 上下文例外：本函数会调用 service_param_app_erase_all()，而 app 状态接口的约定是
+ * “只在 app 任务上下文串行调用”。此处由 BLE 任务调用是安全的：
+ *   1) 仅擦除 NVS，不读写任何 app 的 RAM 状态，不存在与 app 任务的数据竞争；
+ *   2) 调用方随后立即 vTaskDelay + sys_reboot()，不会与正在运行的 app 状态机交错。
+ * 除本场景外，请勿在 app 任务之外调用 service_param_app_* 系列接口。
  */
 void service_param_reset(void)
 {
     service_param_set_default();
     nvs_param_save();
+    service_param_app_erase_all();
 }
 
 
@@ -134,12 +153,8 @@ void service_param_reset(void)
 static void service_param_set_default(void)
 {
     // 设置服务参数默认值
+    g_service_param.param_ver = SERVICE_PARAM_VER;
     g_service_param.factory_flag = SERVICE_FACTORY_DEFAULT_FLAG;
-
-    // 参数还原
-    g_service_param.film.load_complete = 0;
-    g_service_param.film.play_mode = 0;
-    g_service_param.film.current_file_id = 0;
 
     g_service_param.sleep.sleep_mode = 1;  // 休眠模式默认开启
     g_service_param.sleep.sleep_auto = 0;  // 自动唤醒默认关闭
@@ -185,7 +200,9 @@ static void nvs_init(void)
         size_t required_size = sizeof(g_service_param);
         err = nvs_get_blob(my_nvs_handle, SYS_M_NVS_KEY_NAME, &g_service_param, &required_size);
 
-        if(err == ESP_ERR_NVS_NOT_FOUND || g_service_param.factory_flag != SERVICE_FACTORY_DEFAULT_FLAG) //FACTORY RESET
+        if(err == ESP_ERR_NVS_NOT_FOUND ||
+           g_service_param.factory_flag != SERVICE_FACTORY_DEFAULT_FLAG ||
+           g_service_param.param_ver != SERVICE_PARAM_VER) //FACTORY RESET / 布局版本变更
         {
             service_param_set_default();
 
@@ -236,4 +253,216 @@ static void nvs_param_save(void)
     }
 
     nvs_close(my_nvs_handle);
+}
+
+/**
+ * [app_nvs_open 打开 app 状态命名空间]
+ */
+static esp_err_t app_nvs_open(nvs_handle_t *handle)
+{
+    return nvs_open(SYS_M_NVS_APP_NAMESPACE, NVS_READWRITE, handle);
+}
+
+/**
+ * [app_key_build 构造 app 状态 key：app<id>]
+ */
+static void app_key_build(char *key, size_t key_size, uint8_t app_id)
+{
+    snprintf(key, key_size, "%s%u", SYS_M_NVS_APP_KEY_PREFIX, (unsigned)app_id);
+}
+
+/**
+ * [service_param_app_load 读取 app 状态；失败返回负值（调用方回落默认值）]
+ */
+int service_param_app_load(uint8_t app_id, void *buf, uint16_t size, uint8_t ver)
+{
+    if(app_id >= SERVICE_PARAM_APP_NUM || buf == NULL || size == 0 || size > SERVICE_PARAM_APP_DATA_MAX)
+    {
+        return -1;
+    }
+
+    nvs_handle_t handle;
+    if(app_nvs_open(&handle) != ESP_OK)
+    {
+        return -1;
+    }
+
+    char key[16] = {0};
+    app_key_build(key, sizeof(key), app_id);
+
+    /* 先读进栈缓冲校验头部，避免校验失败时污染调用方的 app 状态 */
+    uint8_t raw[sizeof(service_param_app_hdr_t) + SERVICE_PARAM_APP_DATA_MAX];
+    size_t len = sizeof(raw);
+    esp_err_t err = nvs_get_blob(handle, key, raw, &len);
+    nvs_close(handle);
+
+    if(err != ESP_OK)
+    {
+        sys_logi("param", "app%u state not found: %d", (unsigned)app_id, (int)err);
+        return -1;
+    }
+
+    /* 长度不足以容纳头部时直接判为无数据：必须先判，再解头部，
+       否则 len < sizeof(hdr) 时会读到 raw 中未初始化的字节 */
+    if(len < sizeof(service_param_app_hdr_t))
+    {
+        sys_logw("param", "app%u state too short: len %u", (unsigned)app_id, (unsigned)len);
+        return -1;
+    }
+
+    service_param_app_hdr_t hdr;
+    memcpy(&hdr, raw, sizeof(hdr));
+
+    if(hdr.magic != SERVICE_PARAM_APP_MAGIC || hdr.size != size || hdr.version != ver ||
+       len < (sizeof(hdr) + size))
+    {
+        sys_logw("param", "app%u state invalid (magic %04x size %u/%u ver %u/%u len %u)",
+                 (unsigned)app_id, hdr.magic, hdr.size, size, hdr.version, ver, (unsigned)len);
+        return -1;
+    }
+
+    memcpy(buf, raw + sizeof(hdr), size);
+    return 0;
+}
+
+/**
+ * [service_param_app_save 保存 app 状态]
+ */
+int service_param_app_save(uint8_t app_id, const void *buf, uint16_t size, uint8_t ver)
+{
+    if(app_id >= SERVICE_PARAM_APP_NUM || buf == NULL || size == 0 || size > SERVICE_PARAM_APP_DATA_MAX)
+    {
+        return -1;
+    }
+
+    nvs_handle_t handle;
+    if(app_nvs_open(&handle) != ESP_OK)
+    {
+        return -1;
+    }
+
+    uint8_t raw[sizeof(service_param_app_hdr_t) + SERVICE_PARAM_APP_DATA_MAX];
+    service_param_app_hdr_t hdr = {
+        .magic   = SERVICE_PARAM_APP_MAGIC,
+        .size    = size,
+        .version = ver,
+        .rsvd    = 0,
+    };
+    memcpy(raw, &hdr, sizeof(hdr));
+    memcpy(raw + sizeof(hdr), buf, size);
+
+    char key[16] = {0};
+    app_key_build(key, sizeof(key), app_id);
+
+    esp_err_t err = nvs_set_blob(handle, key, raw, sizeof(hdr) + size);
+    if(err == ESP_OK)
+    {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+
+    if(err != ESP_OK)
+    {
+        sys_logw("param", "app%u state save failed: %d", (unsigned)app_id, (int)err);
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * [service_param_app_erase 清除单个 app 状态]
+ */
+int service_param_app_erase(uint8_t app_id)
+{
+    if(app_id >= SERVICE_PARAM_APP_NUM)
+    {
+        return -1;
+    }
+
+    nvs_handle_t handle;
+    if(app_nvs_open(&handle) != ESP_OK)
+    {
+        return -1;
+    }
+
+    char key[16] = {0};
+    app_key_build(key, sizeof(key), app_id);
+
+    esp_err_t err = nvs_erase_key(handle, key);
+    if(err == ESP_OK || err == ESP_ERR_NVS_NOT_FOUND)
+    {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+
+    return (err == ESP_OK) ? 0 : -1;
+}
+
+/**
+ * [service_param_app_erase_all 清除全部 app 状态（出厂重置）]
+ */
+void service_param_app_erase_all(void)
+{
+    for(uint8_t i = 0; i < SERVICE_PARAM_APP_NUM; i++)
+    {
+        service_param_app_erase(i);
+    }
+
+    nvs_handle_t handle;
+    if(app_nvs_open(&handle) == ESP_OK)
+    {
+        if(nvs_erase_key(handle, SYS_M_NVS_APP_KEY_CURRENT) == ESP_OK)
+        {
+            nvs_commit(handle);
+        }
+        nvs_close(handle);
+    }
+}
+
+/**
+ * [service_param_app_current_get 读取上次运行的 app id；无记录返回 -1]
+ */
+int service_param_app_current_get(void)
+{
+    nvs_handle_t handle;
+    if(app_nvs_open(&handle) != ESP_OK)
+    {
+        return -1;
+    }
+
+    uint8_t app_id = 0;
+    esp_err_t err = nvs_get_u8(handle, SYS_M_NVS_APP_KEY_CURRENT, &app_id);
+    nvs_close(handle);
+
+    if(err != ESP_OK || app_id >= SERVICE_PARAM_APP_NUM)
+    {
+        return -1;
+    }
+    return (int)app_id;
+}
+
+/**
+ * [service_param_app_current_set 记录当前运行的 app id]
+ */
+int service_param_app_current_set(uint8_t app_id)
+{
+    if(app_id >= SERVICE_PARAM_APP_NUM)
+    {
+        return -1;
+    }
+
+    nvs_handle_t handle;
+    if(app_nvs_open(&handle) != ESP_OK)
+    {
+        return -1;
+    }
+
+    esp_err_t err = nvs_set_u8(handle, SYS_M_NVS_APP_KEY_CURRENT, app_id);
+    if(err == ESP_OK)
+    {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+
+    return (err == ESP_OK) ? 0 : -1;
 }

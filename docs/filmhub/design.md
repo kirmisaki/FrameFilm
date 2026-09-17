@@ -116,12 +116,11 @@ server/
 | token | str | 设备访问令牌（注册响应下发） |
 | is_claimed | bool | 是否已被用户认领（首次心跳自动注册后待认领） |
 | wifi_enable | bool | 最近上报的配置（设备已有设置参数） |
-| play_mode | int | 0 手动 / 1 本地轮播 / 2 网络（设备已有设置参数） |
 | sleep_mode | bool | 休眠开关（设备已有设置参数） |
 | sleep_auto | bool | 定时唤醒开关（设备已有设置参数） |
 | sleep_time | int | 定时唤醒时间（分钟，设备已有设置参数） |
 | ble_enable | bool | BLE 开关（设备已有设置参数） |
-| current_file_id | int | 当前显示文件 ID（设备已有设置参数） |
+| current_file_id | int | 当前显示文件 ID（心跳上报，取自 `service_file_get_current_id()`） |
 | heartbeat_interval | int | 秒（5–180，服务端可调） |
 | battery_percent | int | 实时电量（心跳上报） |
 | voltage_mv | int | 电池电压（心跳上报） |
@@ -278,7 +277,7 @@ PUT    /api/v1/admin/settings/ai
 ```
 GET {heartbeat_url}?device_id={mac}&token={token}
    &battery={0-100}&voltage_mv={2800-4300}
-   &play_mode={0|1|2}&wifi_enable={0|1}
+   &wifi_enable={0|1}
    &sleep_mode={0|1}&sleep_auto={0|1}&sleep_time={10-2880}
    &ble_enable={0|1}&current_file_id={n}
    &state={idle|displaying|downloading|sleep}
@@ -290,13 +289,14 @@ GET {heartbeat_url}?device_id={mac}&token={token}
 | token | ✓ | 注册时下发，存 NVS |
 | battery | 选 | 电量百分比 |
 | voltage_mv | 选 | 电压（mV） |
-| play_mode / wifi_enable | 选 | 设备已有设置参数（`ServiceFilm_Def_t` / `ServiceNetwork_Def_t`） |
+| wifi_enable | 选 | 设备已有设置参数（`ServiceNetwork_Def_t`，见 `service_param.h`） |
 | sleep_mode / sleep_auto / sleep_time | 选 | 设备已有设置参数（`ServiceSleep_Def_t`） |
 | ble_enable | 选 | 设备已有设置参数（`ServiceBle_Def_t`） |
-| current_file_id | 选 | 当前显示文件 ID（`ServiceFilm_Def_t`） |
+| current_file_id | 选 | 当前显示文件 ID（固件 `service_file_get_current_id()`） |
 | state | 选 | 设备工作状态 |
 
 > 说明：心跳上报字段**以设备已有的设置参数为准**（即固件 `ServiceParam_Def_t` 中定义的参数），不额外引入未定义字段。
+> **`play_mode` 已于 v1.7 从心跳上报与 `set_config` 下发中移除**（播放模式语义下移到图片 app 参数通道 `0x45`），后续统一设计。
 
 ### 7.3 注册流程（首次心跳自动注册）
 
@@ -328,7 +328,7 @@ GET {heartbeat_url}?device_id={mac}&token={token}
       },
       {
         "cmd": "set_config",
-        "params": { "play_mode": 2, "wifi_enable": 1 }
+        "params": { "wifi_enable": 1 }
       }
     ]
   }
@@ -340,7 +340,7 @@ GET {heartbeat_url}?device_id={mac}&token={token}
 | cmd | params | 说明 |
 |-----|--------|------|
 | `download_film` | `url`（完整绝对地址） | 发起 film WiFi 下载 |
-| `set_config` | `play_mode` / `wifi_enable` / `sleep_*` 等 | 设备功能配置 |
+| `set_config` | `wifi_enable` / `sleep_*` 等 | 设备功能配置（`play_mode` 已移除，改由图片 app 参数通道 `0x45` 下发） |
 | `set_heartbeat` | `interval`（秒） | 调整心跳间隔 |
 | `sync_time` | `timestamp` | 时间同步（设备 NTP 不可用时的兜底） |
 | `reboot` | — | 重启设备（可选） |
@@ -352,9 +352,9 @@ GET {heartbeat_url}?device_id={mac}&token={token}
 
 ### 7.5 设备状态展示
 
-- 后端记录每次心跳上报的字段（电量、电压、play_mode、wifi_enable、sleep、ble、current_file_id、state 等，均为设备已有设置参数）
+- 后端记录每次心跳上报的字段（电量、电压、wifi_enable、sleep、ble、current_file_id、state 等，均为设备已有设置参数或运行时状态）
 - 在线判定：`now - last_heartbeat_at <= 3 × interval` 视为在线，否则离线
-- 前端「设备状态」面板展示：实时电量、电压、设备设置参数（播放模式/WiFi/休眠/BLE/当前文件）、工作状态、最近心跳时间（满足需求 F3 设备状态显示）
+- 前端「设备状态」面板展示：实时电量、电压、设备设置参数（WiFi/休眠/BLE/当前文件）、工作状态、最近心跳时间（满足需求 F3 设备状态显示）
 - 设备内文件列表：通过心跳响应下发查询指令，设备返回 SD 卡文件清单（不在心跳上报字段内）
 
 ## 8. 设备 film 获取协议
@@ -540,11 +540,11 @@ stream_items (按 position 排序):
 
 | # | 改动 | 涉及文件 |
 |---|------|---------|
-| 1 | 新增 BLE 命令：0x3E 心跳URL设置 / 0x3F 心跳URL查询 / 0x40 心跳间隔设置 / 0x41 心跳间隔查询 / 0x42 设备注册（请求 token） | `service_ble.h/c`、`ble-utils.js`、`frame.js` |
+| 1 | 新增 BLE 命令：0x3E 心跳URL设置 / 0x3F 心跳URL查询 / 0x40 心跳间隔设置 / 0x41 心跳间隔查询 / 0x42 设备注册（请求 token） | `service_ble.h/c`、`ble-utils.js`、`bluetooth.js` |
 | 2 | 实现心跳任务：定时 GET heartbeat_url → cJSON 解析 → 执行 commands（download_film / set_config / set_heartbeat） | `service_wifi.c` |
 | 3 | 下载请求附加 `device_id` + `token` query 参数；支持心跳下发的完整 URL | `service_wifi.c` |
 | 4 | token / device_id 持久化（NVS） | `service_param.c` |
-| 5 | 状态上报采集：电量、电压及设备已有设置参数（play_mode/wifi/sleep/ble/current_file_id 等） | 复用 `hal_bat.c` / `service_param.c` |
+| 5 | 状态上报采集：电量、电压及设备已有设置参数（wifi/sleep/ble/current_file_id 等；`play_mode` 已移除，改由 app 参数通道下发） | 复用 `hal_bat.c` / `service_param.c` |
 | 6 | 休眠唤醒按心跳周期拉取（device_pull 模式） | `service_film.c` |
 
 ## 15. 实施里程碑

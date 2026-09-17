@@ -49,7 +49,7 @@ FrameFilm 项目 AI 开发指南。
 
 - VID/PID：`0x303A` / `0x8000`（Windows 上会枚举出一个 COM 口）
 - **USB 与 BLE 共用同一套命令解析**：`components/film_service/src/service_cmd.c`（帧格式、通道号与冰箱贴完全一致），两条链路只是收发适配层（`service_ble.c` / `service_usb.c`），新增命令只需改 `service_cmd.c`
-- 新增命令：`0x43` 按键键值设置、`0x44` 按键键值查询（**仅 dock 有**，冰箱贴固件最高到 `0x42`）
+- 新增命令：`0x43` 按键键值设置、`0x44` 按键键值查询（**仅 dock 有**；冰箱贴固件不使用这两个号，其 app 通道为 `0x45~0x4C`，dock 新增命令从 `0x45` 之后顺延）
 - dock 的按键不操作本机，而是作为 **PC 键盘**：单击/双击/长按 → 按 `g_service_param.key` 发送 HID 键值（见 `service_monitor.c`）
 
 > 给 dock 的 BLE 命令要同时考虑 USB 链路：回包按来源链路原路返回，传输状态机带链路归属校验。
@@ -125,6 +125,7 @@ film_service → film_hal → film_sys → ESP-IDF
 | 机型配置 | `firmware/frame_film/components/film_sys/inc/sys_cfg.h` + `firmware/frame_film/sdkconfig_{std,pro,max}` |
 | 屏幕选择 | `firmware/frame_film/components/film_hal/inc/hal_epd.h`（`EPD_SELECT_E6_*` 宏） |
 | BLE 协议 | `firmware/frame_film/components/film_service/inc/service_ble.h` |
+| 全局事件总线 | `firmware/frame_film/components/film_sys/inc/sys_event.h` |
 | EPD 驱动 | `firmware/frame_film/components/film_hal/src/hal_epd_{360,368,370,709}.c` |
 | film 播放 | `firmware/frame_film/components/film_service/src/service_film.c` |
 | 固件入口 | `firmware/frame_film/main/main.c` |

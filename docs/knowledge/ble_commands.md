@@ -41,8 +41,8 @@
 
 | CH | 名称 | 方向 | 数据 | 说明 |
 |----|------|------|------|------|
-| 0x20 | CTRL_MODE | ↓ | uint8 | 0:手动 1:本地轮播 2:WiFi轮播 |
-| 0x21 | CTRL_MODE_GET | ↑ | uint8 | 查询模式 |
+| 0x20 | CTRL_MODE | ↓ | uint8 | **[已废弃]** 收到忽略；播放模式改用图片 app 参数通道 0x45 |
+| 0x21 | CTRL_MODE_GET | ↑ | uint8 | **[已废弃]** 固定回 0xFF；改用 0x46 |
 | 0x22 | CTRL_RESET | ↓ | 无 | 恢复出厂设置 |
 | 0x23 | CTRL_PWRREAD | ↑ | uint8 | 电量 0-100 |
 | 0x24 | CTRL_REBOOT | ↓ | 无 | 重启设备 |
@@ -73,7 +73,39 @@
 | 0x3C | FILM_DOWNLOAD | ↓ | 无 | 触发下载 |
 | 0x3D | FILM_DOWNLOAD_STATE | ↑ | uint8 | 下载状态 0-3 |
 
+## App 控制与参数 (0x42-0x4C) v1.8
+
+| CH | 名称 | 方向 | 数据 | 说明 |
+|----|------|------|------|------|
+| 0x42 | SCREEN_RESOLUTION_GET | ↑ | ID(1B)+W(2B)+H(2B) BE | 查询屏幕面板与分辨率 |
+| 0x45 | APP_IMAGE_PARAM | ↓ | TLV | 图片 app 参数设置 |
+| 0x46 | APP_IMAGE_PARAM_GET | ↑ | TLV | 图片 app 参数查询 |
+| 0x47 | APP_TEMPLATE_PARAM | ↓ | TLV | 模板 app 参数设置 |
+| 0x48 | APP_TEMPLATE_PARAM_GET | ↑ | TLV | 模板 app 参数查询 |
+| 0x49 | APP_ANIM_PARAM | ↓ | TLV | 动图 app 参数设置 |
+| 0x4A | APP_ANIM_PARAM_GET | ↑ | TLV | 动图 app 参数查询 |
+| 0x4B | APP_SWITCH | ↓ | uint8 | 切换 app（app_id 见下），不回包 |
+| 0x4C | APP_CURRENT_GET | ↑ | uint8 | 查询当前 app（0xFF=未知） |
+
+> `0x43` / `0x44` 为 **Dock 底座专属**通道（键盘键值），冰箱贴固件不使用，故 app 控制通道跳号到 `0x4B` / `0x4C`。
+
+app_id：`0x00` 图片 / `0x01` 模板 / `0x02` 时钟 / `0x03` 动图（时钟无参数，不占通道）
+
+TLV = `[TAG(1B)][LEN(1B)][VALUE(LEN B)]...`；查询通道 = 设置通道 + 1；SET 不回包；多字节大端。
+各 app 的 TAG 定义见 `blecmd_protocol.md` §4.8。
+
+### Dock 底座专属 (0x43-0x44)
+
+| CH | 名称 | 方向 | 数据 | 说明 |
+|----|------|------|------|------|
+| 0x43 | KEYBOARD_KEY_SET | ↓ | 事件(1)+修饰键(1)+键数(1)+键码(n) | 设置单击/双击/长按 HID 键值，不回包 |
+| 0x44 | KEYBOARD_KEY_GET | ↑ | [修饰键(1)+键数(1)+键码(6)]×N | 查询键值（空请求回三组，LEN=8×组数） |
+
+详情见 `blecmd_protocol.md` §3.8 / §4.9。
+
 ## 播放模式枚举
+
+> **[已废弃]** 下列 CTRL_MODE (0x20) 枚举已下线，播放模式语义下移到图片 app 参数通道（`0x45` 的 `play_mode` / `auto_interval`）。
 
 | 值 | 名称 | 说明 |
 |----|------|------|

@@ -19,6 +19,7 @@ extern "C" {
  */
 #define FILE_TAG                    "file"
 #define FILM_DIR                    "/sdcard/film"
+#define ANIM_DIR                    "/sdcard/animation"
 #define FILM_FILE_EXT               ".film"
 
 #define FILE_LOAD_STATE_NONE        (0)
@@ -39,7 +40,8 @@ typedef enum {
     MSG_FILE_LOAD_NEXT,       // 加载下一个文件
     MSG_SD_MOUNTED,           // SD卡挂载
     MSG_SD_UNMOUNTED,         // SD卡卸载
-    MSG_FILE_SAVE_START,      // 开始保存文件
+    MSG_FILE_SAVE_START,      // 开始保存文件（当前工作目录 + 文件名）
+    MSG_FILE_SAVE_START_TO,   // 开始保存文件（显式相对路径，不参与列表/事件）
     MSG_FILE_SAVE_DATA,       // 保存文件数据
     MSG_FILE_SAVE_STOP,       // 停止保存文件
 } file_msg_type_t;
@@ -80,6 +82,44 @@ typedef struct {
 extern void service_file_init(void);
 
 /**
+ * @brief 设置当前文件目录
+ *
+ * 切换目录（如 /sdcard/film 或 /sdcard/animation）后清空文件列表并触发刷新。
+ * 用于图片/动图不同目录的复用。
+ *
+ * @param dir 目标目录字符串（必须以 '\0' 结尾）
+ */
+extern void service_file_set_dir(const char *dir);
+
+/**
+ * @brief 查询当前目录的文件列表是否已刷新完成
+ *
+ * service_file_set_dir() 为异步刷新，切换目录后需等待列表就绪再读取数量/内容。
+ *
+ * @return 1 已就绪，0 刷新中
+ */
+extern uint8_t service_file_is_list_ready(void);
+
+/**
+ * @brief 设置目录并同步等待列表就绪
+ *
+ * 供 app 层切换数据源时使用：内部调用 service_file_set_dir() 后轮询等待
+ * 列表刷新完成（超时上限 FILE_DIR_READY_TIMEOUT_MS），返回刷新后的文件数量。
+ * 目录未变化时不触发刷新，直接返回当前数量。
+ *
+ * @param dir 目标目录（NULL 时按当前目录处理）
+ * @return uint32_t 列表就绪后的文件数量
+ */
+extern uint32_t service_file_set_dir_sync(const char *dir);
+
+/**
+ * @brief 获取当前文件目录
+ *
+ * @return const char* 当前目录字符串指针（内部缓冲，只读）
+ */
+extern const char *service_file_get_dir(void);
+
+/**
  * @brief 刷新文件列表
  *
  * 此函数用于刷新文件列表，扫描SD卡中的.film文件。
@@ -109,6 +149,20 @@ extern int service_file_save_data(const char *pfilename, uint32_t file_size, uin
  * @return int 0:成功, -1:失败
  */
 extern int service_file_save_start(const char *pfilename, uint32_t file_size);
+
+/**
+ * @brief 开始保存文件到显式相对路径
+ *
+ * 与 service_file_save_start() 的区别：路径相对 /sdcard 指定（如
+ * "app/image/cover.film"），保存过程中自动逐级创建父目录，保存完成后
+ * 不参与图片/动图列表刷新、不做 relocate、不上浮 SYS_EVT_FILE_SAVED。
+ * 用于写入 app 封面等与文件列表无关的资源。
+ *
+ * @param rel_path  相对 /sdcard 的路径，不允许以 '/' 开头或包含 ".."
+ * @param file_size 文件大小
+ * @return int 0:成功, -1:失败
+ */
+extern int service_file_save_start_to(const char *rel_path, uint32_t file_size);
 
 /**
  * @brief 停止保存文件
