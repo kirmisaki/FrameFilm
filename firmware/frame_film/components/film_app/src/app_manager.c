@@ -57,7 +57,7 @@
 #define APP_TASK_STACK          (4096)
 #define APP_TASK_NAME           "app_task"
 
-#define APP_SWITCH_TIMEOUT_MS   (10000)  // 切换菜单无输入超时，回 RUN
+#define APP_SWITCH_TIMEOUT_MS   (30000)  // 切换菜单无输入超时，回 RUN
 #define APP_TICK_MS             (100)    // 周期 on_tick 心跳（时钟 1s 去重、动图叠加 frame 推进）
 
 #define APP_PARAM_GET_BUF_MAX   (60)     // 参数查询回包缓冲区（与 BLE 回包上限对齐）

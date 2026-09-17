@@ -126,10 +126,13 @@ void app_render_display_full(const unsigned char *filmData)
     uint8_t format = filmData[FILM_HDR_OFFSET_FORMAT];
     uint32_t caps = app_render_get_capabilities();
 
-    hal_epd_display_init();
-    switch(format)
+    /* MonoFast 单独处理，不能走 hal_epd_display_init()/hal_epd_pwroff()：
+     * 前者会硬复位面板（控制器里缓存的上一帧是差分基准），后者内部是 DSLP 深睡，
+     * 两者都会让下一次 mono 刷新退化成整屏刷新（翻封面/时钟每帧整屏闪）。
+     * 该路径的 spectra 会话与电源（PON/REF/POF）由 hal_epd_display_mono 自行管理，
+     * 面板不会一直带电。 */
+    if(format == 0x01)
     {
-    case 0x01:  // v2 MonoFast（首帧）
         if(caps & EPD_CAP_MONOFAST)
         {
             hal_epd_display_mono(filmData + FILM_HDR_SIZE);
@@ -138,7 +141,12 @@ void app_render_display_full(const unsigned char *filmData)
         {
             sys_logw(APP_RENDER_TAG, "monofast film but panel unsupported");
         }
-        break;
+        return;
+    }
+
+    hal_epd_display_init();
+    switch(format)
+    {
     case 0x02:  // v2 ColorQual（3 相）
         if(caps & EPD_CAP_8BPP)
         {
@@ -187,9 +195,9 @@ void app_render_display_mono(const unsigned char *mono_bitmap)
         return;
     }
 
-    hal_epd_display_init();
+    /* 同 display_full 的 MonoFast 分支：不能复位/深睡，否则时钟每秒一帧都会整屏闪。
+       spectra 会话与电源由 hal_epd_display_mono 自行管理。 */
     hal_epd_display_mono(mono_bitmap);
-    hal_epd_pwroff();
 }
 
 void app_render_clear(void)

@@ -61,6 +61,16 @@
 #define EPD_MONO_LINE                 (EPD_WIDTH / 8)  // 每行字节数（1bpp，720/8=90）
 #define EPD_MONO_BYTES                (EPD_WIDTH * EPD_HEIGHT / 8)  // 43200
 
+/* mono 2bit 跳变码（code = 2*old + new）的码位语义。
+ * .film 与时钟位图约定 1=黑、0=白，而实测面板的 mono_fast/mono_clear 波形把码位
+ * 1 当白、0 当黑，故编码前统一取反；若换屏/换波形后画面反色，改这里即可。
+ * 注意：这里只影响“新帧”的码位，上一帧初值见 MONO_CODE_INIT_BYTE。 */
+#define MONO_CODE_BIT_WHITE           (1)
+
+/* 面板经 full_clear / mono 清屏后的实际光学状态是“黑”（实测），差分刷新的上一帧
+ * 初值以此为准，不能按“清屏=白”假设，否则首帧会整屏不动或整屏压黑。 */
+#define MONO_CODE_INIT_BYTE           ((MONO_CODE_BIT_WHITE) ? 0x00 : 0xFF)
+
 // BUSY 等待超时（ms）
 #define BUSY_TIMEOUT_INIT_MS          (15000)
 #define BUSY_TIMEOUT_POWER_MS         (60000)
@@ -749,6 +759,10 @@ static void reset(void)
     vTaskDelay(20 / portTICK_PERIOD_MS);
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     vTaskDelay(10 / portTICK_PERIOD_MS);
+
+    /* 硬复位会清掉控制器内的帧数据，mono 差分刷新必须以复位后的状态重新建立会话，
+       否则会拿失效的上一帧做差分（整屏闪/花屏）。 */
+    m_mono_inited = false;
 }
 
 /*********************************************************************
@@ -966,7 +980,7 @@ static void epd_spectra_full_clear(void)
 {
     epd_spectra_wave(full_clear);
     epd_spectra_fill(0x00);
-    memset(m_mono_prev, 0, EPD_MONO_BYTES);   // 清屏后重置黑白上一帧
+    memset(m_mono_prev, MONO_CODE_INIT_BYTE, EPD_MONO_BYTES);   // 清屏后面板为黑，上一帧按黑复位
     m_spectra_state = 1;
 }
 
@@ -1271,6 +1285,8 @@ void hal_epd_deinit(void)
  * (上一帧, 当前帧) 的 2bit 跳变，配合 mono_fast/mono_clear 波形只驱动
  * 发生变化的像素，实现快速、无闪烁的"局刷"效果（JD7601 无窗口命令，
  * 这里仍是全屏写，但差分后仅变化像素被真正驱动）。
+ *
+ * 位图约定 1=黑、0=白（见 hal_epd.h / film.md 10.3）；面板码位极性见 MONO_CODE_BIT_WHITE。
  *********************************************************************/
 
 static uint8_t epd_spectra_reverse_bits(uint8_t x)
@@ -1280,32 +1296,49 @@ static uint8_t epd_spectra_reverse_bits(uint8_t x)
     return (uint8_t)(((x >> 1) & 0x55) | ((x << 1) & 0xAA));
 }
 
+/**
+ * 位图字节 → mono 码位字节：先做字节内位序对齐（位图 MSB 在前 → 面板位序），
+ * 再按码位极性取反（MONO_CODE_BIT_WHITE）。
+ */
+static uint8_t epd_spectra_mono_code_byte(uint8_t bitmap_byte)
+{
+    uint8_t v = epd_spectra_reverse_bits(bitmap_byte);
+
+    if (MONO_CODE_BIT_WHITE)
+    {
+        v = (uint8_t)~v;
+    }
+
+    return v;
+}
+
 // 状态转换（prepare）：跨模式时选择对应过渡波形
+// 上一帧初值按各分支实际得到的画面复位：清屏为黑 → INIT_BYTE；写白帧 → mono_write 自身已更新
 static void epd_spectra_prepare(void)
 {
     if (m_spectra_state == 0)
     {
-        // native/quality → 全清理
+        // native/quality → 全清理（内部已把上一帧复位为黑）
         epd_spectra_full_clear();
     }
     else if (m_spectra_state == 2)
     {
-        // mono → 黑白清理
+        // mono → 黑白清理：写完面板为白，上一帧由 mono_write 更新为白
         epd_spectra_wave(mono_clear);
-        epd_spectra_mono_write(NULL);   // 全填 0（白）
+        epd_spectra_mono_write(NULL);
         epd_spectra_refresh(true, false);
     }
     else if (m_spectra_state == 3)
     {
-        // fast-color → 恢复
+        // fast-color → 恢复：未写 mono 帧，按“清屏为黑”复位上一帧
         epd_spectra_wave(restore_after_fast_color);
         epd_spectra_refresh(true, false);
+        memset(m_mono_prev, MONO_CODE_INIT_BYTE, EPD_MONO_BYTES);
     }
-    memset(m_mono_prev, 0, EPD_MONO_BYTES);
     m_spectra_state = 1;
 }
 
-// 写一帧黑白差分数据。mono_bitmap 为 NULL 时表示全填 0（清屏）
+// 写一帧黑白差分数据。mono_bitmap 为 NULL 时表示全白（清屏）
 static void epd_spectra_mono_write(const uint8_t *mono_bitmap)
 {
     uint8_t line[EPD_INPUT_LINE];
@@ -1319,8 +1352,8 @@ static void epd_spectra_mono_write(const uint8_t *mono_bitmap)
         for (int x = 0; x < EPD_MONO_LINE; x++)
         {
             uint8_t old = prev[x];
-            uint8_t next = src ? epd_spectra_reverse_bits(src[x]) : 0x00;
-            prev[x] = next;   // 更新上一帧（bit-reversed 存储）
+            uint8_t next = epd_spectra_mono_code_byte(src ? src[x] : 0x00);
+            prev[x] = next;   // 更新上一帧（码位域）
             for (int j = 0; j < 4; j++)
             {
                 line[x * 4 + j] = (uint8_t)(((old << 5) & 0x20) | ((next << 4) & 0x10)

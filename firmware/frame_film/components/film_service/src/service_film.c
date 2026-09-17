@@ -267,6 +267,16 @@ static void film_display_event(uint32_t file_id)
         return;
     }
 
+    /* MonoFast 走差分局刷：hal_epd_display_init()（硬复位）与 hal_epd_pwroff()（深睡）
+       都会丢掉控制器里的上一帧，使下一次刷新退化为整屏刷新，故该路径不经这两步，
+       电源（PON/REF/POF）由 hal_epd_display_mono 内部完成 */
+    if(format == 0x01)
+    {
+        hal_epd_display_film(buffer);   // 内部按 Format 分派到 hal_epd_display_mono
+        sys_logi(FILM_TAG, "Refresh event completed (mono fast)");
+        return;
+    }
+
     // 调用EPD显示接口
     hal_epd_display_init();
     hal_epd_display_film(buffer);
@@ -311,12 +321,16 @@ static void film_render_frame_event(uint32_t file_id, uint32_t frame_idx)
 
     sys_logi(FILM_TAG, "Render frame %d/%d, format 0x%02X", frame_idx, count, format);
 
+    /* MonoFast 走差分刷新：每帧复位/深睡会让动图整屏闪（同 film_display_event） */
+    if(format == 0x01)
+    {
+        hal_epd_display_mono(frame_ptr);
+        return;
+    }
+
     hal_epd_display_init();
     switch(format)
     {
-    case 0x01:  // v2 MonoFast
-        hal_epd_display_mono(frame_ptr);
-        break;
     case 0x02:  // v2 ColorQual（3 相）
         hal_epd_display_8bpp_mode(frame_ptr, 1);
         break;

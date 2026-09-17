@@ -262,6 +262,9 @@ void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode);
  * 配合 mono_fast 波形只驱动变化的像素，实现快速、无闪烁的差分刷新。
  * 首次调用会自动初始化 spectra，之后跨调用保持上一帧状态。
  *
+ * 注：位图约定 `1` 为黑、`0` 为白；面板 mono 跳变码的实际码位极性与之相反，
+ * 由驱动内部统一映射（见 `hal_epd_370.c` 的 `MONO_CODE_BIT_WHITE`），调用方无需自行反色。
+ *
  * @param mono_bitmap 1bpp 位图缓冲（720*480/8 字节）
  */
 void hal_epd_display_mono(const unsigned char *mono_bitmap);

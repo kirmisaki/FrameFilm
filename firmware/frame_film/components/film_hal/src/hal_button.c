@@ -58,7 +58,7 @@
 #define BUTTON_MAX_CALLBACKS              (5)
 
 #define BUTTON_SHORT_PRESS_TIME_MS        (50)   // 50ms 短按
-#define BUTTON_LONG_PRESS_TIME_MS         (2000) // 2s 长按
+#define BUTTON_LONG_PRESS_TIME_MS         (1000) // 2s 长按
 
 /*********************************************************************
 * TYPEDEFS
