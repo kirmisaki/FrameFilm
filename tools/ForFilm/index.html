@@ -441,9 +441,15 @@
                         <option value="jarvis">Jarvis-Judice-Ninke</option>
                         <option value="gammaFloydSteinberg">Gamma 感知 FS（线性）</option>
                         <option value="bayer">Bayer 4×4 有序抖动</option>
+                        <option value="colorFast55">55 色 ColorFast（3.7 寸 8bpp）</option>
+                        <option value="colorQual">46 色 ColorQual（3.7 寸 8bpp）</option>
                         <option value="szEnhanced" disabled>SZ 增强（Pro）</option>
                         <option value="atkinsonSzCalib" disabled>Atkinson·SZ校色（Pro）</option>
                     </select>
+                    <div class="field-hint" id="bpp8Hint" style="display:none;"></div>
+                    <button type="button" class="secondary-button block-button" id="paletteTestBtn" style="display:none;" onclick="generatePaletteTestPattern()">
+                        <svg class="ic" viewBox="0 0 24 24"><use href="#i-sliders"/></svg> 生成色板测试图（8×8 索引色块）
+                    </button>
                 </div>
                 <div id="ditherStrengthContainer" class="slider-container">
                     <label for="ditherStrength">抖动强度</label>
@@ -612,6 +618,35 @@
                 <div id="keyboard-key-summary" class="keyboard-key-summary"></div>
             </div>
 
+            <!-- App 封面（设备封面菜单，测试用） -->
+            <div id="app-cover-section" class="card">
+                <div class="card__title">
+                    <span class="ic-wrap ic-wrap--mint"><svg class="ic" viewBox="0 0 24 24"><use href="#i-image"/></svg></span>
+                    App 封面
+                    <span class="spacer"></span>
+                    <button type="button" class="secondary-button" id="app-cover-all-btn" onclick="uploadAllAppCovers()">
+                        <svg class="ic" viewBox="0 0 24 24"><use href="#i-upload"/></svg>
+                        全部上传
+                    </button>
+                </div>
+                <div class="switch-row__hint">
+                    写入 /sdcard/app/&lt;app&gt;/cover.film，供设备封面菜单（长按确认键）显示；不进入图片/动图列表，不影响设备当前画面
+                </div>
+                <div class="action-controls">
+                    <button type="button" class="secondary-button" data-app-cover="image" onclick="uploadAppCover('image')">图片</button>
+                    <button type="button" class="secondary-button" data-app-cover="template" onclick="uploadAppCover('template')">模板</button>
+                    <button type="button" class="secondary-button" data-app-cover="clock" onclick="uploadAppCover('clock')">时钟</button>
+                    <button type="button" class="secondary-button" data-app-cover="animation" onclick="uploadAppCover('animation')">动图</button>
+                </div>
+                <div id="app-cover-device-hint" class="switch-row__hint"></div>
+                <div id="app-cover-transfer-container" class="transfer-container" style="display:none;">
+                    <div id="app-cover-transfer-status" class="transfer-status">准备传输...</div>
+                    <div class="progress-bar"><div id="app-cover-transfer-progress-bar" class="progress-fill"></div></div>
+                    <div id="app-cover-transfer-progress" class="transfer-progress">0%</div>
+                </div>
+                <div id="app-cover-result" class="switch-row__hint"></div>
+            </div>
+
             <div class="card">
                 <div class="card__title">
                     <span class="ic-wrap ic-wrap--sun"><svg class="ic" viewBox="0 0 24 24"><use href="#i-board"/></svg></span>
@@ -747,6 +782,8 @@
 <script src="js/frame.js"></script>
 <script src="js/frame-nav.js"></script>
 <script src="js/batch.js"></script>
+<script src="js/app-cover-data.js"></script>
+<script src="js/app-cover.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

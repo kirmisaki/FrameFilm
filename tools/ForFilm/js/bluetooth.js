@@ -325,34 +325,22 @@ function uploadToDevice() {
         return;
     }
 
+    // 统一走 Film 页的打包逻辑（55 色走 8bpp ColorFast，其余走 v1 4bpp）
+    var fileData;
     try {
-        var canvas = document.getElementById('canvas');
-        var canvasWidth = getCanvasWidth();
-        var canvasHeight = getCanvasHeight();
-        var ctx = canvas.getContext('2d');
-        var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-        window.processedDataForDownload = processImageData(imageData);
+        fileData = buildCurrentFilmFile();
     } catch (error) {
         showMessage('转换失败: ' + error.message, 'error');
         return;
     }
 
     var fileName = normalizeFilmFileName(document.getElementById('fileName').value, 'output.film');
-    var pixelData = window.processedDataForDownload;
-
-    // 生成文件头并合并
-    var header = generateFilmHeader();
-    var totalSize = getFilmFileTotalSize();
-    var headerSize = 32;
-    var fileData = new Uint8Array(totalSize);
-    fileData.set(header, 0);
-    fileData.set(pixelData, headerSize);
 
     uploadFilmFileViaBle(fileName, fileData);
 }
 
 async function uploadFilmFileViaBle(fileName, fileData) {
-    var expectedSize = getFilmFileTotalSize();
+    var expectedSize = getFilmFileExpectedSize(fileData);
 
     if (fileData.length !== expectedSize) {
         showMessage(`文件大小不符合要求(应为${expectedSize}字节)`, 'error');

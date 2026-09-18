@@ -40,6 +40,7 @@ function initApp() {
     initBluetooth();
     initUsb();
     initKeyboardSetting();
+    initAppCover();
     initConvertTool();
 }
 

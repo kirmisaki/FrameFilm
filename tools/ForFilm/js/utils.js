@@ -41,6 +41,14 @@ function isPortraitDevice() {
     return cfg.screenHeight > cfg.screenWidth;
 }
 
+// 8bpp 索引色（ColorFast / ColorQual）仅 3.7" 720×480 E6 spectra 面板
+// （EPD_PANEL_ID 0x02）可渲染，且只有该分辨率下 8bpp 主体长度才与驱动读取长度一致
+// （其它分辨率会越界读取）
+function is8bppPanelSupported() {
+    var cfg = getDeviceConfig();
+    return cfg.screenWidth === 720 && cfg.screenHeight === 480;
+}
+
 function setDeviceType(type) {
     if (DEVICE_CONFIGS[type]) {
         currentDeviceType = type;
@@ -71,9 +79,17 @@ function onDeviceTypeChanged() {
     }
     // SZ 增强算法仅 FrameFilm Pro 可用
     syncSzEnhancedAvailability();
+    // 8bpp 索引色（ColorFast / ColorQual）仅 3.7" 720×480 屏可用
+    if (typeof sync8bppAvailability === 'function') {
+        sync8bppAvailability();
+    }
     // 按键键值设置仅支持的机型可见
     if (typeof syncKeyboardAvailability === 'function') {
         syncKeyboardAvailability();
+    }
+    // App 封面推送仅冰箱贴（非 Dock）可用
+    if (typeof syncAppCoverAvailability === 'function') {
+        syncAppCoverAvailability();
     }
 }
 
@@ -153,6 +169,21 @@ function getFilmFileTotalSize() {
     var total = 32 + getFilmPixelDataSize();
     console.log('[DEBUG] getFilmFileTotalSize() = ' + total + ' | deviceType=' + currentDeviceType);
     return total;
+}
+
+// 按文件头字段（宽/高/Format）推算 .film 应有的总大小，供传输前校验
+// Format: 0x00=v1 4bpp(2px/字节), 0x01=MonoFast 1bpp(8px/字节), 0x02/0x03=8bpp(1px/字节)
+// 见 docs/film/film.md
+function getFilmFileExpectedSize(fileData) {
+    if (!fileData || fileData.length < 32) {
+        return -1;
+    }
+    var width = fileData[4] | (fileData[5] << 8);
+    var height = fileData[6] | (fileData[7] << 8);
+    var format = fileData[9];
+    var pixels = width * height;
+    var bodySize = (format === 0x01) ? (pixels / 8) : (format >= 0x02 ? pixels : (pixels / 2));
+    return 32 + bodySize;
 }
 
 // 规范化发送到设备的 film 文件名

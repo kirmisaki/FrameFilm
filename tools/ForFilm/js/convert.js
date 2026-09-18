@@ -71,6 +71,38 @@ function syncAdjustSliders() {
     }
 }
 
+// 8bpp 索引色（ColorFast / ColorQual）只在 3.7" 720×480 屏上开放：该格式主体必须与
+// 驱动读取的 720*480 字节严格一致，其它分辨率下会越界读取，故不支持时禁用并回退
+function sync8bppAvailability() {
+    var select = document.getElementById('ditherType');
+    if (!select) {
+        return;
+    }
+    var supported = is8bppPanelSupported();
+    Object.keys(CF_PROFILES).forEach(function(key) {
+        var option = select.querySelector('option[value="' + key + '"]');
+        if (option) {
+            option.disabled = !supported;
+        }
+    });
+    if (CF_PROFILES[select.value] && !supported) {
+        select.value = 'floydSteinberg';
+        syncAdjustSliders();
+    }
+    var hint = document.getElementById('bpp8Hint');
+    var profile = CF_PROFILES[select.value];
+    if (hint) {
+        hint.textContent = profile
+            ? '输出 ' + profile.label + ' 单帧，仅 3.7 寸 720×480 屏可渲染'
+            : '';
+        hint.style.display = profile ? '' : 'none';
+    }
+    var testBtn = document.getElementById('paletteTestBtn');
+    if (testBtn) {
+        testBtn.style.display = supported ? '' : 'none';
+    }
+}
+
 function initConvertTool() {
     // 事件监听器
     document.getElementById('imageFile').addEventListener('change', handleFileUpload);
@@ -88,12 +120,16 @@ function initConvertTool() {
     });
     document.getElementById('ditherType').addEventListener('change', function() {
         syncAdjustSliders();
+        sync8bppAvailability();
         debounceUpdateImage();
     });
     syncAdjustSliders();
 
     // SZ 增强算法仅 Pro 可用（默认机型非 Pro，选项保持禁用）
     syncSzEnhancedAvailability();
+
+    // 8bpp 索引色（ColorFast / ColorQual）仅 3.7" 720×480 屏可用
+    sync8bppAvailability();
     
     // 鼠标滚轮缩放功能
     const canvas = document.getElementById('canvas');
@@ -367,6 +403,70 @@ function resetImage() {
     document.getElementById('fileName').value = 'output.film';
 }
 
+// 生成 3.7 寸 8bpp 色板测试图：8×8 个色块，块索引 = 行×8 + 列，
+// 并按该面板 180° 显示方向预先换算，使屏上自上而下、自左而右就是索引 0→63。
+// 用途：发到设备显示后，按实际颜色反推真实「索引 → 颜色」对照，用于校准 CF_PALETTE
+// （索引由固件拆成高/低两个 3bit 平面送面板，实际颜色由面板 LUT 决定）。
+function generatePaletteTestPattern() {
+    if (!is8bppPanelSupported()) {
+        showMessage('色板测试图仅支持 3.7 寸屏（720×480）', 'warning');
+        return;
+    }
+    if (!getActive8bppProfile()) {
+        document.getElementById('ditherType').value = 'colorFast55';
+        syncAdjustSliders();
+        sync8bppAvailability();
+    }
+
+    // 出图不能被对比度/饱和度/抖动改写，先复位这三个滑块
+    document.getElementById('contrast').value = 1;
+    document.getElementById('contrastValue').textContent = '1';
+    document.getElementById('saturation').value = 1;
+    document.getElementById('saturationValue').textContent = '1.0';
+    document.getElementById('ditherStrength').value = 1;
+    document.getElementById('ditherStrengthValue').textContent = '1.0';
+
+    var width = getCanvasWidth();
+    var height = getCanvasHeight();
+    var cellW = width / 8;
+    var cellH = height / 8;
+    var imageData = new ImageData(width, height);
+    var data = imageData.data;
+    var palette = getActive8bppProfile().palette;
+
+    for (var y = 0; y < height; y++) {
+        var row = Math.min(7, Math.floor((height - 1 - y) / cellH));
+        for (var x = 0; x < width; x++) {
+            var col = Math.min(7, Math.floor((width - 1 - x) / cellW));
+            var color = palette[row * 8 + col];
+            var o = (y * width + x) * 4;
+            data[o] = color[0];
+            data[o + 1] = color[1];
+            data[o + 2] = color[2];
+            data[o + 3] = 255;
+        }
+    }
+
+    // 接入现有预览/打包链路：作为 1:1 的"原图"，不做缩放重采样
+    var pattern = document.createElement('canvas');
+    pattern.width = width;
+    pattern.height = height;
+    pattern.getContext('2d').putImageData(imageData, 0, 0);
+
+    originalImage = pattern;
+    uploadedFileName = 'palette_test';
+    canvasRotation = 0;
+    scale = 1.0;
+    offsetX = 0;
+    offsetY = 0;
+    isDragging = false;
+    document.getElementById('fileName').value = 'palette_test.film';
+    document.getElementById('imageResult').innerHTML =
+        '<div class="info">色板测试图：屏上左上角为索引 0，向右递增、逐行到右下角索引 63（索引 = 行×8 + 列）。'
+        + '直接点"发送到设备"或"下载"即可。</div>';
+    updateImage();
+}
+
 function rotateCanvas() {
     canvasRotation = (canvasRotation + 1) % 2;
 
@@ -493,10 +593,16 @@ function updateImage() {
     adjustSaturation(imageData, saturationFactor);
 
     // 根据状态应用抖动或显示原始图像
-    if (isDitheringEnabled) {
+    // 8bpp 索引色算法始终要出量化结果，关闭抖动时按最近色取整（预览与打包一致）
+    const bpp8Profile = getActive8bppProfile();
+    if (isDitheringEnabled || bpp8Profile) {
         const processedImageData = ditherImage(imageData);
-        const processedData = processImageData(processedImageData);
-        const finalImageData = decodeProcessedData(processedData, canvasWidth, canvasHeight);
+        const processedData = bpp8Profile
+            ? processImageData8bpp(processedImageData, bpp8Profile)
+            : processImageData(processedImageData);
+        const finalImageData = bpp8Profile
+            ? decodeProcessedData8bpp(processedData, canvasWidth, canvasHeight, bpp8Profile)
+            : decodeProcessedData(processedData, canvasWidth, canvasHeight);
         ctx.putImageData(finalImageData, 0, 0);
 
         const ditherType = document.getElementById('ditherType').value;
@@ -1598,6 +1704,304 @@ function atkinsonSzCalibQuantize(imageData) {
         });
 }
 
+// ===== 8bpp 索引色量化（3.7" E6 spectra 面板，Format 0x02 ColorQual / 0x03 ColorFast）=====
+// 色板严格按 docs/film/film.md 10.6 的两张表，取 HEX 列（表中 R/G/B 列为厂商标称值，
+// HEX 列为实机实测值，两者冲突时以 HEX 为准）：
+//   ColorFast（Format 0x03）→ rgb_fast，57 项有效候选色（白 = index 21，黑 = index 0 / 20）；
+//   ColorQual（Format 0x02）→ rgb_qual，52 项有效候选色（白 = index 15，候选里没有黑色，
+//     最暗的是 index 3）。
+// 候选色集合 = 表中「有效」标 Y 的索引，未标 Y 的索引不参与选色。
+// 索引 = 高 3bit * 8 + 低 3bit。
+var CF_PALETTE_FAST = [
+    [0, 0, 0], [0, 0, 0], [0, 0, 0], [30, 25, 47],
+    [62, 37, 56], [108, 62, 72], [117, 60, 49], [172, 97, 58],
+    [41, 41, 79], [58, 62, 91], [69, 70, 100], [78, 78, 102],
+    [121, 114, 122], [150, 131, 127], [171, 145, 120], [198, 170, 130],
+    [45, 56, 112], [110, 114, 139], [163, 164, 169], [197, 197, 187],
+    [0, 0, 0], [255, 255, 255], [255, 255, 255], [255, 255, 255],
+    [34, 34, 84], [37, 37, 87], [38, 38, 92], [40, 39, 96],
+    [66, 63, 110], [107, 86, 117], [133, 108, 112], [182, 146, 132],
+    [21, 60, 135], [32, 84, 144], [38, 90, 147], [42, 95, 149],
+    [70, 124, 158], [105, 147, 163], [129, 162, 153], [173, 184, 152],
+    [63, 24, 29], [90, 24, 28], [94, 23, 27], [97, 25, 29],
+    [128, 30, 31], [149, 37, 35], [157, 45, 43], [180, 71, 32],
+    [38, 55, 83], [65, 101, 101], [81, 117, 105], [94, 127, 106],
+    [123, 149, 112], [145, 162, 110], [169, 170, 100], [194, 187, 96],
+    [62, 55, 73], [145, 132, 77], [187, 167, 70], [211, 185, 62],
+    [0, 0, 0], [0, 0, 0], [0, 0, 0], [219, 198, 57]
+];
+
+var CF_PALETTE_QUAL = [
+    [0, 0, 0], [0, 0, 0], [0, 0, 0], [31, 25, 43],
+    [46, 33, 55], [64, 46, 66], [84, 51, 55], [163, 91, 58],
+    [46, 97, 188], [131, 170, 206], [191, 211, 221], [215, 227, 227],
+    [255, 255, 255], [255, 255, 255], [255, 255, 255], [255, 255, 255],
+    [27, 52, 146], [25, 69, 170], [27, 73, 178], [30, 81, 182],
+    [66, 118, 191], [105, 146, 196], [133, 166, 190], [181, 196, 193],
+    [24, 69, 145], [34, 91, 151], [39, 97, 152], [45, 106, 155],
+    [72, 131, 163], [100, 151, 166], [128, 169, 152], [170, 191, 143],
+    [103, 25, 30], [130, 19, 27], [133, 19, 27], [136, 21, 30],
+    [157, 21, 28], [170, 24, 33], [175, 24, 30], [196, 46, 33],
+    [55, 34, 61], [67, 37, 64], [72, 39, 66], [76, 42, 69],
+    [115, 57, 79], [148, 73, 90], [166, 88, 96], [197, 136, 124],
+    [28, 67, 69], [54, 103, 63], [72, 121, 66], [87, 133, 67],
+    [108, 145, 55], [124, 154, 46], [154, 169, 34], [188, 187, 19],
+    [58, 70, 78], [151, 155, 48], [205, 185, 15], [240, 211, 7],
+    [0, 0, 0], [0, 0, 0], [0, 0, 0], [243, 214, 7]
+];
+
+var CF_PROFILES = {
+    // ColorFast：2 相快刷，Format 0x03，rgb_fast 表标 Y 的 57 项
+    colorFast55: {
+        format: 0x03,
+        label: '55 色 ColorFast（Format 0x03，2 相）',
+        palette: CF_PALETTE_FAST,
+        candidateIndexes: [0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+            20, 21, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+            42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 63]
+    },
+    // ColorQual：3 相高质量，Format 0x02，rgb_qual 表标 Y 的 52 项
+    // （白 = index 15，最暗候选 = index 3；index 0/1/2/60/61/62 在表里是黑但不标 Y，
+    //   20/22/23 不标 Y，均不参与选色）
+    colorQual: {
+        format: 0x02,
+        label: '46 色 ColorQual（Format 0x02，3 相）',
+        palette: CF_PALETTE_QUAL,
+        candidateIndexes: [3, 4, 5, 6, 7, 8, 9, 10, 11,
+            15, 16, 17, 18, 19, 21,
+            24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+            41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 63]
+    }
+};
+
+// 预计算各模式候选色的 D65 CIELAB（fast 55 项 / qual 46 项，外加白底 index 0）
+Object.keys(CF_PROFILES).forEach(function(key) {
+    var profile = CF_PROFILES[key];
+    profile.candidateLabs = profile.candidateIndexes.map(function(index) {
+        var c = profile.palette[index];
+        return aeRgbToLab(c[0], c[1], c[2]);
+    });
+});
+
+// 当前选中的 8bpp 色板配置（未选中 8bpp 算法时返回 null）
+function getActive8bppProfile() {
+    var select = document.getElementById('ditherType');
+    return select ? (CF_PROFILES[select.value] || null) : null;
+}
+
+// 选色：加权 D65 CIELAB 最近邻（明度权重 2 倍，与 AE 选色一致），返回候选索引。
+// 明度加重的原因：墨水屏上明度保真比色度更重要，灰阶梯度也更单调。
+// 逐像素调用，故线性化走 sRGB LUT（免 pow）、立方根用 Math.cbrt，且不分配中间对象。
+function cfClosestIndex(r, g, b, profile) {
+    var labs = profile.candidateLabs;
+    var indexes = profile.candidateIndexes;
+
+    var rl = SRGB_TO_LINEAR_LUT[r] * 100.0;
+    var gl = SRGB_TO_LINEAR_LUT[g] * 100.0;
+    var bl = SRGB_TO_LINEAR_LUT[b] * 100.0;
+
+    var x = (rl * 0.4124564 + gl * 0.3575761 + bl * 0.1804375) / 95.047;
+    var y = (rl * 0.2126729 + gl * 0.7151522 + bl * 0.0721750) / 100.0;
+    var z = (rl * 0.0193339 + gl * 0.1191920 + bl * 0.9503041) / 108.883;
+
+    var fx = x > 0.008856 ? Math.cbrt(x) : 7.787 * x + 16.0 / 116.0;
+    var fy = y > 0.008856 ? Math.cbrt(y) : 7.787 * y + 16.0 / 116.0;
+    var fz = z > 0.008856 ? Math.cbrt(z) : 7.787 * z + 16.0 / 116.0;
+
+    var labL = 116.0 * fy - 16.0;
+    var labA = 500.0 * (fx - fy);
+    var labB = 200.0 * (fy - fz);
+
+    var best = 0;
+    var bestDist = Infinity;
+    for (var i = 0; i < labs.length; i++) {
+        var pl = labs[i];
+        var dl = labL - pl.l;
+        var da = labA - pl.a;
+        var db = labB - pl.b;
+        var dist = 2.0 * dl * dl + da * da + db * db;
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = i;
+        }
+    }
+    return indexes[best];
+}
+
+// Floyd-Steinberg 误差扩散：误差在线性光空间累积（贴合面板混色），选色仍走 Lab 最近邻
+function cfDither(imageData, strength, profile) {
+    var width = imageData.width;
+    var height = imageData.height;
+    var data = imageData.data;
+    var palette = profile.palette;
+    var lin = new Float32Array(width * height * 3);
+    for (var i = 0, p = 0; i < data.length; i += 4, p += 3) {
+        lin[p] = srgbToLinear(data[i]);
+        lin[p + 1] = srgbToLinear(data[i + 1]);
+        lin[p + 2] = srgbToLinear(data[i + 2]);
+    }
+
+    for (var y = 0; y < height; y++) {
+        for (var x = 0; x < width; x++) {
+            var q = (y * width + x) * 3;
+            var lr = lin[q];
+            var lg = lin[q + 1];
+            var lb = lin[q + 2];
+
+            var index = cfClosestIndex(linearToSrgb(lr), linearToSrgb(lg), linearToSrgb(lb), profile);
+            var color = palette[index];
+
+            var o = (y * width + x) * 4;
+            data[o] = color[0];
+            data[o + 1] = color[1];
+            data[o + 2] = color[2];
+
+            var errR = (lr - srgbToLinear(color[0])) * strength;
+            var errG = (lg - srgbToLinear(color[1])) * strength;
+            var errB = (lb - srgbToLinear(color[2])) * strength;
+
+            if (x + 1 < width) {
+                var n = q + 3;
+                lin[n] += errR * 7 / 16;
+                lin[n + 1] += errG * 7 / 16;
+                lin[n + 2] += errB * 7 / 16;
+            }
+            if (y + 1 < height) {
+                if (x > 0) {
+                    var nl = q + width * 3 - 3;
+                    lin[nl] += errR * 3 / 16;
+                    lin[nl + 1] += errG * 3 / 16;
+                    lin[nl + 2] += errB * 3 / 16;
+                }
+                var nd = q + width * 3;
+                lin[nd] += errR * 5 / 16;
+                lin[nd + 1] += errG * 5 / 16;
+                lin[nd + 2] += errB * 5 / 16;
+                if (x + 1 < width) {
+                    var nr = q + width * 3 + 3;
+                    lin[nr] += errR * 1 / 16;
+                    lin[nr + 1] += errG * 1 / 16;
+                    lin[nr + 2] += errB * 1 / 16;
+                }
+            }
+        }
+    }
+
+    return imageData;
+}
+
+// 8bpp 索引色量化：useDither 为真走误差扩散，否则逐像素最近色。
+// 输出用色板实际颜色填充，后续反查索引与预览都以此为准。
+function cfQuantize(imageData, strength, useDither, profile) {
+    if (useDither) {
+        return cfDither(imageData, strength, profile);
+    }
+
+    var palette = profile.palette;
+    var data = imageData.data;
+    for (var i = 0; i < data.length; i += 4) {
+        var color = palette[cfClosestIndex(data[i], data[i + 1], data[i + 2], profile)];
+        data[i] = color[0];
+        data[i + 1] = color[1];
+        data[i + 2] = color[2];
+    }
+    return imageData;
+}
+
+// 8bpp 主体大小：每像素 1 字节（见 film.md 10.5）
+function get8bppPixelDataSize() {
+    return getCanvasWidth() * getCanvasHeight();
+}
+
+// 逐像素写入色板索引，按设备像素排布落位（与 v1 4bpp 同一套 getPixelIndex）
+function processImageData8bpp(imageData, profile) {
+    var width = imageData.width;
+    var height = imageData.height;
+    var data = imageData.data;
+    var out = new Uint8Array(get8bppPixelDataSize());
+
+    for (var y = 0; y < height; y++) {
+        for (var x = 0; x < width; x++) {
+            var o = (y * width + x) * 4;
+            out[getPixelIndex(x, y, width, height)] =
+                cfClosestIndex(data[o], data[o + 1], data[o + 2], profile);
+        }
+    }
+
+    return out;
+}
+
+function decodeProcessedData8bpp(processedData, width, height, profile) {
+    var imageData = new ImageData(width, height);
+    var data = imageData.data;
+    var palette = profile.palette;
+
+    for (var y = 0; y < height; y++) {
+        for (var x = 0; x < width; x++) {
+            var color = palette[processedData[getPixelIndex(x, y, width, height)]] || palette[0];
+            var o = (y * width + x) * 4;
+            data[o] = color[0];
+            data[o + 1] = color[1];
+            data[o + 2] = color[2];
+            data[o + 3] = 255;
+        }
+    }
+
+    return imageData;
+}
+
+// 8bpp 文件头：ColorCount/ColorTable 不使用，Format 按色板区分
+// 0x02 = ColorQual（3 相）/ 0x03 = ColorFast（2 相）（见 film.md 10.2）
+function generateFilmHeader8bpp(profile) {
+    var screenWidth = getCanvasWidth();
+    var screenHeight = getCanvasHeight();
+    var bodySize = screenWidth * screenHeight;
+    var header = new Array(FILM_HEADER_SIZE).fill(0);
+
+    header[0] = bodySize & 0xFF;
+    header[1] = (bodySize >> 8) & 0xFF;
+    header[2] = (bodySize >> 16) & 0xFF;
+    header[3] = (bodySize >> 24) & 0xFF;
+
+    header[4] = screenWidth & 0xFF;
+    header[5] = (screenWidth >> 8) & 0xFF;
+    header[6] = screenHeight & 0xFF;
+    header[7] = (screenHeight >> 8) & 0xFF;
+
+    header[9] = profile.format;
+
+    return new Uint8Array(header);
+}
+
+// 按当前算法打包完整 .film：ColorFast / ColorQual 走 8bpp，其余走 v1 4bpp 六色
+function buildCurrentFilmFile() {
+    if (!originalImage) {
+        throw new Error('请先上传图片');
+    }
+
+    var canvas = document.getElementById('canvas');
+    var ctx = canvas.getContext('2d');
+    var imageData = ctx.getImageData(0, 0, getCanvasWidth(), getCanvasHeight());
+
+    var profile = getActive8bppProfile();
+    var header;
+    var pixelData;
+    if (profile) {
+        header = generateFilmHeader8bpp(profile);
+        pixelData = processImageData8bpp(imageData, profile);
+    } else {
+        header = generateFilmHeader();
+        pixelData = processImageData(imageData);
+    }
+
+    window.processedDataForDownload = pixelData;
+
+    var filmFile = new Uint8Array(FILM_HEADER_SIZE + pixelData.length);
+    filmFile.set(header, 0);
+    filmFile.set(pixelData, FILM_HEADER_SIZE);
+    return filmFile;
+}
+
 function ditherImage(imageData) {
     const ditherType = document.getElementById('ditherType').value;
     const ditherStrength = parseFloat(document.getElementById('ditherStrength').value);
@@ -1621,6 +2025,10 @@ function ditherImage(imageData) {
             return gammaFloydSteinbergDither(imageData, ditherStrength);
         case 'bayer':
             return bayerDither(imageData, ditherStrength);
+        case 'colorFast55':
+        case 'colorQual':
+            // 关闭抖动时退化为逐像素最近色量化，输出仍是 8bpp 索引色
+            return cfQuantize(imageData, ditherStrength, isDitheringEnabled, CF_PROFILES[ditherType]);
         case 'szEnhanced':
             if (currentDeviceType !== 'FRAMEFILMPRO') {
                 showMessage('SZ 增强仅支持 FrameFilm Pro', 'warning');
@@ -1854,30 +2262,21 @@ function downloadFilmFile() {
         return;
     }
 
+    var filmFile;
     try {
-        const canvas = document.getElementById('canvas');
-        const canvasWidth = getCanvasWidth();
-        const canvasHeight = getCanvasHeight();
-        const ctx = canvas.getContext('2d');
-        const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-        window.processedDataForDownload = processImageData(imageData);
+        filmFile = buildCurrentFilmFile();
     } catch (error) {
         document.getElementById('imageResult').innerHTML = '<div class="error">转换失败: ' + error.message + '</div>';
         return;
     }
 
-    const header = generateFilmHeader();
-
-    // 合并文件头和像素数据
-    var totalSize = getFilmFileTotalSize();
-    var filmFile = new Uint8Array(totalSize);
-    filmFile.set(header, 0);
-    filmFile.set(window.processedDataForDownload, FILM_HEADER_SIZE);
-
     const fileName = document.getElementById('fileName').value || 'output.film';
     downloadFile(filmFile, fileName);
 
-    document.getElementById('imageResult').innerHTML = '<div class="success">下载完成！</div>';
+    var profile = getActive8bppProfile();
+    var formatText = profile ? profile.label + '，8bpp' : '6 色 4bpp（Format 0x00）';
+    document.getElementById('imageResult').innerHTML = '<div class="success">下载完成！</div>' +
+        '<p class="info">' + formatText + '，共 ' + filmFile.length + ' 字节</p>';
 }
 
 function updateCanvasScale() {
