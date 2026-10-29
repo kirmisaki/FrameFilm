@@ -100,3 +100,14 @@ python -m unittest discover -s tools/epd-panel-lab -p test_abc9_lab_io.py -v
 这些检查仅验证合成数据和打包合同，不构成实机显示或颜色验收。
 
 `captureSettings.source` 也支持 `DirectShow-UVC-readback`，用于记录标准驱动控制的Get/Set读回；它不补造EXIF，不代表独立sensor或色度校准。`repeatCoverage` 明确B0..7实际重复次数。`measurementDiagnostics` 基于全部512组未裁剪cameraRGB做nominal sRGB近似Lab诊断；原 `usableCandidateCodes`/`nearDuplicateDiagnostics` 继续属于render-normalized出图空间。二点拉伸可能把不同暗色裁成同黑，因此不得用预览零距离或候选数量判断物理色数上限。
+
+## 不减黑锚的ABC实验出图
+
+`abc512_render.py` 使用共享控制白点增益、control+ABC全部观测最低亮度到白点的共同目标，不减面板黑锚；两套palette在同一目标下做白点适配后的线性cameraRGB最近邻。`--dither` 可选误差限幅蛇形FS，`--error-limit` 默认0.08（线性通道单位）。minimum暗端对噪声敏感，相机未经表征；manifest完整保留raw、重复诊断、生成哈希和共享映射。文件名中的512表示最多512种ABC编码，不是已验证的物理有效色数。
+
+```powershell
+python tools/epd-panel-lab/abc512_render.py --palette .output/camera-palette/experimental-palette.json --image photo.jpg --crop 0 0 480 720 --output .output/abc-render --dither
+python -m pytest tools/epd-panel-lab/test_abc512_render.py -q
+```
+
+输出control64为现有Format2、marker8的rewrite-A对照，abc512为私有ABC9。只生成文件，不连接设备。实机结果及未达成512稳定色的原因见 [实验结果](../../docs/film/abc512-result.md)。
