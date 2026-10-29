@@ -11,6 +11,7 @@ from scipy.ndimage import gaussian_filter
 from abc512_render import linear, preview, quantize, shared_floor
 from abc9_lab_io import pack_abc9_film
 from abc_spatial_mix import decompose, sample_mixture, split_phases
+from epd_source_fit import fit_source
 
 
 def logical_chart():
@@ -74,9 +75,13 @@ def main():
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--fs-error-limit', type=float, default=.08)
     parser.add_argument('--bayer-size', type=int, choices=(8,16), default=8)
+    parser.add_argument('--range-strength', type=float, default=0., help='CIE lightness range fit, 0..1; zero preserves baseline')
+    parser.add_argument('--warm-strength', type=float, default=0., help='Optional warm mid/highlight chroma reduction, 0..1')
     args = parser.parse_args()
     if not 0 <= args.fs_error_limit <= 1:
         parser.error('fs-error-limit must be 0..1')
+    if not 0 <= args.range_strength <= 1 or not 0 <= args.warm_strength <= 1:
+        parser.error('range-strength and warm-strength must be 0..1')
     if args.image:
         with Image.open(args.image) as original:
             image = ImageOps.exif_transpose(original).convert('RGB')
@@ -94,7 +99,7 @@ def main():
     white = linear(data['normalization']['whiteCameraRGB'])
     floor = shared_floor(data, white)
     colors = linear([e['cameraRGB'] for e in data['entries']])/white
-    target = floor + (1-floor)*linear(np.asarray(image))
+    target, source_fit = fit_source(np.asarray(image), colors, floor, args.range_strength, args.warm_strength)
     vertices, weights, mapped, diagnostics = decompose(target, colors)
     selected = sample_mixture(vertices, weights, args.bayer_size)
     out = args.output
@@ -107,6 +112,7 @@ def main():
                 'paletteSha256': hashlib.sha256(args.palette.read_bytes()).hexdigest(),
                 'sourceSha256': hashlib.sha256(args.image.read_bytes()).hexdigest() if args.image else None,
                 'sourceCrop': args.crop, 'sourceFloor': floor, 'whiteLinearRGB': white.tolist(),
+                'sourceFit': source_fit,
                 'fsErrorLimit': args.fs_error_limit,
                 'geometry': diagnostics, 'outputs': {},
                 'sampling': f'Deterministic standard Bayer{args.bayer_size}, one joint tuple selected per pixel before splitting',

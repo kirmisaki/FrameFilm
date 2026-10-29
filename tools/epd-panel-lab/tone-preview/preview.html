@@ -1,0 +1,26 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>本屏明暗与暖色实时对照</title><link rel="icon" href="data:,">
+<style>body{margin:24px;background:#ededeb;color:#202124;font:16px system-ui}h1{font-size:25px}header,p{max-width:1100px;line-height:1.6}.controls{display:flex;gap:18px;flex-wrap:wrap;padding:16px;background:#fff;border:1px solid #bbb}.control{display:flex;flex-direction:column;gap:8px}select,button{font:inherit;padding:7px}input[type=range]{width:200px}.panels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;max-width:1200px}figure{margin:0}figcaption{font-weight:600;padding:12px 0}figure img{display:block;width:100%;background:white;aspect-ratio:2/3;object-fit:contain}details{margin:18px 0}#status{min-height:1.7em;color:#555}#status.error{color:#a01c1c}small{display:block;font-size:13px;line-height:1.6;color:#555;max-width:1100px}#source{max-width:260px}#exports{white-space:pre-wrap;overflow-wrap:anywhere;max-width:1100px}button:disabled{opacity:.5}@media(max-width:700px){body{margin:12px}.panels{gap:7px}figcaption{font-size:13px}input[type=range]{width:160px}}</style>
+<header><h1>本屏明暗与暖色实时对照</h1><p>同一张图、同一套本屏实测色板、同一种三相关联抖动，只改变源图处理。下方是相机相对颜色模型的模拟；实体效果需要另行上传比较。</p></header>
+<div class="controls">
+<label class="control">测试图片<select id="source-select"><option value="photo">原键盘照片</option><option value="card">明暗与暖色测试卡</option></select></label>
+<label class="control">明暗范围拟合 <output id="range-value">100%</output><input id="range" aria-label="明暗范围拟合" type="range" min="0" max="100" value="100" step="5"></label>
+<div class="control"><label><input id="warm-enable" type="checkbox">启用暖色彩度收缩</label><label>强度 <output id="warm-value">50%</output><input id="warm" aria-label="暖色收缩强度" type="range" min="0" max="100" value="50" step="5" disabled></label></div>
+<label class="control">空间抖动<select id="bayer"><option value="16">Bayer16</option><option value="8">Bayer8</option></select></label>
+</div>
+<p id="status" role="status">正在生成对照…</p>
+<div class="panels"><figure><figcaption>① 当前基线</figcaption><img id="baseline" alt="当前基线模拟"></figure><figure><figcaption>② 仅明暗拟合</figcaption><img id="fit" alt="明暗拟合模拟"></figure><figure><figcaption>③ 明暗＋可选暖色处理</figcaption><img id="warm-fit" alt="明暗与暖色处理模拟"></figure></div>
+<small>暖色处理默认关闭，不检测人脸；开启后也可能影响木材、红花等暖色。明暗拟合不硬裁掉图像两端；蛇形扫描属于 FS，当前 Bayer 仍使用原二维有序阈值。</small>
+<details><summary>查看源图与处理后的目标</summary><img id="source" alt="未处理源图"><div class="panels"><img id="target0" alt="基线目标"><img id="target1" alt="明暗目标"><img id="target2" alt="暖色目标"></div></details>
+<p><button id="export" disabled>导出当前三组实验 Film</button> <button id="clear">清理预览缓存</button></p><small>导出仅保存本机实验文件，不会自动上传、烧录或发布。ABC9 文件需要专用实验固件；设备显示版本保持 3.2.5。</small><p id="exports"></p>
+<script>
+const $=id=>document.getElementById(id);let revision=0,pending=null,busy=false,shown=null,exporting=false;
+function config(){return {source:$('source-select').value,range:Number($('range').value)/100,warm:$('warm-enable').checked?Number($('warm').value)/100:0,bayer:Number($('bayer').value)}}
+function status(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error)}
+function queue(){revision++;pending={revision,params:config()};$('range-value').value=$('range').value+'%';$('warm-value').value=$('warm').value+'%';$('warm').disabled=!$('warm-enable').checked;$('export').disabled=true;status('正在生成最新参数的对照…');pump()}
+async function call(path,body){let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let data=await r.json();if(!r.ok)throw Error(data.error||r.statusText);return data}
+async function pump(){if(busy||exporting)return;busy=true;try{while(pending){let job=pending;pending=null;try{let data=await call('/api/render',job.params);if(job.revision!==revision)continue;let ids=['baseline','fit','warm-fit'];data.panels.forEach((p,i)=>{$(ids[i]).src=p.screen;$('target'+i).src=p.target});$('source').src=data.source;shown=job.params;document.body.dataset.renderRevision=String(job.revision);document.body.dataset.renderParams=JSON.stringify(job.params);status(`已更新 · 480×720完整计算 · ${data.elapsedMs} ms${job.params.warm===0?' · 暖色处理关闭':''}`);$('export').disabled=false}catch(e){if(job.revision===revision)status('生成失败：'+e.message,true)}}}finally{busy=false}}
+for(let id of ['range','warm'])$(id).addEventListener('input',queue);for(let id of ['source-select','warm-enable','bayer'])$(id).addEventListener('change',queue);
+$('clear').onclick=async()=>{try{await call('/api/clear-cache',{});queue()}catch(e){status('清理失败：'+e.message,true)}};
+$('export').onclick=async()=>{if(!shown||busy||exporting)return;exporting=true;$('export').disabled=true;let captured={...shown};$('exports').textContent='正在保存三组实验文件…';try{let data=await call('/api/export',captured);$('exports').textContent=`已保存：${data.directory}\n`+data.files.map(f=>`${f.name} · ${f.bytes} 字节`).join('\n')}catch(e){$('exports').textContent='导出失败：'+e.message}finally{exporting=false;$('export').disabled=!!pending;pump()}};
+queue();
+</script></html>

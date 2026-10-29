@@ -125,3 +125,16 @@ python -m pytest tools/epd-panel-lab/test_abc_spatial_mix.py -q
 `--chart`是512个nominal sRGB目标色块，不是512种已验证的实物颜色。`--fs-error-limit 1`可比较较宽FS误差范围，默认0.08。完整方法、参考项目、预览与验收限制见 [联合三相空间混色](../../docs/film/abc512-spatial.md)。
 
 `--bayer-size 16`使用更细的面积权重，默认8。本轮同一512目标卡中，Bayer8有两组编码图案合并，Bayer16的512个编码图案均不同；这个软件结果不是实测物理色数。两种大小均先选完整tuple，再拆A/B/C，保持原物理三相。
+
+## 明暗范围与可选暖色处理
+
+`epd_source_fit.py`在联合量化前对源图做CIE明度全范围拟合，以及独立、默认关闭的暖色彩度收缩。`abc_spatial_render.py --range-strength 0..1 --warm-strength 0..1`默认均0，精确保留旧baseline；不裁测量palette或百分位尾部。
+
+`tone_preview.py`提供本机实时三列对照，使用完整480×720算法，合并连续参数输入并丢弃过期响应；导出只使用已显示的参数快照。缓存限12项、可清理，换palette/源图文件后需重启服务。默认暖色关闭，UI测试时可单独开启。
+
+```powershell
+python tools/epd-panel-lab/tone_preview.py --palette path/to/experimental-palette.json --image photo.png --crop 0 0 480 720 --output .output/tone-exports --port 8775
+python -m pytest tools/epd-panel-lab/test_epd_source_fit.py -q
+```
+
+仅为实验出图和预览，生产Film/头像仍未启用新处理；通行证继续原彩色快刷。方法、实屏结果与限制见 [本屏明暗拟合](../../docs/film/epd-tone-fit.md)。
