@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'frame_algorithms.dart';
 import 'frame_lut.dart';
+import 'image_resampling.dart';
+export 'image_resampling.dart' show ImageResampling;
 export 'frame_algorithms.dart' show FrameAlgorithm;
 
 enum FrameFormat { sixColor, monoFast, colorFast55, colorQual }
@@ -15,6 +16,8 @@ class FrameOptions {
   const FrameOptions({
     this.format = FrameFormat.sixColor,
     this.fit = FrameFit.cover,
+    // Editors opt in; keep batch animation and other existing callers unchanged.
+    this.resampling = ImageResampling.legacyCanvas,
     this.quarterTurns = 0,
     this.zoom = 1,
     this.panX = 0,
@@ -28,6 +31,7 @@ class FrameOptions {
   });
   final FrameFormat format;
   final FrameFit fit;
+  final ImageResampling resampling;
   final int quarterTurns;
   final double zoom, panX, panY, brightness, contrast, saturation;
   final bool dither;
@@ -40,11 +44,15 @@ class FrameResult {
     required this.png,
     required this.film,
     required this.format,
+    this.cropPng,
     this.algorithm = FrameAlgorithm.atkinsonEnhanced,
     this.width = 480,
     this.height = 720,
   });
   final Uint8List png, film;
+
+  /// Tone-adjusted composition before quantization, from the same resampling.
+  final Uint8List? cropPng;
   final int width, height;
   final FrameFormat format;
   final FrameAlgorithm algorithm;
@@ -187,49 +195,18 @@ Future<ui.Image> _render(
   if (values.any((v) => !v.isFinite) || options.zoom <= 0) {
     throw ArgumentError('无效图片调整参数');
   }
-  // Use the shared API: direct ImageDescriptor dimensions are unavailable on Web.
-  ui.Codec? codec;
-  ui.Image? image;
-  final recorder = ui.PictureRecorder();
-  ui.Picture? picture;
-  try {
-    codec = await ui.instantiateImageCodecWithSize(
-      await ui.ImmutableBuffer.fromUint8List(source),
-      getTargetSize: (width, height) {
-        final ratio = math.min(1.0, 2048 / math.max(width, height));
-        return ui.TargetImageSize(
-          width: math.max(1, (width * ratio).round()),
-          height: math.max(1, (height * ratio).round()),
-        );
-      },
-    );
-    image = (await codec.getNextFrame()).image;
-    _check(cancelled);
-    final canvas = ui.Canvas(recorder);
-    canvas.drawColor(const ui.Color(0xffffffff), ui.BlendMode.src);
-    final turns = options.quarterTurns % 4;
-    final sw = turns.isOdd ? image.height : image.width;
-    final sh = turns.isOdd ? image.width : image.height;
-    final scale =
-        (options.fit == FrameFit.cover
-            ? math.max(480 / sw, 720 / sh)
-            : math.min(480 / sw, 720 / sh)) *
-        options.zoom;
-    canvas.translate(240 + options.panX, 360 + options.panY);
-    canvas.rotate(turns * math.pi / 2);
-    canvas.scale(scale);
-    canvas.drawImage(
-      image,
-      ui.Offset(-image.width / 2, -image.height / 2),
-      ui.Paint()..filterQuality = ui.FilterQuality.medium,
-    );
-    picture = recorder.endRecording();
-    return await picture.toImage(480, 720);
-  } finally {
-    picture?.dispose();
-    image?.dispose();
-    codec?.dispose();
-  }
+  return renderImageComposition(
+    source,
+    width: 480,
+    height: 720,
+    cover: options.fit == FrameFit.cover,
+    quarterTurns: options.quarterTurns,
+    zoom: options.zoom,
+    panX: options.panX,
+    panY: options.panY,
+    resampling: options.resampling,
+    checkCancelled: () => _check(cancelled),
+  );
 }
 
 Future<Uint8List> _png(ui.Image image) async =>
@@ -294,6 +271,7 @@ Future<Uint8List> prepareFrame(
 Future<FrameResult> convertFrame(
   Uint8List source,
   FrameOptions options, {
+  bool includeCropPreview = false,
   void Function(double)? onProgress,
   bool Function()? isCancelled,
 }) async {
@@ -309,6 +287,15 @@ Future<FrameResult> convertFrame(
     adjustFrameRgba(rgba, options);
   }
   _check(isCancelled);
+  Uint8List? cropPng;
+  if (includeCropPreview) {
+    final cropRgba = Uint8List.fromList(rgba);
+    if (options.dither && options.algorithm == FrameAlgorithm.szEnhanced) {
+      adjustFrameRgba(cropRgba, options);
+    }
+    cropPng = await _encodeRgba(cropRgba);
+    _check(isCancelled);
+  }
   final format = options.format == FrameFormat.monoFast
       ? FrameFormat.monoFast
       : options.algorithm == FrameAlgorithm.colorFast55
@@ -359,6 +346,7 @@ Future<FrameResult> convertFrame(
   onProgress?.call(1);
   return FrameResult(
     png: png,
+    cropPng: cropPng,
     film: film,
     format: format,
     algorithm: algorithm,

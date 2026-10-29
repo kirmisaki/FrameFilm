@@ -9,6 +9,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:framefilm_ark/frame_codec.dart';
 
 void main() {
+  test(
+    'Film opts into high quality without changing other conversion callers',
+    () {
+      final c = FrameEditorController();
+      expect(c.options.resampling, ImageResampling.highQuality);
+      c.options = const FrameOptions(resampling: ImageResampling.legacyCanvas);
+      c.clear();
+      expect(c.options.resampling, ImageResampling.highQuality);
+      expect(const FrameOptions().resampling, ImageResampling.legacyCanvas);
+      c.dispose();
+    },
+  );
   test('avatar mono shares Film conversion at avatar dimensions', () async {
     final rgba = Uint8List.fromList([0, 0, 0, 255, 255, 255, 255, 255]);
     final indices = await quantizeFrameMono(

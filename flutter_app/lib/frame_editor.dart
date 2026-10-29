@@ -51,7 +51,10 @@ class _EditorGestures extends StatelessWidget {
 
 class FrameEditorController {
   Uint8List? source, crop;
-  FrameOptions options = const FrameOptions(fit: FrameFit.contain);
+  FrameOptions options = const FrameOptions(
+    fit: FrameFit.contain,
+    resampling: ImageResampling.highQuality,
+  );
   FrameResult? result;
   final fileName = TextEditingController(text: 'output.film');
   int revision = 0, resultRevision = -1;
@@ -60,7 +63,10 @@ class FrameEditorController {
     source = null;
     crop = null;
     result = null;
-    options = const FrameOptions(fit: FrameFit.contain);
+    options = const FrameOptions(
+      fit: FrameFit.contain,
+      resampling: ImageResampling.highQuality,
+    );
     fileName.text = 'output.film';
     revision++;
     resultRevision = -1;
@@ -196,17 +202,13 @@ class _FrameEditorState extends State<FrameEditor> {
         algorithm: previous.algorithm,
         dither: previous.dither,
         ditherStrength: previous.ditherStrength,
-      );
-      final crop = await prepareFrame(
-        bytes,
-        options,
-        isCancelled: () => !mounted || generation != _generation,
+        resampling: previous.resampling,
       );
       if (!mounted || generation != _generation) return;
       setState(() {
         c.source = bytes;
         c.options = options;
-        c.crop = crop;
+        c.crop = null;
         c.revision++;
         c.fileName.text = '${name.isEmpty ? 'output' : name}.film';
         _working = false;
@@ -235,6 +237,7 @@ class _FrameEditorState extends State<FrameEditor> {
     double? contrast,
     double? saturation,
     bool? dither,
+    ImageResampling? resampling,
   }) {
     final o = c.options;
     setState(() {
@@ -253,16 +256,16 @@ class _FrameEditorState extends State<FrameEditor> {
             ? FrameAlgorithm.atkinsonEnhanced
             : (algorithm ?? o.algorithm),
         ditherStrength: strength ?? o.ditherStrength,
+        resampling: resampling ?? o.resampling,
       );
       c.revision++;
 
       _status = c.source == null ? '参数已更新，请上传图像以生成预览' : '参数已更新，正在更新预览';
     });
     _previewRequested = c.source != null;
-    if (c.source != null &&
-        !_converting &&
-        !(_previewTimer?.isActive ?? false)) {
-      _previewTimer = Timer(const Duration(milliseconds: 80), _generate);
+    _previewTimer?.cancel();
+    if (c.source != null) {
+      _previewTimer = Timer(const Duration(milliseconds: 150), _generate);
     }
   }
 
@@ -281,12 +284,13 @@ class _FrameEditorState extends State<FrameEditor> {
       _progress = 0;
       _status = '正在更新预览';
     });
-    bool cancelled() => !mounted || generation != _generation;
+    bool cancelled() =>
+        !mounted || generation != _generation || revision != c.revision;
     try {
-      final crop = await prepareFrame(source, options, isCancelled: cancelled);
       final result = await convertFrame(
         source,
         options,
+        includeCropPreview: true,
         isCancelled: cancelled,
         onProgress: (v) {
           if (!cancelled()) setState(() => _progress = v);
@@ -294,7 +298,7 @@ class _FrameEditorState extends State<FrameEditor> {
       );
       if (cancelled() || revision != c.revision) return;
       setState(() {
-        c.crop = crop;
+        c.crop = result.cropPng;
         c.result = result;
         c.resultRevision = revision;
         _working = false;
@@ -311,9 +315,10 @@ class _FrameEditorState extends State<FrameEditor> {
       _converting = false;
       if (mounted &&
           c.source != null &&
+          !(_previewTimer?.isActive ?? false) &&
           (_previewRequested ||
               (generation == _generation && revision != c.revision))) {
-        _previewTimer = Timer(const Duration(milliseconds: 80), _generate);
+        _previewTimer = Timer(const Duration(milliseconds: 150), _generate);
       }
     }
   }
@@ -490,6 +495,28 @@ class _FrameEditorState extends State<FrameEditor> {
           title: const Text('扩展选项'),
           tilePadding: EdgeInsets.zero,
           children: [
+            DropdownButtonFormField<ImageResampling>(
+              key: const ValueKey('film-resampling'),
+              initialValue: o.resampling,
+              decoration: const InputDecoration(labelText: '缩图方式'),
+              isExpanded: true,
+              items: const [
+                DropdownMenuItem(
+                  value: ImageResampling.highQuality,
+                  child: Text('高质量 · 抗锯齿缩图'),
+                ),
+                DropdownMenuItem(
+                  value: ImageResampling.legacyCanvas,
+                  child: Text('标准 · 原有缩图'),
+                ),
+              ],
+              onChanged: locked
+                  ? null
+                  : (v) {
+                      if (v != null) _change(resampling: v);
+                    },
+            ),
+            const SizedBox(height: 12),
             SegmentedButton<FrameFormat>(
               segments: const [
                 ButtonSegment(value: FrameFormat.sixColor, label: Text('六色')),

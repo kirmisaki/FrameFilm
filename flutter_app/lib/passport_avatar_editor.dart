@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -9,6 +10,7 @@ import 'package:flutter/gestures.dart';
 import 'frame_codec.dart';
 import 'frame_algorithms.dart' show quantizeFramePixels;
 import 'live_image_composition.dart';
+import 'image_resampling.dart';
 
 const avatarAlgorithms = {
   'adaptive': '自适应（与 Film 相同）',
@@ -36,6 +38,7 @@ const avatarDefaults = <String, dynamic>{
   'dither': true,
   'strength': 1.0,
   'algorithm': 'adaptive',
+  'resampling': 'highQuality',
 };
 
 class PassportAvatarEdit {
@@ -74,7 +77,8 @@ class PassportAvatarEdit {
       }
     }
     if (options['dither'] is! bool ||
-        !avatarAlgorithms.containsKey(options['algorithm'])) {
+        !avatarAlgorithms.containsKey(options['algorithm']) ||
+        !ImageResampling.values.any((v) => v.name == options['resampling'])) {
       throw const FormatException('头像算法无效');
     }
     return PassportAvatarEdit(source, options);
@@ -84,27 +88,15 @@ class PassportAvatarEdit {
 Future<String> _png(ui.Image image) async =>
     'data:image/png;base64,${base64Encode((await image.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List())}';
 Future<String> prepareAvatarSource(Uint8List bytes) async {
-  if (bytes.length > 8 * 1024 * 1024)
+  if (bytes.length > 8 * 1024 * 1024) {
     throw const FormatException('请选择不超过8MiB的头像');
-  final codec = await ui.instantiateImageCodec(bytes);
-  final image = (await codec.getNextFrame()).image;
-  codec.dispose();
+  }
+  final image = await decodeCompositionSource(bytes);
   try {
     final ratio = math.min(1.0, 640 / math.max(image.width, image.height));
-    final w = math.max(1, (image.width * ratio).round()),
-        h = math.max(1, (image.height * ratio).round());
-    final recorder = ui.PictureRecorder();
-    final c = Canvas(recorder);
-    c.drawColor(Colors.white, BlendMode.src);
-    c.drawImageRect(
-      image,
-      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
-      Paint()..filterQuality = FilterQuality.high,
-    );
-    final picture = recorder.endRecording();
-    final resized = await picture.toImage(w, h);
-    picture.dispose();
+    final w = math.max(1, (image.width * ratio).round());
+    final h = math.max(1, (image.height * ratio).round());
+    final resized = await resizeCompositionSource(image, w, h);
     try {
       final source = await _png(resized);
       if (source.length > 6000000) throw const FormatException('头像源图过大，请换一张图片');
@@ -123,35 +115,31 @@ Future<({String crop, String processed})> renderAvatarEdit(
   void Function()? checkCancelled,
 }) async {
   final o = edit.options;
-  final codec = await ui.instantiateImageCodec(
+  checkCancelled?.call();
+  final crop = await renderImageComposition(
     base64Decode(edit.source.substring(22)),
+    width: 128,
+    height: 160,
+    quarterTurns: (o['turns'] as num).toInt(),
+    zoom: (o['zoom'] as num).toDouble(),
+    panX: (o['x'] as num).toDouble(),
+    panY: (o['y'] as num).toDouble(),
+    resampling: ImageResampling.values.byName(o['resampling'] as String),
+    legacyQuality: ui.FilterQuality.high,
+    legacyDecodeLimit: 4096,
+    checkCancelled: checkCancelled,
   );
-  final source = (await codec.getNextFrame()).image;
-  codec.dispose();
-  final recorder = ui.PictureRecorder();
-  final c = Canvas(recorder);
-  c.drawColor(Colors.white, BlendMode.src);
-  final turns = (o['turns'] as num).toInt();
-  final rotatedW = turns.isOdd ? source.height : source.width;
-  final rotatedH = turns.isOdd ? source.width : source.height;
-  final scale = math.max(128 / rotatedW, 160 / rotatedH) * (o['zoom'] as num);
-  c.translate(64 + (o['x'] as num).toDouble(), 80 + (o['y'] as num).toDouble());
-  c.rotate(turns * math.pi / 2);
-  c.scale(scale);
-  c.drawImage(
-    source,
-    Offset(-source.width / 2, -source.height / 2),
-    Paint()..filterQuality = FilterQuality.high,
-  );
-  final picture = recorder.endRecording();
-  final crop = await picture.toImage(128, 160);
-  picture.dispose();
-  source.dispose();
-  final cropPng = await _png(crop);
-  final rgba = (await crop.toByteData(format: ui.ImageByteFormat.rawRgba))!
-      .buffer
-      .asUint8List();
-  crop.dispose();
+  late String cropPng;
+  late Uint8List rgba;
+  try {
+    checkCancelled?.call();
+    cropPng = await _png(crop);
+    rgba = (await crop.toByteData(format: ui.ImageByteFormat.rawRgba))!.buffer
+        .asUint8List();
+  } finally {
+    crop.dispose();
+  }
+  checkCancelled?.call();
   adjustFrameRgba(
     rgba,
     FrameOptions(
@@ -185,22 +173,14 @@ Future<({String crop, String processed})> renderAvatarEdit(
   } else {
     await quantizeFrameMono(rgba, false, null, null, width: 128, height: 160);
   }
-  final buffer = await ui.ImmutableBuffer.fromUint8List(rgba);
-  final d = ui.ImageDescriptor.raw(
-    buffer,
-    width: 128,
-    height: 160,
-    pixelFormat: ui.PixelFormat.rgba8888,
-  );
-  final outCodec = await d.instantiateCodec();
-  final image = (await outCodec.getNextFrame()).image;
+  checkCancelled?.call();
+  final image = await imageFromRgba(rgba, 128, 160);
   try {
-    return (crop: cropPng, processed: await _png(image));
+    final processed = await _png(image);
+    checkCancelled?.call();
+    return (crop: cropPng, processed: processed);
   } finally {
     image.dispose();
-    outCodec.dispose();
-    d.dispose();
-    buffer.dispose();
   }
 }
 
@@ -221,6 +201,7 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
   String? crop, processed, error;
   int generation = 0;
   bool pending = true, rendering = false;
+  Timer? previewTimer;
   late final Uint8List sourceBytes = base64Decode(
     widget.edit.source.substring(22),
   );
@@ -233,10 +214,12 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
   @override
   void dispose() {
     generation++;
+    previewTimer?.cancel();
     super.dispose();
   }
 
   Future<void> update() async {
+    previewTimer?.cancel();
     final g = ++generation;
     if (rendering) {
       setState(() => pending = true);
@@ -253,38 +236,54 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
         PassportAvatarEdit(widget.edit.source, snapshot),
         widget.mode,
         checkCancelled: () {
-          if (!mounted) {
+          if (!mounted || g != generation) {
             throw StateError('头像预览已取消');
           }
         },
       );
-      if (mounted && g == generation)
+      if (mounted && g == generation) {
         setState(() {
           crop = result.crop;
           processed = result.processed;
           pending = false;
         });
+      }
     } catch (e) {
-      if (mounted && g == generation)
+      if (mounted && g == generation) {
         setState(() {
           error = '$e';
           pending = false;
         });
+      }
     } finally {
       rendering = false;
-      if (mounted && g != generation) update();
+      if (mounted && g != generation && !(previewTimer?.isActive ?? false)) {
+        previewTimer = Timer(const Duration(milliseconds: 150), update);
+      }
     }
   }
 
   void change(String name, dynamic value) {
-    options[name] = value;
-    update();
+    setState(() {
+      options[name] = value;
+      generation++;
+      pending = true;
+      error = null;
+    });
+    previewTimer?.cancel();
+    previewTimer = Timer(const Duration(milliseconds: 150), update);
   }
 
   void drag(DragUpdateDetails d) {
-    options['x'] = ((options['x'] as num) + d.delta.dx).clamp(-1024, 1024);
-    options['y'] = ((options['y'] as num) + d.delta.dy).clamp(-1024, 1024);
-    update();
+    setState(() {
+      options['x'] = ((options['x'] as num) + d.delta.dx).clamp(-1024, 1024);
+      options['y'] = ((options['y'] as num) + d.delta.dy).clamp(-1024, 1024);
+      generation++;
+      pending = true;
+      error = null;
+    });
+    previewTimer?.cancel();
+    previewTimer = Timer(const Duration(milliseconds: 150), update);
   }
 
   Widget slider(String name, String title, double min, double max) => Column(
@@ -308,6 +307,26 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('构图预览可拖动；设备预览显示最终像素'),
+            DropdownButtonFormField<String>(
+              key: const ValueKey('avatar-resampling'),
+              initialValue: options['resampling'] as String,
+              decoration: const InputDecoration(labelText: '缩图方式'),
+              isExpanded: true,
+              items: const [
+                DropdownMenuItem(
+                  value: 'highQuality',
+                  child: Text('高质量 · 抗锯齿缩图'),
+                ),
+                DropdownMenuItem(
+                  value: 'legacyCanvas',
+                  child: Text('标准 · 原有缩图'),
+                ),
+              ],
+              onChanged: (v) {
+                if (v != null) change('resampling', v);
+              },
+            ),
+            const SizedBox(height: 12),
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 8,
