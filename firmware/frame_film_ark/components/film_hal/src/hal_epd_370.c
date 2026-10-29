@@ -1601,6 +1601,23 @@ static void epd_spectra_write_plane(const uint8_t *index8, uint8_t plane)
     EPD_PROFILE_STAGE_END(RAM);
 }
 
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+/* RAM-only writer: epd_spectra_fill() also refreshes and must NOT be used here. */
+static void epd_spectra_write_constant(uint8_t code)
+{
+    EPD_PROFILE_STAGE_BEGIN(RAM);
+    uint8_t line[EPD_INPUT_LINE];
+    memset(line, (uint8_t)((code << 4) | code), sizeof(line));
+    EPD_W21_WriteCMD(DTM1);
+    epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
+    for (int row = 0; row < EPD_HEIGHT; row++)
+    {
+        EPD_W21_WriteDATA_Bulk(line, EPD_INPUT_LINE);
+    }
+    EPD_PROFILE_STAGE_END(RAM);
+}
+#endif
+
 // 彩色多相位刷新：mode 0 = ColorFast(2 相), 1 = ColorQual(3 相)
 static void epd_spectra_display_color(const uint8_t *index8, uint8_t mode)
 {
@@ -1608,6 +1625,11 @@ static void epd_spectra_display_color(const uint8_t *index8, uint8_t mode)
     // ColorQual 仅在 mono(2)/fast-color(3) 之后（state >= 2）才清理
     bool need_clear = (mode == 0) ? (m_spectra_state != 1)
                                   : (m_spectra_state >= 2);
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+    /* Same starting operation for all diagnostic modes, including mode 0.
+     * This adds one clear REF to the original three Qual REFs, for four total. */
+    if (mode == 1) need_clear = true;
+#endif
     if (need_clear)
     {
         epd_spectra_full_clear();
@@ -1635,6 +1657,19 @@ static void epd_spectra_display_color(const uint8_t *index8, uint8_t mode)
         epd_spectra_refresh(true, false);
 
         epd_spectra_wave(qual_phase2);
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+        const uint8_t diag_mode = index8[0] >> 3;
+        if (diag_mode == 1)
+        {
+            epd_spectra_write_plane(index8, 0);
+        }
+        else if (diag_mode == 2)
+        {
+            epd_spectra_write_constant(index8[0] & 7);
+        }
+        /* Mode 1 controls the extra 172800-byte transfer slot of mode 2.
+         * Mode 0 retains RAM reuse; complete refresh timing is not identical. */
+#endif
         epd_spectra_refresh(false, false);   // 复用同一控制器 RAM，不重传图
 
         epd_spectra_wave(qual_phase3);
@@ -2047,6 +2082,21 @@ void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode)
         return;
     }
 
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+    if (mode == 1)
+    {
+        const uint8_t diag_mode = index8Data[0] >> 3;
+        if (diag_mode > 2)
+        {
+            sys_loge(EPD_TAG, "ABC diagnostic rejected native marker 0x%02X", index8Data[0]);
+            EPD_PROFILE_ERROR(ESP_ERR_INVALID_ARG);
+            EPD_PROFILE_END();
+            return;
+        }
+        sys_logi(EPD_TAG, "ABC_DIAG mode=%u B=%u clear=1 qual_ref=3 extra_ram=%u",
+                 diag_mode, index8Data[0] & 7, diag_mode == 0 ? 0u : 172800u);
+    }
+#endif
     epd_spectra_init();
     epd_spectra_display_color(index8Data, mode);
     EPD_PROFILE_END();

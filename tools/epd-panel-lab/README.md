@@ -42,3 +42,21 @@ python -m unittest discover -s tools/epd-panel-lab -p test_panel_lab.py -v
 ```
 
 单个集成测试覆盖头/大小/哈希、Qual与Fast逐格64编码覆盖、非对称左上单点映射、Mono位序、帧间差异、四类像素转移。测试生成文件置于临时目录；不运行全仓测试、不替代实屏验收。
+
+
+## 独立 A/B/C 诊断生成器
+
+先完成开源源码调查后才添加此候选。仅供启用 `CONFIG_ARK_EPD_ABC_DIAG=y` 的实验固件，默认关闭；详细来源与边界见 [同屏文档](../../docs/film/epd037a02.md)。不连接设备、不自动上传、不改 palette/profile。
+
+```powershell
+python tools/epd-panel-lab/abc_diag.py --output D:/dev-tool/FrameFilm-build/abc-diag-fixtures
+python tools/epd-panel-lab/abc_diag.py --all-b --output D:/dev-tool/FrameFilm-build/abc-diag-all-b
+python -m py_compile tools/epd-panel-lab/abc_diag.py tools/epd-panel-lab/test_abc_diag.py
+python -m unittest discover -s tools/epd-panel-lab -p test_abc_diag.py -v
+```
+
+默认四个单帧 Format2：`abc-reuse-a.film`、`abc-rewrite-a.film`、`abc-constant-b0.film`、`abc-constant-b7.film`。每份345632字节，每页保留64个相同位置的A/C码块、原X标记和方向标记，页头区别mode/B。`abc-manifest.json` 记录参数、SHA256、标记、方向和4次REF合同。`--all-b` 共生成10份（8种B加2个控制），不自动上传。临时文件替换/重跑及输出清理方式与上面的原生成器相同。
+
+实验标记只写native主体第0字节（文件offset32），编码为 `(mode << 3) | B`，对应portrait `(0,719)`，不是左上角圆点。mode0=原A,A,C复用RAM；mode1=第二相前额外重写A；mode2=第二相前写常量B。mode>2在实验HAL中拒绝，但普通Format2首像素仍可能碰巧命中0..2，因此不得把诊断固件作为日常固件使用。结束恢复正常固件，正常配置未启用时文件仍只是普通Format2。
+
+每次实验强制full clear后做原Qual三次REF，总计4次REF；LUT、寄存器和电压设置不改。mode1/2额外172800字节RAM传输会改变上电停留时隙，不能宣称完整时序不变。先比较原序列与重写A控制，再少量比较B0/B7；确认影响后才扩展八B。PNG仅按现有ColorQual A/C色板帮助定位，不是新B的颜色预测。采样避开文字、边框、X、metadata像素；512组合不承诺512可辨色。生成合同测试不替代烧录、真实显示或颜色测量。

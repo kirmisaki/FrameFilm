@@ -1,5 +1,18 @@
 menu "Ark EPD diagnostics"
 
+    config ARK_EPD_ABC_DIAG
+        bool "Enable experimental ColorQual A/B/C RAM diagnostic"
+        default n
+        help
+            Laboratory firmware only. Interpret the first native Format2 body
+            byte as (diagnostic_mode << 3) | B. Modes: 0=reuse A, 1=rewrite A,
+            2=write constant B before the second Qual refresh. Reject modes >2.
+            Always full-clear before the original three Qual refreshes. LUTs,
+            registers and REF count are identical between diagnostic modes;
+            modes 1/2 add one RAM transfer slot, so total timing is NOT fixed.
+            Ordinary Format2 pictures are not suitable diagnostic inputs.
+            No new public film format or BLE command is introduced.
+
     config ARK_EPD_PROFILE
         bool "Enable per-frame driver timing"
         default n
