@@ -111,3 +111,17 @@ python -m pytest tools/epd-panel-lab/test_abc512_render.py -q
 ```
 
 输出control64为现有Format2、marker8的rewrite-A对照，abc512为私有ABC9。只生成文件，不连接设备。实机结果及未达成512稳定色的原因见 [实验结果](../../docs/film/abc512-result.md)。
+
+## 关联三相的空间混色
+
+`abc_spatial_render.py`先对实测联合`F(A,B,C)`做SciPy Delaunay重心分解，再用标准Bayer8选择完整tuple、拆出三张0..7相位图。不会独立随机化各相，也不增加物理REF。生成nearest、FS和mixture三个同源、同色板、同凸包目标的比较；相位灰度PNG只显示LUT选择码，不能当作中间光学颜色。
+
+```powershell
+python tools/epd-panel-lab/abc_spatial_render.py --palette .output/camera-palette/experimental-palette.json --image photo.jpg --crop 0 0 480 720 --output .output/abc-spatial/photo
+python tools/epd-panel-lab/abc_spatial_render.py --palette .output/camera-palette/experimental-palette.json --chart --output .output/abc-spatial/chart
+python -m pytest tools/epd-panel-lab/test_abc_spatial_mix.py -q
+```
+
+`--chart`是512个nominal sRGB目标色块，不是512种已验证的实物颜色。`--fs-error-limit 1`可比较较宽FS误差范围，默认0.08。完整方法、参考项目、预览与验收限制见 [联合三相空间混色](../../docs/film/abc512-spatial.md)。
+
+`--bayer-size 16`使用更细的面积权重，默认8。本轮同一512目标卡中，Bayer8有两组编码图案合并，Bayer16的512个编码图案均不同；这个软件结果不是实测物理色数。两种大小均先选完整tuple，再拆A/B/C，保持原物理三相。
