@@ -60,3 +60,41 @@ python -m unittest discover -s tools/epd-panel-lab -p test_abc_diag.py -v
 实验标记只写native主体第0字节（文件offset32），编码为 `(mode << 3) | B`，对应portrait `(0,719)`，不是左上角圆点。mode0=原A,A,C复用RAM；mode1=第二相前额外重写A；mode2=第二相前写常量B。mode>2在实验HAL中拒绝，但普通Format2首像素仍可能碰巧命中0..2，因此不得把诊断固件作为日常固件使用。结束恢复正常固件，正常配置未启用时文件仍只是普通Format2。
 
 每次实验强制full clear后做原Qual三次REF，总计4次REF；LUT、寄存器和电压设置不改。mode1/2额外172800字节RAM传输会改变上电停留时隙，不能宣称完整时序不变。先比较原序列与重写A控制，再少量比较B0/B7；确认影响后才扩展八B。PNG仅按现有ColorQual A/C色板帮助定位，不是新B的颜色预测。采样避开文字、边框、X、metadata像素；512组合不承诺512可辨色。生成合同测试不替代烧录、真实显示或颜色测量。
+
+## 私有 ABC9 与相机相对色板比较
+
+`abc9_lab_io.py` 只负责离线打包：私有单帧 Format `0x7F`，32 字节头的 reserved offset12..15 为 ASCII `ABC9`，native 尺寸720×480、FrameCount=1。主体逐像素为 little-endian uint16，只有低9位有效，编码 `(A<<6)|(B<<3)|C`，其余高位必须为0；主体691200字节，含头总长 **691232字节**。portrait→native沿用上文旋转映射。这不是公开 film 格式，仅供默认关闭的 `CONFIG_ARK_EPD_ABC_DIAG=y` 实验固件使用。
+
+`camera_palette_lab.py compare` 的64编码对照是 **A,A,C rewrite-A（mode1）**：第二相重新写A，与ABC9逐相写A/B/C具有相同RAM传输次数。它不同于原始ColorQual mode0的第二相复用RAM；不能把mode1对照描述成原厂原时序。control的portrait `(0,719)` 被设为索引8以选择mode1，该单像素属于诊断metadata。
+
+分析依赖 Pillow、NumPy、OpenCV和SciPy。先准备manifest与四角文件，路径以manifest所在目录为基准：
+
+```json
+{
+  "control": "rewrite-a.png",
+  "pages": {"0":"b0.png", "1":"b1.png", "2":"b2.png", "3":"b3.png", "4":"b4.png", "5":"b5.png", "6":"b6.png", "7":"b7.png"},
+  "repeats": [{"B":4, "path":"b4-repeat.png"}],
+  "captureSettings": {"source":"UI-verified-video", "ISO":1250},
+  "sidecar": "capture-evidence.json"
+}
+```
+
+四角JSON使用 `{"innerScreenCorners":[[xTL,yTL],[xTR,yTR],[xBR,yBR],[xBL,yBL]]}`，坐标是EXIF转正后照片的内屏四角，所有帧共用同一四边形。`captureSettings` 记录实际观察到的固定曝光、ISO、白平衡等声明；`UI-verified-video` 表示视频UI观察来源，不代表独立验证传感器参数。sidecar可为相对JSON路径或内联对象。视频取帧需自行记录连续流、稳定画面区间及median/averaging方法；本工具不采集视频、不控制相机。
+
+```powershell
+python tools/epd-panel-lab/camera_palette_lab.py analyze --manifest capture/manifest.json --corners capture/corners.json --output .output/camera-palette
+python tools/epd-panel-lab/camera_palette_lab.py compare --palette .output/camera-palette/experimental-palette.json --image photo.jpg --crop 0 0 480 720 --output .output/camera-compare
+```
+
+`analyze` 按A行/C列采样八张固定B页，生成512组合记录；用同一control暗/白锚做线性RGB两点归一化，不逐页拉伸。单通道高/低端截断只记 `qualityWarnings`；全通道截断可排除候选，但指定control黑/白baseline保留并标注censored，黑锚不因low-signal丢失。被截断的暗部/高光差异无法恢复。空间MAD、重复差异和近重复阈值都是启发式诊断；greedy去重与顺序有关，不证明可辨色数量。缺失EXIF不会被当作曝光或白平衡已验证。
+
+`compare` 把源内容视为 **nominal sRGB目标**，不对源图应用面板暗白锚。显式crop在源图EXIF转正后的坐标内，同一个crop用Pillow LANCZOS缩放到480×720，两条路径均用近似Lab欧氏最近邻、不抖动。`source-target-srgb.png` 保存目标图；两份simulated PNG只用于相对比较。panel候选仍是control归一化后的camera-relative近似，JPEG/视频处理、照明、视角、固定参数误差及相机未经表征均限制结论，不能宣称绝对校色、精确面板sRGB或512个稳定有效颜色。
+
+最小离线检查（不连接设备、不构建固件）：
+
+```powershell
+python tools/epd-panel-lab/camera_palette_lab.py self-test
+python -m unittest discover -s tools/epd-panel-lab -p test_abc9_lab_io.py -v
+```
+
+这些检查仅验证合成数据和打包合同，不构成实机显示或颜色验收。

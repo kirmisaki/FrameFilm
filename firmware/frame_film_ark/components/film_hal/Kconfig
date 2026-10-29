@@ -11,6 +11,11 @@ menu "Ark EPD diagnostics"
             registers and REF count are identical between diagnostic modes;
             modes 1/2 add one RAM transfer slot, so total timing is NOT fixed.
             Ordinary Format2 pictures are not suitable diagnostic inputs.
+            Also accept private lab Format 0x7F, reserved bytes 12..15 ABC9,
+            exactly one 720x480 frame of little-endian uint16 pixels 0..511.
+            Bits 8..6=A, 5..3=B, 2..0=C drive the original three Qual phases
+            with a RAM-only write per phase, after the same full clear.
+            Invalid high bits are rejected before any clear or refresh.
             No new public film format or BLE command is introduced.
 
     config ARK_EPD_PROFILE

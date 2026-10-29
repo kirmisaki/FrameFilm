@@ -201,6 +201,12 @@ uint32_t hal_epd_get_capabilities(void);
  */
 void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode);
 
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+/* Private lab Format 0x7F body: LE16 A[8:6]/B[5:3]/C[2:0].
+ * Validate the complete frame before initializing or refreshing the panel. */
+esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size);
+#endif
+
 /**
  * @brief 黑白快刷（MonoFast 局刷，仅 E6 3.70" 720x480）
  *

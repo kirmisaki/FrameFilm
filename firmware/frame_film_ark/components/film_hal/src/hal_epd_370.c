@@ -1351,6 +1351,14 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
         frameSize = EPD_WIDTH * EPD_HEIGHT;
         break;
 
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+    case 0x7F:  // Private lab input, never a public film2 format.
+        if (header->frameCount != 1 || header->screenWidth != EPD_WIDTH ||
+            header->screenHeight != EPD_HEIGHT || memcmp(header->reserved, "ABC9", 4) != 0)
+            return ESP_ERR_INVALID_ARG;
+        frameSize = EPD_WIDTH * EPD_HEIGHT * 2u;
+        break;
+#endif
     default:
         sys_loge(EPD_TAG, "Unknown film format: 0x%02X", header->format);
         return ESP_ERR_INVALID_VERSION;
@@ -1829,6 +1837,11 @@ void hal_epd_display_film(const unsigned char *filmData)
     // 按 Format 判别 v1/v2 编码方式并分派到对应驱动路径
     switch (header.format)
     {
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+    case 0x7F:
+        hal_epd_display_abc9(pixelData, header.fileSize);
+        return;
+#endif
     case 0x01:  // v2 MonoFast：1bpp 位图，走黑白快刷
         sys_logi(EPD_TAG, "Film v2 MonoFast");
         hal_epd_display_mono(pixelData);
@@ -2102,6 +2115,61 @@ void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode)
     EPD_PROFILE_END();
     sys_logi(EPD_TAG, "Display 8bpp mode=%u completed", mode);
 }
+
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+static void epd_abc9_write_plane(const uint8_t *pixels, uint8_t shift)
+{
+    EPD_PROFILE_STAGE_BEGIN(RAM);
+    uint8_t line[EPD_INPUT_LINE];
+    EPD_W21_WriteCMD(DTM1);
+    epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
+    for (int row = 0; row < EPD_HEIGHT; row++)
+    {
+        for (int x = 0; x < EPD_WIDTH; x += 2)
+        {
+            uint16_t a = pixels[0] | ((uint16_t)pixels[1] << 8);
+            uint16_t b = pixels[2] | ((uint16_t)pixels[3] << 8);
+            line[x / 2] = (uint8_t)((((a >> shift) & 7) << 4) | ((b >> shift) & 7));
+            pixels += 4;
+        }
+        EPD_W21_WriteDATA_Bulk(line, EPD_INPUT_LINE);
+    }
+    EPD_PROFILE_STAGE_END(RAM);
+}
+
+esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size)
+{
+    if (pixels == NULL || size != EPD_WIDTH * EPD_HEIGHT * 2u)
+        return ESP_ERR_INVALID_ARG;
+    /* Check all high bits BEFORE display_init/full_clear/any REF. */
+    for (uint32_t i = 1; i < size; i += 2)
+    {
+        if (pixels[i] & 0xFE)
+        {
+            sys_loge(EPD_TAG, "ABC9 rejected pixel %lu: high bits set", (unsigned long)(i / 2));
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    EPD_PROFILE_BEGIN("abc9_lab");
+    hal_epd_display_init();
+    epd_spectra_init();
+    epd_spectra_full_clear();
+    epd_spectra_wave(qual_phase1);
+    epd_abc9_write_plane(pixels, 6);
+    epd_spectra_refresh(true, false);
+    epd_spectra_wave(qual_phase2);
+    epd_abc9_write_plane(pixels, 3);
+    epd_spectra_refresh(false, false);
+    epd_spectra_wave(qual_phase3);
+    epd_abc9_write_plane(pixels, 0);
+    epd_spectra_refresh(false, true);
+    m_spectra_state = 0;
+    hal_epd_pwroff();
+    EPD_PROFILE_END();
+    sys_logi(EPD_TAG, "ABC9 lab complete clear=1 qual_ref=3 RAM=A/B/C");
+    return ESP_OK;
+}
+#endif
 
 void hal_epd_display_mono(const unsigned char *mono_bitmap)
 {

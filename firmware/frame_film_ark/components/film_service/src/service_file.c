@@ -1050,6 +1050,13 @@ static int file_validate_film(uint16_t *frame_count_out)
     case 0x03:
         frame_size = EPD_WIDTH * EPD_HEIGHT;
         break;
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+    case 0x7F:  // Private laboratory format, not film2.
+        if(hdr[FILM_HDR_OFFSET_FRAMECOUNT] != 1 || hdr[FILM_HDR_OFFSET_FRAMECOUNT + 1] != 0 ||
+           memcmp(hdr + 12, "ABC9", 4) != 0) return -1;
+        frame_size = EPD_WIDTH * EPD_HEIGHT * 2u;
+        break;
+#endif
     default:
         sys_loge(FILE_TAG, "Invalid film format: %u (file=%s)",
                  (unsigned)hdr[FILM_HDR_OFFSET_FORMAT], m_file_state.save_part_path);

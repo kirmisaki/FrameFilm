@@ -821,4 +821,8 @@ static void film_display_frame(const uint8_t *film, uint8_t format) {
 
 > Ark 当前已实现 ColorQual/ColorFast，由 Format 分派到 `hal_epd_display_8bpp_mode(body, 1/0)`；多帧动画也复用这些入口。测量说明见 [EPD037A02](epd037a02.md)。
 
+### 私有 ABC9 实验容器
+
+仅 `CONFIG_ARK_EPD_ABC_DIAG=y` 的 Ark 实验构建接受 Format `0x7F`，不属于上述正式 film 格式：固定720×480、单帧、offset12..15为`ABC9`，主体为691200字节LE16低9位A/B/C编码，总长691232字节。正式固件及客户端未开放该格式。具体合同、对照方式与实机边界见 [同屏实验记录](epd037a02.md#2026-10-29-第三轮固定参数录像取样与整张-abc-图片) 和 [工具说明](../../tools/epd-panel-lab/README.md)。
+
 
