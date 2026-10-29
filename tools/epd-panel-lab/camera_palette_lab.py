@@ -5,8 +5,8 @@ analyze manifest: {"control":"control.jpg", "pages":{"0":"b0.jpg", ...,
 "7":"b7.jpg"}, "repeats":[{"B":4,"path":"b4-repeat.jpg"}]}
 Paths are relative to the manifest. Corners are EXIF-transposed image coordinates,
 TL, TR, BR, BL, in innerScreenCorners (one fixed quadrilateral for all captures).
-Optional captureSettings records declared UI parameters (source may be
-"UI-verified-video"); sidecar accepts an inline object or a relative JSON path.
+Optional captureSettings records UI observations or DirectShow-UVC-readback;
+sidecar accepts an inline object or a relative JSON path.
 These evidence records never substitute for absent EXIF or verify sensor settings.
 compare requires an explicit crop in EXIF-transposed source-image coordinates.
 Only abc9_lab_io owns film packing; this tool does not reimplement the wire format.
@@ -32,7 +32,7 @@ WARNINGS = [
     "Normalization uses one control's dark/white anchors for every page; no per-page stretching.",
     "EXIF matching does not establish fixed white balance or identical camera processing.",
     "Spatial patch spread is a noise proxy, not a sensor SNR measurement.",
-    "A single repeated B page does not validate the stability of other B pages.",
+    "Repeat coverage is reported; repeats do not prove long-term stability or calibrated color accuracy.",
     "Near-duplicate thresholds are diagnostic; retained counts do not prove human-distinct stable colors.",
     "Image previews are simulated in the relative camera space, not predictions of calibrated panel output.",
 ]
@@ -108,6 +108,7 @@ def sample_photo(path: Path, quad):
             median = np.median(patch, axis=0)
             mad = 1.4826 * np.median(abs(patch - median), axis=0)
             samples.append({"A": a, "C": c, "cameraRGB": median.tolist(),
+                            "rawCameraApproxLab": approximate_lab(median).tolist(),
                             "spatialMAD": mad.tolist(),
                             "highlightClippedFraction": float(np.mean(np.any(patch >= 250, axis=1))),
                             "shadowClippedFraction": float(np.mean(np.any(patch <= 1, axis=1))),
@@ -227,6 +228,8 @@ def analyze(manifest_path, corners_path, output, repeat_delta=8., max_spread=12.
         for first, second in zip(base, records[name]["samples"]):
             difference = {"capture": name,
                 "cameraRGBDelta": (np.asarray(second["cameraRGB"]) - first["cameraRGB"]).tolist(),
+                "rawCameraApproxDeltaE76": float(np.linalg.norm(np.asarray(first["rawCameraApproxLab"]) - second["rawCameraApproxLab"])),
+                "approxDeltaE76Meaning": "render-normalized clipped preview space; censored zeros do not prove equal camera or panel response",
                 "approxDeltaE76": float(np.linalg.norm(np.asarray(first["approxLab"]) - second["approxLab"]))}
             first["repeatDifferences"].append(difference)
             if difference["approxDeltaE76"] > repeat_delta:
@@ -245,12 +248,23 @@ def analyze(manifest_path, corners_path, output, repeat_delta=8., max_spread=12.
                          repeatEvidence="one-or-more-repeats" if sample["repeatDifferences"] else "not-repeated")
             (control_entries if name == "control" else abc_entries).append(entry)
     candidates = [entry for entry in abc_entries if not entry["exclusionReasons"]]
+    raw_entries = [dict(entry, approxLab=entry["rawCameraApproxLab"]) for entry in abc_entries]
+    raw_repeats_by_b = {}
+    for b in range(8):
+        values = [difference["rawCameraApproxDeltaE76"] for entry in abc_entries if entry["B"] == b
+                  for difference in entry["repeatDifferences"]]
+        raw_repeats_by_b[str(b)] = {"sampleComparisons": len(values),
+            **(dict(zip(("median", "p90", "max"), np.percentile(values, [50, 90, 100]).tolist())) if values else
+               {"median": None, "p90": None, "max": None})}
     result = {"schemaVersion": 1, "kind": "experimental-abc-camera-palette", "colorMeaning": MEANING,
         "colorimetricCalibration": False, "claims512StableColors": False, "notes": WARNINGS,
         "manifest": str(manifest_path.resolve()), "corners": quad,
         "captureEvidence": {"source": input_source, "declaredCaptureSettings": settings,
             "sidecar": sidecar, "sensorParametersIndependentlyVerified": False,
-            "settingsMeaning": "User/UI observation only; not independent verification of actual sensor settings.",
+            "settingsMeaning": (
+                "Standard driver control Get/Set readback; not independent verification of actual sensor settings or colorimetric calibration."
+                if input_source == "DirectShow-UVC-readback" else
+                "User/UI observation only; not independent verification of actual sensor settings."),
             "missingExifPolicy": "Keep provisional camera-relative candidates; report missing metadata explicitly, never treat as verified exposure/WB.",
             "videoFrameLimitation": "For UI-verified-video: frames may be median/averaged from one manually fixed continuous stream. Video processing, encoding, frame selection and absence of sensor EXIF limit inference; RGB is not calibrated panel reflectance/colorimetry."},
         "sampleRectWithinCell": [23, 33, 31, 39], "exifConsistency": consistency,
@@ -266,9 +280,24 @@ def analyze(manifest_path, corners_path, output, repeat_delta=8., max_spread=12.
         "captures": {name: {**{k: v for k, v in record.items() if k != "samples"},
                             "inputSource": input_source} for name, record in records.items()},
         "control": control_entries, "entries": abc_entries, "usableCandidateCodes": [e["code"] for e in candidates],
+        "usableCandidateCodesMeaning": "Render-normalized preview space quality/repeat screening; not a physical distinguishable-color upper limit.",
         "repeatSamples": {name: r["samples"] for name, r in records.items() if name.startswith("repeat")},
+        "repeatCoverage": {"B": sorted({repeat["B"] for repeat in repeats}),
+            "countByB": {str(b): sum(repeat["B"] == b for repeat in repeats) for b in range(8)},
+            "longTermStabilityVerified": False},
+        "measurementDiagnostics": {
+            "meaning": "All 512 cameraRGB samples before render normalization/clipping, using nominal sRGB approximate Lab; not calibrated colorimetry or a stable-color count.",
+            "rawCameraRepeatApproxDeltaE76ByB": raw_repeats_by_b,
+            "rawCameraNearDuplicateDiagnostics": [{"approxDeltaE76Threshold": threshold,
+                "retainedCount": len(greedy_representatives(raw_entries, threshold)),
+                "method": "all 512, greedy in B/A/C order; order dependent, not a stable/distinct-color count"}
+                for threshold in (1, 2, 3, 5, 8)],
+            "normalizedClipping": {"sampleCount": len(abc_entries),
+                "anyChannelBelowBlackAnchorCount": sum(any(v < 0 for v in e["normalizedLinearRGBUnclipped"]) for e in abc_entries),
+                "fullyClippedBlackCount": sum(all(v == 0 for v in e["normalizedRGB"]) for e in abc_entries)}},
         "nearDuplicateDiagnostics": [{"approxDeltaE76Threshold": threshold,
             "retainedCount": len(greedy_representatives(candidates, threshold)),
+            "space": "render-normalized clipped preview; filtered candidates, not a physical color upper limit",
             "method": "greedy in B/A/C order; order dependent, not distinct-color proof"} for threshold in (1, 2, 3, 5, 8)]}
     output.mkdir(parents=True, exist_ok=True)
     for name, rgb in rectified_images.items():
@@ -364,7 +393,7 @@ def self_test():
                 canvas[138:144, 149:157] = [255, 100, 150]  # one highlight channel
             Image.fromarray(canvas).save(root / f"b{b}.png")
         write_json(root / "manifest.json", {"control": "b0.png", "pages": {str(b): f"b{b}.png" for b in range(8)},
-                                               "captureSettings": {"source": "UI-verified-video", "ISO": 1250},
+                                               "captureSettings": {"source": "DirectShow-UVC-readback", "ISO": 1250},
                                                "sidecar": {"continuousStream": True},
                                                "repeats": [{"B": 2, "path": "b2.png"}]})
         write_json(root / "corners.json", {"innerScreenCorners": [[0, 0], [479, 0], [479, 719], [0, 719]]})
@@ -372,8 +401,12 @@ def self_test():
         assert len(result["entries"]) == 512 and len(result["control"]) == 64
         assert result["exifConsistency"]["fixedWhiteBalanceVerified"] is False
         assert result["exifConsistency"]["allExposureISOObservedAndMatched"] is False
-        assert result["captureEvidence"]["source"] == "UI-verified-video"
+        assert result["captureEvidence"]["source"] == "DirectShow-UVC-readback"
+        assert result["captureEvidence"]["settingsMeaning"].startswith("Standard driver control Get/Set readback;")
         assert result["captureEvidence"]["sensorParametersIndependentlyVerified"] is False
+        assert result["repeatCoverage"]["B"] == [2]
+        assert result["repeatCoverage"]["countByB"] == {str(b): int(b == 2) for b in range(8)}
+        assert result["repeatCoverage"]["longTermStabilityVerified"] is False
         assert result["captureEvidence"]["sidecar"]["continuousStream"] is True
         assert result["usableCandidateCodes"]
         assert not result["control"][3]["exclusionReasons"]
@@ -398,6 +431,25 @@ def self_test():
         packed = (root / "comparison/experimental-abc9.film").read_bytes()
         assert packed[9] == 0x7F and packed[12:16] == b"ABC9"
         assert (root / "comparison/control.film").read_bytes()[32] == 8
+        # A raised control black anchor censors two different camera responses to the same preview black.
+        with Image.open(root / "b0.png") as original:
+            raised_control = np.array(original)
+            changed_repeat = np.array(original)
+        raised_control[138:144, 206:214] = [80, 80, 80]
+        changed_repeat[138:144, 35:43] = [35, 45, 40]
+        Image.fromarray(raised_control).save(root / "raised-control.png")
+        Image.fromarray(changed_repeat).save(root / "changed-repeat.png")
+        clipped_manifest = read_json(root / "manifest.json")
+        clipped_manifest.update(control="raised-control.png", repeats=[{"B": 0, "path": "changed-repeat.png"}])
+        write_json(root / "clipped-manifest.json", clipped_manifest)
+        clipped = analyze(root / "clipped-manifest.json", root / "corners.json", root / "clipped-result")
+        difference = clipped["entries"][0]["repeatDifferences"][0]
+        assert difference["approxDeltaE76"] == 0
+        assert difference["rawCameraApproxDeltaE76"] > 0
+        assert clipped["entries"][0]["rawCameraApproxLab"] != clipped["repeatSamples"]["repeat0-b0"][0]["rawCameraApproxLab"]
+        assert clipped["measurementDiagnostics"]["normalizedClipping"]["fullyClippedBlackCount"] > 0
+        assert clipped["measurementDiagnostics"]["rawCameraRepeatApproxDeltaE76ByB"]["0"]["sampleComparisons"] == 64
+        assert len(clipped["measurementDiagnostics"]["rawCameraNearDuplicateDiagnostics"]) == 5
     return {"syntheticContract": "pass", "physicalValidation": False}
 
 

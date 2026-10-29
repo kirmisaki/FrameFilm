@@ -98,3 +98,5 @@ python -m unittest discover -s tools/epd-panel-lab -p test_abc9_lab_io.py -v
 ```
 
 这些检查仅验证合成数据和打包合同，不构成实机显示或颜色验收。
+
+`captureSettings.source` 也支持 `DirectShow-UVC-readback`，用于记录标准驱动控制的Get/Set读回；它不补造EXIF，不代表独立sensor或色度校准。`repeatCoverage` 明确B0..7实际重复次数。`measurementDiagnostics` 基于全部512组未裁剪cameraRGB做nominal sRGB近似Lab诊断；原 `usableCandidateCodes`/`nearDuplicateDiagnostics` 继续属于render-normalized出图空间。二点拉伸可能把不同暗色裁成同黑，因此不得用预览零距离或候选数量判断物理色数上限。
