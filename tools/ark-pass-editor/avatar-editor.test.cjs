@@ -1,5 +1,7 @@
 const fs=require('node:fs');const vm=require('node:vm');const assert=require('node:assert/strict');const path=require('node:path');
 const context=vm.createContext({window:{},console,Uint8ClampedArray,Uint8Array,Float32Array,Math});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../ForFilm/js/source-fit.js'),'utf8'),context);
+context.FrameFilmSourceFit=context.window.FrameFilmSourceFit;
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../ForFilm/js/convert.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'avatar-editor.js'),'utf8'),context);
 const editor=context.window.PassportAvatarEditor;
@@ -27,4 +29,10 @@ editor.render(img,{...editor.defaults,strength:2},'color');
 assert.deepEqual(calls.pop(),['adaptive',128,160]);
 editor.render(img,{...editor.defaults,algorithm:'floydSteinberg',strength:2},'color');
 assert.deepEqual(calls.pop(),['floydSteinberg',2]);
+// Source fitting consumes the manually adjusted pixels, before quantization.
+const beforeFit=[];
+context.FrameFilmSourceFit.apply=p=>{beforeFit.push([...p.data.slice(0,3)]);return p;};
+editor.render(img,{...editor.defaults,brightness:.1,contrast:1.5,saturation:1,rangeFit:.5,warmChroma:.5},'color');
+assert.deepEqual(beforeFit.pop(),[255,222,185]);
+assert.deepEqual(calls.pop(),['adaptive',128,160]);
 console.log('Avatar options and Film dithering dispatch passed');

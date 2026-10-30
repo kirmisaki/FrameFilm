@@ -484,6 +484,10 @@
                     <input type="range" id="ditherStrength" min="0" max="5" step="0.1" value="1.0">
                     <span id="ditherStrengthValue">1.0</span>
                 </div>
+                <div id="sourceFitContainer">
+                    <div class="slider-container"><label for="rangeFit">明暗范围拟合</label><input type="range" id="rangeFit" min="0" max="1" step="0.05" value="0"><span id="rangeFitValue">0</span></div>
+                    <div class="slider-container"><label for="warmChroma">暖色收缩</label><input type="range" id="warmChroma" min="0" max="1" step="0.05" value="0"><span id="warmChromaValue">0</span></div>
+                </div>
                 <div id="colorAdjustContainer">
                     <div class="slider-container">
                         <label for="contrast">对比度</label>
@@ -1254,6 +1258,7 @@
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
 <script src="js/usb.js"></script>
 <script src="js/keyboard.js"></script>
+<script src="js/source-fit.js"></script>
 <script src="js/convert.js?v=e4panel-1"></script>
 <script src="js/frame.js?v=ark-state-1"></script>
 <script src="js/frame-nav.js"></script>

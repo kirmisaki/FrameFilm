@@ -199,6 +199,8 @@ class _FrameEditorState extends State<FrameEditor> {
         format: previous.format,
         contrast: previous.contrast,
         saturation: previous.saturation,
+        rangeFit: previous.rangeFit,
+        warmChroma: previous.warmChroma,
         algorithm: previous.algorithm,
         dither: previous.dither,
         ditherStrength: previous.ditherStrength,
@@ -236,6 +238,8 @@ class _FrameEditorState extends State<FrameEditor> {
     double? brightness,
     double? contrast,
     double? saturation,
+    double? rangeFit,
+    double? warmChroma,
     bool? dither,
     ImageResampling? resampling,
   }) {
@@ -251,6 +255,8 @@ class _FrameEditorState extends State<FrameEditor> {
         brightness: brightness ?? o.brightness,
         contrast: contrast ?? o.contrast,
         saturation: saturation ?? o.saturation,
+        rangeFit: rangeFit ?? o.rangeFit,
+        warmChroma: warmChroma ?? o.warmChroma,
         dither: dither ?? o.dither,
         algorithm: format != null
             ? FrameAlgorithm.atkinsonEnhanced
@@ -447,6 +453,12 @@ class _FrameEditorState extends State<FrameEditor> {
           _slider('抖动强度', o.ditherStrength, 0, 5, (v) => _change(strength: v)),
         _slider('对比度', o.contrast, .5, 2, (v) => _change(contrast: v)),
         _slider('饱和度', o.saturation, 0, 3, (v) => _change(saturation: v)),
+        if (o.format != FrameFormat.monoFast) ...[
+          if (!sourceFitIsSz(o) && sourceFitProfile(o) != null)
+            _slider('明暗范围拟合', o.rangeFit, 0, 1, (v) => _change(rangeFit: v)),
+          _slider('暖色收缩', o.warmChroma, 0, 1, (v) => _change(warmChroma: v)),
+          const Text('暖色偏黄时可选，按本屏显示调整。'),
+        ],
         Wrap(
           spacing: 8,
           runSpacing: 8,

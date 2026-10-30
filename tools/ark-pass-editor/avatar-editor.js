@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 // Uses the same Film six-color algorithms as ForFilm; never 46/55-color indices.
 window.PassportAvatarEditor = (() => {
-  const defaults = {turns:0,zoom:1,x:0,y:0,brightness:0,contrast:1,saturation:1,dither:true,strength:1,algorithm:'adaptive'};
+  const defaults = {turns:0,zoom:1,x:0,y:0,brightness:0,rangeFit:0,warmChroma:0,contrast:1,saturation:1,dither:true,strength:1,algorithm:'adaptive'};
   function validateEdit(edit){
     if(!edit || typeof edit.source!=='string' || !edit.source.startsWith('data:image/png;base64,') || edit.source.length>6000000)throw new Error('头像源图无效');
     const options={...defaults,...edit.options};
-    for(const [key,min,max] of [['turns',0,3],['zoom',.1,8],['x',-1024,1024],['y',-1024,1024],['brightness',-1,1],['contrast',.5,2],['saturation',0,3],['strength',0,3]])if(!Number.isFinite(options[key])||options[key]<min||options[key]>max)throw new Error('头像调整参数无效');
+    for(const [key,min,max] of [['turns',0,3],['zoom',.1,8],['x',-1024,1024],['y',-1024,1024],['brightness',-1,1],['rangeFit',0,1],['warmChroma',0,1],['contrast',.5,2],['saturation',0,3],['strength',0,3]])if(!Number.isFinite(options[key])||options[key]<min||options[key]>max)throw new Error('头像调整参数无效');
     if(typeof options.dither!=='boolean'||!['adaptive','floydSteinberg','atkinson','bayer'].includes(options.algorithm))throw new Error('头像算法无效');
     return {source:edit.source,options};
   }
@@ -28,6 +28,7 @@ window.PassportAvatarEditor = (() => {
     const crop=c.toDataURL('image/png'), p=g.getImageData(0,0,128,160);
     for(let i=0;i<p.data.length;i+=4)for(let k=0;k<3;k++)p.data[i+k]=Math.round(Math.max(0,Math.min(255,p.data[i+k]+o.brightness*255)));
     adjustContrast(p,o.contrast);adjustSaturation(p,mode==='color'?o.saturation:0);
+    if(mode==='color')FrameFilmSourceFit.apply(p,o.rangeFit,o.warmChroma,FrameFilmSourceFit.profiles.fast);
     if(o.dither){
       if(o.algorithm==='adaptive')adaptiveDither(p);
       else applyDitherByType(p,o.algorithm,o.strength);
@@ -44,8 +45,9 @@ window.PassportAvatarEditor = (() => {
     const d=document.createElement('dialog');d.style.cssText='max-width:440px;width:calc(100% - 32px);max-height:90vh;overflow:auto';
     d.innerHTML='<h2>调整头像</h2><p>左侧原图构图可拖动；右侧为设备像素</p><div style="display:flex;justify-content:center;gap:8px"><canvas data-crop width="128" height="160" style="touch-action:none;width:128px;height:160px"></canvas><img data-output width="128" height="160"></div><div><button data-rotate>旋转90度</button><button data-reset>重置调整</button></div><div data-sliders></div><label><input data-dither type="checkbox">抖动</label><select data-algorithm><option value="adaptive">自适应（自动选择算法与强度）</option><option value="floydSteinberg">Floyd-Steinberg</option><option value="atkinson">Atkinson</option><option value="bayer">Bayer 4×4</option></select><p data-adaptive-hint>自适应会根据头像自动选择抖动算法与强度。</p><p><button data-cancel>取消</button><button data-apply>应用头像</button></p>';
     const controls={};
-    for(const [key,title,min,max] of [['zoom','缩放',.1,8],['brightness','亮度',-1,1],['contrast','对比度',.5,2],['saturation','饱和度',0,3],['strength','抖动强度',0,3]]){
+    for(const [key,title,min,max] of [['zoom','缩放',.1,8],['brightness','亮度',-1,1],['rangeFit','明暗范围拟合',0,1],['warmChroma','暖色收缩',0,1],['contrast','对比度',.5,2],['saturation','饱和度',0,3],['strength','抖动强度',0,3]]){
       const label=document.createElement('label');label.style.display='block';label.innerHTML=`${title} <output></output><input type="range" min="${min}" max="${max}" step="0.05" style="width:100%">`;
+      if(key==='rangeFit'||key==='warmChroma'){label.style.display=mode==='color'?'block':'none';label.querySelector('input').disabled=!FrameFilmSourceFit.profiles.fast;}
       if(key==='strength')label.dataset.strength='';
       controls[key]=label.querySelector('input');controls[key].addEventListener('input',()=>{options[key]=Number(controls[key].value);refresh();});d.querySelector('[data-sliders]').append(label);
     }

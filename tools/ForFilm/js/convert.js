@@ -71,6 +71,30 @@ function syncAdjustSliders() {
     }
 }
 
+// Source controls use same-screen relative references and require the Ark screen.
+function getSourceFitProfile() {
+    if (typeof is8bppAvailable !== 'function' || !is8bppAvailable()) return null;
+    var type = document.getElementById('ditherType').value;
+    if (type === 'colorQualMeasured' || type === 'colorQualCalibrated') {
+        var palette = CF_PROFILES[type].palette;
+        return FrameFilmSourceFit.measured(palette[3], palette[15]);
+    }
+    return FrameFilmSourceFit.profiles[type === 'colorFast55' ? 'fast' : type === 'colorQual' ? 'legacyQual' : 'native6'];
+}
+function syncSourceFitControls() {
+    var profile = getSourceFitProfile();
+    var type = document.getElementById('ditherType').value;
+    var sz = type === 'szEnhanced' || type === 'atkinsonSzCalib';
+    document.getElementById('rangeFit').disabled = !profile || sz;
+    document.getElementById('warmChroma').disabled = !profile;
+}
+function applyCurrentSourceFit(imageData) {
+    var type = document.getElementById('ditherType').value;
+    return FrameFilmSourceFit.apply(imageData,
+        type === 'szEnhanced' || type === 'atkinsonSzCalib' ? 0 : Number(document.getElementById('rangeFit').value),
+        Number(document.getElementById('warmChroma').value), getSourceFitProfile());
+}
+
 // 8bpp 索引色（ColorFast 55 色 / ColorQual 46 色）当前**只对通行证版（ARK）开放**，
 // 判据见 is8bppAvailable()（屏幕 720×480 + 机型 FRAMEFILMARK）；
 // 不支持时禁用这两个选项并回退到 Floyd-Steinberg。
@@ -90,6 +114,7 @@ function sync8bppAvailability() {
         select.value = 'floydSteinberg';
         syncAdjustSliders();
     }
+    syncSourceFitControls();
     var hint = document.getElementById('bpp8Hint');
     var profile = CF_PROFILES[select.value];
     if (hint) {
@@ -102,6 +127,12 @@ function sync8bppAvailability() {
 
 function initConvertTool() {
     // 事件监听器
+    ['rangeFit', 'warmChroma'].forEach(function(id) {
+        document.getElementById(id).addEventListener('input', function() {
+            document.getElementById(id + 'Value').textContent = this.value;
+            debounceUpdateImage();
+        });
+    });
     document.getElementById('imageFile').addEventListener('change', handleFileUpload);
     document.getElementById('ditherStrength').addEventListener('input', function() {
         document.getElementById('ditherStrengthValue').textContent = this.value;
@@ -524,6 +555,7 @@ function updateImage() {
     // 应用饱和度调整
     const saturationFactor = parseFloat(document.getElementById('saturation').value);
     adjustSaturation(imageData, saturationFactor);
+    applyCurrentSourceFit(imageData);
 
     // 根据状态应用抖动或显示原始图像
     // 8bpp 索引色算法始终要出量化结果，关闭抖动时按最近色取整（预览与打包一致）
@@ -2103,7 +2135,7 @@ function ditherImage(imageData) {
                     currentImageData.width,
                     currentImageData.height
                 );
-                return window.szEnhancedDither(rawImageData);
+                return window.szEnhancedDither(applyCurrentSourceFit(rawImageData));
             }
             return window.szEnhancedDither(imageData);
         default:

@@ -1,3 +1,6 @@
+import 'source_image_fit.dart';
+import 'frame_palettes.dart';
+
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -25,6 +28,8 @@ class FrameOptions {
     this.brightness = 0,
     this.contrast = 1,
     this.saturation = 1,
+    this.rangeFit = 0,
+    this.warmChroma = 0,
     this.dither = false,
     this.algorithm = FrameAlgorithm.atkinsonEnhanced,
     this.ditherStrength = 1,
@@ -34,6 +39,7 @@ class FrameOptions {
   final ImageResampling resampling;
   final int quarterTurns;
   final double zoom, panX, panY, brightness, contrast, saturation;
+  final double rangeFit, warmChroma;
   final bool dither;
   final FrameAlgorithm algorithm;
   final double ditherStrength;
@@ -191,6 +197,8 @@ Future<ui.Image> _render(
     options.contrast,
     options.saturation,
     options.ditherStrength,
+    options.rangeFit,
+    options.warmChroma,
   ];
   if (values.any((v) => !v.isFinite) || options.zoom <= 0) {
     throw ArgumentError('无效图片调整参数');
@@ -213,7 +221,11 @@ Future<Uint8List> _png(ui.Image image) async =>
     (await image.toByteData(format: ui.ImageByteFormat.png))!.buffer
         .asUint8List();
 
-void adjustFrameRgba(Uint8List rgba, FrameOptions options) {
+void adjustFrameRgba(
+  Uint8List rgba,
+  FrameOptions options, {
+  bool applySourceFit = true,
+}) {
   if (options.brightness != 0) {
     for (var i = 0; i < rgba.length; i += 4) {
       for (var c = 0; c < 3; c++) {
@@ -227,6 +239,64 @@ void adjustFrameRgba(Uint8List rgba, FrameOptions options) {
     rgba,
     contrast: options.contrast,
     saturation: options.saturation,
+  );
+  if (applySourceFit) adjustFrameSourceFit(rgba, options);
+}
+
+bool sourceFitIsSz(FrameOptions o) =>
+    o.dither &&
+    (o.algorithm == FrameAlgorithm.szEnhanced ||
+        o.algorithm == FrameAlgorithm.atkinsonSzCalib);
+SourceFitProfile? sourceFitProfile(FrameOptions o) {
+  if (o.format == FrameFormat.monoFast) return null;
+  if (o.algorithm == FrameAlgorithm.colorQualMeasured) {
+    return SourceFitProfile.measured(
+      colorQualMeasuredPalette[3],
+      colorQualMeasuredPalette[15],
+    );
+  }
+  if (o.algorithm == FrameAlgorithm.colorQualCalibrated) {
+    return SourceFitProfile.measured(
+      colorQualCalibratedPalette[3],
+      colorQualCalibratedPalette[15],
+    );
+  }
+  if (o.algorithm == FrameAlgorithm.colorQual ||
+      o.format == FrameFormat.colorQual) {
+    return legacyQualSourceProfile;
+  }
+  if (o.algorithm == FrameAlgorithm.colorFast55 ||
+      o.format == FrameFormat.colorFast55) {
+    return fastSourceProfile;
+  }
+  return nativeSixSourceProfile;
+}
+
+void adjustFrameSourceFit(Uint8List rgba, FrameOptions options) {
+  if (options.format == FrameFormat.monoFast) return;
+  fitSourceRgba(
+    rgba,
+    rangeFit: sourceFitIsSz(options) ? 0 : options.rangeFit,
+    warmChroma: options.warmChroma,
+    profile: sourceFitProfile(options),
+  );
+}
+
+/// Shared pre-quantization adjustment for exact composition preview and export.
+void adjustFrameCompositionRgba(
+  Uint8List rgba,
+  FrameOptions options, {
+  SourceFitProfile? profile,
+}) {
+  if (!(options.dither && options.algorithm == FrameAlgorithm.szEnhanced)) {
+    adjustFrameRgba(rgba, options, applySourceFit: false);
+  }
+  if (options.format == FrameFormat.monoFast) return;
+  fitSourceRgba(
+    rgba,
+    rangeFit: sourceFitIsSz(options) ? 0 : options.rangeFit,
+    warmChroma: options.warmChroma,
+    profile: profile ?? sourceFitProfile(options),
   );
 }
 
@@ -283,15 +353,15 @@ Future<FrameResult> convertFrame(
   } finally {
     image.dispose();
   }
-  if (!(options.dither && options.algorithm == FrameAlgorithm.szEnhanced)) {
-    adjustFrameRgba(rgba, options);
-  }
+  adjustFrameCompositionRgba(rgba, options);
   _check(isCancelled);
   Uint8List? cropPng;
   if (includeCropPreview) {
     final cropRgba = Uint8List.fromList(rgba);
-    if (options.dither && options.algorithm == FrameAlgorithm.szEnhanced) {
-      adjustFrameRgba(cropRgba, options);
+    if (options.dither &&
+        options.algorithm == FrameAlgorithm.szEnhanced &&
+        options.warmChroma == 0) {
+      adjustFrameRgba(cropRgba, options, applySourceFit: false);
     }
     cropPng = await _encodeRgba(cropRgba);
     _check(isCancelled);

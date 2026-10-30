@@ -1,3 +1,5 @@
+import 'source_image_fit.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -35,6 +37,8 @@ const avatarDefaults = <String, dynamic>{
   'brightness': 0.0,
   'contrast': 1.0,
   'saturation': 1.0,
+  'rangeFit': 0.0,
+  'warmChroma': 0.0,
   'dither': true,
   'strength': 1.0,
   'algorithm': 'adaptive',
@@ -66,6 +70,8 @@ class PassportAvatarEdit {
       'brightness': (-1, 1),
       'contrast': (.5, 2),
       'saturation': (0, 3),
+      'rangeFit': (0, 1),
+      'warmChroma': (0, 1),
       'strength': (0, 3),
     }.entries) {
       final n = options[entry.key];
@@ -148,6 +154,14 @@ Future<({String crop, String processed})> renderAvatarEdit(
       saturation: mode == 'color' ? (o['saturation'] as num).toDouble() : 0,
     ),
   );
+  if (mode == 'color') {
+    fitSourceRgba(
+      rgba,
+      rangeFit: (o['rangeFit'] as num).toDouble(),
+      warmChroma: (o['warmChroma'] as num).toDouble(),
+      profile: fastSourceProfile,
+    );
+  }
   if (mode == 'mono') {
     await quantizeFrameMono(
       rgba,
@@ -351,12 +365,24 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
                       source: sourceBytes,
                       width: 128,
                       height: 160,
+                      sourceProfile: fastSourceProfile,
+                      legacyQuality: ui.FilterQuality.high,
+                      legacyDecodeLimit: 4096,
                       options: FrameOptions(
+                        resampling: ImageResampling.values.byName(
+                          options['resampling'] as String,
+                        ),
                         quarterTurns: (options['turns'] as num).toInt(),
                         zoom: (options['zoom'] as num).toDouble(),
                         panX: (options['x'] as num).toDouble(),
                         panY: (options['y'] as num).toDouble(),
                         brightness: (options['brightness'] as num).toDouble(),
+                        rangeFit: widget.mode == 'color'
+                            ? (options['rangeFit'] as num).toDouble()
+                            : 0,
+                        warmChroma: widget.mode == 'color'
+                            ? (options['warmChroma'] as num).toDouble()
+                            : 0,
                         contrast: (options['contrast'] as num).toDouble(),
                         saturation: widget.mode == 'color'
                             ? (options['saturation'] as num).toDouble()
@@ -404,6 +430,11 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
             slider('brightness', '亮度', -1, 1),
             slider('contrast', '对比度', .5, 2),
             slider('saturation', '饱和度', 0, 3),
+            if (widget.mode == 'color') ...[
+              slider('rangeFit', '明暗范围拟合', 0, 1),
+              slider('warmChroma', '暖色收缩', 0, 1),
+              const Text('暖色偏黄时可选，按本屏显示调整。'),
+            ],
             SwitchListTile(
               title: const Text('抖动'),
               value: options['dither'] as bool,
