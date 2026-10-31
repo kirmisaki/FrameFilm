@@ -250,7 +250,9 @@ async function onDeviceConnected(deviceName) {
     const initEpoch = connectionEpoch;
     // 根据设备名称检测设备类型（USB 无名称时，随后会由屏幕参数查询纠正）
     var upperName = (deviceName || '').toUpperCase();
-    if (upperName.indexOf('FRAMEFILMARK') === 0) {
+    if (upperName.indexOf('FRAMEFILMC3') === 0) {
+        setDeviceType('FRAMEFILMC3');
+    } else if (upperName.indexOf('FRAMEFILMARK') === 0) {
         // 通行证版（FRAMEFILMARK）：单机型，屏固定 720×480；与 PRO 同屏但功能集不同
         setDeviceType('FRAMEFILMARK');
     } else if (upperName.indexOf('MAX') !== -1) {

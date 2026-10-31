@@ -2,6 +2,10 @@
 
 // ===== 设备配置 =====
 var DEVICE_CONFIGS = {
+    FRAMEFILMC3: {
+        screenWidth: 768, screenHeight: 552,
+        displayName: 'FrameFilm C3', pixelLayout: 'row-major', colorCount: 4
+    },
     FRAMEFILM: {
         screenWidth: 600,
         screenHeight: 400,
@@ -69,7 +73,7 @@ function setDeviceType(type) {
     if (DEVICE_CONFIGS[type]) {
         currentDeviceType = type;
         // 面板未回包前按机型默认六色；收到 0x42 后由 applyScreenParams 覆盖
-        DEVICE_CONFIGS[type].colorCount = 6;
+        DEVICE_CONFIGS[type].colorCount = type === 'FRAMEFILMC3' ? 4 : 6;
         onDeviceTypeChanged();
     }
 }
@@ -156,7 +160,7 @@ function applyScreenParams(panelId, width, height) {
     }
     // 面板 ID 不足以区分机型：0x02（3.70" 720×480）在 Pro 与通行证版（ARK）上是同一块屏。
     // 名字已判定为 ARK 时以名字为准，只更新尺寸/排布，不覆盖机型。
-    if (currentDeviceType !== 'FRAMEFILMARK') {
+    if (currentDeviceType !== 'FRAMEFILMARK' && currentDeviceType !== 'FRAMEFILMC3') {
         setDeviceType(panel.deviceType);
     }
     var cfg = getDeviceConfig();

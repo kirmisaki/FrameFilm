@@ -27,6 +27,16 @@ var CREATE_DITHER_STORAGE_KEY = 'ff_create_dither_type';
 
 // 按机型返回可选算法列表（Pro 追加两项 Pro-only）
 function ditherListFor(deviceType) {
+  if (filmUtils.is4ColorMode()) {
+    return [
+      { type: 'e4Photo', name: '四色照片（Atkinson）' },
+      { type: 'e4Portrait', name: '四色人像' },
+      { type: 'e4Vintage', name: '四色黑白' },
+      { type: 'e4Text', name: '四色文字（无抖动）' }
+    ].concat(DITHER_BASE.filter(function (entry) {
+      return ['adaptive', 'floydSteinberg', 'atkinson', 'stucki', 'jarvis'].indexOf(entry.type) >= 0;
+    }));
+  }
   var list = DITHER_BASE.slice();
   if (deviceType === 'FRAMEFILMPRO') {
     list = list.concat(DITHER_PRO_ONLY);
@@ -47,6 +57,8 @@ function ditherOptionsFor(deviceType) {
 }
 
 function ditherTypeLabel(type) {
+  var four = { e4Photo:'四色照片（Atkinson）', e4Portrait:'四色人像', e4Vintage:'四色黑白', e4Text:'四色文字（无抖动）' };
+  if (four[type]) return four[type];
   var i;
   for (i = 0; i < DITHER_BASE.length; i++) {
     if (DITHER_BASE[i].type === type) return DITHER_BASE[i].name;
@@ -67,7 +79,7 @@ function getCreateDitherType(deviceType) {
   for (var i = 0; i < list.length; i++) {
     if (list[i].type === saved) return saved;
   }
-  return DEFAULT_CREATE_DITHER_TYPE;
+  return list[0].type;
 }
 
 function setCreateDitherType(type) {

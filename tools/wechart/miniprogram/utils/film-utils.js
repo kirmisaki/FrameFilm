@@ -5,6 +5,14 @@ const FILM_HEADER_SIZE = 32;
 // canvasWidth/Height = 竖屏编辑画布尺寸（内容呈竖屏方向）；screenWidth/Height = film 原生宽高
 // isPortraitPanel：内容是否需要额外旋转 90°（物理面板横置，按竖屏产品使用）
 const DEVICE_CONFIGS = {
+  FRAMEFILMC3: {
+    screenWidth: 768, screenHeight: 552,
+    canvasWidth: 552, canvasHeight: 768,
+    displayName: 'FrameFilm C3',
+    isPortraitPanel: true,
+    pixelLayout: 'row-major',
+    colorCount: 4
+  },
   FRAMEFILM: {
     screenWidth: 600, screenHeight: 400,
     canvasWidth: 400, canvasHeight: 600,
@@ -42,7 +50,8 @@ const PANEL_CONFIGS = {
   0x03: { deviceType: 'FRAMEFILM', pixelLayout: 'rotated' },         // 3.60" 600×400
   0x05: { deviceType: 'FRAMEFILMMAX', pixelLayout: 'row-major' },    // 7.09" 1200×1600
   0x06: { deviceType: 'FRAMEFILMDOCK', pixelLayout: 'row-major' },   // 3.64" 760×568（底座）
-  0x07: { deviceType: 'FRAMEFILMPRO', pixelLayout: 'row-major' }     // 3.98" 768×552（SE0398）
+  0x07: { deviceType: 'FRAMEFILMPRO', pixelLayout: 'row-major' },    // 3.98" 768×552（SE0398，六色）
+  0x08: { deviceType: 'FRAMEFILMPRO', pixelLayout: 'row-major', colorCount: 4 } // JD79665AA，四色
 };
 
 var currentDeviceType = 'FRAMEFILM';
@@ -54,6 +63,7 @@ function getDeviceConfig() {
 function setDeviceType(type) {
   if (DEVICE_CONFIGS[type]) {
     currentDeviceType = type;
+    DEVICE_CONFIGS[type].colorCount = type === 'FRAMEFILMC3' ? 4 : 6;
   }
 }
 
@@ -68,11 +78,13 @@ function applyScreenParams(panelId, width, height) {
     console.warn('[film-utils] 未知屏幕面板 ID: 0x' + (panelId || 0).toString(16));
     return false;
   }
-  setDeviceType(panel.deviceType);
+  // C3 is a board identity advertised over BLE, not another Pro variant.
+  if (currentDeviceType !== 'FRAMEFILMC3') setDeviceType(panel.deviceType);
   var cfg = getDeviceConfig();
   cfg.screenWidth = width;
   cfg.screenHeight = height;
   cfg.pixelLayout = panel.pixelLayout;
+  cfg.colorCount = panel.colorCount || 6;
   // 画布保持竖屏方向：竖屏面板（旋转显示）宽高互换，否则原生竖屏直接使用
   cfg.canvasWidth = cfg.isPortraitPanel ? height : width;
   cfg.canvasHeight = cfg.isPortraitPanel ? width : height;
@@ -135,6 +147,20 @@ const rgbPalette = [
   { name: "绿色", r: 41, g: 204, b: 20, value: 0x1c, code: COLOR_CODE_GREEN }
 ];
 
+function is4ColorMode() {
+  return getDeviceConfig().colorCount === 4;
+}
+
+function findClosestFourColor(r, g, b) {
+  var best = rgbPalette[0], distance = Infinity;
+  for (var i = 0; i < 4; i++) {
+    var c = rgbPalette[i];
+    var d = (r-c.r)*(r-c.r) + (g-c.g)*(g-c.g) + (b-c.b)*(b-c.b);
+    if (d < distance) { distance = d; best = c; }
+  }
+  return best;
+}
+
 function rgbToHsl(r, g, b) {
   r /= 255; g /= 255; b /= 255;
   const max = Math.max(r, g, b);
@@ -178,6 +204,7 @@ const paletteHsl = rgbPalette.map(function (c) {
 });
 
 function findClosestColor(r, g, b) {
+  if (is4ColorMode()) return findClosestFourColor(r, g, b);
   const input = rgbToHsl(r, g, b);
   if (input.s < 0.12) {
     return input.l > 0.5 ? rgbPalette[1] : rgbPalette[0];
@@ -548,6 +575,17 @@ function attachDitherAdvanced(mod) {
 }
 
 function applyDitherByType(imageData, type, strength) {
+  if (is4ColorMode() && /^e4(Photo|Portrait|Vintage|Text)$/.test(type)) {
+    var presets = { e4Photo: 'photo', e4Portrait: 'portrait', e4Vintage: 'vintage', e4Text: 'text' };
+    var processor = require('./e4-image').createProcessor(imageData, {preset: presets[type]});
+    processor.step(imageData.height);
+    return imageData;
+  }
+  // Six-colour LUTs/calibration must never generate blue or green on E4.
+  if (is4ColorMode() && ['gammaFloydSteinberg', 'bayer', 'atkinsonEnhanced',
+      'atkinsonSzCalib', 'szEnhanced'].indexOf(type) >= 0) {
+    return floydSteinbergDither(imageData, strength == null ? 1 : strength);
+  }
   switch (type) {
     case 'adaptive': return adaptiveDither(imageData);
     case 'floydSteinberg': return floydSteinbergDither(imageData, strength);
@@ -696,7 +734,7 @@ function generateFilmHeader() {
   header[5] = (sw >> 8) & 0xFF;
   header[6] = sh & 0xFF;
   header[7] = (sh >> 8) & 0xFF;
-  header[8] = 6;
+  header[8] = is4ColorMode() ? 4 : 6;
   header[16] = 0x00;
   header[17] = 0xFF;
   header[18] = 0xFC;
@@ -868,7 +906,7 @@ module.exports = {
   setDeviceType, getDeviceType, getDeviceConfig, applyScreenParams,
   getCanvasWidth, getCanvasHeight, getScreenWidth, getScreenHeight,
   getFilmPixelDataSize, getFilmFileTotalSize,
-  rgbPalette,
+  rgbPalette, is4ColorMode,
   findClosestColor,
   adjustContrast, adjustSaturation,
   floydSteinbergDither, atkinsonDither, stuckiDither, jarvisDither,
