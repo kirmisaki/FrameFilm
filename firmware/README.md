@@ -9,8 +9,9 @@
 | [`frame_film/`](frame_film/) | 冰箱贴本体固件（**三机型**，旧机型维护线） | `FRAMEFILM` / `FRAMEFILMPRO` / `FRAMEFILMMAX` |
 | [`frame_film_ark/`](frame_film_ark/) | 通行证版固件（**单机型**，app 框架主线） | `FRAMEFILMARK-<后缀>`（旧版无后缀） |
 | [`frame_film_dock/`](frame_film_dock/) | 充电底座固件（单机型） | `FRAMEFILMDOCK` |
+| [`frame_film_c3/`](frame_film_c3/) | 独立 C3 + JD79665AA 四色机型（实验性、未实屏验收） | `FRAMEFILMC3` |
 
-三个工程均基于 ESP-IDF 构建，采用相同的三层分层架构。
+上述工程均基于 ESP-IDF 构建，采用相同的三层分层架构。C3 的存储与板级能力边界见其独立 README。
 
 > **app 框架与 UI 层（`film_app` + `film_ui`）只存在于 `frame_film_ark`**；`frame_film` 是经典固件，没有这两个组件，也不实现 app 通道 BLE 命令（`0x45~0x4E`）。
 
