@@ -39,7 +39,7 @@ class AppUpdateService {
         .get(
           Uri.https(
             'api.github.com',
-            '/repos/Rafael-Ikaros/FrameFilm/releases',
+            '/repos/kirmisaki/FrameFilm/releases',
             {'per_page': '20'},
           ),
           headers: {'Accept': 'application/vnd.github+json'},
@@ -113,6 +113,9 @@ class AppUpdateService {
           uri.scheme != 'https' ||
           uri.host != 'github.com' ||
           !(uri.path.startsWith(
+                '/kirmisaki/FrameFilm/releases/download/',
+              ) ||
+              uri.path.startsWith(
                 '/Rafael-Ikaros/FrameFilm/releases/download/',
               ) ||
               uri.path.startsWith(

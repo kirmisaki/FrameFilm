@@ -53,7 +53,7 @@ void main() {
     final service = GitHubReleaseService(
       client: MockClient((request) async {
         expect(request.url.host, 'api.github.com');
-        expect(request.url.path, '/repos/Rafael-Ikaros/FrameFilm/releases');
+        expect(request.url.path, '/repos/kirmisaki/FrameFilm/releases');
         return http.Response('[]', 200);
       }),
     );

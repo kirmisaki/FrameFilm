@@ -39,7 +39,7 @@ class GitHubReleaseService {
         .get(
           Uri.https(
             'api.github.com',
-            '/repos/Rafael-Ikaros/FrameFilm/releases',
+            '/repos/kirmisaki/FrameFilm/releases',
             {'per_page': '20'},
           ),
           headers: {'Accept': 'application/vnd.github+json'},

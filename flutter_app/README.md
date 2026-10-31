@@ -166,7 +166,7 @@ python -m http.server 8770 --bind 127.0.0.1 --directory D:/dev-tool/FrameFilm-bu
 
 ## GitHub 在线固件（2026-10-08，本地实现）
 
-设置 → 固件升级 → 检查 GitHub 发布。客户端无登录访问固定公开仓库 `Rafael-ban/FrameFilm`，在最近20个正式发布中选择包含精确 `frame_film_ark.bin` 的最新发布时间；忽略草稿和预发布，不比较版本字符串大小。没有适用发布、403/429、网络失败都显示可重试状态，不伪造“有更新”。
+设置 → 固件升级 → 检查 GitHub 发布。客户端无登录访问固定公开仓库 `kirmisaki/FrameFilm`（下载地址兼容旧 `Rafael-Ikaros/FrameFilm`、`Rafael-ban/FrameFilm`），在最近20个正式发布中选择包含精确 `frame_film_ark.bin` 的最新发布时间；忽略草稿和预发布，不比较版本字符串大小。没有适用发布、403/429、网络失败都显示可重试状态，不伪造“有更新”。
 
 Android 点击“下载并校验”后流式保存到临时缓存，显示进度并可取消。限制4MiB及声明长度，若资产提供 SHA256则核对，再复用 `ArkFirmware.inspect` 检查原始ESP32-S3应用镜像和Ark项目身份。成功才替换导入文件；失败、取消和关闭会清理临时副本，保留原导入。下载完成不会自动刷机，仍需连接Ark并点击“检查并升级”，由原流程比对ELF指纹。下载需手机能够访问GitHub，后续手机至Ark仍使用WiFi直传，无需设备接入路由器。
 
@@ -236,7 +236,7 @@ SZ 使用计算时间片控制让出，避免每 32 像素强制 timer 导致 We
 ## 设置、关于与 App 更新（2026-10-09，C8）
 
 - 连接信息显示在连接页；设置页依次容纳设备文件、设备设置、遥控、固件升级、界面主题、App 更新与关于；关于位于最底。关于页署名 App 开发维护 · Rafael-ban，提供 [作者 GitHub 主页](https://github.com/Rafael-ban)、[项目源码](https://github.com/Rafael-ban/FrameFilm)、反馈入口和 GPL-3.0 许可展示。
-- 设置 → 应用更新从公开 GitHub Releases 最近 20 个正式发布中查找精确的 `framefilm-ark-flutter.apk` 与 `framefilm-ark-flutter.json`。元数据记录 APK 包名、versionName、versionCode、最低系统版本、大小和 SHA-256；用 Android 当前安装包的 `versionCode` 判断是否有新版本，固件升级仍按实际 ELF 指纹判断。Web 仅查询，演示设备模式只模拟下载和安装。
+- 设置 → 应用更新从公开 GitHub Releases 最近 20 个正式发布中查找精确的 `framefilm-ark-flutter.apk` 与 `framefilm-ark-flutter.json`。发布源固定为 `kirmisaki/FrameFilm`（下载地址兼容旧 `Rafael-Ikaros`、`Rafael-ban`）。元数据记录 APK 包名、versionName、versionCode、最低系统版本、大小和 SHA-256；用 Android 当前安装包的 `versionCode` 判断是否有新版本，固件升级仍按实际 ELF 指纹判断。Web 仅查询，演示设备模式只模拟下载和安装。更换发行签名后，旧签名安装包需卸载后重新安装一次。
 - Android 更新流程显示下载字节进度，支持取消和失败后重新下载；下载后核对大小、SHA-256、APK 包名、系统版本、versionCode 与现有 App 签名，再由用户打开 Android 系统安装器确认安装。需要安装未知应用权限时跳转系统设置，返回后可继续。下载包暂存在 App 缓存，清除未完成临时文件；已准备好的兼容包可在下次启动恢复。安装是否完成仍以系统结果为准。
 - CI 手动发布须先配置 `ARK_DEBUG_KEYSTORE_BASE64`，使用与现有 App 相同的临时 debug 签名；缺少该 Secret 时发布构建失败。提交 `4fa8e77` 已推送，[Actions #37910525382](https://github.com/Rafael-ban/FrameFilm/actions/runs/37910525382) 的 APK 与 Ark 固件构建均通过；APK 为 0.4.0+4，最低 Android 9，59,475,012 字节。此次未发布 Release，App 内覆盖安装尚未验收。此前 C7 的算法、动画、设备文件与主题检查仍按上方矩阵的验证边界理解，不代表全部 UI 逐像素一致。
 
