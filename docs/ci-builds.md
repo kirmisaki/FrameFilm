@@ -1,6 +1,11 @@
-# Ark 自动构建
+# 自动构建
 
-工作流：`.github/workflows/ark-builds.yml`。仅构建 Flutter Android app 与 `firmware/frame_film_ark`，不构建经典固件或 Dock。
+工作流：
+
+- `.github/workflows/ark-builds.yml`：Flutter Android app 与 `firmware/frame_film_ark`。
+- `.github/workflows/frame-film-builds.yml`：经典固件 `firmware/frame_film` 的 Pro 机型，按屏幕逐项构建。
+
+Dock 与 `frame_film_c3` 暂不构建。
 
 ## 触发与下载
 
@@ -18,9 +23,13 @@
 
 Release/AOT APK 使用独立发行密钥，缺少配置时不会回退到 debug 签名。按 [Component_Manager 的发行工作流](https://github.com/Rafael-ban/Component_Manager/blob/master/.github/workflows/release.yml) 配置四项仓库 Actions Secrets：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。工作流在 runner 临时目录恢复 keystore，将路径及签名参数交给 Gradle，结束后删除临时密钥。Fork PR 无法访问这些 Secrets，因此不能完成发行签名 job。
 
+未配置上述 Secrets 的普通 push / PR 只构建 debug APK（`ark-flutter-debug-apk`）用于编译验证，不会产出 Release 附件；只有计划发布（`publish == true`）时缺少签名才会以明确错误失败。需要正式发布时请先在仓库配置四项 Secrets。
+
 本机密钥与私有 `key.properties` 保存在 `D:\FrameFilm-signing`，不提交到仓库。`flutter_app/tool/flutter.ps1` 默认引用此配置；其他环境可设置 `FRAMEFILM_SIGNING_PROPERTIES`，或使用 `ANDROID_KEYSTORE_PATH` 与上述三个密码/别名环境变量。请将整个签名目录另行安全备份，后续更新必须继续使用同一密钥。旧 debug 签名的正式包不能被新发行签名直接覆盖；`.dev` 开发包可继续并行保留，迁移前需备份旧 App 本地资料。
 
 2026-10-16 本机 Release 构建和 APK 签名验证通过，最终 APK 为 59,802,980 字节，证书 SHA-256：`e5c1b5305670858656fce38cea82614838992aa3326ef3166546af4f9da7245e`。用户授权后，以上四项 Secrets 已加密上传到 `Rafael-ban/FrameFilm`，并回查各项元数据确认存在。这不代表新工作流已经在云端运行或已完成手机安装验收。
+
+2026-10-31 当前仓库 `kirmisaki/FrameFilm` 已重新配置上述四项 Secrets，并改用全新的发行签名：证书 SHA-256 `9a623e563ef3198ee0b0bd34e3b017af69a20d013bfae093906fdf8b3de79299`，keystore 与口令保存在本机 `D:\FrameFilm-signing`（需离线备份）。因为发行签名已更换，旧签名安装的 App 无法覆盖升级，需要卸载后重新安装一次；应用内更新在下载校验阶段会提示签名不兼容。
 
 ## Ark 固件
 
@@ -33,6 +42,15 @@ Release/AOT APK 使用独立发行密钥，缺少配置时不会回退到 debug 
 - ELF、map、sdkconfig：用于定位问题和核对构建配置。
 
 `ark-firmware-build-logs` 包含构建、merge-bin、`idf.py size` 报告及生成的 IDF 日志。CI 不连接设备、不刷机。普通构建只上传 Artifacts。
+
+## 经典固件 Pro 全屏幕
+
+`frame-film-builds.yml` 只改触发路径内的 `firmware/frame_film/**`。每个矩阵项都从 `sdkconfig_pro` 复制生成 `sdkconfig`，再在 `hal_epd.h` 的 `FRAMEFILM_PRO` 分支内仅把目标 `EPD_SELECT_*` 置 1，随后执行 `idf.py build`、`idf.py size` 与 `idf.py merge-bin`。
+
+- 构建屏幕：E6 3.68" 792×528（默认）、E6 3.70" 720×480、E6 3.60" 600×400、E6 3.64" 760×568、E6 3.98" 768×552、E4 3.98" 768×552（四色）。
+- 不构建 1.54"（无驱动）与 7.09"（双 CS/无 DC，仅 Max 接线支持）。
+- 每个屏幕的产物 `frame-film-pro-<屏幕标识>` 含 `frame_film.bin`（OTA 应用镜像）、`frame_film_pro_<屏幕标识>-flash.bin`（串口合并镜像，从 `0x0` 写入）与 ELF；日志在同一产物名后加 `-logs`。
+- `sdkconfig_pro` 为 4MB Flash / Quad PSRAM 配置；编译成功不代表对应屏幕已实机验证。
 
 ## 验证范围
 

@@ -1,0 +1,122 @@
+name: FrameFilm classic firmware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/frame_film/**'
+      - '.github/workflows/frame-film-builds.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'firmware/frame_film/**'
+      - '.github/workflows/frame-film-builds.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frame-film-builds-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pro:
+    name: Pro ${{ matrix.screen.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container: espressif/idf:v5.5.2
+    strategy:
+      fail-fast: false
+      matrix:
+        screen:
+          - name: E6 3.68 792x528
+            slug: e6-3.68-792x528
+            macro: EPD_SELECT_E6_3_68_792_528
+          - name: E6 3.70 720x480
+            slug: e6-3.70-720x480
+            macro: EPD_SELECT_E6_3_70_720_480
+          - name: E6 3.60 600x400
+            slug: e6-3.60-600x400
+            macro: EPD_SELECT_E6_3_60_600_400
+          - name: E6 3.64 760x568
+            slug: e6-3.64-760x568
+            macro: EPD_SELECT_E6_3_64_760_568
+          - name: E6 3.98 768x552
+            slug: e6-3.98-768x552
+            macro: EPD_SELECT_E6_3_98_768_552
+          - name: E4 3.98 768x552
+            slug: e4-3.98-768x552
+            macro: EPD_SELECT_E4_3_98_768_552
+    defaults:
+      run:
+        shell: bash
+        working-directory: firmware/frame_film
+    steps:
+      - uses: actions/checkout@v6
+      - name: Select Pro screen
+        env:
+          SCREEN_MACRO: ${{ matrix.screen.macro }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          macro = os.environ['SCREEN_MACRO']
+          path = pathlib.Path('components/film_hal/inc/hal_epd.h')
+          text = path.read_text(encoding='utf-8')
+          start = text.index('#if FRAMEFILM_PRO == 1')
+          end = text.index('#endif', start)
+          block = text[start:end]
+          pattern = r'^#define\s+(EPD_SELECT_\w+)\s+\d+\s*$'
+
+          names = re.findall(pattern, block, re.M)
+          if macro not in names:
+              sys.exit(f'{macro} is not defined in the FRAMEFILM_PRO block')
+
+          block = re.sub(
+              pattern,
+              lambda match: f'#define {match.group(1)} {1 if match.group(1) == macro else 0}',
+              block,
+              flags=re.M,
+          )
+          path.write_text(text[:start] + block + text[end:], encoding='utf-8')
+
+          selected = [name for name, value in re.findall(r'^#define\s+(EPD_SELECT_\w+)\s+(\d+)\s*$', block, re.M) if value == '1']
+          if selected != [macro]:
+              sys.exit(f'screen selection failed: {selected}')
+          print(f'Selected {macro}')
+          PY
+      - name: Build Pro firmware
+        env:
+          SCREEN_SLUG: ${{ matrix.screen.slug }}
+        run: |
+          set -euo pipefail
+          . "$IDF_PATH/export.sh"
+          cp sdkconfig_pro sdkconfig
+          mkdir -p ci-logs
+          idf.py --version 2>&1 | tee ci-logs/idf-version.log
+          idf.py build 2>&1 | tee ci-logs/build.log
+          idf.py size 2>&1 | tee ci-logs/size.log
+          idf.py merge-bin -o "frame_film_pro_${SCREEN_SLUG}-flash.bin" 2>&1 | tee ci-logs/merge.log
+      - name: Upload firmware
+        uses: actions/upload-artifact@v7
+        with:
+          name: frame-film-pro-${{ matrix.screen.slug }}
+          if-no-files-found: error
+          path: |
+            firmware/frame_film/build/frame_film.bin
+            firmware/frame_film/build/frame_film_pro_${{ matrix.screen.slug }}-flash.bin
+            firmware/frame_film/build/frame_film.elf
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frame-film-pro-${{ matrix.screen.slug }}-logs
+          if-no-files-found: ignore
+          path: |
+            firmware/frame_film/ci-logs/
+            firmware/frame_film/build/log/

@@ -32,7 +32,7 @@ jobs:
       version_code: ${{ steps.details.outputs.versionCode }}
       source_ref: ${{ steps.tag.outputs.source_ref }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Read new Ark changelog entry
@@ -127,15 +127,17 @@ jobs:
             /dev/null "$RUNNER_TEMP/tag-pubspec.yaml" workflow_dispatch
 
   android:
-    name: Flutter Android release APK
+    name: Flutter Android APK
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     needs: plan
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.plan.outputs.source_ref }}
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -153,7 +155,8 @@ jobs:
           cp "$RUNNER_TEMP/ci_wrapper/android/gradlew.bat" flutter_app/android/gradlew.bat
           cp "$RUNNER_TEMP/ci_wrapper/android/gradle/wrapper/gradle-wrapper.jar" flutter_app/android/gradle/wrapper/gradle-wrapper.jar
           chmod +x flutter_app/android/gradlew
-      - name: Restore distribution signing
+      - name: Check distribution signing
+        id: signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -162,10 +165,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
-            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. Release builds never fall back to debug signing. Fork PRs do not receive signing secrets."
-            exit 1
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Android signing secrets are unavailable; building a debug APK for CI validation only."
           fi
+      - name: Require signing for a release
+        if: needs.plan.outputs.publish == 'true' && steps.signing.outputs.signed != 'true'
+        shell: bash
+        run: |
+          echo "::error::Release ${{ needs.plan.outputs.tag }} needs ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. Release builds never fall back to debug signing."
+          exit 1
+      - name: Restore distribution signing
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
           umask 077
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ark-release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/ark-release.jks" >> "$GITHUB_ENV"
@@ -174,6 +192,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
         working-directory: flutter_app
         shell: bash
         run: |
@@ -181,8 +200,13 @@ jobs:
           mkdir -p ../ci-logs
           flutter --version 2>&1 | tee ../ci-logs/flutter-version.log
           flutter pub get 2>&1 | tee ../ci-logs/flutter-pub.log
-          flutter build apk --release 2>&1 | tee ../ci-logs/flutter-build.log
-      - name: Check Flutter release runtime assets
+          if [ "$SIGNED" = 'true' ]; then
+            flutter build apk --release 2>&1 | tee ../ci-logs/flutter-build.log
+          else
+            flutter build apk --debug 2>&1 | tee ../ci-logs/flutter-build.log
+          fi
+      - name: Check release runtime assets
+        if: steps.signing.outputs.signed == 'true'
         shell: python
         run: |
           import zipfile
@@ -192,10 +216,22 @@ jobs:
               assert any(name.endswith('/libflutter.so') for name in names), 'Missing Flutter engine'
               assert 'assets/flutter_assets/kernel_blob.bin' not in names, 'Unexpected debug Dart kernel'
               print('Release AOT application and Flutter engine are present.')
+      - name: Check debug runtime assets
+        if: steps.signing.outputs.signed != 'true'
+        shell: python
+        run: |
+          import zipfile
+          with zipfile.ZipFile('flutter_app/build/app/outputs/flutter-apk/app-debug.apk') as archive:
+              names = archive.namelist()
+              assert any(name.endswith('/libflutter.so') for name in names), 'Missing Flutter engine'
+              assert 'assets/flutter_assets/kernel_blob.bin' in names, 'Missing debug Dart kernel'
+              print('Debug Flutter engine and Dart kernel are present.')
       - name: Prepare app release metadata
+        if: steps.signing.outputs.signed == 'true'
         run: node flutter_app/tool/generate_app_release.cjs flutter_app/build/app/outputs/flutter-apk/app-release.apk app-release
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Upload release APK
+        if: steps.signing.outputs.signed == 'true'
+        uses: actions/upload-artifact@v7
         with:
           name: ark-flutter-release-apk
           path: |
@@ -203,9 +239,16 @@ jobs:
             app-release/framefilm-ark-flutter.apk
             app-release/framefilm-ark-flutter.json
           if-no-files-found: error
+      - name: Upload debug APK
+        if: steps.signing.outputs.signed != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ark-flutter-debug-apk
+          path: flutter_app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
       - name: Upload Android build logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ark-flutter-build-logs
           path: ci-logs/
@@ -225,7 +268,7 @@ jobs:
         shell: bash
         working-directory: firmware/frame_film_ark
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.plan.outputs.source_ref }}
       - name: Build Ark and size report
@@ -238,13 +281,13 @@ jobs:
           idf.py size 2>&1 | tee ci-logs/size.log
           idf.py merge-bin -o frame_film_ark-flash.bin 2>&1 | tee ci-logs/merge.log
       - name: Upload Ark OTA image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ark-firmware-ota
           if-no-files-found: error
           path: firmware/frame_film_ark/build/frame_film_ark.bin
       - name: Upload Ark serial flash and debug files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ark-firmware-debug
           if-no-files-found: error
@@ -260,7 +303,7 @@ jobs:
             firmware/frame_film_ark/sdkconfig
       - name: Upload Ark build logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ark-firmware-build-logs
           if-no-files-found: ignore
@@ -277,16 +320,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.plan.outputs.source_ref }}
       - name: Download this run's firmware
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ark-firmware-ota
           path: release-input
       - name: Download this run's app
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ark-flutter-release-apk
           path: app-release-input
