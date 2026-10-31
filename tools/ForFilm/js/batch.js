@@ -206,27 +206,34 @@ async function batchUploadFilm(fileData, fileName, indexLabel) {
 
     batchUpdateProgress(indexLabel + ' · 准备传输...', 0);
 
+    assertFilmTransferIdle();
     filmTransState = BLE_FILM_TRANS_STATE_STARTED;
     filmTransFileName = fileName;
     filmTransFileSize = fileData.length;
     filmTransSentBytes = 0;
 
-    await sendBleFileStart();
-    await sendBleFileName(fileName);
-    await sendBleFileLen(fileData.length);
+    try {
+        await sendBleFileStart();
+        await sendBleFileName(fileName);
+        await sendBleFileLen(fileData.length);
 
-    var chunkSize = BLE_CHUNK_SIZE;
-    var sentBytes = 0;
-    for (var i = 0; i < fileData.length; i += chunkSize) {
-        var chunk = fileData.slice(i, i + chunkSize);
-        await sendBleFileData(chunk);
-        sentBytes += chunk.length;
-        filmTransSentBytes = sentBytes;
-        batchUpdateProgress(indexLabel + ' · ' + fileName, Math.round((sentBytes / fileData.length) * 100));
+        var chunkSize = BLE_CHUNK_SIZE;
+        var sentBytes = 0;
+        for (var i = 0; i < fileData.length; i += chunkSize) {
+            var chunk = fileData.slice(i, i + chunkSize);
+            await sendBleFileData(chunk);
+            sentBytes += chunk.length;
+            filmTransSentBytes = sentBytes;
+            batchUpdateProgress(indexLabel + ' · ' + fileName, Math.round((sentBytes / fileData.length) * 100));
+        }
+
+        // 静默结束：设备保存但不自动加载显示，避免传 N 张刷 N 次屏（与小程序批量一致）
+        await sendBleFileStop(true);
+    } catch (error) {
+        filmTransState = BLE_FILM_TRANS_STATE_IDLE;
+        legacyFilmTransferActive = false;
+        throw error;
     }
-
-    // 静默结束：设备保存但不自动加载显示，避免传 N 张刷 N 次屏（与小程序批量一致）
-    await sendBleFileStop(true);
     filmTransState = BLE_FILM_TRANS_STATE_IDLE;
 }
 

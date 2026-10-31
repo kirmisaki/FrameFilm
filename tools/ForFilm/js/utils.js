@@ -90,6 +90,14 @@ function onDeviceTypeChanged() {
         canvases[i].width = cfg.screenWidth;
         canvases[i].height = cfg.screenHeight;
     }
+    // 改尺寸会清空画布；若已有图片，按新尺寸重绘，避免预览/导出变成白图。
+    if (typeof originalImage !== 'undefined' && originalImage && typeof updateImage === 'function') {
+        try { updateImage(); } catch (e) { console.warn('[ForFilm] 重绘主画布失败', e); }
+    }
+    if (typeof frameOriginalImage !== 'undefined' && frameOriginalImage &&
+        typeof frameUpdateImage === 'function' && document.getElementById('frame-canvas')) {
+        try { frameUpdateImage('frame-canvas'); } catch (e) { console.warn('[ForFilm] 重绘 Frame 画布失败', e); }
+    }
     // 更新设备类型信息显示
     var badge = document.getElementById('device-type-badge');
     var resolution = document.getElementById('device-resolution');
@@ -247,22 +255,30 @@ function getFilmFileExpectedSize(fileData) {
     return 32 + bodySize * frameCount;
 }
 
+// 按 UTF-8 字节数截断，且不切断多字节字符
+function truncateUtf8(str, maxBytes) {
+    var bytes = new TextEncoder().encode(str);
+    if (bytes.length <= maxBytes) return str;
+    var end = Math.max(0, maxBytes);
+    while (end > 0 && (bytes[end] & 0xC0) === 0x80) end--;
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(0, end));
+}
+
 // 规范化发送到设备的 film 文件名
 // 1) 去首尾空格，为空则使用默认名
-// 2) 统一补齐 .film 后缀（设备只把 .film 文件计入文件列表）
-// 3) 限长 64 字节，避免超出设备端文件名/列表缓冲
+// 2) 移除路径分隔符与控制字符（设备端会拼进文件系统路径）
+// 3) 统一补齐 .film 后缀（设备只把 .film 文件计入文件列表）
+// 4) 按 UTF-8 字节限长 64，避免超出设备端文件名/列表缓冲
 function normalizeFilmFileName(raw, fallback) {
-    var name = (raw || '').trim();
+    var name = (raw || '').trim().replace(/[\/\\\x00-\x1f\x7f]/g, '_');
     if (!name) {
         name = fallback || 'output.film';
     }
-    if (!/\.film$/i.test(name)) {
-        name = name.replace(/\.[^.\/\\]+$/, '') + '.film';
-    }
-    if (name.length > 64) {
-        name = name.substring(0, 59) + '.film';
-    }
-    return name;
+    var suffix = '.film';
+    var base = /\.film$/i.test(name) ? name.slice(0, -suffix.length) : name.replace(/\.[^.\/\\]+$/, '');
+    if (!base) base = (fallback || 'output.film').replace(/\.film$/i, '') || 'output';
+    base = truncateUtf8(base, 64 - suffix.length);
+    return base + suffix;
 }
 
 // 根据设备类型返回正确的像素索引

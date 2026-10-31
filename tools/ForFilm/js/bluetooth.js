@@ -8,6 +8,7 @@ let bluetoothListenerCharacteristic = null;
 let lastArkFilmUpload = null;
 let arkUploadControlsBound = false;
 let legacyFilmTransferActive = false;
+let boundGattDevice = null;
 let connectionEpoch = 0;
 let connectionTimers = [];
 
@@ -280,7 +281,9 @@ async function onDeviceConnected(deviceName) {
         deviceList.querySelector('.device-id').textContent = devCfg.displayName + ' | ' + devCfg.screenWidth + 'x' + devCfg.screenHeight;
     }
 
-    if (device && device.addEventListener) {
+    if (device && device.addEventListener && boundGattDevice !== device) {
+        if (boundGattDevice) boundGattDevice.removeEventListener('gattserverdisconnected', onDisconnected);
+        boundGattDevice = device;
         device.addEventListener('gattserverdisconnected', onDisconnected);
     }
     console.log('设备已连接:', deviceName);
@@ -403,6 +406,8 @@ function initBluetooth() {
 
 function onDisconnected(event) {
     clearConnectionTimers();
+    stopDownloadPoll();
+    stopWifiStatusPoll();
     finishArkNameRequest(new Error('设备已断开'));
     if (window.ArkDevice) window.ArkDevice.disconnected();
     filmTransState = BLE_FILM_TRANS_STATE_IDLE;
@@ -483,6 +488,13 @@ function uploadToDevice() {
     uploadFilmFileViaBle(fileName, fileData);
 }
 
+function assertFilmTransferIdle() {
+    if (filmTransState === BLE_FILM_TRANS_STATE_STARTED || legacyFilmTransferActive)
+        throw new Error('已有文件传输进行中，请等待完成或断开重连');
+    if (currentDeviceType === 'FRAMEFILMARK' && window.ArkDevice && window.ArkDevice.busy())
+        throw new Error('Ark 正在执行其他操作，请稍候');
+}
+
 async function uploadFilmFileViaBle(fileName, fileData) {
     var expectedSize = getFilmFileExpectedSize(fileData);
 
@@ -490,6 +502,8 @@ async function uploadFilmFileViaBle(fileName, fileData) {
         showMessage(`文件大小不符合要求(应为${expectedSize}字节)`, 'error');
         return;
     }
+
+    assertFilmTransferIdle();
 
     if (currentDeviceType === 'FRAMEFILMARK' && window.ArkDevice) {
         lastArkFilmUpload = { fileName, fileData: fileData.slice() };
@@ -560,6 +574,7 @@ async function uploadFilmFileViaBle(fileName, fileData) {
     } catch (error) {
         console.error('传输失败:', error);
         filmTransState = BLE_FILM_TRANS_STATE_IDLE;
+        legacyFilmTransferActive = false;
         updateTransferStatus('传输失败', 0);
         showMessage('传输失败: ' + error.message, 'error');
     }
@@ -1490,20 +1505,6 @@ async function sendBleSleepTimeGet() {
     }
 }
 
-async function sendBleModeGet() {
-    if (!device || !server || !characteristic) {
-        showMessage('请先连接设备', 'error');
-        return null;
-    }
-    try {
-        await sendBleCmd(BLE_FILM_TRANS_CH_CTRL_MODE_GET);
-        return true;
-    } catch (error) {
-        showMessage('发送模式查询命令失败', 'error');
-        return null;
-    }
-}
-
 async function sendBleModeSet(mode) {
     if (currentDeviceType === 'FRAMEFILMARK') {
         showMessage('Ark 图片轮播请在设备的图片应用设置中调整', 'info');
@@ -1544,19 +1545,6 @@ function updatePhotoModeDisplay(mode) {
     if (activeBtn) {
         activeBtn.classList.add('active');
     }
-}
-
-function setPhotoMode(mode) {
-    var modeMap = { manual: 0, auto: 1, wifi: 2 };
-    var modeValue = modeMap[mode] || 0;
-
-    // 如果选择WiFi轮播但WiFi未启用，不允许
-    if (modeValue === 2 && !document.getElementById('wifi-enable-switch').checked) {
-        showMessage('请先启用WiFi', 'error');
-        return;
-    }
-
-    sendBleModeSet(modeValue);
 }
 
 async function setupBluetoothListener() {
@@ -1828,7 +1816,8 @@ function setPhotoMode(mode) {
     document.querySelectorAll('.mode-button').forEach(btn => {
         btn.classList.remove('active');
     });
-    document.querySelector(`.mode-button[data-mode="${mode}"]`).classList.add('active');
+    var activeButton = document.querySelector(`.mode-button[data-mode="${mode}"]`);
+    if (activeButton) activeButton.classList.add('active');
 }
 
 function sendBleFileList() {
@@ -1991,8 +1980,14 @@ async function sendBleCmdString(cmdType, str, maxLen) {
     }
     return queueBleCmd(async () => {
         const enc = new TextEncoder();
-        const bytes = enc.encode(str);
-        const dataLen = Math.min(bytes.length, maxLen - 1);
+        let bytes = enc.encode(str);
+        const limit = Math.max(0, maxLen - 1);
+        if (bytes.length > limit) {
+            let end = limit;
+            while (end > 0 && (bytes[end] & 0xC0) === 0x80) end--;
+            bytes = bytes.slice(0, end);
+        }
+        const dataLen = bytes.length;
         const packet = new Uint8Array(4 + dataLen);
         packet[0] = BLE_CMD_HEAD;
         packet[1] = cmdType;
@@ -2286,9 +2281,17 @@ function queryWifiConfig() {
     sendBleHeartbeatIntervalGet().catch(err => console.error(err));
 }
 
+function escapeFileText(value) {
+    return String(value).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+}
+
 function updateFileListDisplay(fileList) {
     const fileListEl = document.getElementById('film-file-list');
     if (!fileListEl) return;
+
+    window.selectedFileId = null;
 
     if (fileList.length === 0) {
         fileListEl.innerHTML = '<div class="empty-state">暂无文件</div>';
@@ -2297,10 +2300,11 @@ function updateFileListDisplay(fileList) {
 
     let html = '';
     fileList.forEach(file => {
-        html += `<div class="file-item" data-id="${file.id}">
-            <input type="checkbox" class="file-checkbox" data-id="${file.id}">
-            <span class="file-id">${file.id}</span>
-            <span class="file-name" title="${file.filename}">${file.filename}</span>
+        const name = escapeFileText(file.filename);
+        html += `<div class="file-item" data-id="${Number(file.id)}">
+            <input type="checkbox" class="file-checkbox" data-id="${Number(file.id)}">
+            <span class="file-id">${Number(file.id)}</span>
+            <span class="file-name" title="${name}">${name}</span>
         </div>`;
     });
     fileListEl.innerHTML = html;
@@ -2336,6 +2340,7 @@ function updateCurrentDisplayId(id) {
 
 function refreshFileList() {
     window.fileListBuffer = [];
+    window.selectedFileId = null;
     const fileListEl = document.getElementById('film-file-list');
     if (fileListEl) {
         fileListEl.innerHTML = '<div class="empty-state">正在加载...</div>';
@@ -2356,6 +2361,7 @@ function deleteSelectedFile() {
         return;
     }
     sendBleFileDelete(window.selectedFileId).then(() => {
+        window.selectedFileId = null;
         showMessage('删除命令已发送', 'success');
         setTimeout(() => {
             refreshFileList();

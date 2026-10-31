@@ -49,6 +49,10 @@ function initFrameUpload() {
                 frameUpdateImage('frame-canvas');
                 window.arkSetControlDisabled(document.getElementById('frameUploadBtn'), false);
             };
+            img.onerror = function() {
+                frameOriginalImage = null;
+                showMessage('图片解析失败，请选择有效的图片文件', 'error');
+            };
             img.src = ev.target.result;
         };
         reader.readAsDataURL(file);
@@ -277,6 +281,7 @@ async function frameUploadViaBle(fileName, fileData, prefix) {
     frameUpdateTransferStatus(prefix, '准备传输...', 0);
 
     try {
+        assertFilmTransferIdle();
         filmTransState = BLE_FILM_TRANS_STATE_STARTED;
         filmTransFileName = fileName;
         filmTransFileSize = fileData.length;
@@ -298,9 +303,12 @@ async function frameUploadViaBle(fileName, fileData, prefix) {
         }
 
         await sendBleFileStop();
+        filmTransState = BLE_FILM_TRANS_STATE_STOPPED;
         frameUpdateTransferStatus(prefix, '传输完成', 100);
         showMessage('文件传输完成', 'success');
     } catch (error) {
+        filmTransState = BLE_FILM_TRANS_STATE_IDLE;
+        legacyFilmTransferActive = false;
         frameUpdateTransferStatus(prefix, '传输失败: ' + error.message, 0);
         showMessage('传输失败: ' + error.message, 'error');
     }

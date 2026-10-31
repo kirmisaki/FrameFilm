@@ -4,11 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FrameFilm Ark · 通行证编辑器</title>
-  <link rel="stylesheet" href="style.css?v=prts-4">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Baloo+2:wght@400..800&family=Noto+Sans+SC:wght@400..900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=prts-9">
   <script src="pixels.js" defer></script>
   <script src="../ForFilm/js/convert.js" defer></script>
-  <script src="avatar-editor.js?v=adaptive-1" defer></script>
-  <script src="app.js?v=prts-3" defer></script>
+  <script src="avatar-editor.js?v=adaptive-3" defer></script>
+  <script src="app.js?v=prts-7" defer></script>
 </head>
 <body>
   <nav class="embedded-nav" aria-label="ForFilm 导航"><button id="back-to-connect" type="button" class="secondary">返回 ForFilm 连接页</button></nav>
@@ -20,13 +23,16 @@
 
   <main class="workspace">
     <section class="editor" aria-labelledby="edit-title">
+      <button type="button" class="preview-jump" id="preview-jump">查看设备预览 ↓</button>
       <div class="section-head"><span>01 / 档案资料</span><h2 id="edit-title">编辑资料</h2></div>
       <div class="fields">
         <div class="field avatar-field">
           <label for="avatar">头像</label>
           <input id="avatar" type="file" accept="image/*">
-          <button id="remove-avatar" type="button" class="text-button">移除头像</button>
-          <button id="edit-avatar" type="button">调整头像</button>
+          <div class="avatar-actions">
+            <button id="remove-avatar" type="button" class="text-button">移除头像</button>
+            <button id="edit-avatar" type="button">调整头像</button>
+          </div>
           <p class="hint">头像框128×160；本地保留源图，可拖动、缩放、旋转和调整Film抖动，取消保留旧头像。</p>
           <p class="hint">设备JSON仅含最终128×160头像；重新读取后可编辑该图像，完整构图请重新导入原图。源图和调整参数仅保存在本地草稿。</p>
           <label for="avatar-mode">头像显示</label>
@@ -86,6 +92,7 @@
     </section>
 
     <section class="preview-panel" aria-labelledby="preview-title">
+      <button type="button" class="preview-jump" id="preview-back">返回编辑 ↑</button>
       <div class="section-head"><span>440 × 608 / 设备色彩</span><h2 id="preview-title">设备主体预览</h2></div>
       <div class="preview-frame"><canvas id="preview" width="440" height="608" role="img" aria-label="通行证主体预览"></canvas></div>
       <p class="hint">预览即导出像素。灰度使用黑白网点；彩色使用六色资料，新版固件通过 ColorFast 彩色快刷显示，页面时间静态。快刷颜色以实机为准。设备状态栏与脚注由固件绘制，不包含在文件内。</p>
