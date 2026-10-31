@@ -71,7 +71,7 @@ jobs:
           start = text.index('#if FRAMEFILM_PRO == 1')
           end = text.index('#endif', start)
           block = text[start:end]
-          pattern = r'^#define\s+(EPD_SELECT_\w+)\s+\d+\s*$'
+          pattern = r'^#define[ \t]+(EPD_SELECT_\w+)[ \t]+[0-9]+[ \t]*$'
 
           names = re.findall(pattern, block, re.M)
           if macro not in names:
@@ -83,9 +83,12 @@ jobs:
               block,
               flags=re.M,
           )
-          path.write_text(text[:start] + block + text[end:], encoding='utf-8')
+          updated = text[:start] + block + text[end:]
+          if updated.count('\n') != text.count('\n'):
+              sys.exit('screen selection changed the line count; refusing to write')
+          path.write_text(updated, encoding='utf-8')
 
-          selected = [name for name, value in re.findall(r'^#define\s+(EPD_SELECT_\w+)\s+(\d+)\s*$', block, re.M) if value == '1']
+          selected = [name for name, value in re.findall(r'^#define[ \t]+(EPD_SELECT_\w+)[ \t]+([0-9]+)[ \t]*$', block, re.M) if value == '1']
           if selected != [macro]:
               sys.exit(f'screen selection failed: {selected}')
           print(f'Selected {macro}')
