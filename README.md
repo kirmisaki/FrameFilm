@@ -181,8 +181,9 @@ FrameFilm/
 │   └── model/                 # 外壳 3D 模型
 │
 ├── server/                     # 云端服务
-│   ├── backend/               # 后端 API 服务 (FastAPI)
-│   └── web/                   # Web 管理前端
+│   └── filmhub/               # film-hub（局域网后端 + 管理前端）
+│       ├── backend/           # 后端 API 服务 (FastAPI)
+│       └── web/               # Web 管理前端
 │
 ├── tools/                      # 开发工具
 │   ├── ForFilm/               # Web 端相框管理工具（BLE / USB / 串口）
@@ -352,7 +353,7 @@ FrameFilm 微信小程序，方便在手机端管理和传输照片：
 **技术栈：** FastAPI + SQLite + Vue 3，单机局域网部署。
 
 - 设计文档：[docs/filmhub/](docs/filmhub/)（需求与技术方案）
-- 后端源码：`server/backend/` ｜ Web 前端：`server/web/`
+- 后端源码：`server/filmhub/backend/` ｜ Web 前端：`server/filmhub/web/`
 
 #### FilmAgent（研究/设计中）
 

@@ -92,7 +92,7 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py --list
 ```
 
 - 完整参数与排查表：`tools/framefilm-dock-upload/SKILL.md`
-- 依赖 `pyserial` + `Pillow`；图片转换复用 `server/backend/app/services/film_convert.py`，保证与 `tools/ForFilm` / 服务端出图一致
+- 依赖 `pyserial` + `Pillow`；图片转换复用 `server/filmhub/backend/app/services/film_convert.py`，保证与 `tools/ForFilm` / 服务端出图一致
 - **只适用 dock**：冰箱贴没有 USB 串口，仍走 `tools/ForFilm` 网页蓝牙
 
 ## 架构约束

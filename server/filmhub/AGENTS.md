@@ -1,6 +1,6 @@
 # AGENTS.md
 
-film-hub（server/）AI 开发指南。本目录为 FrameFilm 的局域网后端 + 管理前端。
+film-hub（server/filmhub/）AI 开发指南。本目录为 FrameFilm 的局域网后端 + 管理前端。
 
 ## 项目身份
 
@@ -13,7 +13,7 @@ film-hub（server/）AI 开发指南。本目录为 FrameFilm 的局域网后端
 ## 目录结构
 
 ```
-server/
+server/filmhub/
 ├── backend/                    # FastAPI 后端
 │   ├── app/
 │   │   ├── main.py             # 入口：seed_admin / seed_builtin_templates
@@ -80,7 +80,7 @@ server/
 
 ```bash
 # 启动后端（8000 端口，--reload 热重载）
-cd server/backend && .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+cd server/filmhub/backend && .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 # API 验证（默认管理员 admin / filmhub）
 # 登录 POST /api/v1/admin/auth/login 拿 access_token → 请求头 Authorization: Bearer <token>

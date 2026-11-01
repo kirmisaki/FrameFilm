@@ -32,7 +32,7 @@
 ### 关键点
 - **语音闭环**：`采集(ASR) → 理解(LLM) → 回应(TTS)` 走服务端；`对话结果` 同时映射为"显示指令/模板"，经服务端渲染为 film 后由 dock 下载显示。
 - **显示闭环**：复用 film-hub 既有能力（渲染管线、`film_convert`、设备 film API、模板引擎），**FilmAgent 只是新增语音入口**，不改动既有显示链路。
-- **AI 复用**：直接复用 `server/backend/app/services/ai_client.py` 的 `chat_json()` 与 `generate_image()`，服务端只增加语音相关的 API 与 ASR/TTS 适配，不重写 AI 客户端。
+- **AI 复用**：直接复用 `server/filmhub/backend/app/services/ai_client.py` 的 `chat_json()` 与 `generate_image()`，服务端只增加语音相关的 API 与 ASR/TTS 适配，不重写 AI 客户端。
 
 ## 2. 分模块职责
 

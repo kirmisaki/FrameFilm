@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-# 路径（server/backend/app/config.py -> server/）
+# 路径（server/filmhub/backend/app/config.py -> server/filmhub/）
 SERVER_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = SERVER_DIR / "data"
 ORIGINALS_DIR = DATA_DIR / "originals"
