@@ -1,8 +1,8 @@
 // Match ForFilm: carry lookup tables with code, without separate HTTP assets.
-// Run: node flutter_app/tool/sync_forfilm_lut.cjs
+// Run: node app/flutter_app/tool/sync_forfilm_lut.cjs
 const fs = require('node:fs');
 const path = require('node:path');
-const source = fs.readFileSync(path.resolve(__dirname, '../../tools/ForFilm/js/atkinson_enhanced_lut.js'), 'utf8');
+const source = fs.readFileSync(path.resolve(__dirname, '../../../tools/ForFilm/js/atkinson_enhanced_lut.js'), 'utf8');
 const tables = [];
 for (const [variable, name, length] of [
   ['AE_CORRECTION_LUT_B64', 'Correction', 64 * 64 * 64 * 3],

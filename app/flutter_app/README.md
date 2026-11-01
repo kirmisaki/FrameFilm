@@ -43,7 +43,7 @@ Android App 的文件上传统一使用 Wi-Fi Direct：Frame（含批量）、Fi
 
 ## 工具链与命令
 
-本轮使用 Flutter stable 3.47.6 / Dart 3.13.5。Android compile/target SDK 35、minSDK 28（Android 9）、JVM 17；Release 包名 `org.framefilm.ark.flutter`；显式 debug 构建包名 `org.framefilm.ark.flutter.dev`。Release/AOT APK 使用独立发行签名，本机配置在 `D:\FrameFilm-signing\key.properties`，可通过 `FRAMEFILM_SIGNING_PROPERTIES` 覆盖路径。密钥与密码不进入代码仓库，需安全备份；本机和 GitHub Actions 使用同一密钥。旧 debug 签名正式包无法直接覆盖升级，开发包可并行保留。配置方式见 [自动构建说明](../docs/ci-builds.md)。
+本轮使用 Flutter stable 3.47.6 / Dart 3.13.5。Android compile/target SDK 35、minSDK 28（Android 9）、JVM 17；Release 包名 `org.framefilm.ark.flutter`；显式 debug 构建包名 `org.framefilm.ark.flutter.dev`。Release/AOT APK 使用独立发行签名，本机配置在 `D:\FrameFilm-signing\key.properties`，可通过 `FRAMEFILM_SIGNING_PROPERTIES` 覆盖路径。密钥与密码不进入代码仓库，需安全备份；本机和 GitHub Actions 使用同一密钥。旧 debug 签名正式包无法直接覆盖升级，开发包可并行保留。配置方式见 [自动构建说明](../../docs/ci-builds.md)。
 
 本机大型依赖与构建目录已经迁到 D 盘，原 C 盘入口保留 Windows 目录联接（junction）。没有更改系统 PATH，也没有迁移整个 `.codex/worktrees`：其他工作树仍有正在运行的程序和未提交内容。
 
@@ -61,11 +61,11 @@ Android App 的文件上传统一使用 Wi-Fi Direct：Frame（含批量）、Fi
 
 ```powershell
 $env:JAVA_HOME = 'C:/Program Files/Java/jdk-25' # 本机安装路径；其他电脑使用自己的兼容 JDK
-./flutter_app/tool/flutter.ps1 pub get
-./flutter_app/tool/flutter.ps1 analyze --no-pub
-./flutter_app/tool/flutter.ps1 test --no-pub test/widget_test.dart
-./flutter_app/tool/flutter.ps1 build web --debug --no-pub
-./flutter_app/tool/flutter.ps1 build apk --release --target-platform android-arm64 --no-pub
+./app/flutter_app/tool/flutter.ps1 pub get
+./app/flutter_app/tool/flutter.ps1 analyze --no-pub
+./app/flutter_app/tool/flutter.ps1 test --no-pub test/widget_test.dart
+./app/flutter_app/tool/flutter.ps1 build web --debug --no-pub
+./app/flutter_app/tool/flutter.ps1 build apk --release --target-platform android-arm64 --no-pub
 ```
 
 这组 D 盘路径是当前电脑的开发配置，不是项目运行依赖。其他电脑可以按标准 Flutter 命令构建；也可以用 `FRAMEFILM_DEV_ROOT` 指定同结构存储目录。不同 checkout 应使用独立存储根目录，避免共享构建输出。已有非联接的 build 目录需要先迁移，脚本不会自动删除。Ark 的 build 联接如被 `fullclean` 删除，也需要重新创建或用 `idf.py -B <D盘目录>` 指定输出位置。
@@ -73,7 +73,7 @@ $env:JAVA_HOME = 'C:/Program Files/Java/jdk-25' # 本机安装路径；其他电
 浏览器预览从 `build/web` 启动静态服务，本机地址 `http://127.0.0.1:8770/`。默认仅查看界面；点击“进入模拟设备演示”，或直接打开 `http://127.0.0.1:8770/?preview=1`，可使用同一份页面操作内存模拟设备。Android 默认不会进入模拟模式。
 
 ```powershell
-./flutter_app/tool/flutter.ps1 build web --debug --no-pub
+./app/flutter_app/tool/flutter.ps1 build web --debug --no-pub
 python -m http.server 8770 --bind 127.0.0.1 --directory D:/dev-tool/FrameFilm-build/flutter/web
 ```
 
@@ -106,7 +106,7 @@ python -m http.server 8770 --bind 127.0.0.1 --directory D:/dev-tool/FrameFilm-bu
 - 实机已成功导入 43,232 字节、720×480 的测试 film；初次直传到达设备保存阶段后返回错误 3。定位到旧 HTTP 服务附加时间戳后，加上固件 `.ffupload.part` 后缀超过 FATFS 64 字符限制；已将实际发送名限制为 50 字符以内并取消每次重试的时间戳前缀，UI 与设备保存名一致。
 - 修复后真机：导入通过；取消显示“已取消”，临时服务与连接清理确认；取消后重试可启动并接收完整 43,232 字节，仍在设备提交阶段返回状态 5 / 错误 3。100% 没有误报成功，失败后清理确认。所选 `ark_flutter_test.film` 与仓库样例 SHA-256 完全相同，用户确认 SD 卡可打开已有图片。设备最终保存、显示尚未验收通过，需要后续读取固件提交日志定位；未格式化 SD、未修改设备固件。
 - Android 9 分支本轮完成源码与 APK 编译检查，尚无 Android 9 真机结果；不能用 Android 17 手机代替该项验收。
-- 自动构建配置及产物说明见 [Ark 自动构建](../docs/ci-builds.md)。分别构建 Android debug APK 和 ESP-IDF 5.5.2 Ark 固件，保留构建日志；首次远端 [Ark builds](https://github.com/Rafael-ban/FrameFilm/actions/runs/37736539292) 的两项编译及产物上传已通过。
+- 自动构建配置及产物说明见 [Ark 自动构建](../../docs/ci-builds.md)。分别构建 Android debug APK 和 ESP-IDF 5.5.2 Ark 固件，保留构建日志；首次远端 [Ark builds](https://github.com/Rafael-ban/FrameFilm/actions/runs/37736539292) 的两项编译及产物上传已通过。
 
 ## 保存故障定位补充（2026-10-08）
 
@@ -174,7 +174,7 @@ Web真实查询可用，普通Web不提供原生下载与刷机。模拟设备�
 
 - Flutter 定向7项测试及受影响文件analyze通过，Android下载helper host probe覆盖正常、截断、超长、空响应、SHA不匹配、HTTP失败和取消。
 - Android arm64 debug APK 构建及Dart运行资源检查通过，最低Android9保持不变；本轮未安装手机，不将host与模拟测试当作实际网络下载/生命周期验收。
-- 本次公开GitHub API返回HTTP200/空列表。可选Release发布工作流已准备，默认关闭，尚未推送/发布/运行远端验证。详见[构建与发布说明](../docs/ci-builds.md)。
+- 本次公开GitHub API返回HTTP200/空列表。可选Release发布工作流已准备，默认关闭，尚未推送/发布/运行远端验证。详见[构建与发布说明](../../docs/ci-builds.md)。
 
 - Web 构建通过，Edge 已实际查询 GitHub（HTTP200/空列表）并完成模拟下载取消、重新下载及导入；未自动执行 OTA。
 
@@ -225,7 +225,7 @@ Flutter 按 tools/ForFilm 的页面职责迁移，原网页不变。Frame 保留
 | 主题 | 原 ForFilm 奶油底/硬边/彩色卡片，Ark 黑灰方形面板/黑白按钮；跨页面统一控件、导航及连接入场 | Flutter 字体与原生控件不保证逐像素相同；连接后自动主题规则保持 |
 | 保存 | Web 下载；Android ACTION_CREATE_DOCUMENT 导出到用户选择位置 | Android 源码接入，未重新构建 APK 或执行本轮真机验证 |
 
-算法工具：node flutter_app/tool/sync_forfilm_lut.cjs 生成增强 LUT；sync_forfilm_palettes.cjs 生成实测色板；sync_forfilm_sz.cjs 从原 JS AST 生成纯 Dart SZ 数值流程；forfilm_algorithm_fixtures.cjs 生成原 JS 对照测试样例。SZ 不依赖 WebView/JS 引擎。生成器与生成文件一起提交。
+算法工具：node app/flutter_app/tool/sync_forfilm_lut.cjs 生成增强 LUT；sync_forfilm_palettes.cjs 生成实测色板；sync_forfilm_sz.cjs 从原 JS AST 生成纯 Dart SZ 数值流程；forfilm_algorithm_fixtures.cjs 生成原 JS 对照测试样例。SZ 不依赖 WebView/JS 引擎。生成器与生成文件一起提交。
 
 46/55 色输出 Film 2.0 8bpp（Format 3/2），预览与文件共享颜色索引；所有格式保留已经实机确认的竖屏逻辑坐标到 720×480 物理排布。动画复用同一转换器，仅拼接主体与更新总字节数/帧数。关闭抖动时，46/55 色仍使用对应色板。
 

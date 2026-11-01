@@ -25,7 +25,7 @@ Release/AOT APK 使用独立发行密钥，缺少配置时不会回退到 debug 
 
 未配置上述 Secrets 的普通 push / PR 只构建 debug APK（`ark-flutter-debug-apk`）用于编译验证，不会产出 Release 附件；只有计划发布（`publish == true`）时缺少签名才会以明确错误失败。需要正式发布时请先在仓库配置四项 Secrets。
 
-本机密钥与私有 `key.properties` 保存在 `D:\FrameFilm-signing`，不提交到仓库。`flutter_app/tool/flutter.ps1` 默认引用此配置；其他环境可设置 `FRAMEFILM_SIGNING_PROPERTIES`，或使用 `ANDROID_KEYSTORE_PATH` 与上述三个密码/别名环境变量。请将整个签名目录另行安全备份，后续更新必须继续使用同一密钥。旧 debug 签名的正式包不能被新发行签名直接覆盖；`.dev` 开发包可继续并行保留，迁移前需备份旧 App 本地资料。
+本机密钥与私有 `key.properties` 保存在 `D:\FrameFilm-signing`，不提交到仓库。`app/flutter_app/tool/flutter.ps1` 默认引用此配置；其他环境可设置 `FRAMEFILM_SIGNING_PROPERTIES`，或使用 `ANDROID_KEYSTORE_PATH` 与上述三个密码/别名环境变量。请将整个签名目录另行安全备份，后续更新必须继续使用同一密钥。旧 debug 签名的正式包不能被新发行签名直接覆盖；`.dev` 开发包可继续并行保留，迁移前需备份旧 App 本地资料。
 
 2026-10-16 本机 Release 构建和 APK 签名验证通过，最终 APK 为 59,802,980 字节，证书 SHA-256：`e5c1b5305670858656fce38cea82614838992aa3326ef3166546af4f9da7245e`。用户授权后，以上四项 Secrets 已加密上传到 `Rafael-ban/FrameFilm`，并回查各项元数据确认存在。这不代表新工作流已经在云端运行或已完成手机安装验收。
 
@@ -70,7 +70,7 @@ App: 0.4.1+5
 - 本次 Ark 固件或 App 的变更说明。
 ```
 
-发布 ID 是独立且唯一的 `年.月.日.序号`，日期需与标题一致；`App:` 必须等于本次源码 `flutter_app/pubspec.yaml` 的 `version:`。固件单独更新可沿用同一个 APK 版本与构建号；App 有新版本则先提高 `pubspec.yaml` 的构建号。标题会显示 `Ark 发布 ID · App 版本+构建号`。
+发布 ID 是独立且唯一的 `年.月.日.序号`，日期需与标题一致；`App:` 必须等于本次源码 `app/flutter_app/pubspec.yaml` 的 `version:`。固件单独更新可沿用同一个 APK 版本与构建号；App 有新版本则先提高 `pubspec.yaml` 的构建号。标题会显示 `Ark 发布 ID · App 版本+构建号`。
 
 推送到 `main` 时，只有**新出现的最新正式节**会触发发布：plan job 先创建指向本次源码的 `ark-发布ID` tag，Android 与固件都从该 tag 构建，两个 job 成功后才发布。没有新增正式节的 push 及 PR 只运行 CI。只改已有正式节的文字不会重新发布。首次发布之前保持 `Unreleased` 即可。
 

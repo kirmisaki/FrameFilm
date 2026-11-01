@@ -12,4 +12,4 @@ for(const kind of ['gradient','structure']){const w=37,h=35,source=[];for(let y=
 context.downsampleImageData=(im,w,h)=>{if(im.width!==w||im.height!==h)throw Error('identity sample required');return new ImageData(new Uint8ClampedArray(im.data),w,h);};
 const adaptiveSource=[];for(let y=0;y<30;y++)for(let x=0;x<30;x++)adaptiveSource.push((x*17+y*13)%256,(x*7+y*19)%256,(x*23+y*3)%256,255);
 run('adaptive-identity',30,30,adaptiveSource,'adaptive');
-fs.mkdirSync('flutter_app/test/fixtures',{recursive:true});fs.writeFileSync('flutter_app/test/fixtures/forfilm_remaining.json',JSON.stringify(cases));
+fs.mkdirSync('app/flutter_app/test/fixtures',{recursive:true});fs.writeFileSync('app/flutter_app/test/fixtures/forfilm_remaining.json',JSON.stringify(cases));

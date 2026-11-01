@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 GRADLE_HOME = Path(os.environ.get("GRADLE_USER_HOME", Path.home() / ".gradle"))
 CACHE = GRADLE_HOME / "caches" / "modules-2" / "files-2.1"
-VERSION = "2.2.20"  # android/build.gradle.kts
+VERSION = "2.2.20"  # app/android/build.gradle.kts
 SOURCES = [
     ROOT / "android/app/src/main/java/org/framefilm/ark/ArkSession.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/DirectTransferCoordinator.kt",

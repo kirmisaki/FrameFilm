@@ -66,4 +66,4 @@ node tools/ForFilm/tests/ark-state.test.cjs
 
 ## 后续 App
 
-网页完成本轮主题和状态收敛后，App 进入 **Flutter 原生界面重构研究**，不使用 WebView 包装网页。可切换的两套视觉为 **明日方舟／罗德岛风格**与**原 ForFilm UI 风格**；复用协议、操作语义和资料格式。具体迁移边界与实施顺序见 [Android README](../../android/README.md)。Flutter 工程与实机验收尚未开始。
+网页完成本轮主题和状态收敛后，App 进入 **Flutter 原生界面重构研究**，不使用 WebView 包装网页。可切换的两套视觉为 **明日方舟／罗德岛风格**与**原 ForFilm UI 风格**；复用协议、操作语义和资料格式。具体迁移边界与实施顺序见 [Android README](../../app/android/README.md)。Flutter 工程与实机验收尚未开始。

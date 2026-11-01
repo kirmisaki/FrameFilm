@@ -22,7 +22,7 @@ python tools/epd-panel-lab/panel_lab.py --codes-per-page 64 --output .output/pan
 
 ## 姿态与二进制合同
 
-源码核对入口：`docs/film/film.md` §10、Web `tools/ForFilm/js/animation.js` 的 `animPortraitToGrid` / `animPixelIndex` / `animMonoBit` / `animBuildFilmFile`，以及 Flutter `flutter_app/lib/frame_codec.dart` 的 `packFramePixels` 与 `flutter_app/lib/animation_film.dart` 的 `assembleAnimationFilm`。
+源码核对入口：`docs/film/film.md` §10、Web `tools/ForFilm/js/animation.js` 的 `animPortraitToGrid` / `animPixelIndex` / `animMonoBit` / `animBuildFilmFile`，以及 Flutter `app/flutter_app/lib/frame_codec.dart` 的 `packFramePixels` 与 `app/flutter_app/lib/animation_film.dart` 的 `assembleAnimationFilm`。
 
 portrait `(px,py)` 到 native `(719-py,px)`，native 行优先索引为 `px*720 + 719-py`。Web portrait 先逆时针转到720×480逻辑画布，再按动画打包时180°落位，得到同一映射。两种彩色和 MonoFast 共用 `native_image()`，PNG 直接来自转换前的同一画布。原生头尺寸是720×480，不能因观看竖屏而写成480×720。
 

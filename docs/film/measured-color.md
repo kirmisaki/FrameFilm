@@ -26,7 +26,7 @@ Film 编辑器新增两个可选算法，保留现有自适应、六色、ColorF
 
 Web 与 Dart 使用双精度工作缓冲，并将当前像素裁剪到 0～255、四舍五入后进行选色及残差计算，以便两端结果对照。这里没有照搬参考仓库完整默认预设：不自动叠加亮度 -11、色偏 -10、高光 100 等作者屏幕专用参数，也不新增动态范围压缩或高光/阴影控制。
 
-Web 色板为 `tools/ForFilm/js/convert.js` 中的 `CF_PALETTE_QUAL_MEASURED` 和 `CF_PALETTE_QUAL_CALIBRATED`。运行 `node flutter_app/tool/sync_forfilm_palettes.cjs` 同步 Dart 常量，避免维护两份手工数据。
+Web 色板为 `tools/ForFilm/js/convert.js` 中的 `CF_PALETTE_QUAL_MEASURED` 和 `CF_PALETTE_QUAL_CALIBRATED`。运行 `node app/flutter_app/tool/sync_forfilm_palettes.cjs` 同步 Dart 常量，避免维护两份手工数据。
 
 ## 通行证与传输边界
 

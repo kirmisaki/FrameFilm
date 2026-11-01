@@ -172,8 +172,9 @@ FrameFilm/
 │   ├── frame_film_ark/        # 通行证版（单机型；含 app 框架与 UI 层）
 │   └── frame_film_dock/       # 充电底座（单机型；BLE + USB）
 │
-├── android/                    # Ark Android 客户端（Kotlin 通信内核）
-├── flutter_app/                # Ark Flutter 客户端（当前主线 UI）
+├── app/                        # 手机 App
+│   ├── android/                # Ark Android 客户端（Kotlin 通信内核）
+│   └── flutter_app/            # Ark Flutter 客户端（当前主线 UI）
 │
 ├── hardware/                   # 硬件设计
 │   ├── pcb/                   # PCB 电路原理图
@@ -288,13 +289,13 @@ idf.py build flash monitor
 
 ### 手机 App（通行证版）
 
-Ark 的手机端当前主线是 **Flutter** 工程（`flutter_app/`），复用 `android/` 里的 Kotlin BLE / WiFi Direct 通信内核，不使用 WebView：
+Ark 的手机端当前主线是 **Flutter** 工程（`app/flutter_app/`），复用 `app/android/` 里的 Kotlin BLE / WiFi Direct 通信内核，不使用 WebView：
 
 - 六页：连接、Frame、Film、动画、通行证、设置
 - 两套视觉：ForFilm 暖色圆角、明日方舟 PRTS 炭灰黑白冷蓝
 - 连接后 BLE 负责控制与状态，图片 / 动画 / 通行证 / OTA 走临时 WiFi Direct 直传
 
-构建、验证范围与签名配置见 [flutter_app/README.md](flutter_app/README.md) 与 [docs/ci-builds.md](docs/ci-builds.md)。
+构建、验证范围与签名配置见 [app/flutter_app/README.md](app/flutter_app/README.md) 与 [docs/ci-builds.md](docs/ci-builds.md)。
 
 ### 底座 USB 传图
 
@@ -363,8 +364,8 @@ FrameFilm 微信小程序，方便在手机端管理和传输照片：
 
 - [固件开发](firmware/README.md) - ESP32 固件代码开发
 - [AI 开发指南](AGENTS.md) - 分层约束、机型/屏幕矩阵、BLE 命令速查、常见陷阱
-- [Flutter 手机 App](flutter_app/README.md) - 页面、双主题与 WiFi Direct 直传
-- [Ark Android 通信内核](android/README.md) - Kotlin BLE / P2P 实现
+- [Flutter 手机 App](app/flutter_app/README.md) - 页面、双主题与 WiFi Direct 直传
+- [Ark Android 通信内核](app/android/README.md) - Kotlin BLE / P2P 实现
 - [硬件设计](hardware/README.md) - PCB 和外壳设计文件
 - [工具使用](tools/README.md) - ForFilm Web 工具和辅助脚本
 - [微信小程序](tools/wechart/README.md) - 小程序源码

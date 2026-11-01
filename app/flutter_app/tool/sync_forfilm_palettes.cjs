@@ -17,4 +17,4 @@ const qualCandidates = source.match(/var CF_QUAL_CANDIDATE_INDEXES = (\[[\s\S]*?
 if (!fastCandidates || !qualCandidates) throw new Error('Missing upstream candidate indices');
 output += 'const colorFastCandidates = <int>' + fastCandidates[1] + ';\n';
 output += 'const colorQualCandidates = <int>' + qualCandidates[1] + ';\n';
-fs.writeFileSync('flutter_app/lib/frame_palettes.dart', output);
+fs.writeFileSync('app/flutter_app/lib/frame_palettes.dart', output);

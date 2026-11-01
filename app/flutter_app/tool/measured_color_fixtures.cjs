@@ -48,5 +48,5 @@ for (const algorithm of ['colorQualMeasured', 'colorQualCalibrated']) {
   assert.deepEqual(cases[0].codes, cases[1].codes, 'zero strength equals no dithering');
   assert.notDeepEqual(cases[0].codes, cases[2].codes, 'dithering should affect this sample');
 }
-fs.writeFileSync('flutter_app/test/fixtures/measured_color.json', JSON.stringify(fixtures) + '\n');
+fs.writeFileSync('app/flutter_app/test/fixtures/measured_color.json', JSON.stringify(fixtures) + '\n');
 console.log(`Generated ${fixtures.length} measured-color Web/Dart parity fixtures`);

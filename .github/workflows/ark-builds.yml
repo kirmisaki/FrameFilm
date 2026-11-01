@@ -2,10 +2,10 @@ name: Ark builds
 on:
   push:
     branches: [main]
-    paths: ['flutter_app/**', 'android/app/src/main/java/**', 'firmware/frame_film_ark/**', '.github/workflows/ark-builds.yml', 'docs/ARK_CHANGELOG.md']
+    paths: ['app/flutter_app/**', 'app/android/app/src/main/java/**', 'firmware/frame_film_ark/**', '.github/workflows/ark-builds.yml', 'docs/ARK_CHANGELOG.md']
   pull_request:
     branches: [main]
-    paths: ['flutter_app/**', 'android/app/src/main/java/**', 'firmware/frame_film_ark/**', '.github/workflows/ark-builds.yml', 'docs/ARK_CHANGELOG.md']
+    paths: ['app/flutter_app/**', 'app/android/app/src/main/java/**', 'firmware/frame_film_ark/**', '.github/workflows/ark-builds.yml', 'docs/ARK_CHANGELOG.md']
   workflow_dispatch:
     inputs:
       publish_release:
@@ -50,8 +50,8 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             candidate_args=('' --candidate)
           fi
-          node flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
-            "$RUNNER_TEMP/previous-ark-changelog.md" flutter_app/pubspec.yaml \
+          node app/flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
+            "$RUNNER_TEMP/previous-ark-changelog.md" app/flutter_app/pubspec.yaml \
             "$GITHUB_EVENT_NAME" "${candidate_args[@]}"
       - name: Fix release source and check existing release
         id: tag
@@ -104,8 +104,8 @@ jobs:
             fi
           else
             if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-              GITHUB_OUTPUT='' node flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
-                /dev/null flutter_app/pubspec.yaml workflow_dispatch
+              GITHUB_OUTPUT='' node app/flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
+                /dev/null app/flutter_app/pubspec.yaml workflow_dispatch
             fi
             git tag "$TAG" "$GITHUB_SHA"
             git push origin "refs/tags/$TAG"
@@ -122,8 +122,8 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
           git show "$TAG:docs/ARK_CHANGELOG.md" > "$RUNNER_TEMP/tag-ark-changelog.md"
-          git show "$TAG:flutter_app/pubspec.yaml" > "$RUNNER_TEMP/tag-pubspec.yaml"
-          node flutter_app/tool/ark_release_plan.cjs "$RUNNER_TEMP/tag-ark-changelog.md" \
+          git show "$TAG:app/flutter_app/pubspec.yaml" > "$RUNNER_TEMP/tag-pubspec.yaml"
+          node app/flutter_app/tool/ark_release_plan.cjs "$RUNNER_TEMP/tag-ark-changelog.md" \
             /dev/null "$RUNNER_TEMP/tag-pubspec.yaml" workflow_dispatch
 
   android:
@@ -151,10 +151,10 @@ jobs:
         run: |
           set -euo pipefail
           flutter create --platforms=android --project-name=ci_wrapper "$RUNNER_TEMP/ci_wrapper"
-          cp "$RUNNER_TEMP/ci_wrapper/android/gradlew" flutter_app/android/gradlew
-          cp "$RUNNER_TEMP/ci_wrapper/android/gradlew.bat" flutter_app/android/gradlew.bat
-          cp "$RUNNER_TEMP/ci_wrapper/android/gradle/wrapper/gradle-wrapper.jar" flutter_app/android/gradle/wrapper/gradle-wrapper.jar
-          chmod +x flutter_app/android/gradlew
+          cp "$RUNNER_TEMP/ci_wrapper/android/gradlew" app/flutter_app/android/gradlew
+          cp "$RUNNER_TEMP/ci_wrapper/android/gradlew.bat" app/flutter_app/android/gradlew.bat
+          cp "$RUNNER_TEMP/ci_wrapper/android/gradle/wrapper/gradle-wrapper.jar" app/flutter_app/android/gradle/wrapper/gradle-wrapper.jar
+          chmod +x app/flutter_app/android/gradlew
       - name: Check distribution signing
         id: signing
         env:
@@ -193,24 +193,24 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           SIGNED: ${{ steps.signing.outputs.signed }}
-        working-directory: flutter_app
+        working-directory: app/flutter_app
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ../ci-logs
-          flutter --version 2>&1 | tee ../ci-logs/flutter-version.log
-          flutter pub get 2>&1 | tee ../ci-logs/flutter-pub.log
+          mkdir -p ../../ci-logs
+          flutter --version 2>&1 | tee ../../ci-logs/flutter-version.log
+          flutter pub get 2>&1 | tee ../../ci-logs/flutter-pub.log
           if [ "$SIGNED" = 'true' ]; then
-            flutter build apk --release 2>&1 | tee ../ci-logs/flutter-build.log
+            flutter build apk --release 2>&1 | tee ../../ci-logs/flutter-build.log
           else
-            flutter build apk --debug 2>&1 | tee ../ci-logs/flutter-build.log
+            flutter build apk --debug 2>&1 | tee ../../ci-logs/flutter-build.log
           fi
       - name: Check release runtime assets
         if: steps.signing.outputs.signed == 'true'
         shell: python
         run: |
           import zipfile
-          with zipfile.ZipFile('flutter_app/build/app/outputs/flutter-apk/app-release.apk') as archive:
+          with zipfile.ZipFile('app/flutter_app/build/app/outputs/flutter-apk/app-release.apk') as archive:
               names = archive.namelist()
               assert any(name.endswith('/libapp.so') for name in names), 'Missing AOT application'
               assert any(name.endswith('/libflutter.so') for name in names), 'Missing Flutter engine'
@@ -221,21 +221,21 @@ jobs:
         shell: python
         run: |
           import zipfile
-          with zipfile.ZipFile('flutter_app/build/app/outputs/flutter-apk/app-debug.apk') as archive:
+          with zipfile.ZipFile('app/flutter_app/build/app/outputs/flutter-apk/app-debug.apk') as archive:
               names = archive.namelist()
               assert any(name.endswith('/libflutter.so') for name in names), 'Missing Flutter engine'
               assert 'assets/flutter_assets/kernel_blob.bin' in names, 'Missing debug Dart kernel'
               print('Debug Flutter engine and Dart kernel are present.')
       - name: Prepare app release metadata
         if: steps.signing.outputs.signed == 'true'
-        run: node flutter_app/tool/generate_app_release.cjs flutter_app/build/app/outputs/flutter-apk/app-release.apk app-release
+        run: node app/flutter_app/tool/generate_app_release.cjs app/flutter_app/build/app/outputs/flutter-apk/app-release.apk app-release
       - name: Upload release APK
         if: steps.signing.outputs.signed == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ark-flutter-release-apk
           path: |
-            flutter_app/build/app/outputs/flutter-apk/app-release.apk
+            app/flutter_app/build/app/outputs/flutter-apk/app-release.apk
             app-release/framefilm-ark-flutter.apk
             app-release/framefilm-ark-flutter.json
           if-no-files-found: error
@@ -244,7 +244,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ark-flutter-debug-apk
-          path: flutter_app/build/app/outputs/flutter-apk/app-debug.apk
+          path: app/flutter_app/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
       - name: Upload Android build logs
         if: always()
@@ -256,7 +256,7 @@ jobs:
       - name: Remove signing material
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/ark-release.jks" flutter_app/android/key.properties
+        run: rm -f "$RUNNER_TEMP/ark-release.jks" app/flutter_app/android/key.properties
   firmware:
     name: Ark ESP32-S3 firmware
     runs-on: ubuntu-24.04
@@ -349,8 +349,8 @@ jobs:
           metadata="$(find app-release-input -type f -name framefilm-ark-flutter.json -print -quit)"
           test -s "$image" && test -s "$apk" && test -s "$metadata"
           node -e 'const m=require("./"+process.argv[1]); if(m.versionName!==process.env.VERSION_NAME || String(m.versionCode)!==process.env.VERSION_CODE) process.exit(1)' "$metadata"
-          node flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
-            /dev/null flutter_app/pubspec.yaml workflow_dispatch release-notes.md
+          node app/flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
+            /dev/null app/flutter_app/pubspec.yaml workflow_dispatch release-notes.md
           digest="$(sha256sum "$image" | cut -d ' ' -f 1)"
           cat >> release-notes.md <<EOF
 
