@@ -208,7 +208,7 @@ FrameFilm/
 
 ### 固件开发
 
-固件分三个工程，**只有 `frame_film` 需要先做机型配置**（替换 sdkconfig + 修改机型宏 + 选屏）；`frame_film_ark`（通行证版，单机型）与 `frame_film_dock`（底座，单机型）直接编译烧录。
+固件分三个工程，**只有 `frame_film` 需要先做机型配置**（替换 sdkconfig + 修改机型宏 + 选屏）；`frame_film_ark`（通行证版，单机型，支持 4MB/Quad 与 16MB/Octal 两种存储变体）默认直接编译，切换方式见下文；`frame_film_dock`（底座，单机型）直接编译烧录。
 
 > app 框架与 UI 层（LVGL UI 层 + app 层）**仅 `frame_film_ark` 有**；`frame_film` 是经典固件（无 app 层 / UI 层）。
 
@@ -261,17 +261,18 @@ ForFilm 的「设置 → 串口烧录 · 完整固件」通过浏览器的 Web S
 > 烧录前先关闭 `idf.py monitor` 等占用串口的程序。只选应用镜像时不要勾选「合并镜像」，否则会从 0x0 写入并覆盖 bootloader。
 > `frame_film_ark` 与 `frame_film_dock` 的 `build/` 产物同样可以用这个入口烧录。
 
-**通行证版 / 底座（单机型，无配置步骤）：**
+**通行证版 / 底座：**
 
 ```bash
 cd firmware/frame_film_ark   # 通行证版 FRAMEFILMARK（3.70" 720×480，三按键）
-idf.py build flash monitor
+idf.py build flash monitor               # 默认 n4r2：4MB Flash / Quad PSRAM
+.\build.ps1 n16r8 flash COM15            # n16r8：16MB Flash / Octal PSRAM（PowerShell）
 
 cd firmware/frame_film_dock  # 充电底座 FRAMEFILMDOCK（3.64" 760×568）
 idf.py build flash monitor
 ```
 
-> `frame_film_ark` 与 `frame_film_dock` 都只有一份 `sdkconfig`，**不需要 `cp`，也不需要改机型 / 屏幕宏**。
+> `frame_film_ark` 有 `sdkconfig`（n4r2）与 `sdkconfig_n16r8` 两份，用 `build.ps1` 或 VS Code 的 `ESP-IDF: 选择项目配置` 切换；`frame_film_dock` 只有一份 `sdkconfig`。两者都不需要改机型 / 屏幕宏。
 
 #### 使用 VS Code ESP-IDF 插件
 
@@ -281,10 +282,11 @@ idf.py build flash monitor
 2. 打开项目：文件 → 打开文件夹 → 选择 `firmware/frame_film`（通行证版选 `firmware/frame_film_ark`，底座选 `firmware/frame_film_dock`）
 3. 配置机型：与命令行方式相同（替换 `sdkconfig` + 修改 `sys_cfg.h` 机型宏）—— **仅 `frame_film` 需要；`frame_film_ark` / `frame_film_dock` 跳过此步**
 4. 选择目标芯片：底部状态栏点击芯片图标，选择 **esp32s3**
-5. 选择串口：底部状态栏点击 **COM 端口**，选择设备对应的串口
-6. 编译：点击底部状态栏的 **构建图标（火焰）**，或按 `Ctrl+E` 然后 `B`
-7. 烧录：点击 **烧录图标**，或按 `Ctrl+E` 然后 `F`
-8. 串口监视：点击 **监视图标**，或按 `Ctrl+E` 然后 `M`（`Ctrl+]` 退出）
+5. 通行证版选硬件变体：命令面板 → **`ESP-IDF: 选择项目配置`** → `n4r2`（4MB/Quad，默认）或 `n16r8`（16MB/Octal）；构建目录分别为 `build_n4r2` / `build_n16r8`
+6. 选择串口：底部状态栏点击 **COM 端口**，选择设备对应的串口
+7. 编译：点击底部状态栏的 **构建图标（火焰）**，或按 `Ctrl+E` 然后 `B`
+8. 烧录：点击 **烧录图标**，或按 `Ctrl+E` 然后 `F`
+9. 串口监视：点击 **监视图标**，或按 `Ctrl+E` 然后 `M`（`Ctrl+]` 退出）
 
 > 提示：首次构建时间较长属正常；若更换串口/芯片，在底部状态栏重新选择即可。
 

@@ -258,11 +258,25 @@ jobs:
         shell: bash
         run: rm -f "$RUNNER_TEMP/ark-release.jks" app/flutter_app/android/key.properties
   firmware:
-    name: Ark ESP32-S3 firmware
+    name: Ark ESP32-S3 firmware (${{ matrix.variant.name }})
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     needs: plan
     container: espressif/idf:v5.5.2
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - name: n4r2
+            suffix: ''
+            build_dir: build
+            sdkconfig: sdkconfig
+            flash_name: frame_film_ark-flash.bin
+          - name: n16r8
+            suffix: -n16r8
+            build_dir: build_n16r8
+            sdkconfig: sdkconfig_n16r8
+            flash_name: frame_film_ark_n16r8-flash.bin
     defaults:
       run:
         shell: bash
@@ -271,45 +285,49 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.plan.outputs.source_ref }}
-      - name: Build Ark and size report
+      - name: Build Ark ${{ matrix.variant.name }} and size report
+        env:
+          BUILD_DIR: ${{ matrix.variant.build_dir }}
+          SDKCONFIG_FILE: ${{ matrix.variant.sdkconfig }}
+          FLASH_NAME: ${{ matrix.variant.flash_name }}
         run: |
           set -euo pipefail
           . "$IDF_PATH/export.sh"
           mkdir -p ci-logs
           idf.py --version 2>&1 | tee ci-logs/idf-version.log
-          idf.py build 2>&1 | tee ci-logs/build.log
-          idf.py size 2>&1 | tee ci-logs/size.log
-          idf.py merge-bin -o frame_film_ark-flash.bin 2>&1 | tee ci-logs/merge.log
+          idf.py -B "$BUILD_DIR" -D "SDKCONFIG=$PWD/$SDKCONFIG_FILE" build 2>&1 | tee ci-logs/build.log
+          idf.py -B "$BUILD_DIR" size 2>&1 | tee ci-logs/size.log
+          idf.py -B "$BUILD_DIR" merge-bin -o "$FLASH_NAME" 2>&1 | tee ci-logs/merge.log
       - name: Upload Ark OTA image
         uses: actions/upload-artifact@v7
         with:
-          name: ark-firmware-ota
+          name: ark-firmware-ota${{ matrix.variant.suffix }}
           if-no-files-found: error
-          path: firmware/frame_film_ark/build/frame_film_ark.bin
+          path: firmware/frame_film_ark/${{ matrix.variant.build_dir }}/frame_film_ark.bin
       - name: Upload Ark serial flash and debug files
         uses: actions/upload-artifact@v7
         with:
-          name: ark-firmware-debug
+          name: ark-firmware-debug${{ matrix.variant.suffix }}
           if-no-files-found: error
           path: |
-            firmware/frame_film_ark/build/frame_film_ark-flash.bin
-            firmware/frame_film_ark/build/bootloader/bootloader.bin
-            firmware/frame_film_ark/build/partition_table/partition-table.bin
-            firmware/frame_film_ark/build/ota_data_initial.bin
-            firmware/frame_film_ark/build/flasher_args.json
-            firmware/frame_film_ark/build/flash_args
-            firmware/frame_film_ark/build/frame_film_ark.elf
-            firmware/frame_film_ark/build/frame_film_ark.map
-            firmware/frame_film_ark/sdkconfig
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/${{ matrix.variant.flash_name }}
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/bootloader/bootloader.bin
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/partition_table/partition-table.bin
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/ota_data_initial.bin
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/flasher_args.json
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/flash_args
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/frame_film_ark.elf
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/frame_film_ark.map
+            firmware/frame_film_ark/${{ matrix.variant.sdkconfig }}
       - name: Upload Ark build logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ark-firmware-build-logs
+          name: ark-firmware-build-logs${{ matrix.variant.suffix }}
           if-no-files-found: ignore
           path: |
             firmware/frame_film_ark/ci-logs/
-            firmware/frame_film_ark/build/log/
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/log/
 
   release:
     name: Publish Ark firmware and app

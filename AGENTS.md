@@ -174,6 +174,7 @@ film_service → film_hal → film_sys → ESP-IDF
 | UI 页公共外壳（状态栏 + 居中时间 + 提示行 + 周期 tick） | `firmware/frame_film_ark/components/film_app/core/app_shell.{h,c}` |
 | 开机行为参数（BOOT PAGE / START APP） | `firmware/frame_film_ark/components/film_app/core/app_boot_cfg.{h,c}`（持久化在 `service_param` 的 `app7` 槽位） |
 | 内容 app（图片/模板/时钟/动图/通行证） | `firmware/frame_film_ark/components/film_app/apps/<name>/app_<name>.{h,c}`（一个 app 一个文件夹） |
+| Ark 硬件变体切换（n4r2 / n16r8） | `firmware/frame_film_ark/build.ps1` + `CMakePresets.json`（VS Code `ESP-IDF: 选择项目配置`） |
 | SD 可替换图标（FFUI 容器） | `firmware/frame_film_ark/components/film_ui/src/ui_assets.c` + `tools/ui-assets/gen_ui_assets.py` |
 | 协议文档 | `docs/blecmd/blecmd_protocol.md` |
 
@@ -255,7 +256,7 @@ idf.py build flash monitor                 # 默认 n4r2：4MB Flash / Quad PSRA
 .\build.ps1 n16r8 flash COM15             # n16r8：16MB Flash / Octal PSRAM
 ```
 
-> `frame_film_dock` 只有一份 `sdkconfig`；`frame_film_ark` 有默认 `sdkconfig`（n4r2）与 `sdkconfig_n16r8` 两份，用 `build.ps1` 或 `idf.py -B build_<variant> -D SDKCONFIG=<配置文件>` 切换。两者都不需要改机型/屏幕宏。
+> `frame_film_dock` 只有一份 `sdkconfig`；`frame_film_ark` 有默认 `sdkconfig`（n4r2）与 `sdkconfig_n16r8` 两份，用 `build.ps1` → `idf.py -B build_<variant> -D SDKCONFIG=<配置文件>` 切换；VS Code ESP-IDF 插件用命令面板 → `ESP-IDF: 选择项目配置`（`CMakePresets.json` 的 `n4r2` / `n16r8`）。两者都不需要改机型/屏幕宏。CI（`ark-builds.yml`）会矩阵构建这两个变体，Release 仍只发布 n4r2 的 OTA 镜像。
 
 ## 文档索引
 

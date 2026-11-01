@@ -33,15 +33,22 @@ Release/AOT APK 使用独立发行密钥，缺少配置时不会回退到 debug 
 
 ## Ark 固件
 
-使用 Espressif 官方 `espressif/idf:v5.5.2` 容器与仓库现有 `sdkconfig`（ESP32-S3、自定义 OTA 分区），不执行 `set-target` 或重置配置。依赖按 `dependencies.lock` 从 Espressif registry 解析；不依赖本机 build/managed_components。
+使用 Espressif 官方 `espressif/idf:v5.5.2` 容器，按矩阵构建两个硬件变体，不执行 `set-target` 或重置配置：
 
-`ark-firmware-ota` 仅包含 `frame_film_ark.bin`，这是现有 OTA 流程需要的应用镜像。`ark-firmware-debug` 包含：
+- `n4r2`：仓库默认 `sdkconfig`（4MB Flash / Quad PSRAM，`partitions.csv`），构建目录 `build/`，产物名保持原样。
+- `n16r8`：`sdkconfig_n16r8`（16MB Flash / Octal PSRAM，`partitions_16mb.csv`），构建目录 `build_n16r8/`，产物名加 `-n16r8` 后缀。
+
+依赖按 `dependencies.lock` 从 Espressif registry 解析；不依赖本机 build/managed_components。
+
+`ark-firmware-ota` 仅包含 n4r2 的 `frame_film_ark.bin`，这是现有 OTA 流程需要的应用镜像；`ark-firmware-ota-n16r8` 为 16MB 变体应用镜像，当前不参与 Release。`ark-firmware-debug` 包含：
 
 - `frame_film_ark-flash.bin`：按构建生成的 flash_args 合并的串口烧录镜像，从地址 `0x0` 写入；此操作会覆盖镜像范围内的现有数据，应先备份设备数据。
 - bootloader、partition-table、OTA 初始化镜像，以及 flash_args/flasher_args.json：按该次构建生成的偏移进行分文件烧录。
 - ELF、map、sdkconfig：用于定位问题和核对构建配置。
 
-`ark-firmware-build-logs` 包含构建、merge-bin、`idf.py size` 报告及生成的 IDF 日志。CI 不连接设备、不刷机。普通构建只上传 Artifacts。
+`ark-firmware-debug-n16r8` 结构相同，合并镜像名为 `frame_film_ark_n16r8-flash.bin`，附带 `sdkconfig_n16r8`。`ark-firmware-build-logs` / `ark-firmware-build-logs-n16r8` 分别包含两个变体的构建、merge-bin、`idf.py size` 报告及生成的 IDF 日志。CI 不连接设备、不刷机。普通构建只上传 Artifacts。
+
+两个变体的固件不能互刷：4MB 设备不要使用 n16r8 产物，反之亦然。
 
 ## 经典固件 Pro 全屏幕
 
@@ -76,7 +83,7 @@ App: 0.4.1+5
 
 构建或发布失败后，可重跑原失败的 Actions 运行；它保留原始源码，已存在的 tag 会继续用于补发。也可从 Actions → Ark builds → Run workflow 选择 `main` 并勾选 `publish_release`，重试当前最新正式节；若 tag 已存在，标题、版本和构建都以 tag 的源码为准。若 Release 已创建但附件不全，会补传三份 Ark 附件并更新说明；三份已齐全则跳过重复发布。若需要新内容，新增一个 ID。手动运行不勾选时只构建。整个流程不回写版本提交，现有四项 Android 签名 Secrets 保持不变。
 
-- Release 只附原始 `frame_film_ark.bin`、`framefilm-ark-flutter.apk` 和 `framefilm-ark-flutter.json`；合并串口镜像留在 debug Artifact。
+- Release 只附 n4r2 的原始 `frame_film_ark.bin`、`framefilm-ark-flutter.apk` 和 `framefilm-ark-flutter.json`；16MB 变体与合并串口镜像留在 debug Artifact。
 - Notes 取对应更新日志节，并附源码 commit 与 OTA 文件 SHA256。Release 保留仓库原有 Latest 标记；固件客户端从最近 20 个正式发布按 `published_at` 选含精确 Ark 镜像的候选，App 客户端优先选最高 `versionCode`（相同构建号再比发布时间）。
 - App 按 JSON `versionCode` 判断升级；固件按构建 ELF SHA256 判断同构建并在重启后确认。屏幕显示的 `3.2.5` 不作升级版本号。
 - 客户端无登录查询公开 Releases；只下载后校验导入，不自动刷机。CI 构建和发布不代表真实设备验收。
