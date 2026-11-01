@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![FrameFilm全家福](assets/pic/model/rendering3.png)
+![FrameFilm全家福](assets/pic/model/rendering3.jpg)
 
 *彩色电子纸显示 × 低功耗 × 多端传输*
 
