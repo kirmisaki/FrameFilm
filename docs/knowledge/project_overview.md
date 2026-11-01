@@ -17,10 +17,10 @@ FrameFilm（帧影）是一款开源彩色电子纸冰箱贴，基于 ESP32-S3�
 |---|---|---|---|
 | 固件目录 | `firmware/frame_film/` | `firmware/frame_film_ark/` | `firmware/frame_film_dock/` |
 | 定位 | 经典固件（**无 app 层 / UI 层**） | **app 框架与 UI 层仅此一处**（`film_app` + `film_ui`） | USB 复合设备（声卡 + HID + CDC） |
-| 机型 | 三机型 STD / PRO / MAX（机型宏 + 屏幕宏） | **单机型**，硬件固定 | 单机型 |
+| 机型 | 三机型 STD / PRO / MAX（机型宏 + 屏幕宏） | **单机型**，硬件固定；n4r2 / n16r8 两种存储变体 | 单机型 |
 | 屏幕 | E6 系列多款（`hal_epd.h` 的 `EPD_SELECT_E6_*`） | E6 3.70" 720×480（面板 `0x02`） | E6 3.64" 760×568（面板 `0x06`） |
 | BLE 名 | — | `FRAMEFILMARK` | `FRAMEFILMDOCK` |
-| 构建 | `cp sdkconfig_{std,pro,max} sdkconfig` 后 `idf.py build` | 直接 `idf.py build`（只有一份 `sdkconfig`） | 直接 `idf.py build` |
+| 构建 | `cp sdkconfig_{std,pro,max} sdkconfig` 后 `idf.py build` | 默认 `idf.py build`（n4r2）；16MB/Octal 用 `build.ps1 n16r8` | 直接 `idf.py build` |
 
 > 冰箱贴固件（`frame_film` 与 `frame_film_ark`）的 **BLE 协议同源**：命令值与回包格式一致。但 **app 框架（`film_app` + LVGL UI 层 `film_ui`）只存在于 `frame_film_ark`**，app 通道 BLE 命令（`0x45~0x4E`）也仅它实现；`frame_film`（三机型）是经典固件，没有这两个组件，命令表止于 `0x00~0x42`。
 

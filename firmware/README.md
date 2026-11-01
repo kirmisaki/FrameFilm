@@ -114,8 +114,8 @@ frame_film/
 | 输入 | 三按键：上 GPIO6 / 下 GPIO4 / 确认 GPIO5（**低电平有效**） |
 | LED / 电池 / SD | 有 WS2812（呼吸灯：白=未连接、绿=已连、红=低电）、有电池检测、SD 有检测脚 |
 | 唤醒脚 | GPIO5（低电平） |
-| Flash / PSRAM | 4MB / Quad SPI |
-| sdkconfig | 只有一份 `sdkconfig`，无需 `cp` |
+| Flash / PSRAM | 4MB / Quad SPI（默认）；N16R8 变体 16MB / Octal |
+| sdkconfig | 默认 `sdkconfig`（4MB/Quad）；16MB/Octal 用 `sdkconfig_n16r8`，由 `build.ps1` 切换 |
 
 相对 `frame_film` **已删除**：`FRAMEFILM_STD/PRO/MAX` 机型宏、全部 `EPD_SELECT_E6_*` 屏幕选择宏、其余屏幕驱动（`hal_epd_360.c` / `hal_epd_364.c` / `hal_epd_368.c` / `hal_epd_709.c`）、STD 专用编码器实现（`hal_encoder.c`）、`sdkconfig_{std,pro,max}`。
 
@@ -160,9 +160,12 @@ cp sdkconfig_std sdkconfig               # 按机型选 sdkconfig_{std,pro,max}
 # 编辑 components/film_hal/inc/hal_epd.h，在机型分支内选择目标屏幕（EPD_SELECT_E6_* 置 1）
 idf.py build flash monitor
 
-# frame_film_ark（通行证版，单机型：无配置步骤）
+# frame_film_ark（通行证版，单机型；硬件变体用 build.ps1 切换）
 cd firmware/frame_film_ark
-idf.py build flash monitor
+idf.py build flash monitor               # 默认 n4r2：4MB Flash / Quad PSRAM
+.\build.ps1 n16r8 flash COM15            # n16r8：16MB Flash / Octal PSRAM
+# VS Code（ESP-IDF 插件）：命令面板 → "ESP-IDF: 选择项目配置" → n4r2 / n16r8
+#   对应 CMakePresets.json 的两个预设，构建目录分别为 build_n4r2 / build_n16r8
 
 # frame_film_dock（底座，单机型：无配置步骤）
 cd firmware/frame_film_dock
