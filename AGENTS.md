@@ -24,9 +24,9 @@ FrameFilm 项目 AI 开发指南。
 | | 基础版 STD | Pro 版 | Max 版 |
 |---|---|---|---|
 | 机型宏 | `FRAMEFILM_STD` | `FRAMEFILM_PRO` | `FRAMEFILM_MAX` |
-| sdkconfig | `sdkconfig_std` | `sdkconfig_pro` | `sdkconfig_max` |
+| sdkconfig | `sdkconfig_std` | `sdkconfig_pro`（另有 n16r8 的 `sdkconfig_pro_n16r8`，配 `partitions_16mb.csv`） | `sdkconfig_max` |
 | 输入 | 旋转编码器 (GPIO6/4/5) | 三按键 (GPIO4/6/5) | 三按键 (GPIO12/14/13) |
-| Flash/PSRAM | 16MB / Octal SPI | 4MB / Quad SPI | 16MB / Octal SPI |
+| Flash/PSRAM | 16MB / Octal SPI | 4MB / Quad SPI（n16r8 变体 16MB / Octal） | 16MB / Octal SPI |
 | RGB LED | WS2812 (GPIO17) | WS2812 (GPIO17) | 无 |
 | 默认屏幕 | E6 3.6" 600×400 | E6 3.68" 792×528 | E6 7.09" 1200×1600 双面板 |
 
@@ -149,7 +149,7 @@ film_service → film_hal → film_sys → ESP-IDF
 
 | 要改什么 | 核心文件 |
 |---|---|
-| 机型配置 | `firmware/frame_film/components/film_sys/inc/sys_cfg.h` + `firmware/frame_film/sdkconfig_{std,pro,max}` |
+| 机型/硬件规格配置 | `firmware/frame_film/components/film_sys/inc/sys_cfg.h` + `firmware/frame_film/sdkconfig_{std,pro,pro_n16r8,max}` + `CMakePresets.json` / `build.ps1`（`FRAMEFILM_MODEL`） |
 | 屏幕选择 | `firmware/frame_film/components/film_hal/inc/hal_epd.h`（`EPD_SELECT_E6_*` 宏） |
 | BLE 协议 | `firmware/frame_film/components/film_service/inc/service_ble.h` |
 | 蓝牙遥控（0x4E 按键注入） | `firmware/frame_film_ark/components/film_service/src/service_ble.c`（发布）+ `film_app/core/app_manager.c`（`ble_key_to_press` 映射投递） |
@@ -243,12 +243,15 @@ film_service → film_hal → film_sys → ESP-IDF
 ## 构建命令
 
 ```bash
-# ── frame_film（三机型：需先选机型与屏幕）──
+# ── frame_film（三机型：预设或脚本切换机型与硬件规格）──
 cd firmware/frame_film
-cp sdkconfig_std sdkconfig                 # 按机型选 sdkconfig_{std,pro,max}
-# 编辑 components/film_sys/inc/sys_cfg.h，置对应机型宏为 1（三选一）
-# 编辑 components/film_hal/inc/hal_epd.h，在机型分支内选屏幕（EPD_SELECT_E6_* 置 1）
-idf.py build flash monitor
+.\build.ps1                          # Pro n4r2（默认）：sdkconfig_pro，4MB/Quad
+.\build.ps1 pro n16r8 flash COM15    # Pro n16r8：sdkconfig_pro_n16r8，16MB/Octal
+.\build.ps1 std                      # STD：sdkconfig_std，16MB/Octal
+.\build.ps1 max                      # Max：sdkconfig_max，16MB/Octal
+# VS Code：命令面板 → "ESP-IDF: 选择项目配置" → std / pro-n4r2 / pro-n16r8 / max
+#   对应 CMakePresets.json 的四个预设；机型经 -DFRAMEFILM_MODEL 传入（直接 idf.py build 则取 sys_cfg.h 默认值）
+# 屏幕仍在 components/film_hal/inc/hal_epd.h 的对应机型分支内选（EPD_SELECT_* 置 1）
 
 # ── frame_film_ark（通行证版，硬件变体用脚本切换）──
 cd firmware/frame_film_ark

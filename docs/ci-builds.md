@@ -50,14 +50,16 @@ Release/AOT APK 使用独立发行密钥，缺少配置时不会回退到 debug 
 
 两个变体的固件不能互刷：4MB 设备不要使用 n16r8 产物，反之亦然。
 
-## 经典固件 Pro 全屏幕
+## 经典固件 Pro 全屏幕 × 双硬件规格
 
-`frame-film-builds.yml` 只改触发路径内的 `firmware/frame_film/**`。每个矩阵项都从 `sdkconfig_pro` 复制生成 `sdkconfig`，再在 `hal_epd.h` 的 `FRAMEFILM_PRO` 分支内仅把目标 `EPD_SELECT_*` 置 1，随后执行 `idf.py build`、`idf.py size` 与 `idf.py merge-bin`。
+`frame-film-builds.yml` 只改触发路径内的 `firmware/frame_film/**`。矩阵为 **硬件规格 × 屏幕**：每个组合都通过 `-D FRAMEFILM_MODEL=pro` 指定机型、`-D SDKCONFIG=<绝对路径>` 指定该规格的配置，再在 `hal_epd.h` 的 `FRAMEFILM_PRO` 分支内仅把目标 `EPD_SELECT_*` 置 1，随后执行 `idf.py build`、`idf.py size` 与 `idf.py merge-bin`。不再需要把 `sdkconfig_pro` 复制成 `sdkconfig`。
 
+- 硬件规格：`n4r2`（4MB Flash / Quad PSRAM，`sdkconfig_pro` + `partitions.csv`，双 OTA 各 1536K）与 `n16r8`（16MB Flash / Octal PSRAM，`sdkconfig_pro_n16r8` + `partitions_16mb.csv`，双 OTA 各 4096K）。
 - 构建屏幕：E6 3.68" 792×528（默认）、E6 3.70" 720×480、E6 3.60" 600×400、E6 3.64" 760×568、E6 3.98" 768×552、E4 3.98" 768×552（四色）。
 - 不构建 1.54"（无驱动）与 7.09"（双 CS/无 DC，仅 Max 接线支持）。
-- 每个屏幕的产物 `frame-film-pro-<屏幕标识>` 含 `frame_film.bin`（OTA 应用镜像）、`frame_film_pro_<屏幕标识>-flash.bin`（串口合并镜像，从 `0x0` 写入）与 ELF；日志在同一产物名后加 `-logs`。
-- `sdkconfig_pro` 为 4MB Flash / Quad PSRAM 配置；编译成功不代表对应屏幕已实机验证。
+- 每个组合的产物 `frame-film-pro-<规格>-<屏幕标识>` 含 `frame_film.bin`（OTA 应用镜像）、`frame_film_pro_<规格>_<屏幕标识>-flash.bin`（串口合并镜像，从 `0x0` 写入）与 ELF；日志在同一产物名后加 `-logs`。
+- 两个规格的固件不能互刷；编译成功不代表对应屏幕已实机验证。
+- STD / Max 机型当前只做本机构建预设（见 `firmware/frame_film/CMakePresets.json` 与 `build.ps1`），不进入 CI 矩阵。
 
 ## 验证范围
 

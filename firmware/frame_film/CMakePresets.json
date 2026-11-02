@@ -1,0 +1,58 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "std",
+      "displayName": "STD (16MB Flash / Octal PSRAM)",
+      "description": "基础版：16MB Flash + Octal PSRAM，使用 sdkconfig_std 与 partitions.csv",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build_std",
+      "cacheVariables": {
+        "IDF_TARGET": "esp32s3",
+        "SDKCONFIG": "${sourceDir}/sdkconfig_std",
+        "FRAMEFILM_MODEL": "std"
+      }
+    },
+    {
+      "name": "pro-n4r2",
+      "displayName": "Pro n4r2 (4MB Flash / Quad PSRAM)",
+      "description": "Pro 版 n4r2：4MB Flash + Quad PSRAM，使用 sdkconfig_pro 与 partitions.csv",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build_pro_n4r2",
+      "cacheVariables": {
+        "IDF_TARGET": "esp32s3",
+        "SDKCONFIG": "${sourceDir}/sdkconfig_pro",
+        "FRAMEFILM_MODEL": "pro"
+      }
+    },
+    {
+      "name": "pro-n16r8",
+      "displayName": "Pro n16r8 (16MB Flash / Octal PSRAM)",
+      "description": "Pro 版 n16r8：16MB Flash + Octal PSRAM，使用 sdkconfig_pro_n16r8 与 partitions_16mb.csv",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build_pro_n16r8",
+      "cacheVariables": {
+        "IDF_TARGET": "esp32s3",
+        "SDKCONFIG": "${sourceDir}/sdkconfig_pro_n16r8",
+        "FRAMEFILM_MODEL": "pro"
+      }
+    },
+    {
+      "name": "max",
+      "displayName": "Max (16MB Flash / Octal PSRAM)",
+      "description": "Max 版：16MB Flash + Octal PSRAM，使用 sdkconfig_max 与 partitions.csv",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build_max",
+      "cacheVariables": {
+        "IDF_TARGET": "esp32s3",
+        "SDKCONFIG": "${sourceDir}/sdkconfig_max",
+        "FRAMEFILM_MODEL": "max"
+      }
+    }
+  ]
+}
