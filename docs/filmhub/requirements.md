@@ -8,7 +8,7 @@
 
 film-hub 是 FrameFilm 墨水屏项目的**局域网后端 + 管理前端**，为墨水屏设备提供 film 内容分发、设备管理、模板 / 轮播流等功能。
 
-- 项目目录：`server/`（仓库顶层，与 `firmware/`、`tools/` 平级）
+- 项目目录：`server/filmhub/`（仓库 `server/` 下的服务实现）
 - 部署范围：**局域网内使用，暂不部署到公网**
 
 ## 2. 总体需求
@@ -98,7 +98,7 @@ film-hub 是 FrameFilm 墨水屏项目的**局域网后端 + 管理前端**，�
 | 项 | 结论 |
 |----|------|
 | 项目名 | film-hub（片库枢纽） |
-| 目录 | `server/`（顶层） |
+| 目录 | `server/filmhub/` |
 | 后端 | Python + FastAPI |
 | 前端 | Vue 3 + Vite SPA |
 | 转换实现 | 按 `convert.js` 的调色板 / 参数重写到 Python（Pillow） |

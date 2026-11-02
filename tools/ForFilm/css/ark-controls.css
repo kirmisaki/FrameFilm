@@ -1,6 +1,6 @@
 /* Ark controls reuse ForFilm's cards, buttons and spacing. */
 [hidden] { display: none !important; }
-#ark-pass-editor { display: block; width: 100%; height: 1350px; border: 0; background: transparent; }
+#ark-pass-editor { display: block; width: 100%; height: 1350px; margin-top: var(--sp-4); border: 0; background: transparent; }
 #pass-page.active { column-count: 1; }
 #ark-direct-progress { display: block; width: 100%; height: 12px; margin: 16px 0; accent-color: var(--ink); }
 #ark-direct-status { overflow-wrap: anywhere; }
@@ -12,4 +12,8 @@ button:disabled { cursor: not-allowed; }
     .bottom-nav { gap: 2px; }
     .bottom-nav .nav-item { min-width: 0; flex: 1; padding-left: 3px; padding-right: 3px; }
     #ark-pass-editor { height: 1980px; }
+}
+@media (max-width: 560px) {
+    #pass-page .btn-row { flex-direction: column; }
+    #pass-page .btn-row > * { width: 100%; }
 }

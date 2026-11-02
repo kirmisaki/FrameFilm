@@ -36,6 +36,7 @@
 *build.ninja
 *.out
 *build
+build_*/
 *lvgl
 *managed_components
 .trae/

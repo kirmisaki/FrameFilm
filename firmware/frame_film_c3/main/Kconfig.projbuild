@@ -1,0 +1,26 @@
+menu "FrameFilm C3 board (independent model)"
+config FRAMEFILM_C3_EPD_MOSI
+    int "EPD MOSI GPIO"
+    range 0 21
+    default 3
+config FRAMEFILM_C3_EPD_SCK
+    int "EPD SCK GPIO"
+    range 0 21
+    default 4
+config FRAMEFILM_C3_EPD_CS
+    int "EPD CS GPIO"
+    range 0 21
+    default 5
+config FRAMEFILM_C3_EPD_DC
+    int "EPD DC GPIO"
+    range 0 21
+    default 6
+config FRAMEFILM_C3_EPD_RST
+    int "EPD reset GPIO"
+    range 0 21
+    default 7
+config FRAMEFILM_C3_EPD_BUSY
+    int "EPD BUSY GPIO (active low)"
+    range 0 21
+    default 10
+endmenu

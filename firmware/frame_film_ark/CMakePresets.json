@@ -1,0 +1,32 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "n4r2",
+      "displayName": "n4r2 (4MB Flash / Quad PSRAM)",
+      "description": "ESP32-S3 N4R2：4MB Flash + Quad PSRAM，使用 sdkconfig 与 partitions.csv",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build_n4r2",
+      "cacheVariables": {
+        "IDF_TARGET": "esp32s3",
+        "SDKCONFIG": "${sourceDir}/sdkconfig"
+      }
+    },
+    {
+      "name": "n16r8",
+      "displayName": "n16r8 (16MB Flash / Octal PSRAM)",
+      "description": "ESP32-S3 N16R8：16MB Flash + Octal PSRAM，使用 sdkconfig_n16r8 与 partitions_16mb.csv",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build_n16r8",
+      "cacheVariables": {
+        "IDF_TARGET": "esp32s3",
+        "SDKCONFIG": "${sourceDir}/sdkconfig_n16r8"
+      }
+    }
+  ]
+}

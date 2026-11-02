@@ -56,7 +56,7 @@
 ### 3.2 项目结构
 
 ```
-server/
+server/filmhub/
 ├── backend/                      # FastAPI 后端
 │   ├── pyproject.toml            # 依赖（uv/pip 均可）
 │   ├── app/

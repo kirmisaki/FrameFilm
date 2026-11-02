@@ -497,8 +497,8 @@ hal_epd_init()       → 初始化 SE0368-C 电子纸 (SPI2 半双工三线)
 | 电池检测 | 有（ADC，电源管理同 `frame_film`） |
 | SD 卡 | 有检测脚 |
 | 唤醒 | GPIO5（低电平） |
-| Flash / PSRAM | 4MB / Quad SPI |
-| 构建 | 直接 `idf.py build`，仓库内**只有一份 `sdkconfig`**（无 `sdkconfig_{std,pro,max}` 模板） |
+| Flash / PSRAM | 默认 4MB / Quad SPI；N16R8 变体 16MB / Octal（`sdkconfig_n16r8` + `partitions_16mb.csv`） |
+| 构建 | 默认直接 `idf.py build`；16MB 变体 `.\build.ps1 n16r8 build`（无 `sdkconfig_{std,pro,max}` 模板） |
 
 > **app 框架主线**：app 层（`film_app`）与 LVGL UI 层（`film_ui`）**只存在于 `frame_film_ark`**；`frame_film`（三机型）是经典固件，**没有这两个组件**，也不实现 app 通道 BLE 命令（`0x45~0x4E`）。`hal_input.h` 的输入抽象与按键实现仍然保留（无编码器）。
 

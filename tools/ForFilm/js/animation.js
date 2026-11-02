@@ -1668,6 +1668,12 @@ async function animUpload() {
 
     var formatKey = animSelectedFormat();
     var fmt = ANIM_FORMATS[formatKey];
+    // 先按帧数与帧长估算，避免在超限时先分配整包造成移动端卡死/OOM。
+    var estimatedBytes = 32 + fmt.frameBytes * animFrames.length;
+    if (estimatedBytes > ANIM_MAX_BYTES) {
+        showMessage('文件 ' + formatFileSize(estimatedBytes) + ' 过大，设备无法整帧载入（上限约 2.5 MB）', 'error');
+        return;
+    }
     var built;
     try {
         built = animBuildFilmFile(formatKey, animDither);
@@ -1692,6 +1698,7 @@ async function animUpload() {
     animStop();
 
     try {
+        assertFilmTransferIdle();
         filmTransState = BLE_FILM_TRANS_STATE_STARTED;
         filmTransFileName = fileName;
         filmTransFileSize = fileData.length;
@@ -1731,6 +1738,8 @@ async function animUpload() {
             '</span>', 'success');
         showMessage('动画已发送到设备', 'success');
     } catch (err) {
+        filmTransState = BLE_FILM_TRANS_STATE_IDLE;
+        legacyFilmTransferActive = false;
         animUpdateTransfer('传输失败：' + err.message, 0);
         animSetResult('<b>传输失败</b> ' + animEscape(err.message), 'error');
         showMessage('传输失败：' + err.message, 'error');

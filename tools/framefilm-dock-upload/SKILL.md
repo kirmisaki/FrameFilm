@@ -24,7 +24,7 @@ description: "Upload an image to a FrameFilm Dock over USB. Invoke when the user
    ```
    pip install pyserial Pillow
    ```
-3. **仓库位置**：图片转换复用仓库里的 `server/backend/app/services/film_convert.py`，脚本会从自身位置和当前目录向上自动查找仓库根。若在仓库外运行，用环境变量指定：
+3. **仓库位置**：图片转换复用仓库里的 `server/filmhub/backend/app/services/film_convert.py`，脚本会从自身位置和当前目录向上自动查找仓库根。若在仓库外运行，用环境变量指定：
    ```
    FRAMEFILM_REPO=<仓库根> python tools/framefilm-dock-upload/scripts/dock_upload.py ...
    ```
