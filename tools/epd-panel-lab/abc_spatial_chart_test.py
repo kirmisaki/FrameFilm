@@ -1,13 +1,24 @@
 """Contract checks for generated camera-relative spatial charts."""
 import json
 import struct
-from pathlib import Path
 import numpy as np
 from abc_spatial_mix import split_phases
+from abc_spatial_chart import generate
 
 
-def test_generated_chart_contract():
-    root = Path('.output/ark/spatial512-20261102')
+def test_generated_chart_contract(tmp_path):
+    # Synthetic cube: no ignored local captures or private measured palette.
+    entries = []
+    for code in range(8):
+        entries.append({'code': code, 'A': 0, 'B': 0, 'C': code,
+                        'cameraRGB': [220 if code & bit else 30 for bit in (4, 2, 1)],
+                        'repeatDifferences': [{'cameraRGBDelta': [1, 0, -1]}],
+                        'allChannelsShadowClippedFraction': 0,
+                        'allChannelsHighlightClippedFraction': 0})
+    palette = tmp_path/'synthetic-palette.json'
+    palette.write_text(json.dumps({'entries': entries}), encoding='utf-8')
+    root = tmp_path/'chart'
+    generate(palette, root)
     m = json.loads((root/'manifest.json').read_text())
     assert len(m['recipes']) == 512 and len(m['pages']) == 13
     assert not m['claims512OpticalColors']

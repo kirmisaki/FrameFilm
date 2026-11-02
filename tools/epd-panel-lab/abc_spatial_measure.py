@@ -9,12 +9,14 @@ corners schema: {"coordinateSpace":"exif-transposed", "groups":{"p0-r1":[[TLx,TL
  [TRx,TRy],[BRx,BRy],[BLx,BLy]]}, "pages":{"SC00":[...]}}.
 Group corners override page corners. Coordinates use EXIF-transposed image pixels.
 Repeat IDs, exposure and completed refresh evidence are caller-supplied facts.
-ROI median/MAD are diagnostics only; color response uses arithmetic mean of
+Numerical ROIs integrate original-resolution camera pixels via inverse homography,
+not a 480x720 resampled screen. ROI median/MAD are diagnostics only; color response uses arithmetic mean of
 nominal-sRGB-linearized ROI pixels, encoded back for approximate Lab. This camera
 linearity assumption is uncalibrated. Gain only fits six fixed linear reference RGBs to the first group; no black subtraction,
 histogram adjustment or per-patch fit. All distances are nominal-sRGB approximate
 Lab applied to uncalibrated camera RGB, not human DeltaE or statistical guarantees.
 """
+import hashlib
 import argparse
 import json
 from pathlib import Path
@@ -53,7 +55,39 @@ def warp(path, quad):
     return cv2.warpPerspective(rgb,transform,(480,720)),metadata
 
 
-def summarize(observations):
+def sample_original(rgb, quad, rect):
+    """Integrate original camera pixels in inverse-projected panel ROI.
+
+    A local bbox mask uses 8-bit fixed-point AA polygon coverage; only the
+    linear area mean uses fractional coverage, median/MAD describe covered pixels.
+    """
+    corners=np.asarray(quad,dtype=np.float32)
+    if corners.shape!=(4,2) or not np.isfinite(corners).all() or (corners<0).any() or (corners[:,0]>=rgb.shape[1]).any() or (corners[:,1]>=rgb.shape[0]).any() or not cv2.isContourConvex(corners):
+        raise ValueError('Invalid original-camera inner-screen quadrilateral')
+    matrix=cv2.getPerspectiveTransform(np.float32([[0,0],[479,0],[479,719],[0,719]]),corners)
+    x,y,w,h=rect
+    polygon=cv2.perspectiveTransform(np.float32([[[x-.5,y-.5],[x+w-.5,y-.5],[x+w-.5,y+h-.5],[x-.5,y+h-.5]]]),matrix)[0]
+    lo=np.maximum(np.floor(polygon.min(axis=0)).astype(int)-2,0)
+    hi=np.minimum(np.ceil(polygon.max(axis=0)).astype(int)+3,[rgb.shape[1],rgb.shape[0]])
+    mask=np.zeros((hi[1]-lo[1],hi[0]-lo[0]),np.uint8)
+    cv2.fillConvexPoly(mask,np.rint((polygon-lo)*256).astype(np.int32),255,lineType=cv2.LINE_AA,shift=8)
+    weights=mask.astype(float)/255
+    crop=rgb[lo[1]:hi[1],lo[0]:hi[0]]
+    pixels=crop[mask>0].astype(float)
+    coverage=weights[mask>0]
+    median=np.median(pixels,axis=0)
+    mean_linear=np.average(linear_rgb(pixels),axis=0,weights=coverage)
+    return {'cameraRGB':median.tolist(),'spatialMAD':(1.4826*np.median(abs(pixels-median),axis=0)).tolist(),
+            'encodedArithmeticMeanRGB':np.average(pixels,axis=0,weights=coverage).tolist(),
+            'linearMeanCameraRGB':mean_linear.tolist(),'areaMeanCameraRGB':encode_mean(mean_linear).tolist(),
+            'zeroFraction':np.average(pixels==0,axis=0,weights=coverage).tolist(),
+            'maxFraction':np.average(pixels==255,axis=0,weights=coverage).tolist(),
+            'allChannelBlackFraction':float(np.average(np.all(pixels==0,axis=1),weights=coverage)),'allChannelWhiteFraction':float(np.average(np.all(pixels==255,axis=1),weights=coverage)),'maximumPerChannelClipFraction':float(max(np.average(pixels==0,axis=0,weights=coverage).max(),np.average(pixels==255,axis=0,weights=coverage).max())),'samplePixelCount':len(pixels),'effectivePixelCoverage':float(coverage.sum()),
+            'samplingMethod':'original EXIF-transposed camera pixels; inverse homography; local AA fixed-point polygon area weights',
+            'cameraPolygon':polygon.tolist()}
+
+
+def summarize(observations, expected_ids=None):
     ids=sorted(observations)
     eligible=[]; entries=[]
     for identity in ids:
@@ -85,7 +119,7 @@ def summarize(observations):
                 ambiguous.append(pair);parent[root(i)]=root(j)
     components={}
     for i,e in enumerate(eligible): components.setdefault(root(i),[]).append(e['id'])
-    return {'entries':entries,'eligibleWithTwoPanelRepeats':len(eligible),'allPairs':pairs,'nearestNeighbors':nearest,'pairsBelowEngineeringThreshold':ambiguous,'candidateGroups':list(components.values()),'candidateGroupCount':len(components) if eligible else None,'all512PassEngineeringThreshold':len(eligible)==512 and not ambiguous,'meaning':'Engineering connected components of unresolved pairs using 3x maximum independent panel repeat distance; not calibrated color count, human DeltaE or confidence guarantee'}
+    return {'entries':entries,'eligibleWithTwoPanelRepeats':len(eligible),'allPairs':pairs,'nearestNeighbors':nearest,'pairsBelowEngineeringThreshold':ambiguous,'candidateGroups':list(components.values()),'candidateGroupCount':len(components) if eligible else None,'all512PassEngineeringThreshold':expected_ids is not None and len(expected_ids)==512 and set(ids)==set(expected_ids) and {e['id'] for e in eligible}==set(expected_ids) and not ambiguous,'allExpectedPassEngineeringThreshold':expected_ids is not None and set(ids)==set(expected_ids) and {e['id'] for e in eligible}==set(expected_ids) and not ambiguous,'missingObservedIds':sorted(set(expected_ids or [])-set(ids)),'extraObservedIds':sorted(set(ids)-set(expected_ids or ids)),'missingEligibleIds':sorted(set(expected_ids or [])-{e['id'] for e in eligible}),'meaning':'Fixed-layout engineering screening: connected components are unresolved groups, never physical color counts; cross-layout observations mix position effects. Components of unresolved pairs using 3x maximum independent panel repeat distance; not calibrated color count, human DeltaE or confidence guarantee'}
 
 
 def measure(manifest_path, captures_path, corners_path, output):
@@ -95,17 +129,38 @@ def measure(manifest_path, captures_path, corners_path, output):
     if corners.get('coordinateSpace')!='exif-transposed': raise ValueError('Explicit EXIF-transposed corner coordinates required')
     pages={p['name']:p for p in manifest['pages']}
     raw={};corrected={};groups=[];reference_target=None
+    hashes={};locations={};clipped=[];missing_logs=[]
+    expected={int(r['id']) for r in manifest['recipes']}
     for group in captures['groups']:
         page=pages[group['page']];repeat=str(group['panelRepeat'])
+        if not group.get('HALLog') and not group.get('halLog'): missing_logs.append(group['id'])
+        for slot,p in enumerate(page['patches']):
+            location={'page':group['page'],'slot':slot,'rect':p.get('rect',p['sampleRect'])}
+            known=locations.setdefault(int(p['id']),[])
+            if location not in known: known.append(location)
         quad=corners.get('groups',{}).get(group['id'],corners.get('pages',{}).get(group['page']))
-        if quad is None: raise ValueError('Missing corners for '+group['id'])
+        # Per-photo corners may supply all geometry even without a page fallback.
         photos=[]
         for filename in group['photos']:
             path=captures_path.parent/filename
-            image,exif=warp(path,quad)
-            refs=[sample(image,[x+8,y+8,w-16,h-16]) for x,y,w,h in page['referenceRects']]
-            patches=[{'id':p['id'],**sample(image,p['sampleRect'])} for p in page['patches']]
-            photos.append({'file':str(path),'photoExif':exif,'references':refs,'patches':patches})
+            photo_map=corners.get('photos',{})
+            keys=[str(filename),str(path),str(path.resolve())]
+            photo_quad=next((photo_map[k] for k in keys if k in photo_map),quad)
+            if photo_quad is None: raise ValueError('Missing corners for photo '+str(filename))
+            sha=hashlib.sha256(path.read_bytes()).hexdigest()
+            hashes.setdefault(sha,set()).add(repeat)
+            with Image.open(path) as original:
+                exif=exif_metadata(original)
+                image=np.asarray(ImageOps.exif_transpose(original).convert('RGB'))
+            refs=[sample_original(image,photo_quad,[x+8,y+8,w-16,h-16]) for x,y,w,h in page['referenceRects']]
+            patches=[{'id':p['id'],**sample_original(image,photo_quad,p['sampleRect'])} for p in page['patches']]
+            for patch in patches:
+                if patch['maximumPerChannelClipFraction']>=.01:
+                    clipped.append({'file':str(path),'id':patch['id'],'maximumClipFraction':patch['maximumPerChannelClipFraction']})
+            for i,ref in enumerate(refs):
+                if ref['maximumPerChannelClipFraction']>=.01:
+                    clipped.append({'file':str(path),'referenceIndex':i,'maximumClipFraction':ref['maximumPerChannelClipFraction']})
+            photos.append({'file':str(path),'actualInnerScreenCorners':photo_quad,'sha256':sha,'photoExif':exif,'references':refs,'patches':patches})
         if not photos: raise ValueError('Empty photograph group')
         reference=np.median([[r['linearMeanCameraRGB'] for r in p['references']] for p in photos],axis=0)
         if reference_target is None: reference_target=reference.copy()
@@ -116,7 +171,13 @@ def measure(manifest_path, captures_path, corners_path, output):
                 raw.setdefault(identity,{}).setdefault(repeat,[]).append(encode_mean(rgb))
                 corrected.setdefault(identity,{}).setdefault(repeat,[]).append(encode_mean(rgb*gain))
         groups.append({'id':group['id'],'page':group['page'],'panelRepeat':repeat,'gain':gain.tolist(),'referenceLinearRGB':reference.tolist(),'referenceCorrectedResidualLinearRGB':(reference*gain-reference_target).tolist(),'photos':photos})
-    report={'kind':'uncalibrated-spatial-chart-measurement','coverage':{'observedPatchCount':len(raw),'expectedPatchCount':len(manifest['recipes']),'missingPatchIds':sorted(set(r['id'] for r in manifest['recipes'])-set(raw))},'referenceTargetLinearRGB':reference_target.tolist() if reference_target is not None else None,'groups':groups,'raw':summarize(raw),'fixedReferenceGainCorrected':summarize(corrected),'correction':'Per-group diagonal gain in nominal-linear camera RGB from six fixed references to first group; no clipping or black subtraction. ROI arithmetic mean is computed after nominal sRGB linearization; re-encoded for approximate Lab. Camera response is uncalibrated, this linearity assumption is provisional.','limits':'Caller must assign genuine independent panelRepeat IDs; photographs of one display never create extra repeats. Camera RGB is uncalibrated; no human color discrimination claim.'}
+    report={'kind':'uncalibrated-spatial-chart-measurement','coverage':{'observedPatchCount':len(raw),'expectedPatchCount':len(manifest['recipes']),'missingPatchIds':sorted(set(r['id'] for r in manifest['recipes'])-set(raw))},'referenceTargetLinearRGB':reference_target.tolist() if reference_target is not None else None,'groups':groups,'raw':summarize(raw,expected),'fixedReferenceGainCorrected':summarize(corrected,expected),'correction':'Per-group diagonal gain in nominal-linear camera RGB from six fixed references to first group; no clipping or black subtraction. ROI arithmetic mean is computed after nominal sRGB linearization; re-encoded for approximate Lab. Camera response is uncalibrated, this linearity assumption is provisional.','limits':'Caller must assign genuine independent panelRepeat IDs; photographs of one display never create extra repeats. Camera RGB is uncalibrated; no human color discrimination claim.'}
+    report['coverage']['extraPatchIds']=sorted(set(raw)-expected)
+    report['layoutAudit']={'locationsById':locations,'idsWithMultipleLocations':[i for i,v in locations.items() if len(v)>1], 'meaning':'Multiple locations mix position effects with refresh residual; fixed-layout engineering screening only'}
+    for field in ('raw','fixedReferenceGainCorrected'):
+        for entry in report[field]['entries']: entry['locations']=locations[entry['id']]
+    report['evidenceAudit']={'crossPanelRepeatDuplicatePhotoHashes':[{'sha256':h,'panelRepeats':sorted(v)} for h,v in hashes.items() if len(v)>1], 'groupsMissingHALLog':missing_logs,'verifiedIndependentPanelRefreshes':False,'meaning':'SHA reuse and missing log presence audit only; caller-supplied HALLog contents/timestamps and real refreshes are not verified here'}
+    report['clippingWarnings']={'thresholdFraction':.01,'policy':'Fixed conservative retake warning at >=1% any-channel exact 0/255 weighted area; does not alter 3x distance rule', 'affectedPatchIds':sorted({c['id'] for c in clipped if 'id' in c}),'affectedPhotoCount':len({c['file'] for c in clipped}),'events':clipped}
     output.parent.mkdir(parents=True,exist_ok=True)
     output.write_text(json.dumps(report,indent=2,allow_nan=False),encoding='utf-8')
     return report
