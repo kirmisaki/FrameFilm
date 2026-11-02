@@ -185,6 +185,7 @@ function makeImageData(out, w, h) {
 
 // 主转换：输入 ImageData，输出 6 色 ImageData（与浏览器版 convert 一致）
 function convert(imageData, opts) {
+  if (filmUtils.is4ColorMode()) return adaptiveZone(imageData);
   var o = {};
   for (var k in DEFAULTS) o[k] = DEFAULTS[k];
   for (var k2 in (opts || {})) o[k2] = opts[k2];
@@ -278,6 +279,17 @@ function convert(imageData, opts) {
 // 渐变/图片 → v3 双色相混合半色调（可切换 adaptive 自适应抖动）
 
 function convertZoneImage(imgData, mode, opts) {
+  if (filmUtils.is4ColorMode()) {
+    // Preserve text/solid edges; diffuse photographs with the panel palette.
+    if (mode !== 'solid' && mode !== 'text') return adaptiveZone(imgData);
+    var four = new Uint8ClampedArray(imgData.data.length);
+    for (var p = 0; p < four.length; p += 4) {
+      if (imgData.data[p + 3] < 64) continue;
+      var color = filmUtils.findClosestColor(imgData.data[p], imgData.data[p+1], imgData.data[p+2]);
+      four[p] = color.r; four[p+1] = color.g; four[p+2] = color.b; four[p+3] = 255;
+    }
+    return makeImageData(four, imgData.width, imgData.height);
+  }
   var o = {};
   for (var k in DEFAULTS) o[k] = DEFAULTS[k];
   for (var k2 in (opts || {})) o[k2] = opts[k2];

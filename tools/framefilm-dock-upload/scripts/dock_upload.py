@@ -206,8 +206,8 @@ def upload_film(ser, film_bytes, filename, chunk_delay=CHUNK_DELAY, progress=Tru
 
 # ---------------------------------------------------------------- 图片转换
 def find_repo_root():
-    """定位仓库根目录（需要其中的 server/backend 转换实现）"""
-    marker = os.path.join("server", "backend", "app", "services", "film_convert.py")
+    """定位仓库根目录（需要其中的 server/filmhub/backend 转换实现）"""
+    marker = os.path.join("server", "filmhub", "backend", "app", "services", "film_convert.py")
 
     env = os.environ.get("FRAMEFILM_REPO")
     if env and os.path.isfile(os.path.join(env, marker)):
@@ -239,11 +239,11 @@ def image_to_film(path, dither="floyd_steinberg", strength=80, contrast=100,
     repo = find_repo_root()
     if repo is None:
         raise RuntimeError(
-            "找不到仓库中的转换实现 server/backend/app/services/film_convert.py。\n"
+            "找不到仓库中的转换实现 server/filmhub/backend/app/services/film_convert.py。\n"
             "可在仓库根目录下运行，或设置环境变量 FRAMEFILM_REPO 指向仓库根。"
         )
 
-    backend = os.path.join(repo, "server", "backend")
+    backend = os.path.join(repo, "server", "filmhub", "backend")
     if backend not in sys.path:
         sys.path.insert(0, backend)
 

@@ -369,6 +369,10 @@ function handleFileUpload(event) {
             document.getElementById('fileName').value = uploadedFileName + '.film';
             updateImage();
         };
+        img.onerror = function () {
+            originalImage = null;
+            showMessage('图片解析失败，请选择有效的图片文件', 'error');
+        };
         img.src = e.target.result;
     };
     reader.readAsDataURL(file);

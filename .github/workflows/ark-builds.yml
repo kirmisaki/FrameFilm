@@ -2,10 +2,10 @@ name: Ark builds
 on:
   push:
     branches: [main]
-    paths: ['flutter_app/**', 'android/app/src/main/java/**', 'firmware/frame_film_ark/**', '.github/workflows/ark-builds.yml', 'docs/ARK_CHANGELOG.md']
+    paths: ['app/flutter_app/**', 'app/android/app/src/main/java/**', 'firmware/frame_film_ark/**', '.github/workflows/ark-builds.yml', 'docs/ARK_CHANGELOG.md']
   pull_request:
     branches: [main]
-    paths: ['flutter_app/**', 'android/app/src/main/java/**', 'firmware/frame_film_ark/**', '.github/workflows/ark-builds.yml', 'docs/ARK_CHANGELOG.md']
+    paths: ['app/flutter_app/**', 'app/android/app/src/main/java/**', 'firmware/frame_film_ark/**', '.github/workflows/ark-builds.yml', 'docs/ARK_CHANGELOG.md']
   workflow_dispatch:
     inputs:
       publish_release:
@@ -32,7 +32,7 @@ jobs:
       version_code: ${{ steps.details.outputs.versionCode }}
       source_ref: ${{ steps.tag.outputs.source_ref }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Read new Ark changelog entry
@@ -50,8 +50,8 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             candidate_args=('' --candidate)
           fi
-          node flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
-            "$RUNNER_TEMP/previous-ark-changelog.md" flutter_app/pubspec.yaml \
+          node app/flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
+            "$RUNNER_TEMP/previous-ark-changelog.md" app/flutter_app/pubspec.yaml \
             "$GITHUB_EVENT_NAME" "${candidate_args[@]}"
       - name: Fix release source and check existing release
         id: tag
@@ -104,8 +104,8 @@ jobs:
             fi
           else
             if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-              GITHUB_OUTPUT='' node flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
-                /dev/null flutter_app/pubspec.yaml workflow_dispatch
+              GITHUB_OUTPUT='' node app/flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
+                /dev/null app/flutter_app/pubspec.yaml workflow_dispatch
             fi
             git tag "$TAG" "$GITHUB_SHA"
             git push origin "refs/tags/$TAG"
@@ -122,20 +122,22 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
           git show "$TAG:docs/ARK_CHANGELOG.md" > "$RUNNER_TEMP/tag-ark-changelog.md"
-          git show "$TAG:flutter_app/pubspec.yaml" > "$RUNNER_TEMP/tag-pubspec.yaml"
-          node flutter_app/tool/ark_release_plan.cjs "$RUNNER_TEMP/tag-ark-changelog.md" \
+          git show "$TAG:app/flutter_app/pubspec.yaml" > "$RUNNER_TEMP/tag-pubspec.yaml"
+          node app/flutter_app/tool/ark_release_plan.cjs "$RUNNER_TEMP/tag-ark-changelog.md" \
             /dev/null "$RUNNER_TEMP/tag-pubspec.yaml" workflow_dispatch
 
   android:
-    name: Flutter Android release APK
+    name: Flutter Android APK
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     needs: plan
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.plan.outputs.source_ref }}
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -149,11 +151,12 @@ jobs:
         run: |
           set -euo pipefail
           flutter create --platforms=android --project-name=ci_wrapper "$RUNNER_TEMP/ci_wrapper"
-          cp "$RUNNER_TEMP/ci_wrapper/android/gradlew" flutter_app/android/gradlew
-          cp "$RUNNER_TEMP/ci_wrapper/android/gradlew.bat" flutter_app/android/gradlew.bat
-          cp "$RUNNER_TEMP/ci_wrapper/android/gradle/wrapper/gradle-wrapper.jar" flutter_app/android/gradle/wrapper/gradle-wrapper.jar
-          chmod +x flutter_app/android/gradlew
-      - name: Restore distribution signing
+          cp "$RUNNER_TEMP/ci_wrapper/android/gradlew" app/flutter_app/android/gradlew
+          cp "$RUNNER_TEMP/ci_wrapper/android/gradlew.bat" app/flutter_app/android/gradlew.bat
+          cp "$RUNNER_TEMP/ci_wrapper/android/gradle/wrapper/gradle-wrapper.jar" app/flutter_app/android/gradle/wrapper/gradle-wrapper.jar
+          chmod +x app/flutter_app/android/gradlew
+      - name: Check distribution signing
+        id: signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -162,10 +165,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
-            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. Release builds never fall back to debug signing. Fork PRs do not receive signing secrets."
-            exit 1
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Android signing secrets are unavailable; building a debug APK for CI validation only."
           fi
+      - name: Require signing for a release
+        if: needs.plan.outputs.publish == 'true' && steps.signing.outputs.signed != 'true'
+        shell: bash
+        run: |
+          echo "::error::Release ${{ needs.plan.outputs.tag }} needs ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. Release builds never fall back to debug signing."
+          exit 1
+      - name: Restore distribution signing
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
           umask 077
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ark-release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/ark-release.jks" >> "$GITHUB_ENV"
@@ -174,38 +192,63 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        working-directory: flutter_app
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        working-directory: app/flutter_app
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ../ci-logs
-          flutter --version 2>&1 | tee ../ci-logs/flutter-version.log
-          flutter pub get 2>&1 | tee ../ci-logs/flutter-pub.log
-          flutter build apk --release 2>&1 | tee ../ci-logs/flutter-build.log
-      - name: Check Flutter release runtime assets
+          mkdir -p ../../ci-logs
+          flutter --version 2>&1 | tee ../../ci-logs/flutter-version.log
+          flutter pub get 2>&1 | tee ../../ci-logs/flutter-pub.log
+          if [ "$SIGNED" = 'true' ]; then
+            flutter build apk --release 2>&1 | tee ../../ci-logs/flutter-build.log
+          else
+            flutter build apk --debug 2>&1 | tee ../../ci-logs/flutter-build.log
+          fi
+      - name: Check release runtime assets
+        if: steps.signing.outputs.signed == 'true'
         shell: python
         run: |
           import zipfile
-          with zipfile.ZipFile('flutter_app/build/app/outputs/flutter-apk/app-release.apk') as archive:
+          with zipfile.ZipFile('app/flutter_app/build/app/outputs/flutter-apk/app-release.apk') as archive:
               names = archive.namelist()
               assert any(name.endswith('/libapp.so') for name in names), 'Missing AOT application'
               assert any(name.endswith('/libflutter.so') for name in names), 'Missing Flutter engine'
               assert 'assets/flutter_assets/kernel_blob.bin' not in names, 'Unexpected debug Dart kernel'
               print('Release AOT application and Flutter engine are present.')
+      - name: Check debug runtime assets
+        if: steps.signing.outputs.signed != 'true'
+        shell: python
+        run: |
+          import zipfile
+          with zipfile.ZipFile('app/flutter_app/build/app/outputs/flutter-apk/app-debug.apk') as archive:
+              names = archive.namelist()
+              assert any(name.endswith('/libflutter.so') for name in names), 'Missing Flutter engine'
+              assert 'assets/flutter_assets/kernel_blob.bin' in names, 'Missing debug Dart kernel'
+              print('Debug Flutter engine and Dart kernel are present.')
       - name: Prepare app release metadata
-        run: node flutter_app/tool/generate_app_release.cjs flutter_app/build/app/outputs/flutter-apk/app-release.apk app-release
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+        if: steps.signing.outputs.signed == 'true'
+        run: node app/flutter_app/tool/generate_app_release.cjs app/flutter_app/build/app/outputs/flutter-apk/app-release.apk app-release
+      - name: Upload release APK
+        if: steps.signing.outputs.signed == 'true'
+        uses: actions/upload-artifact@v7
         with:
           name: ark-flutter-release-apk
           path: |
-            flutter_app/build/app/outputs/flutter-apk/app-release.apk
+            app/flutter_app/build/app/outputs/flutter-apk/app-release.apk
             app-release/framefilm-ark-flutter.apk
             app-release/framefilm-ark-flutter.json
           if-no-files-found: error
+      - name: Upload debug APK
+        if: steps.signing.outputs.signed != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ark-flutter-debug-apk
+          path: app/flutter_app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
       - name: Upload Android build logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ark-flutter-build-logs
           path: ci-logs/
@@ -213,60 +256,78 @@ jobs:
       - name: Remove signing material
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/ark-release.jks" flutter_app/android/key.properties
+        run: rm -f "$RUNNER_TEMP/ark-release.jks" app/flutter_app/android/key.properties
   firmware:
-    name: Ark ESP32-S3 firmware
+    name: Ark ESP32-S3 firmware (${{ matrix.variant.name }})
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     needs: plan
     container: espressif/idf:v5.5.2
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - name: n4r2
+            suffix: ''
+            build_dir: build
+            sdkconfig: sdkconfig
+            flash_name: frame_film_ark-flash.bin
+          - name: n16r8
+            suffix: -n16r8
+            build_dir: build_n16r8
+            sdkconfig: sdkconfig_n16r8
+            flash_name: frame_film_ark_n16r8-flash.bin
     defaults:
       run:
         shell: bash
         working-directory: firmware/frame_film_ark
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.plan.outputs.source_ref }}
-      - name: Build Ark and size report
+      - name: Build Ark ${{ matrix.variant.name }} and size report
+        env:
+          BUILD_DIR: ${{ matrix.variant.build_dir }}
+          SDKCONFIG_FILE: ${{ matrix.variant.sdkconfig }}
+          FLASH_NAME: ${{ matrix.variant.flash_name }}
         run: |
           set -euo pipefail
           . "$IDF_PATH/export.sh"
           mkdir -p ci-logs
           idf.py --version 2>&1 | tee ci-logs/idf-version.log
-          idf.py build 2>&1 | tee ci-logs/build.log
-          idf.py size 2>&1 | tee ci-logs/size.log
-          idf.py merge-bin -o frame_film_ark-flash.bin 2>&1 | tee ci-logs/merge.log
+          idf.py -B "$BUILD_DIR" -D "SDKCONFIG=$PWD/$SDKCONFIG_FILE" build 2>&1 | tee ci-logs/build.log
+          idf.py -B "$BUILD_DIR" size 2>&1 | tee ci-logs/size.log
+          idf.py -B "$BUILD_DIR" merge-bin -o "$FLASH_NAME" 2>&1 | tee ci-logs/merge.log
       - name: Upload Ark OTA image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: ark-firmware-ota
+          name: ark-firmware-ota${{ matrix.variant.suffix }}
           if-no-files-found: error
-          path: firmware/frame_film_ark/build/frame_film_ark.bin
+          path: firmware/frame_film_ark/${{ matrix.variant.build_dir }}/frame_film_ark.bin
       - name: Upload Ark serial flash and debug files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: ark-firmware-debug
+          name: ark-firmware-debug${{ matrix.variant.suffix }}
           if-no-files-found: error
           path: |
-            firmware/frame_film_ark/build/frame_film_ark-flash.bin
-            firmware/frame_film_ark/build/bootloader/bootloader.bin
-            firmware/frame_film_ark/build/partition_table/partition-table.bin
-            firmware/frame_film_ark/build/ota_data_initial.bin
-            firmware/frame_film_ark/build/flasher_args.json
-            firmware/frame_film_ark/build/flash_args
-            firmware/frame_film_ark/build/frame_film_ark.elf
-            firmware/frame_film_ark/build/frame_film_ark.map
-            firmware/frame_film_ark/sdkconfig
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/${{ matrix.variant.flash_name }}
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/bootloader/bootloader.bin
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/partition_table/partition-table.bin
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/ota_data_initial.bin
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/flasher_args.json
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/flash_args
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/frame_film_ark.elf
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/frame_film_ark.map
+            firmware/frame_film_ark/${{ matrix.variant.sdkconfig }}
       - name: Upload Ark build logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: ark-firmware-build-logs
+          name: ark-firmware-build-logs${{ matrix.variant.suffix }}
           if-no-files-found: ignore
           path: |
             firmware/frame_film_ark/ci-logs/
-            firmware/frame_film_ark/build/log/
+            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/log/
 
   release:
     name: Publish Ark firmware and app
@@ -277,16 +338,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.plan.outputs.source_ref }}
       - name: Download this run's firmware
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ark-firmware-ota
           path: release-input
       - name: Download this run's app
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ark-flutter-release-apk
           path: app-release-input
@@ -306,8 +367,8 @@ jobs:
           metadata="$(find app-release-input -type f -name framefilm-ark-flutter.json -print -quit)"
           test -s "$image" && test -s "$apk" && test -s "$metadata"
           node -e 'const m=require("./"+process.argv[1]); if(m.versionName!==process.env.VERSION_NAME || String(m.versionCode)!==process.env.VERSION_CODE) process.exit(1)' "$metadata"
-          node flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
-            /dev/null flutter_app/pubspec.yaml workflow_dispatch release-notes.md
+          node app/flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
+            /dev/null app/flutter_app/pubspec.yaml workflow_dispatch release-notes.md
           digest="$(sha256sum "$image" | cut -d ' ' -f 1)"
           cat >> release-notes.md <<EOF
 

@@ -25,6 +25,7 @@
   let valid = false;
   let device = null, characteristic = null, transfer = null, readJob = null, readWaiter = null, nameWaiter = null;
   let nameWriteInProgress = false;
+  let editingLocked = false;
   let parentState = { connected: false, busy: false, label: '' };
 
   // The embedded editor follows the host skin; the device canvas uses its selected palette.
@@ -32,17 +33,23 @@
     if (!embedded) return;
     const host = window.parent.document.body;
     const style = window.parent.getComputedStyle(host);
-    document.body.classList.toggle('theme-ark', host.classList.contains('theme-ark'));
-    document.documentElement.classList.toggle('embedded-ark', host.classList.contains('theme-ark'));
+    const ark = host.classList.contains('theme-ark');
+    document.body.classList.toggle('theme-ark', ark);
+    document.documentElement.classList.toggle('embedded-ark', ark);
     const tokens = {
       '--ink': '--ink', '--muted': '--ink-soft', '--paper': '--paper',
       '--editor-accent': '--sky', '--editor-radius': '--r',
-      '--editor-field-radius': '--r-xs', '--editor-font': '--font-body'
+      '--editor-field-radius': '--r-xs', '--editor-button-radius': '--r-sm',
+      '--editor-font': '--font-body', '--editor-display': '--font-display',
+      '--editor-border-width': '--line', '--editor-shadow': '--sh-1',
+      '--editor-shadow-hover': '--sh-2', '--editor-rule': '--ink',
+      '--editor-frame-bg': '--cream-2', '--editor-primary-bg': '--lemon'
     };
-    if (host.classList.contains('theme-ark')) {
+    if (ark) {
       Object.assign(tokens, {
         '--line': '--ark-line', '--ground': '--ark-bg',
-        '--editor-surface': '--ark-bg-2', '--editor-danger': '--ark-red'
+        '--editor-surface': '--ark-bg-2', '--editor-danger': '--ark-red',
+        '--editor-rule': '--ark-line', '--editor-frame-bg': '--ark-bg'
       });
     } else {
       for (const token of ['--line', '--ground', '--editor-surface', '--editor-danger']) {
@@ -182,6 +189,7 @@
     renderedBin = PassportPixels.encode(pixels.data, profile.avatarMode, !!avatarImage);
     ctx.putImageData(pixels, 0, 0);
     validate();
+    updateAvatarButtons();
   }
   function profileBin() {
     return renderedBin.slice();
@@ -304,16 +312,19 @@
     if (!name.startsWith(DEVICE_NAME_PREFIX)) throw new Error('设备返回的名称前缀无效。');
     return name;
   }
-  function parseReadPayload(payload, expectedOffset, count) {
+  function inspectReadPayload(payload, expectedOffset) {
     if (payload.length < 9 || payload.length > 137) throw new Error('设备返回的读取数据长度无效。');
     const offset = u32(payload, 1);
     if (offset !== expectedOffset) throw new Error('设备返回的资料分块偏移无效。');
-    const status = payload[0], total = u32(payload, 5), data = payload.subarray(9);
+    return { status: payload[0], offset, total: u32(payload, 5), data: payload.subarray(9) };
+  }
+  function parseReadPayload(payload, expectedOffset, count) {
+    const part = inspectReadPayload(payload, expectedOffset);
     const failures = { 1: '设备尚未配置个人资料。', 2: '设备读取资料失败。', 3: '设备正忙，请稍后重试。', 4: '设备拒绝了读取参数。' };
-    if (status !== 0) throw new Error(failures[status] || `设备返回未知状态 ${status}。`);
-    if (total > 350000 || offset > total || data.length > count || offset + data.length > total ||
-        (offset < total && data.length === 0)) throw new Error('设备返回的资料大小或分块范围无效。');
-    return { offset, total, data: new Uint8Array(data) };
+    if (part.status !== 0) throw new Error(failures[part.status] || `设备返回未知状态 ${part.status}。`);
+    if (part.total > 350000 || part.offset > part.total || part.data.length > count || part.offset + part.data.length > part.total ||
+        (part.offset < part.total && part.data.length === 0)) throw new Error('设备返回的资料大小或分块范围无效。');
+    return { offset: part.offset, total: part.total, data: new Uint8Array(part.data) };
   }
   function onNotification(event) {
     const value = event.target.value;
@@ -347,8 +358,7 @@
     if (payload.length < 9) { finishReadWaiter(new Error('设备返回的读取数据长度无效。')); return; }
     const offset = u32(payload, 1);
     if (offset !== readWaiter.offset) return; // 迟到的上一块；等待当前 offset 的应答。
-    try { finishReadWaiter(null, parseReadPayload(payload, readWaiter.offset, readWaiter.count)); }
-    catch (error) { finishReadWaiter(error); }
+    finishReadWaiter(null, payload);
   }
   function requestName(channel, suffix = '') {
     if (!characteristic || !device?.gatt?.connected || transfer || readJob || nameWaiter || nameWriteInProgress)
@@ -410,7 +420,7 @@
     finally { updateNameControls(); }
   }
   function requestReadChunk(offset, count, job) {
-    if (readJob !== job || job.cancelled || !characteristic || !device?.gatt?.connected)
+    if (job.cancelled || !characteristic || !device?.gatt?.connected)
       return Promise.reject(new Error('读取已取消或设备已断开。'));
     if (readWaiter) return Promise.reject(new Error('上一块资料仍在读取。'));
     const request = packet(0x53, new Uint8Array([...be32(offset), count]));
@@ -423,8 +433,32 @@
       });
     });
   }
+  async function readPassportBytes(transportCtx, job, onProgress) {
+    let offset = 0, total = null, data = null, retries = 0;
+    for (;;) {
+      const payload = transportCtx
+        ? await transportCtx.request(0x53, new Uint8Array([...be32(offset), 128]), 7000)
+        : await requestReadChunk(offset, 128, job);
+      if (job.cancelled) throw new Error('读取已取消。');
+      const part = inspectReadPayload(payload, offset);
+      if (part.status === 3 && retries < 12) {
+        retries++;
+        await pause(500);
+        continue;
+      }
+      retries = 0;
+      const chunk = parseReadPayload(payload, offset, 128);
+      if (total === null) { total = chunk.total; data = new Uint8Array(total); }
+      else if (chunk.total !== total) throw new Error('设备资料大小在读取期间发生变化，请重试。');
+      data.set(chunk.data, offset);
+      offset += chunk.data.length;
+      if (onProgress) onProgress(offset, total);
+      if (offset >= total) return data;
+    }
+  }
   async function readFromDevice() {
     if (!deviceAvailable() || transfer || readJob) return;
+    if (!confirm('读取设备资料会在完整校验成功后覆盖当前编辑内容和本地草稿，是否继续？')) return;
     if (!embedded && !prepareProfileOperation()) return;
     const job = { cancelled: false }; readJob = job;
     updateNameControls();
@@ -434,18 +468,10 @@
     $('progress').value = 0; setDeviceStatus('正在读取设备上的 profile.json；当前草稿会在完整校验后替换。');
     try {
       const readAll = async (transportCtx) => {
-        let offset = 0, total = null, data = null;
-        do {
-          const part = transportCtx ? parseReadPayload(
-            await transportCtx.request(0x53, new Uint8Array([...be32(offset), 128]), 7000), offset, 128) :
-            await requestReadChunk(offset, 128, job);
-          if (job.cancelled) throw new Error('读取已取消。');
-          if (total === null) { total = part.total; data = new Uint8Array(total); }
-          else if (part.total !== total) throw new Error('设备资料大小在读取期间发生变化，请重试。');
-          data.set(part.data, offset); offset += part.data.length;
-          $('progress').value = total ? Math.round(offset * 100 / total) : 100;
-          setDeviceStatus(`正在读取 profile.json：${offset} / ${total} 字节`);
-        } while (offset < total);
+        const data = await readPassportBytes(transportCtx, job, (received, total) => {
+          $('progress').value = total ? Math.round(received * 100 / total) : 100;
+          setDeviceStatus(`正在读取 profile.json：${received} / ${total} 字节`);
+        });
         const imported = parseProfile(new TextDecoder('utf-8', { fatal: true }).decode(data));
         const img = await imageFromDataUrl(imported.avatar);
         if (job.cancelled || readJob !== job || !(embedded ? getArkDevice()?.connected() : device?.gatt?.connected))
@@ -499,7 +525,7 @@
       waiter.reject(new Error('设备已断开；未发送资料文件。'));
     }
     if (transfer) transfer.interrupted = true;
-    if (readJob) finishReadWaiter(new Error('设备已断开。'));
+    finishReadWaiter(new Error('设备已断开。'));
     finishNameWaiter(new Error('设备已断开。'));
     updateNameControls();
     $('device-name-current').textContent = '未连接';
@@ -510,12 +536,19 @@
   }
   function transferFailureText(job, reason) {
     if (!job.filesStarted) return `${reason}。资料文件未发送，原资料保留。`;
-    if (job.jsonDone) return `${reason}。两个文件已发送完成，但协议没有保存确认。请在设备上按确认加载。`;
+    if (job.jsonDone) return `${reason}。两个文件已发送，但未能完成回读校验。请在设备上按确认加载。`;
     return `${reason}。${job.binDone ? 'profile.bin 已发送，profile.json 未确认完成。' : 'profile.bin 未确认完成，profile.json 尚未发送。'} 请重新连接后从头发送。`;
   }
+  function updateAvatarButtons() {
+    const unavailable = editingLocked || !profile.avatar;
+    $('edit-avatar').disabled = unavailable;
+    $('remove-avatar').disabled = unavailable;
+  }
   function setEditingLocked(locked) {
+    editingLocked = locked;
     for (const id of [...fields, 'codename-unset', 'number-unset', 'avatar', 'avatar-mode', 'remove-avatar', 'edit-avatar',
       'import-json', 'export-json', 'download-png', 'download-bin']) $(id).disabled = locked;
+    updateAvatarButtons();
   }
   async function connect() {
     if (transfer || readJob) return;
@@ -569,6 +602,25 @@
       throw new Error('设备不支持彩色通行证，请升级固件；未发送资料文件');
     }
   }
+  async function verifyPassport(transportCtx, job, expected) {
+    const expectedText = new TextDecoder().decode(expected);
+    let lastError = '设备未返回资料';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (job.cancelled) throw new Error('传输已取消。');
+      try {
+        await pause(attempt === 0 ? 750 : 500);
+        const data = await readPassportBytes(transportCtx, job);
+        if (new TextDecoder('utf-8', { fatal: true }).decode(data) === expectedText) return { ok: true, error: '' };
+        lastError = '回读内容与发送内容不一致';
+      } catch (error) {
+        if (job.cancelled) throw new Error('传输已取消。');
+        lastError = error.message;
+        // 设备没有响应 0x53（旧固件）时重试无意义，立即结束回读。
+        if (/未响应|超时/.test(lastError)) break;
+      }
+    }
+    return { ok: false, error: lastError };
+  }
   async function send() {
     if (!validate() || !deviceAvailable() || transfer || readJob) return;
     if (!embedded && !prepareProfileOperation()) return;
@@ -580,9 +632,10 @@
     $('cancel').disabled = false;
     $('progress').value = 0;
     const bin = profileBin(), json = jsonBytes(), total = bin.length + json.length;
+    let verification = { ok: false, error: '未执行回读' };
     try {
       setDeviceStatus('开始发送 profile.bin…');
-      if (embedded) await getArkDevice().run('发送通行证', async (transportCtx) => {
+      if (embedded) verification = await getArkDevice().run('发送通行证', async (transportCtx) => {
         if (profile.avatarMode === 'color') await requireColorCapability(transportCtx);
         job.filesStarted = true;
         const progress = (name, base, length) => (sent) => {
@@ -597,6 +650,8 @@
           progress('profile.json', bin.length, json.length));
         if (job.cancelled) throw new Error('传输已取消。');
         job.jsonDone = true;
+        setDeviceStatus('两个文件已发送；正在回读 profile.json 校验…');
+        return verifyPassport(transportCtx, job, json);
       });
       else {
         if (profile.avatarMode === 'color') await requireColorCapability(null);
@@ -606,8 +661,13 @@
         setDeviceStatus('profile.bin 已发送；正在发送 profile.json…');
         await sendFile('app/pass/profile.json', json, job, bin.length, total);
         job.jsonDone = true;
+        setDeviceStatus('两个文件已发送；正在回读 profile.json 校验…');
+        verification = await verifyPassport(null, job, json);
       }
-      setDeviceStatus('两个文件已发送完成。请在设备上按确认加载；协议不提供保存确认。');
+      if (job.cancelled) throw new Error('传输已取消。');
+      setDeviceStatus(verification.ok
+        ? '两个文件已发送，回读一致。请在设备上按确认加载；屏幕位图仍待实体确认。'
+        : `两个文件已发送，但回读未确认（${verification.error}）。请在设备上按确认加载。`);
     } catch (error) {
       const prefix = job.cancelled ? '已取消' : `发送中断：${error.message}`;
       setDeviceStatus(transferFailureText(job, prefix));
@@ -681,6 +741,26 @@
       if (embedded) getArkDevice()?.cancel();
       else if (device?.gatt?.connected) device.gatt.disconnect();
     });
+    const jumpTo = (selector, delta) => {
+      const target = document.querySelector(selector);
+      if (!target) return;
+      if (window.parent === window) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      try {
+        const frame = window.frameElement;
+        const scroller = window.parent.document.getElementById('page-content');
+        const scrollable = scroller && scroller.scrollHeight > scroller.clientHeight;
+        const scrollerTop = scrollable ? scroller.getBoundingClientRect().top : 0;
+        const offset = frame.getBoundingClientRect().top + target.getBoundingClientRect().top - scrollerTop + delta;
+        (scrollable ? scroller : window.parent).scrollBy({ top: offset, behavior: 'smooth' });
+      } catch (_) {}
+    };
+    const jumpButton = $('preview-jump');
+    if (jumpButton) jumpButton.addEventListener('click', () => jumpTo('.preview-panel', -12));
+    const backButton = $('preview-back');
+    if (backButton) backButton.addEventListener('click', () => jumpTo('.editor', -12));
     if (embedded) updateParentState();
   }
   init();

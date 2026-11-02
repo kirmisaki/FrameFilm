@@ -25,5 +25,5 @@
 
 - 参考项目：xiaozhi-esp32（`github.com/78/xiaozhi-esp32`）—— 取其 ES8311 编解码驱动与语音链路范式
 - 模块资料：`docs/datasheet/ES8311+NS4150B CODEC 音频模块 使用说明书.pdf`、`...原理图.pdf`
-- 关联后端：`docs/filmhub/design.md`、`server/backend/app/services/ai_client.py`
+- 关联后端：`docs/filmhub/design.md`、`server/filmhub/backend/app/services/ai_client.py`
 - 固件架构：`docs/knowledge/architecture.md`（三层分层 `film_service → film_hal → film_sys`）

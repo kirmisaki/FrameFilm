@@ -1,5 +1,5 @@
 const fs=require('node:fs');const vm=require('node:vm');const assert=require('node:assert/strict');const path=require('node:path');
-const context=vm.createContext({window:{},console,Uint8ClampedArray,Uint8Array,Float32Array,Math});
+const context=vm.createContext({window:{},console,Uint8ClampedArray,Uint8Array,Float32Array,Float64Array,Math});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../ForFilm/js/convert.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'avatar-editor.js'),'utf8'),context);
 const editor=context.window.PassportAvatarEditor;
@@ -27,4 +27,9 @@ editor.render(img,{...editor.defaults,strength:2},'color');
 assert.deepEqual(calls.pop(),['adaptive',128,160]);
 editor.render(img,{...editor.defaults,algorithm:'floydSteinberg',strength:2},'color');
 assert.deepEqual(calls.pop(),['floydSteinberg',2]);
+// Mono uses Film MonoFast and must not dispatch the six-color dither algorithms.
+calls.length=0;
+editor.render(img,{...editor.defaults,strength:2},'mono');
+assert.deepEqual(calls,[]);
+assert.equal(editor.defaults.algorithm,'adaptive');
 console.log('Avatar options and Film dithering dispatch passed');

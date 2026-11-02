@@ -275,7 +275,9 @@ Page({
         // 检测设备类型
         var upperName = (device.name || '').toUpperCase();
         var deviceType = 'FRAMEFILM';
-        if (upperName.indexOf('MAX') !== -1) {
+        if (upperName.indexOf('FRAMEFILMC3') === 0) {
+          deviceType = 'FRAMEFILMC3';
+        } else if (upperName.indexOf('MAX') !== -1) {
           deviceType = 'FRAMEFILMMAX';
         } else if (upperName.indexOf('DOCK') !== -1) {
           deviceType = 'FRAMEFILMDOCK';

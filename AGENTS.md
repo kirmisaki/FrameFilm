@@ -59,8 +59,8 @@ FrameFilm 项目 AI 开发指南。
 | 输入 | 三按键：上 GPIO6 / 下 GPIO4 / 确认 GPIO5（**低有效**） |
 | LED / 电池 / SD | 有 WS2812（白=未连接、绿=已连、红=低电，呼吸）、有电池检测、SD 有检测脚 |
 | 唤醒脚 | GPIO5（低电平） |
-| Flash / PSRAM | 4MB / Quad SPI |
-| sdkconfig | 只有一份 `sdkconfig`，**不需要 `cp`**，直接 `idf.py build` |
+| Flash / PSRAM | 默认 4MB / Quad SPI；N16R8 变体 16MB / Octal |
+| sdkconfig | 默认 `sdkconfig`（4MB/Quad）；`sdkconfig_n16r8`（16MB/Octal + `partitions_16mb.csv`），用 `build.ps1` 切换 |
 
 - **已删除**（相对 `frame_film`）：其余屏幕驱动 `hal_epd_{360,364,368,709}.c`、STD 专用的 `hal_encoder.c`（无旋转编码器）、`sdkconfig_{std,pro,max}` 与 `sdkconfig.old`
 - 输入仍走 `film_hal` 的按键实现（`hal_input.h` 抽象 + iot_button）；`FRAMEFILM_*` 宏在 ark 里**不存在**，不要往这边带机型分支
@@ -92,7 +92,7 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py --list
 ```
 
 - 完整参数与排查表：`tools/framefilm-dock-upload/SKILL.md`
-- 依赖 `pyserial` + `Pillow`；图片转换复用 `server/backend/app/services/film_convert.py`，保证与 `tools/ForFilm` / 服务端出图一致
+- 依赖 `pyserial` + `Pillow`；图片转换复用 `server/filmhub/backend/app/services/film_convert.py`，保证与 `tools/ForFilm` / 服务端出图一致
 - **只适用 dock**：冰箱贴没有 USB 串口，仍走 `tools/ForFilm` 网页蓝牙
 
 ## 架构约束
@@ -174,6 +174,7 @@ film_service → film_hal → film_sys → ESP-IDF
 | UI 页公共外壳（状态栏 + 居中时间 + 提示行 + 周期 tick） | `firmware/frame_film_ark/components/film_app/core/app_shell.{h,c}` |
 | 开机行为参数（BOOT PAGE / START APP） | `firmware/frame_film_ark/components/film_app/core/app_boot_cfg.{h,c}`（持久化在 `service_param` 的 `app7` 槽位） |
 | 内容 app（图片/模板/时钟/动图/通行证） | `firmware/frame_film_ark/components/film_app/apps/<name>/app_<name>.{h,c}`（一个 app 一个文件夹） |
+| Ark 硬件变体切换（n4r2 / n16r8） | `firmware/frame_film_ark/build.ps1` + `CMakePresets.json`（VS Code `ESP-IDF: 选择项目配置`） |
 | SD 可替换图标（FFUI 容器） | `firmware/frame_film_ark/components/film_ui/src/ui_assets.c` + `tools/ui-assets/gen_ui_assets.py` |
 | 协议文档 | `docs/blecmd/blecmd_protocol.md` |
 
@@ -187,7 +188,7 @@ film_service → film_hal → film_sys → ESP-IDF
 4. **不要假设字符串编码** — 普通 BLE 字符串为 ASCII + `\0`；Ark 设备名称 0x54/0x55 为 UTF-8 + `\0`，具体以协议文档为准
 5. **不要忘记更新 blecmd_protocol.md** — 协议文档必须与实际实现一致
 6. **不要在 service 层直接操作 GPIO** — 所有硬件操作走 film_hal
-7. **不要机型宏与 sdkconfig 不匹配** — 编译前确认 `sys_cfg.h` 机型宏与 `sdkconfig_{std,pro,max}` 对应一致（**仅 `frame_film`**；`frame_film_ark` 只有一份 `sdkconfig`，无机型宏）
+7. **不要机型宏与 sdkconfig 不匹配** — 编译前确认 `sys_cfg.h` 机型宏与 `sdkconfig_{std,pro,max}` 对应一致（**仅 `frame_film`**；`frame_film_ark` 无机型宏，只有 n4r2 / n16r8 两个硬件变体配置，见 `build.ps1`）
 8. **不要给 dock 随便加 USB IN 端点** — ESP32-S3 的 IN 端点上限是 5（含 EP0），dock 已用满：HID + 音频 mic + 音频反馈 + CDC 数据。新增 USB 功能前必须先释放等量 IN 端点（CDC 的「通知端点」就是因此省掉的）
 9. **不要按"机型"猜 `0x42` 回包长度** — 三套固件现在**统一**返回 `面板ID(1)+宽(2)+高(2)`（LEN=5，见各自 `SCREEN_RESOLUTION_GET` 实现），协议文档 §4.6.1 也是这个格式，客户端按 LEN=5 解析即可。（历史上冰箱贴曾只回 `宽(2)+高(2)`（LEN=4），遇到老固件才需要按 LEN 兜底）
 10. **不要在 app_task 里碰 `lv_*`** — LVGL 非线程安全，只在 `ui_task` 上下文调用；要向页面推数据走 `ui_core_post()`（下行）、要回写服务层走 `app_manager_post_ui_msg()`（上行），两者都在 `film_app`/`film_ui` 里
@@ -249,12 +250,13 @@ cp sdkconfig_std sdkconfig                 # 按机型选 sdkconfig_{std,pro,max
 # 编辑 components/film_hal/inc/hal_epd.h，在机型分支内选屏幕（EPD_SELECT_E6_* 置 1）
 idf.py build flash monitor
 
-# ── frame_film_ark（通行证版，单机型：无配置步骤）──
+# ── frame_film_ark（通行证版，硬件变体用脚本切换）──
 cd firmware/frame_film_ark
-idf.py build flash monitor
+idf.py build flash monitor                 # 默认 n4r2：4MB Flash / Quad PSRAM
+.\build.ps1 n16r8 flash COM15             # n16r8：16MB Flash / Octal PSRAM
 ```
 
-> `frame_film_ark` 与 `frame_film_dock` 都只有一份 `sdkconfig`：**不需要 `cp`，也不需要改机型/屏幕宏**。
+> `frame_film_dock` 只有一份 `sdkconfig`；`frame_film_ark` 有默认 `sdkconfig`（n4r2）与 `sdkconfig_n16r8` 两份，用 `build.ps1` → `idf.py -B build_<variant> -D SDKCONFIG=<配置文件>` 切换；VS Code ESP-IDF 插件用命令面板 → `ESP-IDF: 选择项目配置`（`CMakePresets.json` 的 `n4r2` / `n16r8`）。两者都不需要改机型/屏幕宏。CI（`ark-builds.yml`）会矩阵构建这两个变体，Release 仍只发布 n4r2 的 OTA 镜像。
 
 ## 文档索引
 

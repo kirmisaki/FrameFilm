@@ -12,7 +12,7 @@
     <!-- 动画工坊样式（独立页） -->
     <link rel="stylesheet" href="css/animation.css">
     <link rel="stylesheet" href="css/serial-flash.css">
-    <link rel="stylesheet" href="css/ark-controls.css?v=prts-2">
+    <link rel="stylesheet" href="css/ark-controls.css?v=prts-4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Baloo+2:wght@400..800&family=Noto+Sans+SC:wght@400..900&display=swap" rel="stylesheet">
@@ -106,12 +106,12 @@
                 </div>
                 <div class="btn-row">
                     <button id="scan-button" class="primary-button">
-                        <svg class="ic" viewBox="0 0 24 24"><use href="#i-scan"/></svg>蓝牙扫描设备
+                        <svg class="ic" viewBox="0 0 24 24"><use href="#i-scan"/></svg>蓝牙扫描
                     </button>
                     <button id="usb-button" class="secondary-button">
                         <svg class="ic" viewBox="0 0 24 24"><use href="#i-usb"/></svg>USB 连接
                     </button>
-                    <button id="ark-reconnect-button" class="secondary-button" type="button" disabled>重连上次 Ark</button>
+                    <button id="ark-reconnect-button" class="secondary-button" type="button" disabled>重连上次</button>
                 </div>
                 <p class="field-hint">Ark 通过蓝牙连接；CH343 USB 接口用于供电和固件调试，不能用这里的 USB 连接传图。</p>
                 <p id="ark-operation-status" class="field-hint" role="status" aria-live="polite">未连接。可以先在“通行证”中编辑并保存草稿。</p>
@@ -865,15 +865,15 @@
 
         <!-- ================= Ark 通行证 ================= -->
         <div id="pass-page" class="page">
-            <div class="card">
-                <div class="card__title"><span class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><use href="#i-photo"/></svg></span>个人通行证 · 档案管理</div>
+            <div class="card" id="ark-pass-card">
+                <div class="card__title"><span class="ic-wrap"><svg class="ic" viewBox="0 0 24 24"><use href="#i-photo"/></svg></span>档案编辑与预览</div>
                 <p id="ark-pass-connection" class="field-hint" role="status">离线可编辑、预览和导出；读取或发送前请先连接 Ark。</p>
                 <div class="btn-row">
                     <button type="button" class="secondary-button" id="ark-pass-connect">前往设备连接</button>
                     <button type="button" class="secondary-button" id="ark-pass-open" data-ark-connected disabled>在设备打开通行证</button>
                 </div>
+                <iframe id="ark-pass-editor" title="Ark 个人通行证编辑器" src="../ark-pass-editor/index.html?embedded=1&amp;v=prts-12" loading="lazy"></iframe>
             </div>
-            <iframe id="ark-pass-editor" title="Ark 个人通行证编辑器" src="../ark-pass-editor/index.html?embedded=1&amp;v=prts-4" loading="lazy"></iframe>
         </div>
 
         <!-- ================= 设置 ================= -->
@@ -1247,19 +1247,19 @@
     </div>
 </div>
 
-<script src="js/utils.js?v=prts-5"></script>
+<script src="js/utils.js?v=prts-6"></script>
 <script src="js/atkinson_enhanced_lut.js"></script>
 <script src="js/sz_enhanced.js"></script>
-<script src="js/bluetooth.js?rev=c8a06b78e315"></script>
+<script src="js/bluetooth.js?rev=fix-transfer-1"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
 <script src="js/usb.js"></script>
 <script src="js/keyboard.js"></script>
-<script src="js/convert.js?v=e4panel-1"></script>
-<script src="js/frame.js?v=ark-state-1"></script>
+<script src="js/convert.js?v=e4panel-2"></script>
+<script src="js/frame.js?v=ark-state-2"></script>
 <script src="js/frame-nav.js"></script>
-<script src="js/batch.js"></script>
+<script src="js/batch.js?v=fix-1"></script>
 <script src="js/gif-decoder.js"></script>
-<script src="js/animation.js?v=ark-state-1"></script>
+<script src="js/animation.js?v=ark-state-2"></script>
 <!-- 串口烧录：esptool-js（内嵌，官方 bundle 转经典脚本，挂 window.ESPTOOL）+ 本仓库的烧录流程 -->
 <script src="js/esptool-js.js"></script>
 <script src="js/serial-flash.js"></script>
