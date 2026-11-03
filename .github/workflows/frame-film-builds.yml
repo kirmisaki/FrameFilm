@@ -22,13 +22,20 @@ concurrency:
 
 jobs:
   pro:
-    name: Pro ${{ matrix.screen.name }}
+    name: Pro ${{ matrix.variant.name }} ${{ matrix.screen.name }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     container: espressif/idf:v5.5.2
     strategy:
       fail-fast: false
       matrix:
+        variant:
+          - name: n4r2
+            slug: n4r2
+            sdkconfig: sdkconfig_pro
+          - name: n16r8
+            slug: n16r8
+            sdkconfig: sdkconfig_pro_n16r8
         screen:
           - name: E6 3.68 792x528
             slug: e6-3.68-792x528
@@ -96,29 +103,30 @@ jobs:
       - name: Build Pro firmware
         env:
           SCREEN_SLUG: ${{ matrix.screen.slug }}
+          VARIANT_SLUG: ${{ matrix.variant.slug }}
+          SDKCONFIG_FILE: ${{ matrix.variant.sdkconfig }}
         run: |
           set -euo pipefail
           . "$IDF_PATH/export.sh"
-          cp sdkconfig_pro sdkconfig
           mkdir -p ci-logs
           idf.py --version 2>&1 | tee ci-logs/idf-version.log
-          idf.py build 2>&1 | tee ci-logs/build.log
-          idf.py size 2>&1 | tee ci-logs/size.log
-          idf.py merge-bin -o "frame_film_pro_${SCREEN_SLUG}-flash.bin" 2>&1 | tee ci-logs/merge.log
+          idf.py -B build -D "SDKCONFIG=$PWD/$SDKCONFIG_FILE" -D FRAMEFILM_MODEL=pro build 2>&1 | tee ci-logs/build.log
+          idf.py -B build size 2>&1 | tee ci-logs/size.log
+          idf.py -B build merge-bin -o "frame_film_pro_${VARIANT_SLUG}_${SCREEN_SLUG}-flash.bin" 2>&1 | tee ci-logs/merge.log
       - name: Upload firmware
         uses: actions/upload-artifact@v7
         with:
-          name: frame-film-pro-${{ matrix.screen.slug }}
+          name: frame-film-pro-${{ matrix.variant.slug }}-${{ matrix.screen.slug }}
           if-no-files-found: error
           path: |
             firmware/frame_film/build/frame_film.bin
-            firmware/frame_film/build/frame_film_pro_${{ matrix.screen.slug }}-flash.bin
+            firmware/frame_film/build/frame_film_pro_${{ matrix.variant.slug }}_${{ matrix.screen.slug }}-flash.bin
             firmware/frame_film/build/frame_film.elf
       - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: frame-film-pro-${{ matrix.screen.slug }}-logs
+          name: frame-film-pro-${{ matrix.variant.slug }}-${{ matrix.screen.slug }}-logs
           if-no-files-found: ignore
           path: |
             firmware/frame_film/ci-logs/

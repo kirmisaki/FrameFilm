@@ -14,18 +14,28 @@ extern "C" {
  * MACROS
  */
 // SYS CONFIG
-// 机型三选一
-// #define FRAMEFILM_STD        1          // 基础版
-#define FRAMEFILM_PRO        1          // Pro 版（默认）
-// #define FRAMEFILM_MAX        1          // Max 版
-#ifndef FRAMEFILM_STD
+// 机型三选一：优先使用构建参数 -DFRAMEFILM_MODEL=std|pro|max（见 CMakePresets.json / build.ps1），
+// 未指定时使用下面手改的默认值（直接 idf.py build 走这一分支）
+#if defined(FRAMEFILM_MODEL_STD) || defined(FRAMEFILM_MODEL_PRO) || defined(FRAMEFILM_MODEL_MAX)
+#if defined(FRAMEFILM_MODEL_STD)
+#define FRAMEFILM_STD        1
+#else
 #define FRAMEFILM_STD        0
 #endif
-#ifndef FRAMEFILM_PRO
+#if defined(FRAMEFILM_MODEL_PRO)
+#define FRAMEFILM_PRO        1
+#else
 #define FRAMEFILM_PRO        0
 #endif
-#ifndef FRAMEFILM_MAX
+#if defined(FRAMEFILM_MODEL_MAX)
+#define FRAMEFILM_MAX        1
+#else
 #define FRAMEFILM_MAX        0
+#endif
+#else
+#define FRAMEFILM_STD        0          // 基础版
+#define FRAMEFILM_PRO        1          // Pro 版（默认）
+#define FRAMEFILM_MAX        0          // Max 版
 #endif
 #if (FRAMEFILM_STD + FRAMEFILM_PRO + FRAMEFILM_MAX) != 1
 #error "机型配置错误：只能选择一个机型"
