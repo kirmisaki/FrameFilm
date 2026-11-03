@@ -227,6 +227,56 @@ static void remove_traces(const char *name)
     path_for(path, sizeof(path), name, ".ffupload.bak"); remove(path);
 }
 
+static void test_abc9_upload(const uint8_t *old_film, size_t old_size)
+{
+    const size_t size = 32u + 720u * 480u * 2u;
+    uint8_t *abc9 = calloc(size + 2, 1);
+    assert(abc9);
+    char target[128];
+    path_for(target, sizeof(target), "abc9.film", "");
+    for(unsigned scenario = 0; scenario < 11; ++scenario)
+    {
+        film_header(abc9, 1);
+        uint32_t body = (uint32_t)size - 32;
+        for(unsigned i = 0; i < 4; ++i) abc9[i] = (uint8_t)(body >> (8 * i));
+        abc9[9] = 0x7F;
+        memcpy(abc9 + 12, "ABC9", 4);
+        for(size_t i = 32; i < size; i += 2)
+        {
+            unsigned code = ((i - 32) / 2) % 512;
+            abc9[i] = (uint8_t)code;
+            abc9[i + 1] = (uint8_t)(code >> 8);
+        }
+        size_t uploaded = size;
+        switch(scenario)
+        {
+        case 1: abc9[12] = 'X'; break;
+        case 2: abc9[4] ^= 1; break;
+        case 3: abc9[6] ^= 1; break;
+        case 4: abc9[0] ^= 1; break;
+        case 5: abc9[10] = 0; break;
+        case 6: abc9[10] = 2; break;
+        case 7: abc9[33] = 2; break;
+        case 8: abc9[size - 1] = 0x80; break;
+        case 9: uploaded -= 2; break;
+        case 10: uploaded += 2; break;
+        }
+        int accepted = 0;
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+        accepted = scenario == 0;
+#endif
+        write_bytes(target, old_film, old_size);
+        int events_before = file_saved_events;
+        assert(service_file_save_start(FILE_SAVE_BLE, "abc9.film", (uint32_t)uploaded) == 0);
+        assert(save_data(abc9, uploaded) == 0);
+        assert(service_file_save_stop(FILE_SAVE_BLE, 0) == (accepted ? 0 : -1));
+        expect_bytes(target, accepted ? abc9 : old_film, accepted ? uploaded : old_size);
+        assert(file_saved_events == events_before + accepted);
+        remove_traces("abc9.film");
+    }
+    free(abc9);
+}
+
 int main(void)
 {
     char root[] = "/tmp/framefilm-ark-storage-XXXXXX";
@@ -393,6 +443,8 @@ int main(void)
     assert(service_file_get_filename_safe(0, listed, sizeof(listed)) == 0);
     assert(strcmp(listed, "reboot.film") == 0);
     remove_traces("reboot.film");
+
+    test_abc9_upload(old_film, film_size);
 
     free(m_file_state.file_list);
     assert(rmdir(host_film_dir) == 0);

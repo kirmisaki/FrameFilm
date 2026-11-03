@@ -90,6 +90,7 @@ function onDeviceTypeChanged() {
         canvases[i].width = cfg.screenWidth;
         canvases[i].height = cfg.screenHeight;
     }
+    if(typeof restoreArk512Imported === 'function') restoreArk512Imported();
     // 改尺寸会清空画布；若已有图片，按新尺寸重绘，避免预览/导出变成白图。
     if (typeof originalImage !== 'undefined' && originalImage && typeof updateImage === 'function') {
         try { updateImage(); } catch (e) { console.warn('[ForFilm] 重绘主画布失败', e); }
@@ -251,6 +252,9 @@ function getFilmFileExpectedSize(fileData) {
         frameCount = 1;
     }
     var pixels = width * height;
+    if(format === 0x7f) {
+        try { window.Ark512.parse(fileData); return 691232; } catch(error) { return -1; }
+    }
     var bodySize = (format === 0x01) ? (pixels / 8) : (format >= 0x02 ? pixels : (pixels / 2));
     return 32 + bodySize * frameCount;
 }

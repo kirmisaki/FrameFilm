@@ -38,6 +38,7 @@ class _LiveImageCompositionState extends State<LiveImageComposition> {
   ui.Image? fitted;
   bool fitPending = false;
   bool get useFit =>
+      widget.options.algorithm != FrameAlgorithm.abc512I006 &&
       widget.options.format != FrameFormat.monoFast &&
       (widget.options.warmChroma != 0 ||
           (!sourceFitIsSz(widget.options) && widget.options.rangeFit != 0));

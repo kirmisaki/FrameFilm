@@ -105,10 +105,11 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_BUILD_INFO_GET (0x56)
 #define BLE_FILM_TRANS_CH_DIRECT_OTA_START (0x57)
 #define BLE_FILM_TRANS_CH_DIRECT_OTA_APPLY (0x58)
-#define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open
+#define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open, bit4=SoftAP, bit5=ABC9 preview, bit6=hardware identity
 #define BLE_FILM_TRANS_CH_STORAGE_CATALOG (0x5B) // Ark read-only storage/catalog
 #define BLE_FILM_TRANS_CH_DIRECT_FILE_START (0x5A) // SSID\0PASSWORD\0URL\0相对路径\0
 #define BLE_FILM_TRANS_CH_DIRECT_AP_PREPARE (0x5C) // RAM SoftAP reservation
+#define BLE_FILM_TRANS_CH_HARDWARE_INFO_GET (0x5D) // Hardware schema1 + physical memory + targetId
 #define BLE_DIRECT_START_DATA_MAX                         (192)
 
 /* 蓝牙设备名 = 编译期前缀 "FRAMEFILMARK-" (13B) + 可配置后缀 (1..16B)，完整名上限 29B

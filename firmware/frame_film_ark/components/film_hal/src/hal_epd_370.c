@@ -1351,8 +1351,8 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
         frameSize = EPD_WIDTH * EPD_HEIGHT;
         break;
 
-#ifdef CONFIG_ARK_EPD_ABC_DIAG
-    case 0x7F:  // Private lab input, never a public film2 format.
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    case 0x7F:  // Experimental ABC9 input, never a public film2 format.
         if (header->frameCount != 1 || header->screenWidth != EPD_WIDTH ||
             header->screenHeight != EPD_HEIGHT || memcmp(header->reserved, "ABC9", 4) != 0)
             return ESP_ERR_INVALID_ARG;
@@ -1837,7 +1837,7 @@ void hal_epd_display_film(const unsigned char *filmData)
     // 按 Format 判别 v1/v2 编码方式并分派到对应驱动路径
     switch (header.format)
     {
-#ifdef CONFIG_ARK_EPD_ABC_DIAG
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     case 0x7F:
         hal_epd_display_abc9(pixelData, header.fileSize);
         return;
@@ -2116,7 +2116,7 @@ void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode)
     sys_logi(EPD_TAG, "Display 8bpp mode=%u completed", mode);
 }
 
-#ifdef CONFIG_ARK_EPD_ABC_DIAG
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
 static void epd_abc9_write_plane(const uint8_t *pixels, uint8_t shift)
 {
     EPD_PROFILE_STAGE_BEGIN(RAM);

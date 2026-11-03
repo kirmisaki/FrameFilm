@@ -12,7 +12,9 @@ import java.io.File
 import java.io.InputStream
 import java.util.concurrent.Executors
 import org.framefilm.ark.FilmConverter
+import org.framefilm.ark.Abc9Preview
 import org.framefilm.ark.FirmwareDownloader
+import org.framefilm.ark.ArkHardware
 import org.framefilm.ark.ArkFirmware
 import org.framefilm.ark.TransferSnapshot
 import android.bluetooth.BluetoothDevice
@@ -69,6 +71,9 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private var battery: Int? = null
     private var width: Int? = null
     private var height: Int? = null
+    private var abc9PreviewSupported = false
+    private var hardwareSupported = false
+    private var hardware: ArkHardware? = null
     private var autoSleep: Boolean? = null
     private var timedWake: Boolean? = null
     private var wakeMinutes: Int? = null
@@ -79,7 +84,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private var refreshResult: MethodChannel.Result? = null
     private var refreshing = false
     private var readIndex = 0
-    private val channels = intArrayOf(0x42, 0x23, 0x54, 0x26, 0x28, 0x2A)
+    private val channels = intArrayOf(0x42, 0x23, 0x54, 0x26, 0x28, 0x2A, 0x59, 0x5D)
     private class Read(val channel: Int, val done: ((ByteArray) -> Unit)? = null) {
         var writeDone = false
         var response: ByteArray? = null
@@ -199,6 +204,8 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         "connected" to connected, "message" to message, "devices" to devices,
         "advertisedName" to if (connected) advertisedName else null,
         "name" to name, "battery" to battery, "width" to width, "height" to height,
+        "hardware" to if(connected) hardware?.snapshot() else null,
+        "abc9PreviewSupported" to (connected && abc9PreviewSupported),
         "autoSleep" to autoSleep, "timedWake" to timedWake, "wakeMinutes" to wakeMinutes,
         "syncedAt" to syncedAt, "settingsMessage" to settingsMessage, "settingsBusy" to refreshing,
         "importing" to importing,
@@ -206,7 +213,10 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         "hasFirmwareState" to true,
         "importedFirmware" to importedFirmware?.let { mapOf("name" to firmwareName,
             "size" to it.size, "version" to it.version, "project" to it.project,
-            "elfSha256" to it.elfSha256, "fileSha256" to it.fileSha256) },
+            "elfSha256" to it.elfSha256, "fileSha256" to it.fileSha256,
+            "targetId" to it.hardware?.targetId, "chipId" to it.hardware?.chipId,
+            "flashBytes" to it.hardware?.flashBytes, "psramBytes" to it.hardware?.psramBytes,
+            "psramBus" to it.hardware?.psramBus) },
         "importedFile" to currentFile?.let { mapOf("name" to importedName,
             "size" to it.length(), "width" to FilmConverter.WIDTH, "height" to FilmConverter.HEIGHT) },
         "transfer" to mapOf("phase" to transfer.phase, "message" to transfer.message,
@@ -267,11 +277,12 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                     val bytes = requireNotNull(call.argument<ByteArray>("bytes")) { "缺少 film 数据" }
                     require(bytes.size in 32..FilmConverter.MAX_FILM_BYTES) { "film 文件大小无效" }
                     val name = (call.argument<String>("name") ?: "frame.film").substringAfterLast('/').substringAfterLast('\\')
+                    val png = name.endsWith(".png", ignoreCase = true)
                     saveFilmResult = result; saveFilmBytes = bytes
                     try {
                         activity.startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
-                            putExtra(Intent.EXTRA_TITLE, if (name.endsWith(".film")) name else "$name.film")
+                            addCategory(Intent.CATEGORY_OPENABLE); type = if (png) "image/png" else "application/octet-stream"
+                            putExtra(Intent.EXTRA_TITLE, if (png || name.endsWith(".film", ignoreCase = true)) name else "$name.film")
                         }, SAVE_FILM)
                     } catch (error: Exception) { saveFilmResult = null; saveFilmBytes = null; throw error }
                 }
@@ -516,6 +527,8 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             return
         }
         refreshing = true
+        abc9PreviewSupported = false
+        hardwareSupported = false; hardware = null
         refreshResult = result
         readIndex = 0
         readNext()
@@ -531,6 +544,9 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             result?.success(snapshot())
             return
         }
+        if(channels[readIndex] == 0x5D && !hardwareSupported) {
+            readIndex++; readNext(); return
+        }
         request(channels[readIndex])
     }
 
@@ -540,7 +556,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         message = "正在读取设备信息"
         emit()
         read.timeout = Runnable {
-            if (pending === read) failRead("timeout", "设备响应超时，请重新连接 Ark")
+            if (pending === read && !skipOptionalCapabilities(read)) failRead("timeout", "设备响应超时，请重新连接 Ark")
         }.also { main.postDelayed(it, 7_000) }
         val bytes = byteArrayOf(0x55, read.channel.toByte(), payload.size.toByte()) + payload
         session.writePacket(bytes + byteArrayOf((bytes.sumOf { it.toInt() and 255 } and 255).toByte())) { outcome ->
@@ -548,8 +564,22 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             outcome.fold(onSuccess = {
                 read.writeDone = true
                 completeRead(read)
-            }, onFailure = { failRead("write_failed", it.message ?: "蓝牙写入失败") })
+            }, onFailure = {
+                if (!skipOptionalCapabilities(read)) failRead("write_failed", it.message ?: "蓝牙写入失败")
+            })
         }
+    }
+
+    /** Old firmware may not implement 0x59; base settings remain usable. */
+    private fun skipOptionalCapabilities(read: Read): Boolean {
+        if (pending !== read || read.channel !in setOf(0x59, 0x5D) || read.done != null) return false
+        if(read.channel == 0x59) { abc9PreviewSupported = false; hardwareSupported = false }
+        hardware = null
+        read.timeout?.let(main::removeCallbacks)
+        pending = null
+        readIndex++
+        readNext()
+        return true
     }
 
     private fun completeRead(read: Read) {
@@ -568,6 +598,8 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             0x54 -> data.size in 3..31 && data[0] == 0.toByte() && data.last() == 0.toByte()
             0x26, 0x28 -> data.size == 1 && data[0].toInt() in 0..1
             0x2A -> data.size == 2 && u16(data, 0) in 10..2880
+            0x5D -> true // Optional hardware identity must not break ordinary settings.
+            0x59 -> true // Unsupported or unknown capability versions mean unavailable.
             else -> false
         }
         if (!valid) { failRead("invalid_response", "设备返回的信息格式无效"); return }
@@ -578,6 +610,11 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             0x26 -> autoSleep = data[0].toInt() == 1
             0x28 -> timedWake = data[0].toInt() == 1
             0x2A -> wakeMinutes = u16(data, 0)
+            0x59 -> {
+                abc9PreviewSupported = Abc9Preview.supported(data)
+                hardwareSupported = data.size == 5 && data[0] == 1.toByte() && data[4].toInt() and 0x40 != 0
+            }
+            0x5D -> hardware = runCatching { ArkHardware.parse(data) }.getOrNull()
         }
         read.timeout?.let(main::removeCallbacks)
         pending = null
@@ -613,6 +650,8 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         fileListing = false; deviceFiles.clear(); filesLoaded = false; currentFileId = null; fileDirectory = "film"
         catalogSupported = null; storage = mapOf("phase" to "idle"); canDeleteFiles = false
         name = null; battery = null; width = null; height = null
+        abc9PreviewSupported = false
+        hardwareSupported = false; hardware = null
         autoSleep = null; timedWake = null; wakeMinutes = null; syncedAt = null; settingsMessage = null
     }
 
@@ -1284,15 +1323,18 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         checkReplace()
         val url = requireNotNull(call.argument<String>("url")) { "缺少固件下载地址" }
         val displayName = call.argument<String>("name")
-        require(displayName == "frame_film_ark.bin") { "请选择原始 frame_film_ark.bin 资产" }
+        val expectedTarget = requireNotNull(call.argument<String>("targetId")) { "缺少明确硬件目标，不能猜测 N4R2" }
+        require(ArkHardware.knownTarget(expectedTarget)) { "尚未识别该硬件型号，不能自动选择固件" }
+        require(displayName != null && displayName.endsWith(".bin") &&
+            displayName.none { it == '/' || it.code == 92 }) { "请选择对应型号的原始 app.bin 资产" }
         val target = java.net.URI(url)
         require(target.scheme == "https" && target.host.equals("github.com", true) &&
             (target.rawPath?.startsWith("/kirmisaki/FrameFilm/releases/download/") == true ||
                 target.rawPath?.startsWith("/Rafael-Ikaros/FrameFilm/releases/download/") == true ||
                 target.rawPath?.startsWith("/Rafael-ban/FrameFilm/releases/download/") == true) &&
-            target.rawPath?.endsWith("/frame_film_ark.bin") == true) { "固件必须来自 kirmisaki/FrameFilm（兼容旧 Rafael-Ikaros / Rafael-ban）Release" }
+            target.rawPath?.endsWith("/$displayName") == true) { "固件必须来自 kirmisaki/FrameFilm（兼容旧 Rafael-Ikaros / Rafael-ban）Release" }
         val size = requireNotNull(call.argument<Number>("size")) { "缺少固件大小" }.toLong()
-        require(size in 1..FirmwareDownloader.MAX_SIZE) { "固件大小必须在 1 B 至 4 MiB 之间" }
+        require(size in 1..FirmwareDownloader.MAX_SIZE) { "固件大小必须在 1 B 至 16 MiB 之间" }
         val sha256 = call.argument<String>("sha256")
         require(sha256 == null || sha256.matches(Regex("[a-fA-F0-9]{64}"))) { "固件 SHA256 格式无效" }
         val job = Download(FirmwareDownloader(), result)
@@ -1327,11 +1369,12 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                     }
                 }
                 val image = ArkFirmware.inspect(file)
+                image.requireTarget(expectedTarget)
                 job.downloader.checkCancelled()
                 main.post {
                     if (closed || download !== job) file.delete()
                     else {
-                        replaceFirmware(file, image, "frame_film_ark.bin")
+                        replaceFirmware(file, image, displayName)
                         download = null
                         importing = false
                         firmwareDownload = downloadState("done", size, size, "固件下载并校验完成", false)
@@ -1363,6 +1406,10 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         checkReplace()
         val bytes = requireNotNull(call.argument<ByteArray>("bytes")) { "缺少 film 数据" }
         require(bytes.size in 32..FilmConverter.MAX_FILM_BYTES) { "film 文件大小无效" }
+        val abc9 = bytes[9].toInt() and 255 == Abc9Preview.FORMAT
+        if (abc9) check(connected && session.isReady && abc9PreviewSupported) {
+            "请连接支持 ABC9 实验512色预览的 Ark 并刷新设备信息"
+        }
         val requestedName = call.argument<String>("name") ?: "ark_frame.film"
         importing = true; importResult = result; emit()
         worker.execute {
@@ -1376,6 +1423,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 val sendName = org.framefilm.ark.FilmTransferName.forFile(requestedName, file)
                 main.post {
                     if (closed) file.delete()
+                    else if (rejectUnsupportedPreviewImport(file, abc9, result)) Unit
                     else {
                         val previous = currentFile
                         currentFile = file; importedName = sendName
@@ -1397,6 +1445,16 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 }
             }
         }
+    }
+
+    /** Recheck on the main thread: the device may disconnect while validation runs. */
+    private fun rejectUnsupportedPreviewImport(file: File, abc9: Boolean, result: MethodChannel.Result?): Boolean {
+        if (!abc9 || (connected && session.isReady && abc9PreviewSupported)) return false
+        file.delete()
+        importing = false; importResult = null
+        message = "请连接支持 ABC9 实验512色预览的 Ark 并刷新设备信息"
+        emit(); result?.error("unsupported_preview", message, null)
+        return true
     }
     @Suppress("DEPRECATION")
     private fun pickFilm(result: MethodChannel.Result, firmware: Boolean = false) {
@@ -1607,17 +1665,19 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                             if (count < 0) break
                             if (Thread.currentThread().isInterrupted) error("导入已取消")
                             total += count
-                            val limit = if (firmware) 4L * 1024 * 1024 else FilmConverter.MAX_FILM_BYTES.toLong()
-                            require(total <= limit) { if (firmware) "固件超过 Ark 4 MiB Flash 容量" else "film 超过 128 MiB" }
+                            val limit = if (firmware) FirmwareDownloader.MAX_SIZE else FilmConverter.MAX_FILM_BYTES.toLong()
+                            require(total <= limit) { if (firmware) "固件超过支持的最大原始镜像大小（16 MiB）" else "film 超过 128 MiB" }
                             output.write(buffer, 0, count)
                         }
                     }
                 }
                 val image = if (firmware) ArkFirmware.inspect(file) else null
                 if (!firmware) FilmConverter.validate(file)
+                val abc9 = !firmware && Abc9Preview.isFilm(file)
                 val sendName = if (firmware) displayName else org.framefilm.ark.FilmTransferName.forFile(displayName, file)
                 main.post {
                     if (closed) file.delete()
+                    else if (rejectUnsupportedPreviewImport(file, abc9, result)) Unit
                     else {
                         if (firmware) {
                             replaceFirmware(file, checkNotNull(image), sendName)

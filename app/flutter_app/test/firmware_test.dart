@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:framefilm_ark/app.dart';
@@ -11,8 +10,10 @@ Map<Object?, Object?> firmwareState({
   bool connected = true,
 }) => {
   'connected': connected,
+  'hardware': HardwareIdentity.n4r2.toMap(),
   'importedFirmware': {
-    'name': 'frame_film_ark.bin',
+    'name': 'frame_film_ark-n4r2.bin',
+    ...HardwareIdentity.n4r2.packageMetadata,
     'size': 1853248,
     'version': '3.2.5',
     'project': 'frame_film_ark',
@@ -32,6 +33,16 @@ void main() {
       gateway.events.add(DeviceSnapshot.fromMap(firmwareState()));
       await tester.pump(const Duration(seconds: 2));
       await openPage(tester, '设置');
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('start-firmware')),
+        300,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('workbench-content')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       await tester.ensureVisible(find.byKey(const Key('start-firmware')));
       await tester.pump();
       expect(find.text('固件版本：3.2.5'), findsOneWidget);
@@ -117,6 +128,7 @@ void main() {
     gateway.events.add(
       DeviceSnapshot.fromMap({
         'connected': true,
+        'hardware': HardwareIdentity.n4r2.toMap(),
         'transfer': {
           'kind': 'firmware',
           'phase': 'cancelled',

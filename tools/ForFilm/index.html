@@ -470,6 +470,7 @@
                         <option value="jarvis">Jarvis-Judice-Ninke</option>
                         <option value="gammaFloydSteinberg">Gamma 感知 FS（线性）</option>
                         <option value="bayer">Bayer 4×4 有序抖动</option>
+                        <option value="ark512I006">512色预览 · I006（实验模拟）</option>
                         <option value="colorFast55">55 色 ColorFast（通行证版 · 3.7 寸 8bpp）</option>
                         <option value="colorQual">46 色 ColorQual（通行证版 · 3.7 寸 8bpp）</option>
                         <option value="colorQualMeasured">实测校色 · 原值 ColorQual（通行证版 · 3.7 寸 8bpp）</option>
@@ -477,6 +478,7 @@
                         <option value="szEnhanced" disabled>SZ 增强（Pro / 通行证版）</option>
                         <option value="atkinsonSzCalib" disabled>Atkinson·SZ校色（Pro / 通行证版）</option>
                     </select>
+                    <p class="field-hint" id="ark512Hint" hidden>512 色预览版，采用 I006 实验配色。屏幕实际颜色可能与预览不同；设备显示需要配套的预览固件。</p>
                     <div class="field-hint" id="bpp8Hint" style="display:none;"></div>
                 </div>
                 <div id="ditherStrengthContainer" class="slider-container">
@@ -553,6 +555,14 @@
                     <div class="btn-row">
                         <button id="ark-upload-cancel" data-ark-cancel type="button" class="secondary-button" hidden>取消发送</button>
                         <button id="ark-upload-retry" type="button" class="secondary-button" hidden>从头重试</button>
+                    </div>
+                </div>
+                <div id="ark512Controls" hidden>
+                    <p id="ark512Status" class="field-hint" role="status" aria-live="polite">选择图片生成 I006 模拟预览</p>
+                    <div class="btn-row">
+                        <button type="button" class="secondary-button" onclick="cancelArk512Preview();document.getElementById('ark512Status').textContent='预览已取消，调整图片可重新计算'">取消计算</button>
+                        <button type="button" class="secondary-button" onclick="downloadArk512Png()">导出模拟 PNG</button>
+                        <label class="secondary-button">导入实验 film<input type="file" accept=".film" hidden onchange="importArk512Film(this)"></label>
                     </div>
                 </div>
                 <div class="result" id="imageResult"></div>
@@ -1259,6 +1269,8 @@
 <script src="js/usb.js"></script>
 <script src="js/keyboard.js"></script>
 <script src="js/source-fit.js"></script>
+<script src="js/ark-512-profile.js"></script>
+<script src="js/ark-512.js"></script>
 <script src="js/convert.js?v=e4panel-2"></script>
 <script src="js/frame.js?v=ark-state-2"></script>
 <script src="js/frame-nav.js"></script>

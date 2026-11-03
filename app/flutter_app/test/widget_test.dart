@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:framefilm_ark/app.dart';
+import 'package:framefilm_ark/workbench_widgets.dart';
 import 'package:framefilm_ark/device_gateway.dart';
 import 'package:framefilm_ark/interface_theme_preferences.dart';
 
@@ -42,7 +43,7 @@ Future<void> openPage(WidgetTester tester, String title) async {
   } else {
     await tester.tap(
       find.descendant(
-        of: find.byType(NavigationRail),
+        of: find.byType(WorkbenchNavigation),
         matching: find.text(title),
       ),
     );

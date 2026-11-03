@@ -192,7 +192,7 @@ static uint32_t film_frame_size_by_format(uint8_t format)
     case 0x02:  // v2 ColorQual 8bpp
     case 0x03:  // v2 ColorFast 8bpp
         return EPD_WIDTH * EPD_HEIGHT;
-#ifdef CONFIG_ARK_EPD_ABC_DIAG
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     case 0x7F:
         return EPD_WIDTH * EPD_HEIGHT * 2u;
 #endif
@@ -264,7 +264,7 @@ static int film_parse_header(const uint8_t *hdr, film_info_t *info)
 
     uint32_t count = (uint32_t)(hdr[FILM_HDR_OFFSET_FRAMECOUNT]
                               | (hdr[FILM_HDR_OFFSET_FRAMECOUNT + 1] << 8));
-#ifdef CONFIG_ARK_EPD_ABC_DIAG
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     if(info->format == 0x7F)
     {
         uint32_t body_size = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) |
@@ -302,7 +302,7 @@ static int film_read_header(uint32_t file_id, film_info_t *info)
        service_file_get_buffer() != NULL &&
        film_parse_header(service_file_get_buffer(), info) == 0)
     {
-#ifdef CONFIG_ARK_EPD_ABC_DIAG
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
         if(info->format == 0x7F && service_file_get_size(file_id) != FILM_HDR_SIZE + info->frame_size)
             return -1;
 #endif
@@ -324,7 +324,7 @@ static int film_read_header(uint32_t file_id, film_info_t *info)
        用除法而不是乘法：frame_count × frame_size 可能溢出 uint32
        （如 48 帧 ColorQual ≈ 16MB 尚可，但损坏头部的 65535 帧会溢出） */
     uint32_t size = service_file_get_size(file_id);
-#ifdef CONFIG_ARK_EPD_ABC_DIAG
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     if(info->format == 0x7F && size != FILM_HDR_SIZE + info->frame_size) return -1;
 #endif
     if(size < FILM_HDR_SIZE ||
@@ -398,7 +398,7 @@ static void film_show_frame(const uint8_t *frame, uint8_t format)
         return;
     }
 
-#ifdef CONFIG_ARK_EPD_ABC_DIAG
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     if(format == 0x7F)
     {
         /* HAL validates all high bits before initialization or any REF. */

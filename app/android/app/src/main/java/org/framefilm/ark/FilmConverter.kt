@@ -97,6 +97,10 @@ object FilmConverter {
         val colors = buffer.get().toInt() and 0xff
         val format = buffer.get().toInt() and 0xff
         val frames = max(1, buffer.short.toInt() and 0xffff)
+        if (format == Abc9Preview.FORMAT) {
+            Abc9Preview.validate(file)
+            return "720×480 · 1 帧 · ABC9 实验512色预览 · ${file.length()} 字节"
+        }
         require(width == WIDTH && height == HEIGHT) { "请选择 Ark 720×480 的 film 文件" }
         val frameSize = when (format) {
             0 -> { require(colors in 2..6) { "无效的六色文件" }; WIDTH * HEIGHT / 2 }

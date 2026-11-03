@@ -309,7 +309,7 @@
 
 | 通道 | 名称 | 请求 | 响应 |
 |---|---|---|---|
-| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit4=Ark SoftAP 直传 |
+| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit3=按文件名打开图片、bit4=Ark SoftAP 直传、bit5=实验 ABC9 512 色预览播放、bit6=硬件身份查询 |
 
 ### 3.16 Ark 通用 WiFi 文件上传（0x5A）
 
@@ -326,6 +326,12 @@
 | 通道 | 名称 | 请求 DATA | 同通道响应 DATA |
 |---|---|---|---|
 | 0x5C | DIRECT_AP_PREPARE | 空 | status(u8)；status=0 时追加 `SSID\0PASSWORD\0IP\0`，失败时仅 status |
+
+### 3.18 Ark 硬件身份（0x5D）
+
+| 通道 | 名称 | 请求 DATA | 同通道响应 DATA |
+|---|---|---|---|
+| 0x5D | HARDWARE_INFO_GET | 空 | schema(u8=1)、chipId(u16 BE)、chipRevision(u16 BE)、physicalFlashBytes(u32 BE)、psramBytes(u32 BE)、psramBus(u8)、targetId(ASCII NUL) |
 
 ## 4. 命令详解
 
@@ -1503,7 +1509,9 @@ SUM  = (0x55 + 0x4E + 0x01 + 0x02) & 0xFF = 0xA6
 
 ### 4.15 Ark 能力查询（0x59）与彩色通行证
 
-仅 `frame_film_ark` 实现 `CAPABILITIES_GET`：请求 LEN=0，回包 LEN=5，`capVersion=1(u8)` 后接 `flags(u32 BE)`。bit0 (`0x00000001`) 表示支持通行证彩色 `profile.bin`；bit1 (`0x00000002`) 表示支持 0x5A 通用 WiFi 文件上传，bit2 (`0x00000004`) 表示支持只读 SD 目录与统计 0x5B，bit3 (`0x00000008`) 表示支持0x4B按文件名原子打开图片，bit4 (`0x00000010`) 表示支持 Ark SoftAP 直传准备命令 0x5C；其余未定义位保留。capVersion 保持 1；旧固件不响应此命令，客户端按能力位选择功能，不能凭用户可见版本号判断能力。
+仅 `frame_film_ark` 实现 `CAPABILITIES_GET`：请求 LEN=0，回包 LEN=5，`capVersion=1(u8)` 后接 `flags(u32 BE)`。bit0 (`0x00000001`) 表示支持通行证彩色 `profile.bin`；bit1 (`0x00000002`) 表示支持 0x5A 通用 WiFi 文件上传，bit2 (`0x00000004`) 表示支持只读 SD 目录与统计 0x5B，bit3 (`0x00000008`) 表示支持0x4B按文件名原子打开图片，bit4 (`0x00000010`) 表示支持 Ark SoftAP 直传准备命令 0x5C，bit5 (`0x00000020`) 表示支持实验 ABC9 512 色预览播放，bit6 (`0x00000040`) 表示支持硬件身份查询0x5D；其余未定义位保留。capVersion 保持 1；旧固件不响应此命令，客户端按能力位选择功能，不能凭用户可见版本号判断能力。
+
+bit5 仅在 `CONFIG_ARK_EPD_ABC_PREVIEW=y`（默认）或 `CONFIG_ARK_EPD_ABC_DIAG=y`、实际 ABC9 播放路径已编译时宣告；bit0–bit4 的既有含义不变，包含硬件查询能力的默认 flags 为 `0x0000007F`，两个 ABC 开关均关闭时为 `0x0000005F`。此位只表示能播放 [实验 ABC9 容器](../film/film.md#私有-abc9-实验容器)：Format `0x7F`、720×480 单帧、`ABC9` 标记、691232 字节，LE16 低9位 A/B/C 码；不声明已完成512实色校准，也不启用诊断图生成或其他 lab 模式。客户端只有收到该位才开放实验预览上传与播放；旧固件或无该位时保留既有出图选项。
 
 通行证卡片文件仍放在 `/sdcard/app/pass/profile.bin`，文件头 16B：`FFUI`(4B)、version(1B)、format(1B)、width=440(u16 LE)、height=608(u16 LE)、保留零(6B)。原 v1/format1 的正文为 33440B、每字节 MSB 起 8 个黑白像素（1=黑）；新 v2/format2 的正文为 133760B、每字节高 nibble 为左像素，色码为黑0、白1、黄2、红3、蓝5、绿6。整文件分别为 33456B 和 133776B。彩色卡仅在 Ark UI 通行证页合成到黑白外壳，整屏走 EPD 4bpp 彩色刷新；退出页面回到原黑白 UI 路径。
 
@@ -1537,6 +1545,41 @@ HTTP 响应需为 200 且有非零 Content-Length；文件可为任意非空二�
 
 已完成同一份 47,347,232 字节 film 文件的两轮 App 实机接收保存与 BLE 恢复验证（约 1.142 / 1.134 MB/s）。真正中途取消后重试、新拓扑 WiFi OTA 和通行证实体流程仍待验收；这些单设备结果不构成所有手机的最低速度保证。
 
+
+### 4.19 Ark 硬件身份与 OTA 目标匹配（0x5D）
+
+0x53 仍为通行证资料读取，0x56 的 v1 BUILD_INFO 格式保持不变。硬件身份使用独立的0x5D；客户端可先查询0x59 bit6。0x5D请求为空，响应全部字段如下：
+
+| 响应偏移 | 长度 | 字段 |
+|---|---|---|
+| 0 | 1 | schema=1 |
+| 1 | 2 | chipId，大端；ESP32-S3=9 |
+| 3 | 2 | chipRevision，大端，SDK的major×100+minor |
+| 5 | 4 | physicalFlashBytes，大端，来自实际Flash芯片容量 |
+| 9 | 4 | psramBytes，大端，已成功初始化的PSRAM字节数，失败为0 |
+| 13 | 1 | psramBus：0未知/未初始化、1 Quad、2 Octal |
+| 14 | 可变 | targetId，ASCII NUL结尾；未知组合为空字符串 |
+
+仅精确匹配以下检测容量与已采用总线的组合才提供targetId：`ark-esp32s3-n4r2` 为ESP32-S3、4194304B Flash、2097152B PSRAM、Quad；`ark-esp32s3-n16r8` 为ESP32-S3、16777216B Flash、8388608B PSRAM、Octal。异常或无法读取的组合不回退到n4r2。Flash使用物理容量查询，不能使用当前镜像头配置容量或空闲heap代替硬件容量。
+
+原始app.bin在固定偏移288包含64B硬件descriptor，由ESP-IDF的`.rodata_custom_desc`布局提供；该结构自身的多字节整数为little-endian，与BLE大端序不同：
+
+| descriptor偏移 | 长度 | 字段 |
+|---|---|---|
+| 0 | 8 | ASCII `FFARKHW1`，不含NUL |
+| 8 | 1 | schema=1 |
+| 9 | 1 | size=64 |
+| 10 | 2 | chipId，小端 |
+| 12 | 4 | flashBytes，小端 |
+| 16 | 4 | psramBytes，小端 |
+| 20 | 1 | psramBus，取值同上 |
+| 21 | 3 | 保留，全0 |
+| 24 | 32 | targetId，ASCII NUL结尾，余字节为0 |
+| 56 | 8 | 保留，全0 |
+
+App应按设备targetId选择发布产物，并校验下载/导入镜像内的descriptor。固件BLE OTA与HTTP OTA共用目标收尾校验：ESP-IDF镜像完整性、芯片/项目、descriptor及实际硬件目标均匹配，且大小不超过现有OTA槽，才允许选择新boot partition。错误目标、缺descriptor或未知硬件均不能激活，当前镜像保留。HTTP拒绝表现为原有OTA错误7，BLE沿用失败后重启当前镜像的行为。该校验不修改原电纸屏驱动或显示版本3.2.5。
+
+旧设备首次获得0x5D需要一次明确型号的升级；新客户端不得根据版本3.2.5、广播名、同款屏幕或0x56的ELF指纹猜硬件型号。缺少可信硬件信息时保留其他功能，禁止自动推荐/推送未知目标。OTA app.bin不会迁移Flash分区表，n16r8镜像不自动将1900K OTA槽变为4096K；容量仍以0x56返回的实际OTA槽上限为准。
 
 ## 5. 校验和计算
 

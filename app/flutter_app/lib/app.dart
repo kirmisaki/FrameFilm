@@ -42,14 +42,17 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
       releaseMessage = null;
       onlineFirmware = null;
     });
+    final hardware = device.snapshot.hardware;
     try {
-      final release = await releases.latest();
-      if (mounted) {
+      final release = await releases.latest(hardware: hardware);
+      if (mounted &&
+          device.snapshot.connected &&
+          device.snapshot.hardware?.trusted == true &&
+          hardware != null &&
+          device.snapshot.hardware!.matches(hardware)) {
         setState(() {
           onlineFirmware = release;
-          releaseMessage = release == null
-              ? '暂无包含 frame_film_ark.bin 的正式发布。'
-              : null;
+          releaseMessage = release == null ? '暂无正式发布。' : null;
         });
       }
     } catch (error) {
@@ -199,6 +202,12 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
       if (snapshot.wakeMinutes != settingsSnapshot.wakeMinutes) {
         wakeInterval.text = snapshot.wakeMinutes?.toString() ?? '';
       }
+    }
+    if (!connected ||
+        snapshot.hardware?.trusted != true ||
+        snapshot.hardware?.targetId != settingsSnapshot.hardware?.targetId) {
+      onlineFirmware = null;
+      releaseMessage = null;
     }
     settingsSnapshot = snapshot;
     syncThemePresentation();
@@ -698,6 +707,8 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
       FrameEditor(
         controller: frameEditor,
         canImportFilm: device.canImportFilm,
+        abc9PreviewSupported:
+            device.snapshot.connected && device.snapshot.abc9PreviewSupported,
         canSend: device.canImportFilm && device.snapshot.connected,
         onImportFilm: importFrame,
         onSendFilm: sendFrame,
@@ -921,6 +932,9 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
   Widget firmwarePanel(BuildContext context) {
     final snapshot = device.snapshot;
     final file = snapshot.importedFirmware;
+    final hardware = snapshot.hardware;
+    final trustedHardware = snapshot.connected && hardware?.trusted == true;
+    final compatibleFile = file?.matchesHardware(hardware) == true;
     final transfer = snapshot.transfer;
     final supported = device.gateway.supported;
     final editable =
@@ -938,6 +952,11 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('固件升级', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            trustedHardware
+                ? '为 ${hardware!.label.replaceFirst('Ark ', '')} 查找兼容固件'
+                : HardwareIdentity.unavailableMessage,
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -945,14 +964,18 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             children: [
               OutlinedButton(
                 key: const Key('check-github'),
-                onPressed: checkingReleases ? null : checkReleases,
+                onPressed: checkingReleases || !trustedHardware
+                    ? null
+                    : checkReleases,
                 child: Text(checkingReleases ? '正在查询…' : '检查 GitHub 发布'),
               ),
               if (device.gateway is PreviewDeviceGateway)
                 OutlinedButton(
                   key: const Key('demo-online-firmware'),
                   onPressed: () => setState(() {
-                    onlineFirmware = GitHubFirmwareRelease.demo;
+                    onlineFirmware = trustedHardware
+                        ? GitHubFirmwareRelease.demoFor(hardware!)
+                        : null;
                     releaseMessage = null;
                   }),
                   child: const Text('演示在线固件'),
@@ -962,16 +985,16 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
           if (releaseMessage != null) Text(releaseMessage!),
           if (onlineFirmware case final release?) ...[
             Text('${release.name} · ${release.tag}'),
+            Text('已选固件：${release.asset} · ${release.hardware.label}'),
             Text('发布于 ${release.publishedAt.toLocal()} · ${release.size} 字节'),
-            Text(
-              release.sha256 == null
-                  ? '发布未提供有效 SHA-256；下载后检查镜像自身完整性。'
-                  : '下载后核对 GitHub 资产 SHA-256 与镜像完整性。',
-            ),
+            Text('下载后核对清单 SHA-256、ELF 构建指纹及设备型号。'),
             const Text('发布版本仅供展示；升级以 ELF 构建指纹判定。下载完成只导入，仍需点击“检查并升级”。'),
             OutlinedButton(
               key: const Key('download-firmware'),
-              onPressed: editable
+              onPressed:
+                  editable &&
+                      trustedHardware &&
+                      hardware!.matches(release.hardware)
                   ? () => device.command(
                       'downloadFirmware',
                       release.downloadArguments,
@@ -1010,6 +1033,9 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             Text('${file.size} 字节 · ${file.project}'),
             Text('构建指纹：${shortBuild(file.elfSha256)}'),
             Text('固件版本：${file.version}'),
+            Text('固件目标：${file.targetId ?? '未识别，请使用带目标元信息的固件'}'),
+            if (trustedHardware && !compatibleFile)
+              const Text('固件与当前设备型号不匹配，请重新选择。'),
           ],
           if (snapshot.importing)
             const Padding(
@@ -1034,7 +1060,8 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
                 onPressed:
                     editable &&
                         file != null &&
-                        snapshot.connected &&
+                        trustedHardware &&
+                        compatibleFile &&
                         !(transfer.kind == 'firmware' && transfer.canRetry)
                     ? () => device.command('startFirmwareTransfer')
                     : null,
@@ -1384,6 +1411,29 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
       children: [
         Text('连接信息', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 16),
+        Wrap(
+          spacing: 24,
+          runSpacing: 16,
+          children: [
+            if (device.snapshot.hardware?.trusted == true) ...[
+              information('主控', 'ESP32-S3'),
+              information(
+                '硬件配置',
+                device.snapshot.hardware!.label.replaceFirst('Ark ', ''),
+              ),
+              information(
+                'Flash',
+                '${device.snapshot.hardware!.flashBytes ~/ 1048576} MB',
+              ),
+              information(
+                'PSRAM',
+                '${device.snapshot.hardware!.psramBytes ~/ 1048576} MB · ${device.snapshot.hardware!.psramBus == 'octal' ? 'Octal' : 'Quad'}',
+              ),
+            ] else
+              information('硬件配置', '尚未读取 / 旧固件不支持'),
+          ],
+        ),
+        const Divider(height: 32),
         DeviceStorageSummary(
           controller: device,
           embedded: true,

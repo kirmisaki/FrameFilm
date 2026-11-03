@@ -1,3 +1,5 @@
+import 'frame_abc9.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -8,7 +10,11 @@ enum PreviewScenario { normal, transferFailure, unconfirmed, sameBuild }
 
 /// In-memory demo: never reads files or invokes platform channels.
 class PreviewDeviceGateway implements DeviceGateway {
-  PreviewDeviceGateway({this.stepDuration = const Duration(milliseconds: 450)});
+  PreviewDeviceGateway({
+    this.stepDuration = const Duration(milliseconds: 450),
+    this.demoHardware = HardwareIdentity.n4r2,
+  });
+  HardwareIdentity demoHardware;
   final Duration stepDuration;
   final _events = StreamController<DeviceSnapshot>.broadcast();
   Timer? _timer;
@@ -73,6 +79,7 @@ class PreviewDeviceGateway implements DeviceGateway {
       DeviceSnapshot(
         files: _connected ? _fileState : const {},
         connected: _connected,
+        hardware: _connected ? demoHardware : null,
         passport: _passport,
         hasPassportState: true,
         message: warning,
@@ -87,6 +94,7 @@ class PreviewDeviceGateway implements DeviceGateway {
         wakeMinutes: _connected ? _wakeMinutes : null,
         syncedAt: _connected ? _syncedAt : null,
         settingsMessage: _connected ? _settingsMessage : null,
+        abc9PreviewSupported: _connected,
         battery: _connected ? 86 : null,
         width: _connected ? 720 : null,
         height: _connected ? 480 : null,
@@ -272,7 +280,11 @@ class PreviewDeviceGateway implements DeviceGateway {
         final width = header.getUint16(6, Endian.little);
         final height = header.getUint16(4, Endian.little);
         final frameCount = header.getUint16(10, Endian.little);
-        final frameBody = format == 0
+        final abc = isAbc9Film(bytes);
+        if (abc) validateAbc9Film(bytes);
+        final frameBody = abc
+            ? width * height * 2
+            : format == 0
             ? width * height ~/ 2
             : format == 1
             ? width * height ~/ 8
@@ -306,8 +318,13 @@ class PreviewDeviceGateway implements DeviceGateway {
         _film = null;
         _transfer = const FilmTransfer();
       case 'pickFirmware':
-        _firmware = const ImportedFirmware(
+        _firmware = ImportedFirmware(
           name: '演示固件.bin',
+          targetId: demoHardware.targetId,
+          chipId: demoHardware.chipId,
+          flashBytes: demoHardware.flashBytes,
+          psramBytes: demoHardware.psramBytes,
+          psramBus: demoHardware.psramBus,
           size: 1048576,
           version: 'demo-1.0',
           project: 'frame_film_ark',
@@ -371,8 +388,13 @@ class PreviewDeviceGateway implements DeviceGateway {
         );
       } else if (step >= 5) {
         _timer?.cancel();
-        _firmware = const ImportedFirmware(
-          name: 'frame_film_ark.bin / DEMO',
+        _firmware = ImportedFirmware(
+          name: '${demoHardware.targetId} / DEMO',
+          targetId: demoHardware.targetId,
+          chipId: demoHardware.chipId,
+          flashBytes: demoHardware.flashBytes,
+          psramBytes: demoHardware.psramBytes,
+          psramBus: demoHardware.psramBus,
           size: 1048576,
           version: '3.2.5 / DEMO',
           project: 'frame_film_ark',

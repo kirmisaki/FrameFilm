@@ -1,3 +1,4 @@
+import 'frame_abc512.dart';
 import 'source_image_fit.dart';
 import 'frame_palettes.dart';
 
@@ -11,7 +12,7 @@ import 'image_resampling.dart';
 export 'image_resampling.dart' show ImageResampling;
 export 'frame_algorithms.dart' show FrameAlgorithm;
 
-enum FrameFormat { sixColor, monoFast, colorFast55, colorQual }
+enum FrameFormat { sixColor, monoFast, colorFast55, colorQual, abc512 }
 
 enum FrameFit { cover, contain }
 
@@ -132,7 +133,7 @@ Future<Uint8List> quantizeFrameMono(
 /// Portrait logical coordinates map to physical (height - 1 - y, x).
 /// The small dimensions are also useful for testing orientation and bit order.
 Uint8List packFramePixels(
-  Uint8List indices, {
+  List<int> indices, {
   int width = 480,
   int height = 720,
   FrameFormat format = FrameFormat.sixColor,
@@ -144,10 +145,13 @@ Uint8List packFramePixels(
       indices.length != width * height) {
     throw ArgumentError('像素尺寸不匹配');
   }
+  final abc = format == FrameFormat.abc512;
   final mono = format == FrameFormat.monoFast;
   final indexed =
       format == FrameFormat.colorFast55 || format == FrameFormat.colorQual;
-  final bodySize = indexed
+  final bodySize = abc
+      ? indices.length * 2
+      : indexed
       ? indices.length
       : (indices.length + (mono ? 7 : 1)) ~/ (mono ? 8 : 2);
   final result = Uint8List(32 + bodySize);
@@ -155,20 +159,37 @@ Uint8List packFramePixels(
   header.setUint32(0, bodySize, Endian.little);
   header.setUint16(4, height, Endian.little);
   header.setUint16(6, width, Endian.little);
-  result[8] = indexed ? 0 : (mono ? 2 : 6);
-  result[9] = indexed
+  result[8] = abc
+      ? 0
+      : indexed
+      ? 0
+      : (mono ? 2 : 6);
+  result[9] = abc
+      ? 0x7f
+      : indexed
       ? (format == FrameFormat.colorFast55 ? 3 : 2)
       : (mono ? 1 : 0);
   header.setUint16(10, indexed ? 0 : 1, Endian.little);
-  if (!mono && !indexed) result.setRange(16, 22, [0, 255, 252, 224, 3, 28]);
+  if (abc) result.setRange(12, 16, [65, 66, 67, 57]);
+  if (!abc && !mono && !indexed) {
+    result.setRange(16, 22, [0, 255, 252, 224, 3, 28]);
+  }
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       final value = indices[y * width + x];
-      if (value >= (indexed ? 64 : (mono ? 2 : 6))) {
+      if (value < 0 ||
+          value >=
+              (abc
+                  ? 512
+                  : indexed
+                  ? 64
+                  : (mono ? 2 : 6))) {
         throw ArgumentError('无效颜色索引');
       }
       final physical = x * height + height - 1 - y;
-      if (indexed) {
+      if (abc) {
+        header.setUint16(32 + physical * 2, value, Endian.little);
+      } else if (indexed) {
         result[32 + physical] = value;
       } else if (mono) {
         if (value == 0) result[32 + physical ~/ 8] |= 128 >> (physical % 8);
@@ -248,7 +269,10 @@ bool sourceFitIsSz(FrameOptions o) =>
     (o.algorithm == FrameAlgorithm.szEnhanced ||
         o.algorithm == FrameAlgorithm.atkinsonSzCalib);
 SourceFitProfile? sourceFitProfile(FrameOptions o) {
-  if (o.format == FrameFormat.monoFast) return null;
+  if (o.format == FrameFormat.monoFast ||
+      o.algorithm == FrameAlgorithm.abc512I006) {
+    return null;
+  }
   if (o.algorithm == FrameAlgorithm.colorQualMeasured) {
     return SourceFitProfile.measured(
       colorQualMeasuredPalette[3],
@@ -273,7 +297,10 @@ SourceFitProfile? sourceFitProfile(FrameOptions o) {
 }
 
 void adjustFrameSourceFit(Uint8List rgba, FrameOptions options) {
-  if (options.format == FrameFormat.monoFast) return;
+  if (options.format == FrameFormat.monoFast ||
+      options.algorithm == FrameAlgorithm.abc512I006) {
+    return;
+  }
   fitSourceRgba(
     rgba,
     rangeFit: sourceFitIsSz(options) ? 0 : options.rangeFit,
@@ -291,7 +318,10 @@ void adjustFrameCompositionRgba(
   if (!(options.dither && options.algorithm == FrameAlgorithm.szEnhanced)) {
     adjustFrameRgba(rgba, options, applySourceFit: false);
   }
-  if (options.format == FrameFormat.monoFast) return;
+  if (options.format == FrameFormat.monoFast ||
+      options.algorithm == FrameAlgorithm.abc512I006) {
+    return;
+  }
   fitSourceRgba(
     rgba,
     rangeFit: sourceFitIsSz(options) ? 0 : options.rangeFit,
@@ -345,6 +375,10 @@ Future<FrameResult> convertFrame(
   void Function(double)? onProgress,
   bool Function()? isCancelled,
 }) async {
+  if (options.format == FrameFormat.abc512 &&
+      options.algorithm != FrameAlgorithm.abc512I006) {
+    throw ArgumentError('ABC9 仅支持 I006 实验算法');
+  }
   final image = await _render(source, options, isCancelled);
   late Uint8List rgba;
   try {
@@ -366,7 +400,11 @@ Future<FrameResult> convertFrame(
     cropPng = await _encodeRgba(cropRgba);
     _check(isCancelled);
   }
-  final format = options.format == FrameFormat.monoFast
+  final format =
+      options.algorithm == FrameAlgorithm.abc512I006 &&
+          options.format != FrameFormat.monoFast
+      ? FrameFormat.abc512
+      : options.format == FrameFormat.monoFast
       ? FrameFormat.monoFast
       : options.algorithm == FrameAlgorithm.colorFast55
       ? FrameFormat.colorFast55
@@ -382,7 +420,7 @@ Future<FrameResult> convertFrame(
             options.algorithm != FrameAlgorithm.colorQualCalibrated
       ? FrameAlgorithm.colorQual
       : options.algorithm;
-  Uint8List indices;
+  List<int> indices;
   if (options.format == FrameFormat.monoFast) {
     // MonoFast is a Flutter extension; retain its existing luminance/FS path.
     indices = await quantizeFrameMono(
@@ -390,6 +428,14 @@ Future<FrameResult> convertFrame(
       options.dither,
       isCancelled,
       onProgress,
+    );
+  } else if (algorithm == FrameAlgorithm.abc512I006) {
+    indices = await quantizeAbc512(
+      rgba,
+      480,
+      720,
+      checkCancelled: () => _check(isCancelled),
+      onProgress: onProgress,
     );
   } else {
     final usesAe =

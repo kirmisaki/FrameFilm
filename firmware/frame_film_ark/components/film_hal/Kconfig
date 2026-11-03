@@ -1,4 +1,16 @@
-menu "Ark EPD diagnostics"
+menu "Ark EPD experimental preview and diagnostics"
+
+    config ARK_EPD_ABC_PREVIEW
+        bool "Enable experimental ABC9 512-color preview playback"
+        default y
+        help
+            Accept the existing experimental Format 0x7F ABC9 container:
+            exactly one 720x480 frame of little-endian uint16 pixels 0..511.
+            Bits 8..6=A, 5..3=B, 2..0=C drive the original three Qual phases
+            after the same full clear. LUTs, voltages and refreshes are unchanged.
+            Advertise this playback capability in Ark BLE 0x59 bit5.
+            This does not enable diagnostic markers, pattern generation or
+            other lab modes, and does not define a public film format.
 
     config ARK_EPD_ABC_DIAG
         bool "Enable experimental ColorQual A/B/C RAM diagnostic"

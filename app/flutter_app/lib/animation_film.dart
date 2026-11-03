@@ -7,6 +7,9 @@ Uint8List assembleAnimationFilm(List<Uint8List> frames) {
   }
   final first = frames.first;
   if (first.length < 33) throw ArgumentError('无效 Film 帧');
+  if (frames.any((f) => f.length >= 10 && f[9] == 0x7f)) {
+    throw ArgumentError('ABC9 实验格式仅支持静态照片');
+  }
   final frameSize = first.length - 32;
   for (final frame in frames) {
     if (frame.length != first.length ||

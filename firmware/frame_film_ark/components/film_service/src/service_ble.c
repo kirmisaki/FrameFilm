@@ -846,7 +846,10 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_CAPABILITIES_GET:
         {
             if(cmd->len != 0) break;
-            const uint8_t capabilities[5] = {1, 0, 0, 0, 31};
+            uint8_t capabilities[5] = {1, 0, 0, 0, 31 | 0x40};
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+            capabilities[4] |= 0x20;  /* Experimental ABC9 playback. */
+#endif
             service_ble_send_resp(cmd->ch, capabilities, sizeof(capabilities));
             break;
         }
@@ -891,6 +894,24 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                 }
             }
             service_ble_send_resp(cmd->ch, response, length);
+            break;
+        }
+        case BLE_FILM_TRANS_CH_HARDWARE_INFO_GET:
+        {
+            if(cmd->len != 0) break;
+            HalHardwareInfo_t info;
+            hal_hardware_get_info(&info);
+            uint8_t data[14 + 32] = {1};
+            data[1] = (uint8_t)(info.chip_id >> 8); data[2] = (uint8_t)info.chip_id;
+            data[3] = (uint8_t)(info.chip_revision >> 8); data[4] = (uint8_t)info.chip_revision;
+            for(unsigned i = 0; i < 4; ++i) {
+                data[5 + i] = (uint8_t)(info.flash_bytes >> (24 - i * 8));
+                data[9 + i] = (uint8_t)(info.psram_bytes >> (24 - i * 8));
+            }
+            data[13] = info.psram_bus;
+            size_t target_len = strlen(info.target_id);
+            memcpy(data + 14, info.target_id, target_len);
+            service_ble_send_resp(cmd->ch, data, (uint8_t)(15 + target_len));
             break;
         }
         case BLE_FILM_TRANS_CH_BUILD_INFO_GET:

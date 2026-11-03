@@ -972,14 +972,40 @@ static int file_mkdir_parents(const char *filepath)
     return 0;
 }
 
-/**
- * @brief 按 .film 头部的帧数把刚保存的文件分流到图片/动图目录
- *
- * 读取 save_dir/save_filename 的帧数（偏移 0x0A，2 字节小端）：
- *  - FrameCount > 1  → /sdcard/animation
- *  - FrameCount <= 1 → /sdcard/film
- * 已在目标目录时不做任何操作。
- */
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+/* Validate the complete experimental body before publishing the uploaded file. */
+static int file_validate_abc9_body(void)
+{
+    FILE *fp = fopen(m_file_state.save_part_path, "rb");
+    if(fp == NULL) return -1;
+    int result = -1;
+    uint8_t chunk[256];
+    if(fseek(fp, FILM_HEADER_SIZE, SEEK_SET) == 0)
+    {
+        uint32_t remaining = EPD_WIDTH * EPD_HEIGHT * 2u;
+        while(remaining)
+        {
+            size_t count = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
+            if(fread(chunk, 1, count, fp) != count) break;
+            for(size_t i = 1; i < count; i += 2)
+            {
+                if(chunk[i] & 0xFE)
+                {
+                    sys_loge(FILE_TAG, "ABC9 upload rejected: high bits set");
+                    fclose(fp);
+                    return -1;
+                }
+            }
+            remaining -= count;
+        }
+        if(remaining == 0) result = 0;
+    }
+    fclose(fp);
+    return result;
+}
+#endif
+
+/* Validate the uploaded container before committing or choosing its directory. */
 static int file_validate_film(uint16_t *frame_count_out)
 {
     FILE *fp = fopen(m_file_state.save_part_path, "rb");
@@ -1050,8 +1076,8 @@ static int file_validate_film(uint16_t *frame_count_out)
     case 0x03:
         frame_size = EPD_WIDTH * EPD_HEIGHT;
         break;
-#ifdef CONFIG_ARK_EPD_ABC_DIAG
-    case 0x7F:  // Private laboratory format, not film2.
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    case 0x7F:  // Experimental ABC9 container, not public film2.
         if(hdr[FILM_HDR_OFFSET_FRAMECOUNT] != 1 || hdr[FILM_HDR_OFFSET_FRAMECOUNT + 1] != 0 ||
            memcmp(hdr + 12, "ABC9", 4) != 0) return -1;
         frame_size = EPD_WIDTH * EPD_HEIGHT * 2u;
@@ -1075,6 +1101,9 @@ static int file_validate_film(uint16_t *frame_count_out)
         return -1;
     }
 
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    if(hdr[FILM_HDR_OFFSET_FORMAT] == 0x7F && file_validate_abc9_body() != 0) return -1;
+#endif
     if(frame_count_out) *frame_count_out = frame_count;
     return 0;
 }

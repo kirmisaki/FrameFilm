@@ -93,6 +93,7 @@ const frameAlgorithmLabels = {
   FrameAlgorithm.atkinsonSzCalib: 'Atkinson SZ 校色',
   FrameAlgorithm.colorQualMeasured: '实测校色 · 原值',
   FrameAlgorithm.colorQualCalibrated: '实测校色 · 校正 2.5%',
+  FrameAlgorithm.abc512I006: '512色预览 · I006',
 };
 
 class FrameEditor extends StatefulWidget {
@@ -104,11 +105,13 @@ class FrameEditor extends StatefulWidget {
     this.pickImage,
     this.pickPhoto,
     this.canSend = false,
+    this.abc9PreviewSupported = false,
     this.onSendFilm,
     this.onCancelSend,
   });
   final FrameEditorController controller;
   final bool canImportFilm, canSend;
+  final bool abc9PreviewSupported;
   final Future<void> Function(Uint8List, String) onImportFilm;
   final Future<void> Function(Uint8List, String)? onSendFilm;
   final Future<void> Function()? onCancelSend;
@@ -340,7 +343,12 @@ class _FrameEditorState extends State<FrameEditor> {
       _exporting = !_sending;
     });
     try {
-      if (action == 'download') {
+      if (action == 'png') {
+        await io.downloadFrame(
+          c.result!.png,
+          name.replaceFirst(RegExp(r'\.film$', caseSensitive: false), '.png'),
+        );
+      } else if (action == 'download') {
         await io.downloadFrame(c.result!.film, name);
       } else if (action == 'send') {
         await widget.onSendFilm!(c.result!.film, name);
@@ -351,7 +359,7 @@ class _FrameEditorState extends State<FrameEditor> {
         setState(
           () => _status = action == 'send'
               ? '发送完成'
-              : action == 'download'
+              : action == 'download' || action == 'png'
               ? '已下载'
               : '已导入直传区',
         );
@@ -404,13 +412,16 @@ class _FrameEditorState extends State<FrameEditor> {
   @override
   Widget build(BuildContext context) {
     final o = c.options;
+    final canStage =
+        o.algorithm != FrameAlgorithm.abc512I006 || widget.abc9PreviewSupported;
     final devicePreview =
         o.dither ||
         o.format != FrameFormat.sixColor ||
         o.algorithm == FrameAlgorithm.colorFast55 ||
         o.algorithm == FrameAlgorithm.colorQual ||
         o.algorithm == FrameAlgorithm.colorQualMeasured ||
-        o.algorithm == FrameAlgorithm.colorQualCalibrated;
+        o.algorithm == FrameAlgorithm.colorQualCalibrated ||
+        o.algorithm == FrameAlgorithm.abc512I006;
     final png = devicePreview ? c.result?.png : c.crop;
     final sections = <Widget>[
       _section('上传与算法', [
@@ -453,7 +464,8 @@ class _FrameEditorState extends State<FrameEditor> {
           _slider('抖动强度', o.ditherStrength, 0, 5, (v) => _change(strength: v)),
         _slider('对比度', o.contrast, .5, 2, (v) => _change(contrast: v)),
         _slider('饱和度', o.saturation, 0, 3, (v) => _change(saturation: v)),
-        if (o.format != FrameFormat.monoFast) ...[
+        if (o.format != FrameFormat.monoFast &&
+            o.algorithm != FrameAlgorithm.abc512I006) ...[
           if (!sourceFitIsSz(o) && sourceFitProfile(o) != null)
             _slider('明暗范围拟合', o.rangeFit, 0, 1, (v) => _change(rangeFit: v)),
           _slider('暖色收缩', o.warmChroma, 0, 1, (v) => _change(warmChroma: v)),
@@ -464,10 +476,19 @@ class _FrameEditorState extends State<FrameEditor> {
           runSpacing: 8,
           children: [
             OutlinedButton(
-              onPressed: _sending || _exporting
+              onPressed:
+                  _sending ||
+                      _exporting ||
+                      o.algorithm == FrameAlgorithm.abc512I006
                   ? null
                   : () => _change(dither: !o.dither),
-              child: Text(o.dither ? '禁用抖动' : '启用抖动'),
+              child: Text(
+                o.algorithm == FrameAlgorithm.abc512I006
+                    ? '固定蛇形 FS'
+                    : o.dither
+                    ? '禁用抖动'
+                    : '启用抖动',
+              ),
             ),
             OutlinedButton(
               onPressed: locked || c.source == null
@@ -554,6 +575,10 @@ class _FrameEditorState extends State<FrameEditor> {
             _slider('亮度', o.brightness, -1, 1, (v) => _change(brightness: v)),
           ],
         ),
+        if (o.algorithm == FrameAlgorithm.abc512I006)
+          const Text(
+            '512 色预览版，采用 I006 实验配色。屏幕实际颜色可能与预览不同；设备显示需要配套的预览固件。',
+          ),
         if (o.algorithm == FrameAlgorithm.szEnhanced)
           const Text('SZ 增强使用原图色彩进行校正，启用抖动时不叠加亮度、对比度及饱和度。'),
         if (o.algorithm == FrameAlgorithm.colorFast55 ||
@@ -567,6 +592,7 @@ class _FrameEditorState extends State<FrameEditor> {
       ]),
       const SizedBox(height: 16),
       _section('预览', [
+        if (!canStage) const Text('当前设备固件尚未确认支持 512 色预览；可先在本地预览和导出。'),
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
@@ -703,20 +729,34 @@ class _FrameEditorState extends State<FrameEditor> {
                 onPressed: !locked && c.hasCurrentResult
                     ? () => _export('download')
                     : null,
-                child: const Text('下载'),
+                child: Text(
+                  o.algorithm == FrameAlgorithm.abc512I006 ? '导出实验 film' : '下载',
+                ),
+              ),
+            if (io.canDownloadFrame)
+              OutlinedButton(
+                onPressed: !locked && c.hasCurrentResult
+                    ? () => _export('png')
+                    : null,
+                child: const Text('导出预览 PNG'),
               ),
             FilledButton(
               onPressed:
                   !locked &&
                       c.hasCurrentResult &&
                       widget.canSend &&
+                      canStage &&
                       widget.onSendFilm != null
                   ? () => _export('send')
                   : null,
               child: const Text('发送到设备'),
             ),
             OutlinedButton(
-              onPressed: !locked && c.hasCurrentResult && widget.canImportFilm
+              onPressed:
+                  !locked &&
+                      c.hasCurrentResult &&
+                      widget.canImportFilm &&
+                      canStage
                   ? () => _export('import')
                   : null,
               child: const Text('导入直传区'),

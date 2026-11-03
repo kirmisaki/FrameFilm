@@ -823,6 +823,10 @@ static void film_display_frame(const uint8_t *film, uint8_t format) {
 
 ### 私有 ABC9 实验容器
 
-仅 `CONFIG_ARK_EPD_ABC_DIAG=y` 的 Ark 实验构建接受 Format `0x7F`，不属于上述正式 film 格式：固定720×480、单帧、offset12..15为`ABC9`，主体为691200字节LE16低9位A/B/C编码，总长691232字节。正式固件及客户端未开放该格式。具体合同、对照方式与实机边界见 [同屏实验记录](epd037a02.md#2026-10-29-第三轮固定参数录像取样与整张-abc-图片) 和 [工具说明](../../tools/epd-panel-lab/README.md)。
+Ark 的实验 512 色预览沿用 Format `0x7F`，不属于上述正式 film 格式，也不分配公开 Format `0x04`。`CONFIG_ARK_EPD_ABC_PREVIEW=y` 默认启用此播放路径；独立的 `CONFIG_ARK_EPD_ABC_DIAG=y` 仍可用于实验构建，并兼容同一容器。客户端必须先查询 BLE `0x59` bit5（`0x00000020`），不能根据固件显示版本号推断支持情况。
+
+容器固定为 **720×480、FrameCount=1**；offset12..15 必须为 ASCII `ABC9`，FileSize 必须为 **691200**，总长严格为 **691232 字节**。主体为 720×480 个 little-endian uint16，值限于 0..511：bit8..6=A、bit5..3=B、bit2..0=C，其余高位必须全为0。错误标记、尺寸、长度、多帧或非零高位均拒绝；上传提交前检查完整主体，播放前再次检查高位。正常图片目录与按文件名打开接口沿用既有路径。
+
+I006 是客户端的实验预览出图方案，容器只携带其生成的 A/B/C 码；该能力不承诺已校准出512种可辨认实色。驱动保持既有 full clear + 三次 ColorQual 刷新，电压与 LUT 不变。默认预览不会开放原生 Format2 的诊断标记或其他实验模式。具体合同、对照方式与实机边界见 [同屏实验记录](epd037a02.md#2026-10-29-第三轮固定参数录像取样与整张-abc-图片) 和 [工具说明](../../tools/epd-panel-lab/README.md)。
 
 

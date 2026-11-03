@@ -20,6 +20,7 @@ enum FrameAlgorithm {
   atkinsonSzCalib,
   colorQualMeasured,
   colorQualCalibrated,
+  abc512I006,
 }
 
 // Film code order: black, white, yellow, red, blue, green.
@@ -458,6 +459,9 @@ Future<Uint8List> quantizeFramePixels(
 }) async {
   if (width <= 0 || height <= 0 || rgba.length != width * height * 4) {
     throw ArgumentError('像素尺寸不匹配');
+  }
+  if (algorithm == FrameAlgorithm.abc512I006) {
+    throw ArgumentError('I006 需要 Uint16 ABC9 Film 路径');
   }
   if (dither && algorithm == FrameAlgorithm.szEnhanced) {
     return quantizeSz(

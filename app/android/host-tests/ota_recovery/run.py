@@ -19,10 +19,12 @@ GRADLE_HOME = Path(os.environ.get("GRADLE_USER_HOME", Path.home() / ".gradle"))
 CACHE = GRADLE_HOME / "caches" / "modules-2" / "files-2.1"
 VERSION = "2.2.20"  # app/android/build.gradle.kts
 SOURCES = [
+    ROOT / "android/app/src/main/java/org/framefilm/ark/Abc9Preview.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/ArkSession.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/DirectTransferCoordinator.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/TransferSnapshot.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/ArkFirmware.kt",
+    ROOT / "android/app/src/main/java/org/framefilm/ark/FirmwareDownloader.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/ArkApSession.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/FileTransferPath.kt",
     HERE / "stubs/android/content/Context.kt",
@@ -30,6 +32,8 @@ SOURCES = [
     HERE / "stubs/android/os/Looper.kt",
     HERE / "stubs/org/framefilm/ark/TransportFakes.kt",
     HERE / "OtaRecoveryHostTest.kt",
+    ROOT / "android/app/src/test/java/org/framefilm/ark/ArkFirmwareTest.kt",
+    ROOT / "android/app/src/test/java/org/framefilm/ark/FirmwareDownloaderTest.kt",
 ]
 
 
@@ -82,12 +86,12 @@ def run() -> None:
             check=True,
             cwd=ROOT,
         )
-        subprocess.run(
-            [java, "-cp", os.pathsep.join(map(str, [output, stdlib])),
-             "org.framefilm.ark.OtaRecoveryHostTestKt"],
-            check=True,
-            cwd=ROOT,
-        )
+        for main_class in ("org.framefilm.ark.OtaRecoveryHostTestKt",
+                           "org.framefilm.ark.ArkFirmwareTest", "org.framefilm.ark.FirmwareDownloaderTest"):
+            subprocess.run(
+                [java, "-cp", os.pathsep.join(map(str, [output, stdlib])), main_class],
+                check=True, cwd=ROOT,
+            )
 
 
 if __name__ == "__main__":

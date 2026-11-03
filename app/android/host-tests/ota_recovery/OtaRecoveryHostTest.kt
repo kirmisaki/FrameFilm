@@ -24,7 +24,7 @@ private class Fixture {
         writeBytes(ByteArray(64) { it.toByte() })
         deleteOnExit()
     }
-    val image = ArkFirmware("3.2.5", "frame_film_ark", elf, "22".repeat(32), file.length())
+    val image = ArkFirmware("3.2.5", "frame_film_ark", elf, "22".repeat(32), file.length(), boardHardware())
 
     init {
         Handler.clear()
@@ -35,6 +35,7 @@ private class Fixture {
 
     fun startOta() {
         session.startFirmwareTransfer(file, image)
+        ble.reply(0x5D, hardwareInfo())
         ble.reply(0x56, buildInfo(otherElf))
         ble.reply(0x42, byteArrayOf(2, 2, 0xd0.toByte(), 1, 0xe0.toByte()))
         for (channel in listOf(0x31, 0x33, 0x35, 0x37)) ble.reply(channel, byteArrayOf(1))
@@ -61,7 +62,8 @@ private class Fixture {
         ArkApNetworkController.supported = true
         if (ota) {
             session.startFirmwareTransfer(file, image)
-            ble.reply(0x56, buildInfo(otherElf))
+            ble.reply(0x5D, hardwareInfo())
+        ble.reply(0x56, buildInfo(otherElf))
         } else if (generic) session.startFileTransfer(file, "apps/passport/data/fixture.bin")
         else session.startTransfer(file, "fixture.film")
         ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0x12))
@@ -77,8 +79,7 @@ private class Fixture {
     }
 }
 
-private fun buildInfo(hash: String): ByteArray {
-    val max = 4 * 1024 * 1024
+private fun buildInfo(hash: String, max: Int = 4 * 1024 * 1024): ByteArray {
     return byteArrayOf(1, (max ushr 24).toByte(), (max ushr 16).toByte(),
         (max ushr 8).toByte(), max.toByte()) + ArkFirmware.bytes(hash) +
         "3.2.5\u0000frame_film_ark\u0000".toByteArray()
@@ -319,7 +320,123 @@ private fun apPreparePayloadValidation() {
     }
 }
 
+private fun abc9Bytes(): ByteArray = ByteArray(Abc9Preview.FILE_BYTES).also { bytes ->
+    java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN).apply {
+        putInt(Abc9Preview.BODY_BYTES); putShort(720); putShort(480)
+        put(0); put(0x7F); putShort(1); put(byteArrayOf(65, 66, 67, 57))
+    }
+    for (pixel in 0 until 720 * 480) {
+        bytes[32 + pixel * 2] = (pixel % 512).toByte()
+        bytes[33 + pixel * 2] = ((pixel % 512) ushr 8).toByte()
+    }
+}
+
+private fun abc9ContainerValidation() {
+    val file = File.createTempFile("abc9-host-", ".film")
+    try {
+        val bytes = abc9Bytes()
+        file.writeBytes(bytes)
+        check(Abc9Preview.isFilm(file))
+        Abc9Preview.validate(file)
+        val invalid = listOf<Pair<Int, Int>>(0 to 1, 4 to 1, 6 to 1, 9 to 4,
+            10 to 0, 10 to 2, 11 to 1, 12 to 88, 33 to 2, bytes.lastIndex to 0x80)
+        for ((offset, value) in invalid) {
+            val changed = bytes.copyOf().also { it[offset] = value.toByte() }
+            file.writeBytes(changed)
+            check(runCatching { Abc9Preview.validate(file) }.isFailure) { "Accepted invalid offset $offset" }
+        }
+        for (changed in listOf(bytes.copyOf(bytes.size - 2), bytes.copyOf(bytes.size + 2))) {
+            file.writeBytes(changed)
+            check(runCatching { Abc9Preview.validate(file) }.isFailure)
+        }
+        check(Abc9Preview.supported(byteArrayOf(1, 0, 0, 0, 0x20)))
+        check(Abc9Preview.supported(byteArrayOf(1, 0, 0, 0, 0x3F)))
+        for (cap in listOf(null, byteArrayOf(), byteArrayOf(1, 0, 0, 0, 31),
+            byteArrayOf(2, 0, 0, 0, 0x20), byteArrayOf(1, 0, 0, 0x20))) {
+            check(!Abc9Preview.supported(cap))
+        }
+    } finally { file.delete() }
+}
+
+private fun abc9TransfersAndRetriesQueryLiveCapability() {
+    for (apSupported in listOf(false, true)) {
+        val f = Fixture()
+        ArkApNetworkController.supported = apSupported
+        f.file.writeBytes(abc9Bytes())
+        f.session.startTransfer(f.file, "preview.film")
+        check(f.ble.pending?.channel == 0x59)
+        f.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 31))
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().phase == "error" && f.recorder.latest().cleanupCompleted)
+        check(f.ble.channels == listOf(0x59)) // No panel/network/start command before confirmation.
+        f.session.retryTransfer()
+        check(f.ble.pending?.channel == 0x59 && f.ble.channels.count { it == 0x59 } == 2)
+        f.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0x3F))
+        check(f.ble.pending?.channel == 0x42)
+        check(f.ble.channels.count { it == 0x59 } == 2) // Reuse this reply for AP selection.
+    }
+    val old = Fixture()
+    ArkApNetworkController.supported = false
+    old.file.writeBytes(abc9Bytes())
+    old.session.startTransfer(old.file, "preview.film")
+    old.ble.fail(0x59)
+    old.p2p.finishClose(true)
+    check(old.recorder.latest().phase == "error" && old.recorder.latest().cleanupCompleted)
+    check(old.ble.channels == listOf(0x59))
+}
+
+
+private fun boardHardware(id: String = ArkHardware.N4R2) = ArkHardware(1, 9, 3,
+    if(id == ArkHardware.N16R8) 16777216 else 4194304,
+    if(id == ArkHardware.N16R8) 8388608 else 2097152,
+    if(id == ArkHardware.N16R8) "octal" else "quad", id)
+private fun hardwareInfo(id: String = ArkHardware.N4R2): ByteArray {
+    val board=boardHardware(id)
+    return java.nio.ByteBuffer.allocate(14).put(1).putShort(9).putShort(3)
+        .putInt(board.flashBytes.toInt()).putInt(board.psramBytes.toInt())
+        .put(if(board.psramBus == "octal") 2 else 1).array() + id.toByteArray() + byteArrayOf(0)
+}
+private fun hardwareTargetsAndRetriesCannotGuess() {
+    for(id in listOf(ArkHardware.N4R2, ArkHardware.N16R8)) {
+        val f=Fixture()
+        val image=f.image.copy(hardware=boardHardware(id))
+        val wrong=if(id == ArkHardware.N4R2) ArkHardware.N16R8 else ArkHardware.N4R2
+        f.session.startFirmwareTransfer(f.file,image)
+        check(f.ble.pending?.channel == 0x5D)
+        f.ble.reply(0x5D,hardwareInfo(wrong))
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().phase == "error" && f.recorder.latest().message.contains("目标不匹配"))
+        check(f.ble.channels == listOf(0x5D))
+        f.session.retryTransfer()
+        check(f.ble.pending?.channel == 0x5D && f.ble.channels.count{it==0x5D}==2)
+        f.ble.reply(0x5D,hardwareInfo(id))
+        check(f.ble.pending?.channel == 0x56)
+        // otaMax must also be obtained afresh, even after matching target on retry.
+        f.ble.reply(0x56,buildInfo(otherElf,max=1))
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().message.contains("OTA 分区"))
+        check(f.ble.channels.none{it in listOf(0x57,0x5C)})
+    }
+    val old=Fixture()
+    old.session.startFirmwareTransfer(old.file,old.image)
+    old.ble.fail(0x5D)
+    old.p2p.finishClose(true)
+    check(old.recorder.latest().message.contains("一次对应型号的识别升级"))
+    old.session.retryTransfer()
+    check(old.ble.pending?.channel == 0x5D)
+    old.ble.disconnectNow()
+    old.p2p.finishClose(true)
+    check(0x56 !in old.ble.channels)
+    val missing=Fixture()
+    missing.session.startFirmwareTransfer(missing.file,missing.image.copy(hardware=null))
+    missing.p2p.finishClose(true)
+    check(missing.ble.channels.isEmpty() && missing.recorder.latest().message.contains("FFARKHW1"))
+    missing.session.startTransfer(missing.file,"plain.film")
+    check(missing.ble.pending?.channel == 0x42) // Ordinary photo path remains available.
+}
+
 fun main() {
+    hardwareTargetsAndRetriesCannotGuess()
     directTerminalAfterEarlyReady()
     stillBusyRequiresCancel()
     failedStatusDoesNotUnlock()
@@ -336,5 +453,7 @@ fun main() {
     apGenericFileUsesExistingStartAndTerminal()
     oldFirmwareOnNewAndroidStillUsesP2p()
     apPreparePayloadValidation()
-    println("PASS: seven legacy OTA paths plus AP progress, loss, cancel, reconnect, OTA and credentials")
+    abc9ContainerValidation()
+    abc9TransfersAndRetriesQueryLiveCapability()
+    println("PASS: live hardware target/otaMax checks, cross-target rejection/retry/disconnect, missing-descriptor refusal, legacy OTA/AP recovery and ABC9 capability gating")
 }

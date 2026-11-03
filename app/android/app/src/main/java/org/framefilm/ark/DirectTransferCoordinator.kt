@@ -143,30 +143,49 @@ class DirectTransferCoordinator(
             .also { main.postDelayed(it, timeoutMs) }
         emit("preparing", "核对 Ark 及原有 Wi-Fi 配置")
         if (firmware != null) {
-            emit("validating", "核对 Wi-Fi OTA 能力与目标分区")
-            ble.command(0x56) { result ->
-                if (!active || stopping) return@command
-                val info = runCatching { ArkBuildInfo.parse(result.getOrThrow()) }.getOrElse {
-                    stop("设备不支持 Wi-Fi OTA；请先使用已有 BLE OTA 升级固件：${it.message}"); return@command
+            emit("validating", "读取实际硬件身份并核对 OTA 目标")
+            if(firmware.hardware == null) {
+                stop("固件缺少 FFARKHW1 硬件目标描述，不能自动升级")
+                return@onMain
+            }
+            ble.command(0x5D) hardware@ { hardwareResult ->
+                if(!active || stopping) return@hardware
+                val identity = runCatching { ArkHardware.parse(hardwareResult.getOrThrow()) }.getOrElse {
+                    stop("无法识别设备硬件；请先完成一次对应型号的识别升级，图片功能仍可使用：${it.message}")
+                    return@hardware
                 }
-                if (info.project != firmware.project || firmware.size > info.otaMax) {
-                    stop("固件目标或大小不匹配 OTA 分区（${info.otaMax} 字节）"); return@command
+                runCatching { identity.requireMatches(checkNotNull(firmware)) }.getOrElse {
+                    stop(it.message ?: "固件硬件目标不匹配"); return@hardware
                 }
-                if (info.elfSha256 == firmware?.elfSha256) {
-                    terminal = true
-                    finish("done", "设备已运行相同构建，无需升级", true)
-                } else prepareNetwork()
+                emit("validating", "核对 Wi-Fi OTA 能力与目标分区")
+                ble.command(0x56) { result ->
+                    if (!active || stopping) return@command
+                    val info = runCatching { ArkBuildInfo.parse(result.getOrThrow()) }.getOrElse {
+                        stop("设备不支持 BUILD_INFO；请先完成一次对应型号的识别升级：${it.message}"); return@command
+                    }
+                    if (info.project != firmware.project || firmware.size > info.otaMax) {
+                        stop("固件目标或大小不匹配 OTA 分区（${info.otaMax} 字节）"); return@command
+                    }
+                    if (info.elfSha256 == firmware?.elfSha256) {
+                        terminal = true
+                        finish("done", "设备已运行相同构建，无需升级", true)
+                    } else prepareNetwork()
+                }
             }
         } else if (targetPath != null) checkFileCapability()
+        else if (Abc9Preview.isFilm(file)) checkFileCapability(abc9 = true)
         else prepareNetwork()
     }
 
-    private fun checkFileCapability() {
+    private fun checkFileCapability(abc9: Boolean = false) {
         ble.command(0x59) { result ->
             if (!active || stopping) return@command
-            val data = result.getOrElse { stop("无法确认设备支持通用 Wi-Fi 文件传输：${it.message}"); return@command }
-            if (data.size != 5 || (data[0].toInt() and 0xff) != 1 || (data[4].toInt() and 0x02) == 0) {
-                stop("设备固件不支持通用 Wi-Fi 文件传输，请先升级 Ark 固件")
+            val feature = if (abc9) "ABC9 实验512色预览" else "通用 Wi-Fi 文件传输"
+            val data = result.getOrElse { stop("无法确认设备支持$feature：${it.message}"); return@command }
+            val supported = if (abc9) Abc9Preview.supported(data) else
+                data.size == 5 && data[0] == 1.toByte() && data[4].toInt() and 0x02 != 0
+            if (!supported) {
+                stop("设备固件不支持$feature，请先升级 Ark 固件")
             } else {
                 capabilitiesChecked = true
                 useAp = ArkApNetworkController.supported && data[4].toInt() and 0x10 != 0

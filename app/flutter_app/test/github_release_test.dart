@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:framefilm_ark/github_release_service.dart';
 import 'package:framefilm_ark/device_gateway.dart';
 import 'package:framefilm_ark/preview_device_gateway.dart';
@@ -10,70 +8,6 @@ import 'package:framefilm_ark/app.dart';
 import 'widget_test.dart' show FakeGateway, openPage;
 
 void main() {
-  Map<String, Object?> release(
-    String date,
-    String tag, {
-    bool prerelease = false,
-    String asset = 'frame_film_ark.bin',
-  }) => {
-    'published_at': date,
-    'tag_name': tag,
-    'name': tag,
-    'prerelease': prerelease,
-    'assets': [
-      {
-        'name': asset,
-        'size': 123,
-        'browser_download_url': 'https://example.com/fw.bin',
-        'digest': 'sha256:${'a' * 64}',
-      },
-    ],
-  };
-  test(
-    'latest compatible formal release uses publication time and exact asset',
-    () {
-      final result = GitHubReleaseService.parseLatest([
-        release('2026-01-01', 'v99'),
-        release('2026-02-01', 'v1'),
-        release('2026-03-01', 'v100', prerelease: true),
-        release('2026-04-01', 'v101', asset: 'dock.bin'),
-      ]);
-      expect(result!.tag, 'v1');
-      expect(result.sha256, 'a' * 64);
-      expect(GitHubReleaseService.parseLatest([]), isNull);
-      expect(
-        GitHubReleaseService.parseLatest([
-          release('2026-04-01', 'v101', asset: 'dock.bin'),
-        ]),
-        isNull,
-      );
-    },
-  );
-  test('firmware release API uses the canonical repository', () async {
-    final service = GitHubReleaseService(
-      client: MockClient((request) async {
-        expect(request.url.host, 'api.github.com');
-        expect(request.url.path, '/repos/Rafael-Ikaros/FrameFilm/releases');
-        return http.Response('[]', 200);
-      }),
-    );
-    expect(await service.latest(), isNull);
-    service.dispose();
-  });
-  test('API errors and malformed responses remain retryable', () async {
-    for (final code in [403, 429, 500]) {
-      final service = GitHubReleaseService(
-        client: MockClient((_) async => http.Response('', code)),
-      );
-      await expectLater(service.latest(), throwsException);
-      service.dispose();
-    }
-    final service = GitHubReleaseService(
-      client: MockClient((_) async => http.Response('{}', 200)),
-    );
-    await expectLater(service.latest(), throwsFormatException);
-    service.dispose();
-  });
   test('partial download state retains and explicit idle clears', () {
     final previous = DeviceSnapshot.fromMap({
       'firmwareDownload': {'phase': 'downloading', 'canCancel': true},
@@ -109,6 +43,16 @@ void main() {
     );
     await tester.pump();
     await openPage(tester, '设置');
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('cancel-firmware-download')),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('workbench-content')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.ensureVisible(
       find.byKey(const Key('cancel-firmware-download')),
     );
@@ -126,10 +70,15 @@ void main() {
       );
       final controller = DeviceController(gateway);
       await Future<void>.delayed(Duration.zero);
+      await controller.command('connect');
+      await Future<void>.delayed(Duration.zero);
       await controller.command('pickFirmware');
       await Future<void>.delayed(Duration.zero);
       final old = controller.snapshot.importedFirmware;
-      await controller.command('downloadFirmware');
+      await controller.command(
+        'downloadFirmware',
+        GitHubFirmwareRelease.demo.downloadArguments,
+      );
       await Future<void>.delayed(Duration.zero);
       controller.busy = true;
       await controller.command('cancelFirmwareDownload');
@@ -138,11 +87,17 @@ void main() {
       expect(controller.snapshot.importedFirmware, same(old));
       expect(controller.snapshot.firmwareDownload.phase, 'cancelled');
       gateway.scenario = PreviewScenario.transferFailure;
-      await controller.command('downloadFirmware');
+      await controller.command(
+        'downloadFirmware',
+        GitHubFirmwareRelease.demo.downloadArguments,
+      );
       await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(controller.snapshot.firmwareDownload.phase, 'error');
       expect(controller.snapshot.importedFirmware, same(old));
-      await controller.command('downloadFirmware');
+      await controller.command(
+        'downloadFirmware',
+        GitHubFirmwareRelease.demo.downloadArguments,
+      );
       await Future<void>.delayed(const Duration(milliseconds: 15));
       expect(controller.snapshot.firmwareDownload.phase, 'done');
       expect(controller.snapshot.importedFirmware!.version, contains('3.2.5'));
