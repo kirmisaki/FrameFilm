@@ -1,7 +1,7 @@
 name: framefilm_ark
 description: FrameFilm Ark 原生客户端，Flutter 双主题与 Android 通信桥接。
 publish_to: none
-version: 0.4.5+9
+version: 0.4.6+10
 
 environment:
   sdk: ^3.13.5
