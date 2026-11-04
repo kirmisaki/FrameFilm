@@ -93,6 +93,7 @@ Future<Uint16List> quantizeAbc512(
   Uint8List rgba,
   int width,
   int height, {
+  bool continuousTone = false,
   void Function()? checkCancelled,
   void Function(double)? onProgress,
 }) async {
@@ -167,7 +168,10 @@ Future<Uint16List> quantizeAbc512(
         (c) => abc512Center[c] + dir[c] * scale,
       );
       commonY[i] = _y(common);
-      final target = abc512RecipeMeans[_recipes.nearest(common)];
+      // Opt in to continuous targets; the frozen default retains recipe pre-quantization.
+      final target = continuousTone
+          ? common
+          : abc512RecipeMeans[_recipes.nearest(common)];
       for (var c = 0; c < 3; c++) {
         work[i * 3 + c] = target[c];
       }

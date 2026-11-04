@@ -32,6 +32,16 @@ const api=context.window.Ark512;
  assert.equal(firstIndex.codes[0],16);
  assert.deepEqual([...historical.rgba],[...firstIndex.rgba]);
  context.Ark512Profile=realProfile;
+ const continuousFixture=JSON.parse(fs.readFileSync(path.join(__dirname,'../../../app/flutter_app/test/fixtures/ark512_continuous_tone.json'),'utf8'));
+ const sample={width:continuousFixture.width,height:continuousFixture.height,data:Uint8ClampedArray.from(continuousFixture.rgba)};
+ const defaultResult=await api.render(sample), explicitFrozen=await api.render(sample,{continuousTone:false});
+ const continuousResult=await api.render(sample,{continuousTone:true});
+ assert.deepEqual([...defaultResult.codes],continuousFixture.expectedCodes);
+ assert.deepEqual([...explicitFrozen.codes],continuousFixture.expectedCodes);
+ assert.deepEqual([...continuousResult.codes],continuousFixture.continuousCodes);
+ assert.notDeepEqual([...continuousResult.codes],[...defaultResult.codes]);
+ assert.deepEqual([...sample.data],continuousFixture.rgba);
+ assert.deepEqual([...continuousResult.rgba],[...api.preview(continuousResult.codes,sample.width,sample.height)]);
  // Root creates this shared Python-reference fixture for both JS and Dart.
  if(process.argv[2]){
   const fixture=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));

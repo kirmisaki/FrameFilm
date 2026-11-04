@@ -57,7 +57,7 @@ for(let y=0;y<h;y++){
  const dir=c.map((v,k)=>v-p.center[k]);let scale=1;
  for(const plane of p.hullPlanes){const denominator=plane[0]*dir[0]+plane[1]*dir[1]+plane[2]*dir[2];if(denominator>0)scale=Math.min(scale,-(plane[0]*p.center[0]+plane[1]*p.center[1]+plane[2]*p.center[2]+plane[3])/denominator);}
  if(scale<1)scale*=1-1e-10;
- const common=dir.map((v,k)=>p.center[k]+v*scale);commonY[i]=dot(common);work.set(p.recipeLinear[recipeTree.nearest(common)],i*3);
+ const common=dir.map((v,k)=>p.center[k]+v*scale);commonY[i]=dot(common);work.set(options.continuousTone === true ? common : p.recipeLinear[recipeTree.nearest(common)],i*3);
  }
  if(y%4===3)await pause();
 }

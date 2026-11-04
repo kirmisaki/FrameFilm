@@ -208,6 +208,7 @@ class _FrameEditorState extends State<FrameEditor> {
         dither: previous.dither,
         ditherStrength: previous.ditherStrength,
         resampling: previous.resampling,
+        continuousTone: previous.continuousTone,
       );
       if (!mounted || generation != _generation) return;
       setState(() {
@@ -245,6 +246,7 @@ class _FrameEditorState extends State<FrameEditor> {
     double? warmChroma,
     bool? dither,
     ImageResampling? resampling,
+    bool? continuousTone,
   }) {
     final o = c.options;
     setState(() {
@@ -266,6 +268,7 @@ class _FrameEditorState extends State<FrameEditor> {
             : (algorithm ?? o.algorithm),
         ditherStrength: strength ?? o.ditherStrength,
         resampling: resampling ?? o.resampling,
+        continuousTone: continuousTone ?? o.continuousTone,
       );
       c.revision++;
 
@@ -462,6 +465,15 @@ class _FrameEditorState extends State<FrameEditor> {
           FrameAlgorithm.colorQualCalibrated,
         ].contains(o.algorithm))
           _slider('抖动强度', o.ditherStrength, 0, 5, (v) => _change(strength: v)),
+        if (o.algorithm == FrameAlgorithm.abc512I006)
+          SwitchListTile(
+            key: const ValueKey('film-continuous-tone'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('连续色调（测试）'),
+            subtitle: const Text('减少预归色带；实屏效果待确认。'),
+            value: o.continuousTone,
+            onChanged: locked ? null : (v) => _change(continuousTone: v),
+          ),
         _slider('对比度', o.contrast, .5, 2, (v) => _change(contrast: v)),
         _slider('饱和度', o.saturation, 0, 3, (v) => _change(saturation: v)),
         if (o.format != FrameFormat.monoFast &&
@@ -576,9 +588,7 @@ class _FrameEditorState extends State<FrameEditor> {
           ],
         ),
         if (o.algorithm == FrameAlgorithm.abc512I006)
-          const Text(
-            '512 色预览版，采用 I006 实验配色。屏幕实际颜色可能与预览不同；设备显示需要配套的预览固件。',
-          ),
+          const Text('512 色预览版，采用 I006 实验配色。屏幕实际颜色可能与预览不同；设备显示需要配套的预览固件。'),
         if (o.algorithm == FrameAlgorithm.szEnhanced)
           const Text('SZ 增强使用原图色彩进行校正，启用抖动时不叠加亮度、对比度及饱和度。'),
         if (o.algorithm == FrameAlgorithm.colorFast55 ||

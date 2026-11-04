@@ -145,44 +145,52 @@ void main() {
       expect(codes.any((v) => v > 255), true);
     },
   );
-  test('encoded I006 PNG pixels agree with exported native Film', () async {
-    final recorder = ui.PictureRecorder();
-    final drawing = ui.Canvas(recorder);
-    drawing.drawColor(const ui.Color(0xff906050), ui.BlendMode.src);
-    final picture = recorder.endRecording(),
-        image = await picture.toImage(2, 2);
-    final source = (await image.toByteData(format: ui.ImageByteFormat.png))!
-        .buffer
-        .asUint8List();
-    image.dispose();
-    picture.dispose();
-    final result = await convertFrame(
-      source,
-      const FrameOptions(algorithm: FrameAlgorithm.abc512I006),
-    );
-    validateAbc9Film(result.film);
-    expect(result.format, FrameFormat.abc512);
-    final codec = await ui.instantiateImageCodec(result.png),
-        frame = await codec.getNextFrame();
-    final rgba = (await frame.image.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    ))!.buffer.asUint8List();
-    final codes = Uint16List(480 * 720),
-        data = ByteData.sublistView(result.film);
-    for (var y = 0; y < 720; y++) {
-      for (var x = 0; x < 480; x++) {
-        codes[y * 480 + x] = data.getUint16(
-          32 + (x * 720 + 719 - y) * 2,
-          Endian.little,
+  for (final continuousTone in [false, true]) {
+    test(
+      'encoded I006 PNG pixels agree with exported native Film continuous=$continuousTone',
+      () async {
+        final recorder = ui.PictureRecorder();
+        final drawing = ui.Canvas(recorder);
+        drawing.drawColor(const ui.Color(0xff906050), ui.BlendMode.src);
+        final picture = recorder.endRecording(),
+            image = await picture.toImage(2, 2);
+        final source = (await image.toByteData(format: ui.ImageByteFormat.png))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        picture.dispose();
+        final result = await convertFrame(
+          source,
+          FrameOptions(
+            algorithm: FrameAlgorithm.abc512I006,
+            continuousTone: continuousTone,
+          ),
         );
-      }
-    }
-    final expected = Uint8List(rgba.length);
-    paintAbc512Codes(expected, codes);
-    expect(rgba, expected);
-    frame.image.dispose();
-    codec.dispose();
-  });
+        validateAbc9Film(result.film);
+        expect(result.format, FrameFormat.abc512);
+        final codec = await ui.instantiateImageCodec(result.png),
+            frame = await codec.getNextFrame();
+        final rgba = (await frame.image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        ))!.buffer.asUint8List();
+        final codes = Uint16List(480 * 720),
+            data = ByteData.sublistView(result.film);
+        for (var y = 0; y < 720; y++) {
+          for (var x = 0; x < 480; x++) {
+            codes[y * 480 + x] = data.getUint16(
+              32 + (x * 720 + 719 - y) * 2,
+              Endian.little,
+            );
+          }
+        }
+        final expected = Uint8List(rgba.length);
+        paintAbc512Codes(expected, codes);
+        expect(rgba, expected);
+        frame.image.dispose();
+        codec.dispose();
+      },
+    );
+  }
   testWidgets(
     'ABC9 device staging requires explicit capability and clears on disconnect',
     (tester) async {

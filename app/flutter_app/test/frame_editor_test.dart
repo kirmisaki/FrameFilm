@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,71 @@ import 'package:framefilm_ark/frame_codec.dart';
 import 'package:framefilm_ark/frame_editor.dart';
 
 void main() {
+  testWidgets(
+    'continuous tone survives editing selection and rotation, reset opts out',
+    (tester) async {
+      expect(const FrameOptions().continuousTone, false);
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder);
+      canvas.drawColor(const ui.Color(0xff906050), ui.BlendMode.src);
+      final picture = recorder.endRecording();
+      final image = await tester.runAsync(() => picture.toImage(2, 2));
+      final encoded = await tester.runAsync(
+        () => image!.toByteData(format: ui.ImageByteFormat.png),
+      );
+      final bytes = encoded!.buffer.asUint8List();
+      image!.dispose();
+      picture.dispose();
+      final c = FrameEditorController()
+        ..options = const FrameOptions(algorithm: FrameAlgorithm.abc512I006);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: FrameEditor(
+                controller: c,
+                canImportFilm: false,
+                onImportFilm: (_, _) async {},
+                pickImage: () async => bytes,
+              ),
+            ),
+          ),
+        ),
+      );
+      final toggle = find.byKey(const ValueKey('film-continuous-tone'));
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(c.options.continuousTone, true);
+      final contrast = tester.widget<Slider>(find.byType(Slider).first);
+      contrast.onChanged!(1.2);
+      await tester.pump();
+      expect(c.options.continuousTone, true);
+      await tester.ensureVisible(find.text('上传图像'));
+      await tester.runAsync(() async {
+        await tester.tap(find.text('上传图像'));
+        for (var i = 0; i < 200 && c.source == null; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      expect(c.source, bytes);
+      expect(c.options.continuousTone, true);
+      await tester.pump();
+      await tester.ensureVisible(find.text('旋转90度'));
+      await tester.tap(find.text('旋转90度'));
+      await tester.pump();
+      expect(c.options.quarterTurns, 1);
+      expect(c.options.continuousTone, true);
+      await tester.ensureVisible(find.text('重置'));
+      await tester.tap(find.text('重置'));
+      await tester.pump();
+      expect(c.options.continuousTone, false);
+      expect(c.source, isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+      c.dispose();
+    },
+  );
   testWidgets('重置后调整参数提示上传图像，不显示预览处理中', (tester) async {
     final c = FrameEditorController();
     c.source = Uint8List.fromList([1]);

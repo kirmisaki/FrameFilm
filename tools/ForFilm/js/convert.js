@@ -21,6 +21,7 @@ function syncArk512Controls() {
     document.getElementById('toggleDither').textContent = active ? '固定 FS' : isDitheringEnabled ? '禁用抖动' : '启用抖动';
     ['contrast','saturation'].forEach(function(id){document.getElementById(id).disabled=active&&!!ark512Imported;});
     document.getElementById('ark512Hint').hidden = !active;
+    document.getElementById('ark512ContinuousTone').disabled = !!ark512Imported;
 }
 async function updateArk512Preview(imageData, ctx) {
     var generation = ark512Generation;
@@ -34,7 +35,7 @@ async function updateArk512Preview(imageData, ctx) {
         logical.data.set(imageData.data.subarray(source,source+4),(y*w+x)*4);
     }
     try {
-        var result = await window.Ark512.render(logical, {cancelled:function(){return generation!==ark512Generation;}});
+        var result = await window.Ark512.render(logical, {continuousTone:document.getElementById('ark512ContinuousTone').checked,cancelled:function(){return generation!==ark512Generation;}});
         if(generation!==ark512Generation) return;
         var nativeCodes = new Uint16Array(w*h), rgba = new Uint8ClampedArray(w*h*4);
         for(var ly=0;ly<h;ly++) for(var lx=0;lx<w;lx++) {
@@ -210,6 +211,11 @@ function sync8bppAvailability() {
 }
 
 function initConvertTool() {
+    // Imported ABC9 files preserve their original codes.
+    document.getElementById('ark512ContinuousTone').addEventListener('change', function() {
+        if (ark512Imported) return;
+        updateImage();
+    });
     // 事件监听器
     ['rangeFit', 'warmChroma'].forEach(function(id) {
         document.getElementById(id).addEventListener('input', function() {

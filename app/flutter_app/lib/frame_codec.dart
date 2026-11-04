@@ -34,6 +34,7 @@ class FrameOptions {
     this.dither = false,
     this.algorithm = FrameAlgorithm.atkinsonEnhanced,
     this.ditherStrength = 1,
+    this.continuousTone = false,
   });
   final FrameFormat format;
   final FrameFit fit;
@@ -42,6 +43,7 @@ class FrameOptions {
   final double zoom, panX, panY, brightness, contrast, saturation;
   final double rangeFit, warmChroma;
   final bool dither;
+  final bool continuousTone;
   final FrameAlgorithm algorithm;
   final double ditherStrength;
 }
@@ -434,6 +436,7 @@ Future<FrameResult> convertFrame(
       rgba,
       480,
       720,
+      continuousTone: options.continuousTone,
       checkCancelled: () => _check(isCancelled),
       onProgress: onProgress,
     );
