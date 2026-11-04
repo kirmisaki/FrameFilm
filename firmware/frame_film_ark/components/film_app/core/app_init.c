@@ -40,6 +40,8 @@
 #include "sys_cfg.h"
 #include "hal_epd.h"
 #include "hal_sd.h"
+#include "hal_pwr.h"
+#include "hal_nfc.h"
 #include "service_ble.h"
 #include "service_monitor.h"
 #include "ui_conf.h"    /* UI_CALIB_FRAME：标定帧模式下开机页暂停自动前进 */
@@ -54,6 +56,9 @@
 #include "app_menu.h"
 #include "app_settings.h"
 #include "app_pass.h"
+#if (SYS_NFC_ENABLE == 1)
+#include "app_wallet.h"
+#endif
 #include "app_boot.h"
 #include "app_boot_cfg.h"
 
@@ -74,6 +79,10 @@ static void app_init_input_short(void);
 static void app_init_input_long(void);
 static void app_init_input_up(void);
 static void app_init_input_down(void);
+static void app_init_input_double(void);
+#if (SYS_NFC_ENABLE == 1)
+static void app_init_input_back(void);
+#endif
 static void app_init_register_inputs(void);
 static uint8_t app_init_ble_app_id_get(void);
 static void app_init_boot_start(app_id_t next);
@@ -126,6 +135,9 @@ void film_app_init(void)
     app_manager_register(&g_app_menu_entry);
     app_manager_register(&g_app_settings_entry);
     app_manager_register(&g_app_pass_entry);    // 通行证占位页（菜单第 2 项，功能待开发）
+#if (SYS_NFC_ENABLE == 1)
+    app_manager_register(&g_app_wallet_entry);  // 卡包（仅 n16r8）
+#endif
 #endif
 #endif
 
@@ -152,6 +164,16 @@ void film_app_init(void)
           START APP 里被当前模式裁剪掉的 app（简易模式没有菜单、没编 UI 就没有设置页）
           由 app_boot_cfg_resolve_target() 统一回落图片（照片墙） */
     {
+#if (SYS_NFC_ENABLE == 1) && (HAL_NFC_WAKE_ENABLE == 1)
+        /* NFC 贴卡唤醒：跳过开机画面，直接进卡包；模拟在 enter_block_reason 里恢复。 */
+        if(hal_pwr_get_wakeup_cause() == HAL_PWR_WAKE_NFC &&
+           app_manager_is_registered(APP_ID_WALLET))
+        {
+            sys_logi(APP_INIT_TAG, "NFC wake -> wallet");
+            app_manager_switch(APP_ID_WALLET);
+            return;
+        }
+#endif
         app_id_t target = app_boot_cfg_resolve_target();
 
         if(app_boot_cfg_get()->boot_page == APP_BOOT_PAGE_SHOW
@@ -277,6 +299,13 @@ static void app_init_input_double(void)
     app_manager_on_input(INPUT_PRESS_DOUBLE);
 }
 
+#if (SYS_NFC_ENABLE == 1)
+static void app_init_input_back(void)
+{
+    app_manager_on_input(INPUT_PRESS_BACK);
+}
+#endif
+
 static void app_init_register_inputs(void)
 {
     /* hal_input 支持同一类型多回调注册；这里回调无参，按类型固定转发 key */
@@ -285,6 +314,9 @@ static void app_init_register_inputs(void)
     hal_input_register_cb(INPUT_PRESS_UP,    app_init_input_up);
     hal_input_register_cb(INPUT_PRESS_DOWN,  app_init_input_down);
     hal_input_register_cb(INPUT_PRESS_DOUBLE, app_init_input_double);   // 确认键双击：退出 app
+#if (SYS_NFC_ENABLE == 1)
+    hal_input_register_cb(INPUT_PRESS_BACK, app_init_input_back);       // n16r8 GPIO18 返回
+#endif
 }
 
 /**

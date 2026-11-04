@@ -6,7 +6,7 @@
 - [2. 协议框架](#2-协议框架)
 - [3. 通道定义](#3-通道定义)
 - [4. 命令详解](#4-命令详解)
-- Ark 扩展：[临时 WiFi 直传](#411-ark-临时-wifi-直传)、[通行证资料](#412-ark-通行证资料读取0x53)、[设备名称](#413-ark-设备名称0x54--0x55)、[WiFi OTA](#414-ark-wifi-ota0x560x58)
+- Ark 扩展：[临时 WiFi 直传](#411-ark-临时-wifi-直传)、[通行证资料](#412-ark-通行证资料读取0x53)、[设备名称](#413-ark-设备名称0x54--0x55)、[WiFi OTA](#414-ark-wifi-ota0x560x58)、[NFC 卡包](#418-nfc-卡包0x5c-0x62仅-n16r8)
 - [5. 校验和计算](#5-校验和计算)
 - [6. C 语言示例](#6-c-语言示例)
 - [7. 版本历史](#7-版本历史)
@@ -309,7 +309,7 @@
 
 | 通道 | 名称 | 请求 | 响应 |
 |---|---|---|---|
-| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计 |
+| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit4=NFC 卡包（仅 n16r8） |
 
 ### 3.16 Ark 通用 WiFi 文件上传（0x5A）
 
@@ -318,6 +318,22 @@
 | 通道 | 名称 | 请求 DATA | 同通道响应 DATA |
 |---|---|---|---|
 | 0x5A | WIFI_DIRECT_FILE_START | `SSID\0PASSWORD\0URL\0相对目标路径\0` | 1B：0 接受 / 1 忙 / 2 参数错误 / 3 资源不足 |
+
+### 3.17 NFC 卡包通道（0x5C ~ 0x62，仅 n16r8）
+
+仅 `frame_film_ark` 的 **n16r8** 变体（`CONFIG_ARK_HAS_NFC`）实现，卡库保存在 SD 卡（`wallet.bin`，封面 `cover_<id>.bin`）。n4r2 与 `frame_film` 会忽略这些通道。字段与状态码见 [§4.18](#418-nfc-卡包0x5c-0x62仅-n16r8)。
+
+| 通道 | 名称 | 请求 DATA | 同通道响应 DATA |
+|---|---|---|---|
+| 0x5C | NFC_CARD_BEGIN | `kind(1) mode(1) uid_len(1) sak(1) atqa(2) uid(uid_len) name_len(1) name( name_len ) total(2) crc32(4)` | 成功 `0, 0, 180`（3B）；失败 1B 状态 |
+| 0x5D | NFC_CARD_DATA | `offset(2, BE) + chunk(≤180)` | `status, received(2, BE)`（3B） |
+| 0x5E | NFC_CARD_COMMIT | 空 | `status, id, count, current, uid_len, uid...` |
+| 0x5F | NFC_WALLET_CTRL | `op(1) [+参数]` | 见 §4.18.4 |
+| 0x60 | NFC_COVER_BEGIN | `id(1) fmt(1) w(2) h(2) total(2) crc32(4)` | 成功 `0, 0, 180`；失败 1B |
+| 0x61 | NFC_COVER_DATA | `offset(2, BE) + chunk(≤180)` | `status, received(2, BE)`（3B） |
+| 0x62 | NFC_COVER_COMMIT | 空 | `status, id, 1`（3B） |
+
+状态码：`0` OK / `1` BUSY / `2` PARAM / `3` NOSD / `4` NOTFOUND / `5` NOMEM / `6` SAVE / `7` EMU_FAIL。
 
 ## 4. 命令详解
 
@@ -1516,6 +1532,63 @@ HTTP 响应需为 200 且有非零 Content-Length；文件可为任意非空二�
 两个只读操作均独立扫描固定 `/sdcard/film` 或 `/sdcard/animation`；只统计常规 `.film` 文件且大小至少32字节，与播放列表规则一致。不存在的目录视为空且不创建目录，不清理临时文件，不修改活跃目录、播放缓冲或文件列表，不发布文件事件，也不切 app 或刷新画面。读取失败可得到部分有效统计。
 
 客户端显式“显示图片”时，有0x59 bit3的固件使用0x4B按文件名原子打开，不把只读目录下标当播放ID，也不先切页恢复旧图。动画目录沿现有切到目标app、读取活跃列表并按名称映射ID的流程。删除仅在对应app已活跃时可用：先回读app、重读活跃列表、按文件名映射ID，再发0x05；禁止把浏览索引直接当作ID，也禁止为了删除隐式切app。删除确认后沿用既有删除、列表刷新与播放缓冲失效语义。
+
+### 4.18 NFC 卡包（0x5C ~ 0x62，仅 n16r8）
+
+> 通道概览见 §3.17。仅 `frame_film_ark` 的 n16r8 变体实现；需要 SD 卡，卡库为 `wallet.bin`，封面为 `cover_<id>.bin`。设备端通过 ST25R3916 复制/模拟卡片，手机端只负责建卡、管理、下发封面。
+
+#### 4.18.1 卡片类型与内容长度
+
+| kind | 含义 | 内容长度 total（mode=0 时固定） |
+|---|---|---|
+| 0 | M1 / UID（只模拟卡号） | 0 |
+| 1 | NTAG213 | 180 |
+| 2 | NTAG215 | 540 |
+| 3 | NTAG216 | 924 |
+| 4 | M1 1K（块镜像） | 1024 |
+| 5 | M1 2K（块镜像） | 2048 |
+| 6 | M1 4K（块镜像） | 4096 |
+
+`mode`：`0` 完整内容、`1` 仅 UID（只对 NTAG 有效）、`2` M1 块镜像（只对 kind≥4 有效）。
+NTAG 的 `uid_len` 必须为 7、`sak=0x00`、ATQA=`0x0044`；M1 的 `uid_len` 必须为 4，kind=0 时 `sak` 取 `0x08/0x18/0x38`。
+
+#### 4.18.2 NFC_CARD_BEGIN (0x5C) - 开始建卡
+
+```
++------+------+------+-----+------+-----+----------+---------+-------+-------+--------+-----+
+| HEAD |  CH  | LEN  |kind |mode  |uidlen|  sak    | atqa(2) | uid   | name_len| name  |total|
++------+------+------+-----+------+-----+----------+---------+-------+-------+--------+-----+
+                                                                        crc32(4) 在 total 之后
+```
+
+成功回 `status=0, 0, 180`（3B，180 为单包建议分片上限）；失败只回 1B 状态码。设备为该会话分配缓冲区，随后用 0x5D 按 `offset` 递增上传内容，最后 0x5E 提交。
+
+#### 4.18.3 NFC_CARD_DATA / NFC_CARD_COMMIT（0x5D / 0x5E）
+
+- `0x5D`：`offset(2, BE) + chunk`，`offset` 必须等于设备已收到的字节数，`chunk ≤ 180`；回 `status, received(2, BE)`。
+- `0x5E`：无 DATA。设备校验 CRC32 后落盘并**自动选中新卡**，若当前正在卡包 app 内则立即切换模拟。成功回 `status, id, count, current, uid_len, uid...`。
+
+#### 4.18.4 NFC_WALLET_CTRL (0x5F) - 卡库管理
+
+| op | 名称 | 请求 | 响应 |
+|---|---|---|---|
+| 0x00 | LIST | `start(1)` | `status, count, current, start, cnt, 记录...` |
+| 0x01 | SELECT | `id` | `status, current` |
+| 0x02 | DELETE | `id` | `status, count, current` |
+| 0x03 | GET | `id` | `status, id, kind, uid_len, sak, atqa(2), uid(7), flags, name_len, name, mem_len(2), cover_len(2)` |
+| 0x04 | STATS | 无 | `status, count, current, max` |
+| 0x05 | RENAME | `id, len(1), name` | `status, id, len, name` |
+| 0x06 | CLEAR_COVER | `id` | `status, id` |
+
+LIST 单条记录：`id, kind, uid_len, sak, atqa(2), uid(7), flags, name_len, name`。
+
+#### 4.18.5 封面（0x60 ~ 0x62）
+
+- `0x60`：`id, fmt(=1 表示 1bpp), w(2)=440, h(2)=200, total(2)=11000, crc32(4)`；成功回 `0, 0, 180`。
+- `0x61`：`offset(2, BE) + chunk(≤180)`，与卡片内容上传相同。
+- `0x62`：无 DATA，校验 CRC 后写 `cover_<id>.bin`，成功回 `status, id, 1`。
+
+封面为 440×200 单色位图，每行 55 字节、MSB 在左（1=黑）。设备端不显示卡号，封面区只显示图片或默认卡面。
 
 ## 5. 校验和计算
 

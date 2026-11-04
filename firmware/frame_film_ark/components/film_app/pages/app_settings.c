@@ -104,7 +104,7 @@ static const char *const BOOTPAGE_OPTS[BOOTPAGE_OPT_NUM] = {
 };
 #define STARTAPP_OPT_NUM    (APP_START_NUM)
 static const char *const STARTAPP_OPTS[STARTAPP_OPT_NUM] = {
-    "菜单", "上次", "图片", "模板", "时钟", "动图", "设置", "通行证"
+    "菜单", "上次", "图片", "模板", "时钟", "动图", "设置", "通行证", "WALLET"
 };                                              // 顺序 == app_start_t
 
 /* ---- app 参数行的候选值 ----
@@ -195,7 +195,7 @@ static const char *const ROW_KEYS_EN[SETTINGS_ROW_NUM] = {
 };
 static const char *const WAKE_EN[] = {"10 MIN", "30 MIN", "60 MIN", "2 H", "6 H", "12 H", "24 H", "48 H"};
 static const char *const HB_EN[] = {"5 S", "10 S", "30 S", "60 S", "120 S", "180 S"};
-static const char *const START_EN[] = {"MENU", "LAST", "IMAGE", "TEMPLATE", "CLOCK", "ANIMATION", "SETTINGS", "PASS"};
+static const char *const START_EN[] = {"MENU", "LAST", "IMAGE", "TEMPLATE", "CLOCK", "ANIMATION", "SETTINGS", "PASS", "WALLET"};
 static const char *const IMG_INT_EN[] = {"1 MIN", "5 MIN", "10 MIN", "30 MIN", "60 MIN"};
 static const char *const SPEED_EN[] = {"100 MS", "200 MS", "500 MS", "1 S", "2 S"};
 static const char *const SEC_EN[] = {"DEVICE", "PARAMETERS", "APP PARAMS"};

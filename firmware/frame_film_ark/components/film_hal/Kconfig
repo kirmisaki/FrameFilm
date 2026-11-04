@@ -1,3 +1,22 @@
+menu "Ark hardware"
+
+    config ARK_HAS_NFC
+        bool "NFC hardware (n16r8 only)"
+        default n
+        help
+            Enable ST25R3916 NFC on the n16r8 board. n4r2 has no NFC
+            hardware; keep this off there so the wallet app and driver
+            are not built.
+
+    config ARK_INPUT_BACK_KEY
+        bool "Fourth key: BACK on GPIO18 (n16r8)"
+        default n
+        help
+            The n16r8 board has a fourth, active-low key on GPIO18.
+            It is exposed as INPUT_PRESS_BACK and used to leave apps.
+
+endmenu
+
 menu "Ark EPD diagnostics"
 
     config ARK_EPD_PROFILE

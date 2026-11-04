@@ -46,6 +46,8 @@ typedef enum {
 
     SYS_EVT_OTA_PROGRESS = 0x0401,  // OTA 进度，payload: u8 percent
 
+    SYS_EVT_NFC_SCAN_DONE = 0x0501, // 卡包读卡完成，payload: u8 status
+
     SYS_EVT_ANY          = 0xFFFF,  // 订阅通配：接收全部事件（仅用于 subscribe）
 } sys_event_id_t;
 

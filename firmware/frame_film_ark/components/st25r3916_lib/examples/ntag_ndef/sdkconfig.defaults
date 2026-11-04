@@ -1,0 +1,3 @@
+# GPIO19/GPIO20 are the USB-Serial-JTAG pins on the ESP32-S3 and are used for
+# MOSI/CS here, so the secondary console must stay off.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y

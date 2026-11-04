@@ -39,6 +39,8 @@
 
 #include "sys_log.h"
 #include "hal_api.h"
+#include "hal_nfc.h"
+#include "sys_cfg.h"
 #include "service_ble_gatts.h"
 #include "service_ble.h"
 #include "service_monitor.h"
@@ -452,6 +454,20 @@ static void monitor_enter_low_power(void)
         sys_logw(MONITOR_TAG, "sleep deferred: app/UI not stopped");
         return;
     }
+#if (SYS_NFC_ENABLE == 1)
+    /* 卡包已在先停 app 前启动模拟；这里武装 IRQ 并决定是否保留 NFC。
+       如果此时场还在（IRQ 高），先别睡，等场消失后由心跳重试。 */
+    bool nfc_armed = (hal_nfc_sleep_arm() == ESP_OK);
+    if(!nfc_armed)
+    {
+        hal_nfc_deinit();
+    }
+    else if(hal_nfc_irq_active())
+    {
+        sys_logi(MONITOR_TAG, "sleep deferred: NFC field present");
+        return;
+    }
+#endif
     if(!service_ble_prepare_sleep())
     {
         sys_logw(MONITOR_TAG, "sleep deferred: BLE file transfer not closed");

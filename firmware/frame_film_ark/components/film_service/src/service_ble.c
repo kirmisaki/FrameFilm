@@ -579,6 +579,15 @@ static bool ble_cmd_conflicts_with_direct(uint8_t ch)
     case BLE_FILM_TRANS_CH_APP_IMAGE_PARAM:
     case BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM:
     case BLE_FILM_TRANS_CH_APP_ANIM_PARAM:
+#if (SYS_NFC_ENABLE == 1)
+    case BLE_FILM_TRANS_CH_NFC_CARD_BEGIN:
+    case BLE_FILM_TRANS_CH_NFC_CARD_DATA:
+    case BLE_FILM_TRANS_CH_NFC_CARD_COMMIT:
+    case BLE_FILM_TRANS_CH_NFC_WALLET_CTRL:
+    case BLE_FILM_TRANS_CH_NFC_COVER_BEGIN:
+    case BLE_FILM_TRANS_CH_NFC_COVER_DATA:
+    case BLE_FILM_TRANS_CH_NFC_COVER_COMMIT:
+#endif
     case BLE_FILM_TRANS_CH_CTRL_TIME_SYNC:
     case BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF:
     case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE:
@@ -750,7 +759,13 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_CAPABILITIES_GET:
         {
             if(cmd->len != 0) break;
-            const uint8_t capabilities[5] = {1, 0, 0, 0, 15};
+            const uint8_t capabilities[5] = {1, 0, 0, 0,
+#if (SYS_NFC_ENABLE == 1)
+                0x1F
+#else
+                0x0F
+#endif
+            };
             service_ble_send_resp(cmd->ch, capabilities, sizeof(capabilities));
             break;
         }
@@ -1547,6 +1562,15 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM_GET :
         case BLE_FILM_TRANS_CH_APP_ANIM_PARAM :
         case BLE_FILM_TRANS_CH_APP_ANIM_PARAM_GET :
+#if (SYS_NFC_ENABLE == 1)
+        case BLE_FILM_TRANS_CH_NFC_CARD_BEGIN :
+        case BLE_FILM_TRANS_CH_NFC_CARD_DATA :
+        case BLE_FILM_TRANS_CH_NFC_CARD_COMMIT :
+        case BLE_FILM_TRANS_CH_NFC_WALLET_CTRL :
+        case BLE_FILM_TRANS_CH_NFC_COVER_BEGIN :
+        case BLE_FILM_TRANS_CH_NFC_COVER_DATA :
+        case BLE_FILM_TRANS_CH_NFC_COVER_COMMIT :
+#endif
         {
             /* payload: [0]=ch, [1..]=命令数据，值语义拷贝，app 侧在自身任务执行 */
             uint8_t evt[SYS_EVENT_PAYLOAD_MAX];

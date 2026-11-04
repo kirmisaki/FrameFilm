@@ -809,10 +809,11 @@ BEGIN ──► DATA(offset=0) ──► DATA(offset=n) ──► ... ──► 
 | 2 | 1 | uid_len | M1=4，NTAG=7 |
 | 3 | 1 | sak | M1：0x08/0x18/0x38；NTAG 固定 0x00 |
 | 4 | 2 | atqa | 空中顺序：M1 1K=`04 00`，NTAG=`44 00` |
-| 6 | 1 | name_len | 0..23；0 表示用设备默认名 |
-| 7 | n | name | UTF-8，不含 `\0` |
-| 7+n | 2 | total | 内容字节数 |
-| 9+n | 4 | crc32 | 对 `total` 字节内容的 CRC-32/IEEE（zlib 兼容，初值 0xFFFFFFFF、结果取反） |
+| 6 | uid_len | uid | 卡片 UID |
+| 6+uid_len | 1 | name_len | 0..23；0 表示用设备默认名 |
+| 7+uid_len | n | name | UTF-8，不含 `\0` |
+| 7+uid_len+n | 2 | total | 内容字节数 |
+| 9+uid_len+n | 4 | crc32 | 对 `total` 字节内容的 CRC-32/IEEE（zlib 兼容，初值 0xFFFFFFFF、结果取反） |
 
 约束：
 
@@ -919,11 +920,11 @@ id(1) kind(1) uid_len(1) sak(1) atqa(2) uid(7) flags(1) name_len(1) name(name_le
 
 #### 11.4.6 示例：远程创建一张 M1 卡
 
-BEGIN（kind=0、content_mode=0、uid_len=4、sak=0x08、atqa=`04 00`、name=`door`、total=0、crc=0）：
+BEGIN（kind=0、content_mode=0、uid_len=4、sak=0x08、atqa=`04 00`、uid=`11 22 33 44`、name=`door`、total=0、crc=0）：
 
 ```text
-DATA = 00 00 04 08 04 00 04 64 6F 6F 72 00 00 00 00 00 00   （17 B）
-帧   = 55 5C 11 <DATA> SUM
+DATA = 00 00 04 08 04 00 11 22 33 44 04 64 6F 6F 72 00 00 00 00 00 00   （21 B）
+帧   = 55 5C 15 <DATA> SUM
 回包 = 55 5C 03 00 00 B4 SUM        （status=0，chunk_max=180）
 ```
 

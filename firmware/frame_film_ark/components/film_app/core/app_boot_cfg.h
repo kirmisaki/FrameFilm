@@ -37,6 +37,7 @@ typedef enum {
     APP_START_ANIMATION,
     APP_START_SETTINGS,
     APP_START_PASS,
+    APP_START_WALLET,
     APP_START_NUM,
 } app_start_t;
 

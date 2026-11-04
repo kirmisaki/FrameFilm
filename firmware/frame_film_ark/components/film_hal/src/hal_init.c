@@ -34,9 +34,11 @@
 #include "hal_pwr.h"
 #include "hal_epd.h"
 #include "hal_input.h"
+#include "hal_nfc.h"
 #include "hal_init.h"
 
 #include "sys_log.h"
+#include "sys_cfg.h"
 
 /*********************************************************************
  * MACROS
@@ -87,5 +89,9 @@ void film_hal_init(void)
     hal_input_init();
     // 初始化EPD
     hal_epd_init();
+#if (SYS_NFC_ENABLE == 1)
+    // NFC 失败只告警，不阻塞启动
+    (void)hal_nfc_init();
+#endif
 }
 

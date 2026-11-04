@@ -110,6 +110,16 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_DIRECT_FILE_START (0x5A) // SSID\0PASSWORD\0URL\0相对路径\0
 #define BLE_DIRECT_START_DATA_MAX                         (192)
 
+/* NFC 卡包（仅 n16r8）：建卡 0x5C~0x5E、管理 0x5F、封面 0x60~0x62 */
+#define BLE_FILM_TRANS_CH_NFC_CARD_BEGIN                  (0x5C)
+#define BLE_FILM_TRANS_CH_NFC_CARD_DATA                   (0x5D)
+#define BLE_FILM_TRANS_CH_NFC_CARD_COMMIT                 (0x5E)
+#define BLE_FILM_TRANS_CH_NFC_WALLET_CTRL                 (0x5F)
+#define BLE_FILM_TRANS_CH_NFC_COVER_BEGIN                 (0x60)
+#define BLE_FILM_TRANS_CH_NFC_COVER_DATA                  (0x61)
+#define BLE_FILM_TRANS_CH_NFC_COVER_COMMIT                (0x62)
+#define BLE_NFC_CHUNK_MAX                                 (180)
+
 /* 蓝牙设备名 = 编译期前缀 "FRAMEFILMARK-" (13B) + 可配置后缀 (1..16B)，完整名上限 29B
    （不含结尾 NUL，缓冲 30B）。后缀持久化在 ServiceBle_Def_t.ble_name（service_param.h）。 */
 #define BLE_DEVICE_NAME_MAX_BYTES                         (29)
@@ -122,7 +132,8 @@ extern "C"{
 #define BLE_KEY_UP                                         (0x02) // 上
 #define BLE_KEY_DOWN                                       (0x03) // 下
 #define BLE_KEY_DOUBLE                                     (0x04) // 确认键双击（= 退回主菜单）
-#define BLE_KEY_MAX                                        (BLE_KEY_DOUBLE)
+#define BLE_KEY_BACK                                       (0x05) // 显式返回（n16r8 的 BACK）
+#define BLE_KEY_MAX                                        (BLE_KEY_BACK)
 
 // app 参数通道（0x45~0x4A）：payload 为 TLV 列表，BLE 层不解析语义，只整包上浮给 app 层
 // 约定：设置通道 = param_ch，查询通道 = param_ch + 1
