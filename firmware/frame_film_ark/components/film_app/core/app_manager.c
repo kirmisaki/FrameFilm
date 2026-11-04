@@ -959,6 +959,11 @@ void app_manager_init(void)
         return;
     }
 
+    /* 注册表和开机配置尚未就绪：先占住启动门闸，再订阅事件/启动任务。
+       首次显式切换会释放；开机页路径则保持到 BOOT_DONE，避免文件列表事件
+       提前启动默认图片 app，与随后建立的 UI 页面并发操作 EPD。 */
+    m_boot_page = 1;
+
     /* 输入回调由 app_init.c 的 app_init_register_inputs() 统一注册，
        经 app_manager_on_input() 转发为 APP_EVT_INPUT 事件。 */
 
@@ -985,7 +990,6 @@ void app_manager_init(void)
     m_current_app = APP_ID_IMAGE;
     m_app_running = 0;
     m_menu_sel = 0;
-    m_boot_page = 0;
     m_sleep_page = 0;
     m_last_guest_app = APP_ID_MAX;
 
@@ -1119,9 +1123,9 @@ void app_manager_boot_show(const app_ui_ops_t *ops, app_id_t next)
        欠着它，等真正切到目标 app 时在 app_do_switch() 末尾补投 */
     app_manager_boot_mark();
     /* 页面 id 用 APP_ID_MAX：开机画面不是 app，不在注册表里也不参与切换 */
-    ui_core_page_enter((uint8_t)APP_ID_MAX, ops);
     m_boot_page = 1;
     m_boot_ui_shown = 1;
+    ui_core_page_enter((uint8_t)APP_ID_MAX, ops);
 }
 
 void app_manager_boot_end(void)
@@ -1131,7 +1135,8 @@ void app_manager_boot_end(void)
         return;   // 已在开机画面期间被切走了（如 BLE 远程切换）：不覆盖用户的选择
     }
 
-    m_boot_page = 0;
+    /* 门闸由 app_do_switch() 提交目标时释放；SWITCH 尚在队列里时，
+       仍不能让先排队的文件列表/按键事件启动默认图片 app。 */
     /* 开机页的 UI 收尾不在这里做：要等 app_do_switch() 过了进入预检、确实要切走时
        才拆（否则切换被 enter_block_reason 拦下时，开机页已被拆、又没有新页面顶上，
        屏上会永远停在开机帧）。见 app_do_switch() 里的 m_boot_ui_shown 分支。 */
