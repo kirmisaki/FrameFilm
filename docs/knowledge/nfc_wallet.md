@@ -760,6 +760,8 @@ typedef struct {
 
 手机通过 BLE 在设备卡包里**创建一条虚拟卡记录**，写入：类型、UID、ATQA/SAK、名称、NTAG 内容（整片镜像或 NDEF 文本）；并可**上传 1-bit 封面**、**重命名**、**删除**、**选中**。**不操作实体 NFC 标签**；写实体标签属于另一条 PCD WRITE 流程，本期不做。
 
+> 本期 Web 端**只提供 NTAG 建卡**（NTAG213/215/216，NDEF 文本或整片镜像）；M1 远程建卡协议保留，但 Web 不放入口。M1 UID 卡仍可通过本机读卡复制。
+
 - 能力位：`0x59 CAPABILITIES_GET` 的 flags 增加 **bit4 = NFC wallet remote provisioning**，仅在 `SYS_NFC_ENABLE=1` 时置位（flags 由 `0x0000000F` 变为 `0x0000001F`）。
 - 旧固件该位为 0，客户端据此隐藏入口或提示升级。
 - 安全提示：BLE 建卡等价于允许连接端指定任意 UID，属于克隆能力。本期沿用现有 BLE 连接权限（无额外认证），客户端必须做一次用户确认；后续如需收紧，可在 BEGIN 增加一次性 token 或要求设备端物理确认。
@@ -982,7 +984,8 @@ NTAG 卡把 `kind` 改为 1/2/3、`uid_len=7`、`sak=0x00`、`atqa=44 00`，再�
 |---|---|---|
 | Web | `tools/ForFilm/js/bluetooth.js` | 增加 `0x5C~0x62` 常量；复用现有包/校验/通知等待逻辑 |
 | Web | `tools/ForFilm/js/nfc-wallet.js`（新增） | 封装 `walletInfo/list/create/select/rename/delete/clearCover/uploadCover`；分块发送与重试；图片→440×200 1bpp |
-| Web | `tools/ForFilm/index.html` + 样式 | 新增「卡包」面板：列表（封面缩略图）、创建、重命名、删除、选中、上传/清除封面 |
+| Web | `tools/ForFilm/index.html` + 样式 | **底部导航新增「卡包」独立 tab**，进入后是卡包页：列表（封面缩略图）、创建、重命名、删除、选中、上传/清除封面 |
+| Web | 卡包页表单 | 本期只提供 NTAG213/215/216 + NDEF 文本/整片镜像；不提供 M1 建卡入口 |
 | 小程序 | `tools/wechart/miniprogram/utils/ble-utils.js` | 同步常量与 `BLE_NFC_CHUNK_MAX` |
 | 小程序 | 新增卡包页面（建议 `pkgCreate` 下） | 同上管理界面；封面用 canvas 二值化后分包 |
 | 两端 | 能力判断 | 先读 `0x59`，bit4 为 0 则不显示入口 |
@@ -1034,6 +1037,7 @@ NTAG 卡把 `kind` 改为 1/2/3、`uid_len=7`、`sak=0x00`、`atqa=44 00`，再�
 | `tools/ui-assets/png/ui_icon_wallet.png` | 新增 80×80 线稿源图 |
 | `tools/ui-assets/gen_ui_assets.py` | ① 增加 wallet 资源项；② 修正 `OUT_C_INC/OUT_C_SRC` 当前指向 `firmware/frame_film/...` 的旧路径，改为 `frame_film_ark` |
 | `tools/ark-font/gen_fonts.py` + `ui_fonts.c` | 卡包新增中文文案后重跑；若空状态用 36 px hero，需把「卡包」加入 `LARGE_TEXT[36]` |
+| `assets/fonts/source-han-sans/` | 下载并保存 `SourceHanSansCN-Bold.otf` / `-Medium.otf`（OFL）；`gen_fonts.py` 默认路径改到这里，避免依赖临时 `.output/ark` |
 
 ### 12.3 事件与持久化
 
@@ -1147,6 +1151,7 @@ components/film_ui/inc/ui_defaults.h           生成
 components/film_ui/src/ui_defaults.c           生成
 tools/ui-assets/gen_ui_assets.py               资源项 + 路径修正
 tools/ark-font/gen_fonts.py / ui_fonts.c       字库重生成
+assets/fonts/source-han-sans/*.otf             Source Han Sans CN Bold/Medium（OFL）
 tools/ForFilm/js/bluetooth.js                  通道常量
 tools/ForFilm/index.html / 样式                卡包面板
 tools/wechart/miniprogram/utils/ble-utils.js   通道常量
