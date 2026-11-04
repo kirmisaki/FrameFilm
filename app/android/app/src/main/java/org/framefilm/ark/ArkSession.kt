@@ -19,7 +19,8 @@ class ArkSession(context: Context, private val listener: Listener) {
     private data class QueuedWrite(val channel: Int, val payload: ByteArray,
                                    val callback: (Result<Unit>) -> Unit)
     private data class TransferInput(val file: File, val fileName: String,
-                                     val firmware: ArkFirmware? = null, val targetPath: String? = null)
+                                     val firmware: ArkFirmware? = null, val targetPath: String? = null,
+                                     val legacyHardwareTarget: String? = null)
 
     private val main = Handler(Looper.getMainLooper())
     private val appContext = context.applicationContext
@@ -71,6 +72,7 @@ class ArkSession(context: Context, private val listener: Listener) {
     })
 
     val isReady: Boolean get() = ble.isReady
+    val connectedAddress: String? get() = if (isReady) connectedDevice?.address else null
     fun scannedName(address: String): String? = ble.scannedName(address)
     val transferActive: Boolean get() = pendingStart != null || settling || coordinator?.isActive == true
 
@@ -248,7 +250,7 @@ class ArkSession(context: Context, private val listener: Listener) {
                     }, input.firmware, reconnect = {
                         val device = connectedDevice
                         if (!closed && device != null && (!closing || coordinator?.expectsBleResume == true)) ble.connect(device)
-                    }, targetPath = input.targetPath)
+                    }, targetPath = input.targetPath, legacyHardwareTarget = input.legacyHardwareTarget)
                 coordinator = next
                 next.start()
             }
@@ -258,15 +260,17 @@ class ArkSession(context: Context, private val listener: Listener) {
 
     fun startTransfer(file: File, fileName: String) = startInput(file, fileName, null)
 
-    fun startFirmwareTransfer(file: File, firmware: ArkFirmware) = startInput(file, "firmware.bin", firmware)
+    fun startFirmwareTransfer(file: File, firmware: ArkFirmware, legacyHardwareTarget: String? = null) =
+        startInput(file, "firmware.bin", firmware, legacyHardwareTarget = legacyHardwareTarget)
 
     /** Transfer raw bytes to a path relative to the Ark SD-card root. */
     fun startFileTransfer(file: File, targetPath: String) = startInput(file, file.name, null, targetPath)
 
     fun confirmFirmwareTransfer() = onMain { coordinator?.confirmFirmware() }
 
-    private fun startInput(file: File, fileName: String, firmware: ArkFirmware?, targetPath: String? = null) = onMain {
-        val input = TransferInput(file, fileName, firmware, targetPath)
+    private fun startInput(file: File, fileName: String, firmware: ArkFirmware?, targetPath: String? = null,
+                           legacyHardwareTarget: String? = null) = onMain {
+        val input = TransferInput(file, fileName, firmware, targetPath, legacyHardwareTarget)
         if (closed || closing) {
             publishTransfer(TransferSnapshot("error", "会话已关闭",
                 cleanupCompleted = coordinator?.cleanupConfirmed ?: true), input)
@@ -287,7 +291,8 @@ class ArkSession(context: Context, private val listener: Listener) {
                 cleanupCompleted = coordinator?.cleanupConfirmed ?: true), input)
             return@onMain
         }
-        lastInput = input
+        // The confirmation belongs only to this attempt. Retry must supply it again.
+        lastInput = input.copy(legacyHardwareTarget = null)
         transferOwnerAddress = connectedDevice?.address
         if (!ble.isReady) {
             publishTransfer(TransferSnapshot("error", "请先连接 Ark", total = file.length(),
@@ -311,12 +316,12 @@ class ArkSession(context: Context, private val listener: Listener) {
         else coordinator?.cancel()
     }
 
-    fun retryTransfer() = onMain {
+    fun retryTransfer(legacyHardwareTarget: String? = null) = onMain {
         val input = lastInput
         if (input == null || !input.file.isFile) {
             publishTransfer(TransferSnapshot("error", "没有可重试的本地文件",
                 cleanupCompleted = coordinator?.cleanupConfirmed ?: true))
-        } else startInput(input.file, input.fileName, input.firmware, input.targetPath)
+        } else startInput(input.file, input.fileName, input.firmware, input.targetPath, legacyHardwareTarget)
     }
 
     private fun failQueuedWrites(message: String) {

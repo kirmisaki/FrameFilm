@@ -202,9 +202,11 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             "storage" to storage, "canDelete" to canDeleteFiles,
             "entries" to deviceFiles.map { mapOf("id" to it.key, "name" to it.value) }),
         "connected" to connected, "message" to message, "devices" to devices,
+        "deviceId" to if (connected) session.connectedAddress else null,
         "advertisedName" to if (connected) advertisedName else null,
         "name" to name, "battery" to battery, "width" to width, "height" to height,
         "hardware" to if(connected) hardware?.snapshot() else null,
+        "hardwareIdentitySupported" to (connected && hardwareSupported),
         "abc9PreviewSupported" to (connected && abc9PreviewSupported),
         "autoSleep" to autoSleep, "timedWake" to timedWake, "wakeMinutes" to wakeMinutes,
         "syncedAt" to syncedAt, "settingsMessage" to settingsMessage, "settingsBusy" to refreshing,
@@ -381,9 +383,14 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                     check(!importing && !refreshing && !session.transferActive) { "请等待当前操作完成" }
                     val file = checkNotNull(firmwareFile) { "请先导入 app.bin 固件" }
                     val image = checkNotNull(importedFirmware)
+                    val legacyTarget = call.argument<String>("legacyHardwareTarget")
+                    val deviceId = session.connectedAddress
                     withPermissions(result, direct = true) {
+                        check(deviceId != null && session.connectedAddress == deviceId && firmwareFile == file) {
+                            "设备或固件已变化，请重新确认发送"
+                        }
                         transferPermission = false
-                        session.startFirmwareTransfer(file, image)
+                        session.startFirmwareTransfer(file, image, legacyTarget)
                         result.success(snapshot())
                     }
                 }
@@ -400,9 +407,14 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 }
                 "retryTransfer" -> {
                     check(!importing && !refreshing && !session.transferActive) { "请等待当前操作完成" }
+                    val legacyTarget = call.argument<String>("legacyHardwareTarget")
+                    val deviceId = session.connectedAddress
                     withPermissions(result, direct = true) {
+                        check(deviceId != null && session.connectedAddress == deviceId) {
+                            "设备已变化，请重新确认重试"
+                        }
                         transferPermission = false
-                        session.retryTransfer()
+                        session.retryTransfer(legacyTarget)
                         result.success(snapshot())
                     }
                 }

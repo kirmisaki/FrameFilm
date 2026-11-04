@@ -6,6 +6,7 @@ import android.os.Looper
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.Inet4Address
+import java.util.concurrent.TimeoutException
 
 /** One transfer attempt. ArkSession owns BLE; this owns its temporary Wi-Fi request and HTTP server. */
 class DirectTransferCoordinator(
@@ -17,6 +18,7 @@ class DirectTransferCoordinator(
     private val firmware: ArkFirmware? = null,
     private val reconnect: (() -> Unit)? = null,
     private val targetPath: String? = null,
+    private val legacyHardwareTarget: String? = null,
 ) {
     interface Listener { fun onSnapshot(snapshot: TransferSnapshot) }
 
@@ -148,33 +150,78 @@ class DirectTransferCoordinator(
                 stop("固件缺少 FFARKHW1 硬件目标描述，不能自动升级")
                 return@onMain
             }
-            ble.command(0x5D) hardware@ { hardwareResult ->
-                if(!active || stopping) return@hardware
-                val identity = runCatching { ArkHardware.parse(hardwareResult.getOrThrow()) }.getOrElse {
-                    stop("无法识别设备硬件；请先完成一次对应型号的识别升级，图片功能仍可使用：${it.message}")
-                    return@hardware
-                }
-                runCatching { identity.requireMatches(checkNotNull(firmware)) }.getOrElse {
-                    stop(it.message ?: "固件硬件目标不匹配"); return@hardware
-                }
-                emit("validating", "核对 Wi-Fi OTA 能力与目标分区")
-                ble.command(0x56) { result ->
-                    if (!active || stopping) return@command
-                    val info = runCatching { ArkBuildInfo.parse(result.getOrThrow()) }.getOrElse {
-                        stop("设备不支持 BUILD_INFO；请先完成一次对应型号的识别升级：${it.message}"); return@command
-                    }
-                    if (info.project != firmware.project || firmware.size > info.otaMax) {
-                        stop("固件目标或大小不匹配 OTA 分区（${info.otaMax} 字节）"); return@command
-                    }
-                    if (info.elfSha256 == firmware?.elfSha256) {
-                        terminal = true
-                        finish("done", "设备已运行相同构建，无需升级", true)
-                    } else prepareNetwork()
-                }
-            }
+            checkFirmwareCapability()
         } else if (targetPath != null) checkFileCapability()
         else if (Abc9Preview.isFilm(file)) checkFileCapability(abc9 = true)
         else prepareNetwork()
+    }
+
+    private fun checkFirmwareCapability() {
+        ble.command(0x59) { result ->
+            if (!active || stopping) return@command
+            val data = result.getOrNull()
+            val error = result.exceptionOrNull()
+            // Old firmware does not reply to unknown channels. A write failure or
+            // disconnect is not evidence of an old firmware version.
+            if (!ble.isReady || (error != null && error !is TimeoutException)) {
+                stop("读取设备能力失败：${error?.message ?: "Ark 蓝牙已断开"}"); return@command
+            }
+            if (data != null && (data.size != 5 || data[0] != 1.toByte())) {
+                stop("设备能力响应无效，不能确认硬件身份能力"); return@command
+            }
+            capabilitiesChecked = true
+            useAp = ArkApNetworkController.supported && data != null && data[4].toInt() and 0x10 != 0
+            val declaresHardware = data != null && data[4].toInt() and 0x40 != 0
+            checkFirmwareHardware(declaresHardware)
+        }
+    }
+
+    private fun checkFirmwareHardware(declaresHardware: Boolean) {
+        ble.command(0x5D) { result ->
+            if (!active || stopping) return@command
+            val image = checkNotNull(firmware)
+            val error = result.exceptionOrNull()
+            if (!ble.isReady) {
+                stop("读取硬件身份时 Ark 蓝牙已断开"); return@command
+            }
+            if (error != null) {
+                if (declaresHardware || error !is TimeoutException) {
+                    stop("无法读取设备硬件身份：${error.message}"); return@command
+                }
+                // Only an undeclared, unanswered identity command may use the
+                // user's confirmation for this connected device and this file.
+                val selected = legacyHardwareTarget
+                if (selected == null) {
+                    stop("旧固件不提供硬件身份；请手动选择并确认实际硬件型号后重试"); return@command
+                }
+                runCatching { image.requireTarget(selected) }.getOrElse {
+                    stop(it.message ?: "手动硬件目标无效"); return@command
+                }
+            } else {
+                runCatching { ArkHardware.parse(result.getOrThrow()).requireMatches(image) }.getOrElse {
+                    stop("设备硬件身份无效或目标不匹配：${it.message}"); return@command
+                }
+            }
+            checkFirmwareBuild()
+        }
+    }
+
+    private fun checkFirmwareBuild() {
+        val image = checkNotNull(firmware)
+        emit("validating", "核对 Wi-Fi OTA 能力与目标分区")
+        ble.command(0x56) { result ->
+            if (!active || stopping) return@command
+            val info = runCatching { ArkBuildInfo.parse(result.getOrThrow()) }.getOrElse {
+                stop("设备不支持 BUILD_INFO；请先完成一次对应型号的识别升级：${it.message}"); return@command
+            }
+            if (info.project != image.project || image.size > info.otaMax) {
+                stop("固件目标或大小不匹配 OTA 分区（${info.otaMax} 字节）"); return@command
+            }
+            if (info.elfSha256 == image.elfSha256) {
+                terminal = true
+                finish("done", "设备已运行相同构建，无需升级", true)
+            } else prepareNetwork()
+        }
     }
 
     private fun checkFileCapability(abc9: Boolean = false) {

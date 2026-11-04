@@ -68,6 +68,8 @@ void main() {
       controller.snapshot = files(canDelete: false);
       controller.notifyListeners();
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('device-files-drawer')));
+      await tester.pumpAndSettle();
       final button = find.widgetWithText(TextButton, '删除');
       await tester.ensureVisible(button);
       expect(tester.widget<TextButton>(button).onPressed, isNotNull);
@@ -234,6 +236,8 @@ void main() {
     controller.snapshot = filesIn('current');
     controller.notifyListeners();
     await tester.pump();
+    await tester.tap(find.byKey(const Key('device-files-drawer')));
+    await tester.pumpAndSettle();
     final displays = find.widgetWithText(TextButton, '显示');
     expect(displays, findsWidgets);
     expect(tester.widget<TextButton>(displays.first).onPressed, isNull);

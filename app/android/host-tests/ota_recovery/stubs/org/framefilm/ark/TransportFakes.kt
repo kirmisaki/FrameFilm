@@ -73,11 +73,11 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
         pending = null
         request.callback(Result.success(bytes))
     }
-    fun fail(channel: Int) {
+    fun fail(channel: Int, error: Exception = IllegalStateException("synthetic BLE failure")) {
         val request = requireNotNull(pending)
         check(request.channel == channel)
         pending = null
-        request.callback(Result.failure(IllegalStateException("synthetic BLE failure")))
+        request.callback(Result.failure(error))
     }
 }
 

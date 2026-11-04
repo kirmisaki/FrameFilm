@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import java.util.UUID
+import java.util.concurrent.TimeoutException
 
 /** Ark BLE command transport. All public calls and listener callbacks run on main. */
 @Suppress("DEPRECATION") // API 29-32 GATT write/callback compatibility.
@@ -284,7 +285,7 @@ class ArkBleController(context: Context, private val listener: Listener) {
             armTimeout(waitMs, "BLE 命令响应超时", false) {
                 if (pending === request) {
                     pending = null
-                    callback(Result.failure(IllegalStateException("BLE 0x${channel.toString(16)} 响应超时")))
+                    callback(Result.failure(TimeoutException("BLE 0x${channel.toString(16)} 响应超时")))
                 }
             }
         }

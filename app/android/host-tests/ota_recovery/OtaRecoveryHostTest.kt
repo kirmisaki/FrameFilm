@@ -3,6 +3,7 @@ package org.framefilm.ark
 import android.content.Context
 import android.os.Handler
 import java.io.File
+import java.util.concurrent.TimeoutException
 
 private val elf = "11".repeat(32)
 private val otherElf = "00".repeat(32)
@@ -35,6 +36,7 @@ private class Fixture {
 
     fun startOta() {
         session.startFirmwareTransfer(file, image)
+        ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0x40))
         ble.reply(0x5D, hardwareInfo())
         ble.reply(0x56, buildInfo(otherElf))
         ble.reply(0x42, byteArrayOf(2, 2, 0xd0.toByte(), 1, 0xe0.toByte()))
@@ -62,11 +64,12 @@ private class Fixture {
         ArkApNetworkController.supported = true
         if (ota) {
             session.startFirmwareTransfer(file, image)
+            ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0x52))
             ble.reply(0x5D, hardwareInfo())
-        ble.reply(0x56, buildInfo(otherElf))
+            ble.reply(0x56, buildInfo(otherElf))
         } else if (generic) session.startFileTransfer(file, "apps/passport/data/fixture.bin")
         else session.startTransfer(file, "fixture.film")
-        ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0x12))
+        if (!ota) ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0x12))
         ble.reply(0x42, byteArrayOf(2, 2, 0xd0.toByte(), 1, 0xe0.toByte()))
         for (channel in listOf(0x31, 0x33, 0x35, 0x37)) ble.reply(channel, byteArrayOf(1))
         ble.reply(0x5C, byteArrayOf(0) + "ARK-FILE-TEST\u000012345678\u0000192.168.4.1\u0000".toByteArray())
@@ -402,13 +405,14 @@ private fun hardwareTargetsAndRetriesCannotGuess() {
         val image=f.image.copy(hardware=boardHardware(id))
         val wrong=if(id == ArkHardware.N4R2) ArkHardware.N16R8 else ArkHardware.N4R2
         f.session.startFirmwareTransfer(f.file,image)
-        check(f.ble.pending?.channel == 0x5D)
+        f.ble.reply(0x59,byteArrayOf(1,0,0,0,0x40))
         f.ble.reply(0x5D,hardwareInfo(wrong))
         f.p2p.finishClose(true)
         check(f.recorder.latest().phase == "error" && f.recorder.latest().message.contains("目标不匹配"))
-        check(f.ble.channels == listOf(0x5D))
+        check(f.ble.channels == listOf(0x59,0x5D))
         f.session.retryTransfer()
-        check(f.ble.pending?.channel == 0x5D && f.ble.channels.count{it==0x5D}==2)
+        check(f.ble.pending?.channel == 0x59 && f.ble.channels.count{it==0x59}==2)
+        f.ble.reply(0x59,byteArrayOf(1,0,0,0,0x40))
         f.ble.reply(0x5D,hardwareInfo(id))
         check(f.ble.pending?.channel == 0x56)
         // otaMax must also be obtained afresh, even after matching target on retry.
@@ -419,11 +423,12 @@ private fun hardwareTargetsAndRetriesCannotGuess() {
     }
     val old=Fixture()
     old.session.startFirmwareTransfer(old.file,old.image)
-    old.ble.fail(0x5D)
+    old.ble.fail(0x59,TimeoutException())
+    old.ble.fail(0x5D,TimeoutException())
     old.p2p.finishClose(true)
-    check(old.recorder.latest().message.contains("一次对应型号的识别升级"))
+    check(old.recorder.latest().message.contains("手动选择并确认"))
     old.session.retryTransfer()
-    check(old.ble.pending?.channel == 0x5D)
+    check(old.ble.pending?.channel == 0x59)
     old.ble.disconnectNow()
     old.p2p.finishClose(true)
     check(0x56 !in old.ble.channels)
@@ -435,8 +440,106 @@ private fun hardwareTargetsAndRetriesCannotGuess() {
     check(missing.ble.pending?.channel == 0x42) // Ordinary photo path remains available.
 }
 
+private fun legacyHardwareConfirmationIsAttemptScoped() {
+    for (id in listOf(ArkHardware.N4R2, ArkHardware.N16R8)) {
+        val f = Fixture()
+        val image = f.image.copy(hardware = boardHardware(id))
+        f.session.startFirmwareTransfer(f.file, image, id)
+        f.ble.fail(0x59, TimeoutException())
+        f.ble.fail(0x5D, TimeoutException())
+        check(f.ble.pending?.channel == 0x56)
+        f.ble.reply(0x56, buildInfo(otherElf, max = 1))
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().message.contains("OTA 分区"))
+
+        // A previously confirmed manual target is never reused implicitly.
+        f.session.retryTransfer()
+        f.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0))
+        f.ble.fail(0x5D, TimeoutException())
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().message.contains("手动选择并确认"))
+        check(f.ble.channels.count { it == 0x56 } == 1)
+
+        val wrong = if (id == ArkHardware.N4R2) ArkHardware.N16R8 else ArkHardware.N4R2
+        f.session.retryTransfer(wrong)
+        f.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0))
+        f.ble.fail(0x5D, TimeoutException())
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().phase == "error" && f.recorder.latest().message.contains("不匹配"))
+        check(f.ble.channels.count { it == 0x56 } == 1)
+
+        // Fresh confirmation is accepted, and the live BUILD_INFO/ELF is read again.
+        f.session.retryTransfer(id)
+        f.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0))
+        f.ble.fail(0x5D, TimeoutException())
+        f.ble.reply(0x56, buildInfo(elf))
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().success && f.recorder.latest().message.contains("相同构建"))
+        check(f.ble.channels.count { it == 0x56 } == 2)
+        check(f.ble.channels.none { it in listOf(0x57, 0x5C) })
+    }
+
+    for (target in listOf("unknown", ArkHardware.N16R8)) {
+        val f = Fixture()
+        f.session.startFirmwareTransfer(f.file, f.image, target)
+        f.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0))
+        f.ble.fail(0x5D, TimeoutException())
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().phase == "error" && 0x56 !in f.ble.channels)
+    }
+
+    // New firmware's advertised identity support cannot be bypassed by a manual target.
+    for (mode in listOf("timeout", "malformed", "mismatch", "unknown")) {
+        val f = Fixture()
+        f.session.startFirmwareTransfer(f.file, f.image, ArkHardware.N4R2)
+        f.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0x40))
+        when (mode) {
+            "timeout" -> f.ble.fail(0x5D, TimeoutException())
+            "malformed" -> f.ble.reply(0x5D, byteArrayOf(1))
+            "mismatch" -> f.ble.reply(0x5D, hardwareInfo(ArkHardware.N16R8))
+            else -> f.ble.reply(0x5D, hardwareInfo("unknown"))
+        }
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().phase == "error" && 0x56 !in f.ble.channels)
+    }
+
+    for (channel in listOf(0x59, 0x5D)) {
+        val f = Fixture()
+        f.session.startFirmwareTransfer(f.file, f.image, ArkHardware.N4R2)
+        if (channel == 0x5D) f.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0))
+        f.ble.disconnectNow()
+        f.p2p.finishClose(true)
+        check(f.recorder.latest().phase == "error" && 0x56 !in f.ble.channels)
+
+        val writeFailure = Fixture()
+        writeFailure.session.startFirmwareTransfer(writeFailure.file, writeFailure.image, ArkHardware.N4R2)
+        if (channel == 0x5D) writeFailure.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0))
+        writeFailure.ble.fail(channel)
+        writeFailure.p2p.finishClose(true)
+        check(writeFailure.recorder.latest().phase == "error" && 0x56 !in writeFailure.ble.channels)
+    }
+
+    // Even undeclared identity data is authoritative when present and malformed.
+    val invalid = Fixture()
+    invalid.session.startFirmwareTransfer(invalid.file, invalid.image, ArkHardware.N4R2)
+    invalid.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0))
+    invalid.ble.reply(0x5D, byteArrayOf(0))
+    invalid.p2p.finishClose(true)
+    check(invalid.recorder.latest().phase == "error" && 0x56 !in invalid.ble.channels)
+
+    val project = Fixture()
+    project.session.startFirmwareTransfer(project.file, project.image.copy(project = "different_project"), ArkHardware.N4R2)
+    project.ble.fail(0x59, TimeoutException())
+    project.ble.fail(0x5D, TimeoutException())
+    project.ble.reply(0x56, buildInfo(otherElf))
+    project.p2p.finishClose(true)
+    check(project.recorder.latest().phase == "error" && project.recorder.latest().message.contains("OTA 分区"))
+    check(0x57 !in project.ble.channels)
+}
+
 fun main() {
     hardwareTargetsAndRetriesCannotGuess()
+    legacyHardwareConfirmationIsAttemptScoped()
     directTerminalAfterEarlyReady()
     stillBusyRequiresCancel()
     failedStatusDoesNotUnlock()

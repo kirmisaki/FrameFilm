@@ -6,7 +6,13 @@ import 'dart:typed_data';
 
 import 'device_gateway.dart';
 
-enum PreviewScenario { normal, transferFailure, unconfirmed, sameBuild }
+enum PreviewScenario {
+  normal,
+  transferFailure,
+  unconfirmed,
+  sameBuild,
+  legacyFirmware,
+}
 
 /// In-memory demo: never reads files or invokes platform channels.
 class PreviewDeviceGateway implements DeviceGateway {
@@ -15,6 +21,7 @@ class PreviewDeviceGateway implements DeviceGateway {
     this.demoHardware = HardwareIdentity.n4r2,
   });
   HardwareIdentity demoHardware;
+  HardwareIdentity? _downloadTarget;
   final Duration stepDuration;
   final _events = StreamController<DeviceSnapshot>.broadcast();
   Timer? _timer;
@@ -79,7 +86,12 @@ class PreviewDeviceGateway implements DeviceGateway {
       DeviceSnapshot(
         files: _connected ? _fileState : const {},
         connected: _connected,
-        hardware: _connected ? demoHardware : null,
+        hardware: _connected && scenario != PreviewScenario.legacyFirmware
+            ? demoHardware
+            : null,
+        deviceId: _connected ? 'DEMO-ARK' : null,
+        hardwareIdentitySupported:
+            _connected && scenario != PreviewScenario.legacyFirmware,
         passport: _passport,
         hasPassportState: true,
         message: warning,
@@ -251,7 +263,7 @@ class PreviewDeviceGateway implements DeviceGateway {
         _syncedAt = DateTime.now().millisecondsSinceEpoch;
         _settingsMessage = '模拟时间同步完成';
       case 'downloadFirmware':
-        _startDownload();
+        _startDownload(arguments);
       case 'cancelFirmwareDownload':
         _timer?.cancel();
         _download = const FirmwareDownload(
@@ -341,9 +353,9 @@ class PreviewDeviceGateway implements DeviceGateway {
       case 'startTransfer':
         _start(false);
       case 'startFirmwareTransfer':
-        _start(true);
+        _start(true, arguments);
       case 'retryTransfer':
-        _start(_transfer.kind == 'firmware');
+        _start(_transfer.kind == 'firmware', arguments);
       case 'cancelTransfer':
         _timer?.cancel();
         _transfer = FilmTransfer(
@@ -372,7 +384,14 @@ class PreviewDeviceGateway implements DeviceGateway {
     _emit();
   }
 
-  void _startDownload() {
+  void _startDownload(Map<String, Object?>? arguments) {
+    final target = HardwareIdentity.target(
+      arguments?['targetId'] as String? ?? '',
+    );
+    if (target == null || !target.matchesPackage(arguments ?? const {})) {
+      throw StateError('演示固件目标无效');
+    }
+    _downloadTarget = target;
     _timer?.cancel();
     var step = 0;
     void advance() {
@@ -389,12 +408,12 @@ class PreviewDeviceGateway implements DeviceGateway {
       } else if (step >= 5) {
         _timer?.cancel();
         _firmware = ImportedFirmware(
-          name: '${demoHardware.targetId} / DEMO',
-          targetId: demoHardware.targetId,
-          chipId: demoHardware.chipId,
-          flashBytes: demoHardware.flashBytes,
-          psramBytes: demoHardware.psramBytes,
-          psramBus: demoHardware.psramBus,
+          name: '${_downloadTarget!.targetId} / DEMO',
+          targetId: _downloadTarget!.targetId,
+          chipId: _downloadTarget!.chipId,
+          flashBytes: _downloadTarget!.flashBytes,
+          psramBytes: _downloadTarget!.psramBytes,
+          psramBus: _downloadTarget!.psramBus,
           size: 1048576,
           version: '3.2.5 / DEMO',
           project: 'frame_film_ark',
@@ -427,7 +446,17 @@ class PreviewDeviceGateway implements DeviceGateway {
     _timer = Timer.periodic(stepDuration, (_) => advance());
   }
 
-  void _start(bool firmware) {
+  void _start(bool firmware, [Map<String, Object?>? arguments]) {
+    if (firmware) {
+      final target = scenario == PreviewScenario.legacyFirmware
+          ? HardwareIdentity.target(
+              arguments?['legacyHardwareTarget'] as String? ?? '',
+            )
+          : demoHardware;
+      if (target == null || _firmware?.matchesHardware(target) != true) {
+        throw StateError('演示升级需要本次确认与匹配的固件目标');
+      }
+    }
     _timer?.cancel();
     final total = firmware ? _firmware?.size : _film?.size;
     if (!_connected || total == null) throw StateError('请先连接模拟设备并选择演示文件');
