@@ -68,11 +68,11 @@ void main() {
       controller.snapshot = files(canDelete: false);
       controller.notifyListeners();
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('device-files-drawer')));
+      await tester.tap(find.byKey(const ValueKey('device-file-0')));
       await tester.pumpAndSettle();
-      final button = find.widgetWithText(TextButton, '删除');
+      final button = find.widgetWithText(OutlinedButton, '删除文件');
       await tester.ensureVisible(button);
-      expect(tester.widget<TextButton>(button).onPressed, isNotNull);
+      expect(tester.widget<OutlinedButton>(button).onPressed, isNotNull);
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(find.text('请先打开对应 app'), findsOneWidget);
@@ -109,7 +109,7 @@ void main() {
       controller.busy = true;
       controller.notifyListeners();
       await tester.pump();
-      expect(tester.widget<TextButton>(button).onPressed, isNull);
+      expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
     },
   );
 
@@ -236,16 +236,21 @@ void main() {
     controller.snapshot = filesIn('current');
     controller.notifyListeners();
     await tester.pump();
-    await tester.tap(find.byKey(const Key('device-files-drawer')));
-    await tester.pumpAndSettle();
-    final displays = find.widgetWithText(TextButton, '显示');
+    final displays = find.widgetWithText(OutlinedButton, '选择显示');
     expect(displays, findsWidgets);
-    expect(tester.widget<TextButton>(displays.first).onPressed, isNull);
-    expect(find.text('显示文件前，请先选择图片目录或动画目录，确认文件所属 app。'), findsOneWidget);
+    expect(tester.widget<OutlinedButton>(displays.first).onPressed, isNotNull);
+    await tester.tap(find.byKey(const ValueKey('device-file-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(displays.first);
+    await tester.pumpAndSettle();
+    expect(find.text('请从连接页选择图片或动画目录后重试'), findsOneWidget);
     controller.snapshot = filesIn('film');
     controller.notifyListeners();
     await tester.pumpAndSettle();
-    expect(tester.widget<TextButton>(displays.first).onPressed, isNotNull);
+    expect(tester.widget<OutlinedButton>(displays.first).onPressed, isNotNull);
+    await tester.tap(find.byKey(const ValueKey('device-file-0')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<OutlinedButton>(displays.first).onPressed, isNotNull);
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -81,7 +81,6 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
   late final InterfaceThemePreferences themePreferences =
       widget.themePreferences ?? const LocalInterfaceThemePreferences();
   int page = 0;
-  bool deviceFilesExpanded = false;
   final scrollControllers = List.generate(6, (_) => ScrollController());
   bool loading = false;
   Timer? loadingTimer;
@@ -1539,7 +1538,6 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
           controller: device,
           embedded: true,
           onBrowseDirectory: (directory) {
-            deviceFilesExpanded = true;
             navigate(5);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && page == 5 && scrollControllers[5].hasClients) {
@@ -1556,14 +1554,7 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
   );
 
   List<Widget> settingsPage(BuildContext context) => [
-    panel(
-      context,
-      child: DeviceFilesPage(
-        controller: device,
-        initiallyExpanded: deviceFilesExpanded,
-        onExpansionChanged: (expanded) => deviceFilesExpanded = expanded,
-      ),
-    ),
+    panel(context, child: DeviceFilesPage(controller: device)),
     const SizedBox(height: 20),
     deviceSettingsPanel(context),
     const SizedBox(height: 20),

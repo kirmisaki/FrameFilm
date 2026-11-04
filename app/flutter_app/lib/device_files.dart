@@ -4,35 +4,114 @@ import 'device_gateway.dart';
 
 /// Browses an independent, read-only SD catalog.
 class DeviceFilesPage extends StatefulWidget {
-  const DeviceFilesPage({
-    super.key,
-    required this.controller,
-    this.initiallyExpanded = false,
-    this.onExpansionChanged,
-  });
+  const DeviceFilesPage({super.key, required this.controller});
   final DeviceController controller;
-  final bool initiallyExpanded;
-  final ValueChanged<bool>? onExpansionChanged;
 
   @override
   State<DeviceFilesPage> createState() => _DeviceFilesPageState();
 }
 
 class _DeviceFilesPageState extends State<DeviceFilesPage> {
-  late bool _expanded = widget.initiallyExpanded;
+  final _scroll = ScrollController();
+  String? _deviceId, _directory;
+  Map? _selection;
+  List<Map> _entries = [];
   DeviceController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_catalogChanged);
+    _syncCatalog();
+  }
 
   @override
   void didUpdateWidget(covariant DeviceFilesPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initiallyExpanded != widget.initiallyExpanded) {
-      _expanded = widget.initiallyExpanded;
+    if (oldWidget.controller != controller) {
+      oldWidget.controller.removeListener(_catalogChanged);
+      controller.addListener(_catalogChanged);
+      _deviceId = null;
+      _directory = null;
+      _selection = null;
+      _entries = [];
+      _syncCatalog();
     }
   }
 
-  void _toggle() {
-    setState(() => _expanded = !_expanded);
-    widget.onExpansionChanged?.call(_expanded);
+  @override
+  void dispose() {
+    controller.removeListener(_catalogChanged);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _catalogChanged() => setState(_syncCatalog);
+
+  void _syncCatalog() {
+    final snapshot = controller.snapshot;
+    final directory = snapshot.files['directory'] as String?;
+    if (!snapshot.connected ||
+        _deviceId != snapshot.deviceId ||
+        _directory != directory) {
+      _entries = [];
+      _selection = null;
+      if (_scroll.hasClients) _scroll.jumpTo(0);
+    }
+    _deviceId = snapshot.deviceId;
+    _directory = directory;
+    if (!snapshot.connected) return;
+    if (snapshot.files['loaded'] != true) {
+      _selection = null;
+      return;
+    }
+    _entries = (snapshot.files['entries'] as List? ?? const [])
+        .whereType<Map>()
+        .toList();
+    if (!_entries.any(
+      (entry) =>
+          entry['id'] == _selection?['id'] &&
+          entry['name'] == _selection?['name'],
+    )) {
+      _selection = null;
+    }
+  }
+
+  void _message(String text) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _command(
+    String method, [
+    Map<String, Object?>? arguments,
+  ]) async {
+    await controller.command(method, arguments);
+    if (!mounted) return;
+    final message =
+        controller.errorMessage ?? controller.snapshot.settingsMessage;
+    if (message?.trim().isNotEmpty == true) _message(message!);
+  }
+
+  void _refresh() {
+    setState(() => _selection = null);
+    _command('listDeviceFiles');
+  }
+
+  void _operate({required bool delete}) {
+    final entry = _selection;
+    if (entry == null) {
+      _message(delete ? '请先选择要删除的文件' : '请先选择要显示的文件');
+      return;
+    }
+    if (delete) {
+      _delete(context, entry);
+    } else if (_directory == 'film' || _directory == 'animation') {
+      _command('displayDeviceFile', {'id': entry['id'], 'name': entry['name']});
+    } else {
+      _message('请从连接页选择图片或动画目录后重试');
+    }
   }
 
   Future<void> _delete(BuildContext context, Map entry) async {
@@ -65,198 +144,154 @@ class _DeviceFilesPageState extends State<DeviceFilesPage> {
       ),
     );
     if (confirmed == true) {
-      await controller.command(
-        canDelete ? 'deleteDeviceFile' : 'displayDeviceFile',
-        {'id': entry['id'], 'name': entry['name']},
-      );
+      await _command(canDelete ? 'deleteDeviceFile' : 'displayDeviceFile', {
+        'id': entry['id'],
+        'name': entry['name'],
+      });
     }
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: controller,
-    builder: (context, _) {
-      final snapshot = controller.snapshot;
-      final files = snapshot.files;
-      final entries = (files['entries'] as List? ?? const [])
-          .whereType<Map>()
-          .toList();
-      final available = controller.canEditSettings;
-      final knownDirectory =
-          files['directory'] == 'film' || files['directory'] == 'animation';
-      final directory = switch (files['directory']) {
-        'film' => '图片 / film',
-        'animation' => '动画 / animation',
-        _ => '设备当前目录',
-      };
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('设备文件', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          ListTile(
-            key: const Key('device-files-drawer'),
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.folder_outlined),
-            title: Text('$directory · ${entries.length} 个文件'),
-            subtitle: Text(_expanded ? '点击收起文件列表' : '点击展开文件列表'),
-            trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
-            onTap: _toggle,
+  Widget build(BuildContext context) {
+    final available = controller.canEditSettings;
+    final files = controller.snapshot.files;
+    final ready = available && files['loaded'] == true;
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.movie_filter_outlined),
+            const SizedBox(width: 8),
+            Expanded(child: Text('FILM设置', style: theme.textTheme.titleLarge)),
+            IconButton(
+              tooltip: '刷新',
+              onPressed: available ? _refresh : null,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: theme.colorScheme.outline),
+            borderRadius: BorderRadius.circular(4),
           ),
-          if (_expanded) ...[
-            Text(snapshot.connected ? directory : '连接设备后读取 SD 卡中的 film 文件'),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: available
-                      ? () => controller.command('listDeviceFiles')
-                      : null,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('刷新列表'),
-                ),
-                OutlinedButton(
-                  onPressed: available
-                      ? () => controller.command('setDeviceFileDirectory', {
-                          'appId': 0,
-                        })
-                      : null,
-                  child: const Text('图片目录'),
-                ),
-                OutlinedButton(
-                  onPressed: available
-                      ? () => controller.command('setDeviceFileDirectory', {
-                          'appId': 3,
-                        })
-                      : null,
-                  child: const Text('动画目录'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              '浏览图片或动画目录只读取 SD 卡，不切换 app，也不刷新设备画面。点击“显示”才会切换到对应 app。删除需设备当前已打开对应 app；点击删除可查看操作提示。旧固件需升级后使用只读浏览。',
-            ),
-            if (snapshot.connected && !knownDirectory)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text('显示文件前，请先选择图片目录或动画目录，确认文件所属 app。'),
-              ),
-            if (controller.busy || snapshot.settingsBusy) ...[
-              const SizedBox(height: 16),
-              const LinearProgressIndicator(),
-            ],
-            if (controller.errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                controller.errorMessage!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
-            if (snapshot.settingsMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Text(snapshot.settingsMessage!),
-              ),
-            const SizedBox(height: 16),
-            if (entries.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 32),
-                child: Column(
-                  children: [
-                    const Icon(Icons.folder_open, size: 40),
-                    const SizedBox(height: 12),
-                    Text(
-                      !snapshot.connected
-                          ? '尚未连接设备'
-                          : files['loaded'] == true
-                          ? '当前目录没有文件'
-                          : controller.automaticFilesLoading
-                          ? '正在自动读取设备文件…'
-                          : controller.automaticFilesPending
-                          ? '等待设备就绪后自动读取文件…'
-                          : controller.automaticFilesFailed
-                          ? '自动读取未完成，请点击刷新重试'
-                          : '点击刷新读取设备文件',
+          clipBehavior: Clip.antiAlias,
+          child: _entries.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text(
+                      controller.busy || controller.snapshot.settingsBusy
+                          ? '正在加载...'
+                          : '暂无文件',
                     ),
-                  ],
-                ),
-              ),
-            if (entries.isNotEmpty)
-              SizedBox(
-                key: const Key('device-files-list-viewport'),
-                height: (entries.length * 136.0).clamp(136.0, 320.0),
-                child: ListView.builder(
-                  key: const Key('device-files-list'),
-                  primary: false,
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    return Card(
-                      key: ValueKey('device-file-${entry['id']}'),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                  ),
+                )
+              : SizedBox(
+                  key: const Key('device-files-list-viewport'),
+                  height: (_entries.length * 48.0).clamp(48.0, 180.0),
+                  child: Scrollbar(
+                    controller: _scroll,
+                    thumbVisibility: true,
+                    child: ListView.builder(
+                      key: const Key('device-files-list'),
+                      controller: _scroll,
+                      primary: false,
+                      itemExtent: 48,
+                      itemCount: _entries.length,
+                      itemBuilder: (context, index) {
+                        final entry = _entries[index];
+                        final name = entry['name'] as String? ?? '';
+                        final selected = _selection?['id'] == entry['id'];
+                        final current = files['currentId'] == entry['id'];
+                        void select() => setState(
+                          () => _selection = selected ? null : entry,
+                        );
+                        return Material(
+                          key: ValueKey('device-file-${entry['id']}'),
+                          color: current
+                              ? theme.colorScheme.tertiaryContainer
+                              : theme.colorScheme.surfaceContainerLow,
+                          child: InkWell(
+                            onTap: ready ? select : null,
+                            child: Row(
                               children: [
-                                const Icon(Icons.insert_drive_file_outlined),
-                                const SizedBox(width: 10),
-                                Expanded(
+                                Checkbox(
+                                  value: selected,
+                                  onChanged: ready ? (_) => select() : null,
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme
+                                        .colorScheme
+                                        .surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
                                   child: Text(
-                                    entry['name'] as String? ?? '',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleSmall,
+                                    '${entry['id']}',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: theme.colorScheme.onSurface,
+                                    ),
                                   ),
                                 ),
-                                if (files['currentId'] == entry['id'])
-                                  const Chip(label: Text('当前 ID')),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Tooltip(
+                                    message: name,
+                                    child: Text(
+                                      name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: current
+                                          ? TextStyle(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onTertiaryContainer,
+                                            )
+                                          : null,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              children: [
-                                TextButton.icon(
-                                  onPressed: available && knownDirectory
-                                      ? () => controller.command(
-                                          'displayDeviceFile',
-                                          {
-                                            'id': entry['id'],
-                                            'name': entry['name'],
-                                          },
-                                        )
-                                      : null,
-                                  icon: const Icon(Icons.slideshow),
-                                  label: const Text('显示'),
-                                ),
-                                TextButton.icon(
-                                  onPressed: available
-                                      ? () => _delete(context, entry)
-                                      : null,
-                                  icon: const Icon(Icons.delete_outline),
-                                  label: const Text('删除'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: available ? () => _operate(delete: true) : null,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('删除文件'),
               ),
-            const SizedBox(height: 12),
-            const Text('目录为读取时的快照。显示命令完成不代表电子纸已完成刷新；删除前会按文件名重新核对设备活跃列表。'),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: available ? () => _operate(delete: false) : null,
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('选择显示'),
+              ),
+            ),
           ],
-        ],
-      );
-    },
-  );
+        ),
+      ],
+    );
+  }
 }
 
 /// Actual SD statistics, with unknown and partial reads kept distinct from zero.
