@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:image/image.dart' as img;
 
 enum ImageResampling { highQuality, legacyCanvas }
 
@@ -55,24 +54,49 @@ Uint8List _averageResize((Uint8List, int, int, int, int) job) {
     }
     rgba[i + 3] = 255;
   }
-  final source = img.Image.fromBytes(
-    width: sw,
-    height: sh,
-    bytes: rgba.buffer,
-    bytesOffset: rgba.offsetInBytes,
-    numChannels: 4,
-  );
-  return img
-      .copyResize(
-        source,
-        width: width,
-        height: height,
-        interpolation: img.Interpolation.average,
-      )
-      .getBytes(order: img.ChannelOrder.rgba);
+  final output = Uint8List(width * height * 4);
+  final xStarts = Int32List(width), xEnds = Int32List(width);
+  for (var x = 0; x < width; x++) {
+    xStarts[x] = (x * sw) ~/ width;
+    xEnds[x] = ((x + 1) * sw + width - 1) ~/ width;
+  }
+  // Integer grid coordinates make fractional pixel coverage exact: a source
+  // pixel is width x height units and every output box is sw x sh units.
+  // Accumulate encoded RGB directly, rounding only the final opaque pixel.
+  // Workspace is the input/output byte buffers plus O(width) boundary indices.
+  final area = sw * sh;
+  for (var y = 0; y < height; y++) {
+    final top = y * sh, bottom = (y + 1) * sh;
+    final yStart = top ~/ height;
+    final yEnd = (bottom + height - 1) ~/ height;
+    for (var x = 0; x < width; x++) {
+      final left = x * sw, right = (x + 1) * sw;
+      var red = 0, green = 0, blue = 0;
+      for (var sy = yStart; sy < yEnd; sy++) {
+        final wy =
+            (math.min(bottom, (sy + 1) * height) - math.max(top, sy * height))
+                .toInt();
+        for (var sx = xStarts[x]; sx < xEnds[x]; sx++) {
+          final wx =
+              (math.min(right, (sx + 1) * width) - math.max(left, sx * width))
+                  .toInt();
+          final weight = wx * wy, offset = (sy * sw + sx) * 4;
+          red += rgba[offset] * weight;
+          green += rgba[offset + 1] * weight;
+          blue += rgba[offset + 2] * weight;
+        }
+      }
+      final offset = (y * width + x) * 4;
+      output[offset] = (red / area).round();
+      output[offset + 1] = (green / area).round();
+      output[offset + 2] = (blue / area).round();
+      output[offset + 3] = 255;
+    }
+  }
+  return output;
 }
 
-/// Explicit box/area averaging for downsampling (not Lanczos). Canvas then
+/// Fractional-coverage box/area averaging in encoded RGB. Canvas then
 /// handles only the fractional placement and any enlargement. Integer rounding
 /// of the intermediate size never changes the original composition geometry.
 Future<ui.Image> resizeCompositionSource(

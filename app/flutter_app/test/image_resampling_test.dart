@@ -18,6 +18,120 @@ void main() {
       (await image.toByteData(format: ui.ImageByteFormat.png))!.buffer
           .asUint8List();
 
+  test('fractional 8/3 reduction integrates horizontal and vertical stripes', () async {
+    // Each three output pixels cover eight input cells. The black-first stripe
+    // integrals are 255 * [1, 4/3, 5/3] / (8/3), rounded once at the end.
+    const expected = [96, 128, 159];
+    for (final vertical in [false, true]) {
+      final rgba = Uint8List(1080 * 4);
+      for (var i = 0; i < 1080; i++) {
+        final value = i.isEven ? 0 : 255;
+        rgba.setRange(i * 4, i * 4 + 4, [value, value, value, 255]);
+      }
+      final source = await imageFromRgba(
+        rgba,
+        vertical ? 1 : 1080,
+        vertical ? 1080 : 1,
+      );
+      final resized = await resizeCompositionSource(
+        source,
+        vertical ? 1 : 405,
+        vertical ? 405 : 1,
+      );
+      try {
+        final actual = await pixels(resized);
+        for (var i = 0; i < 405; i++) {
+          expect(actual.sublist(i * 4, i * 4 + 4), [
+            expected[i % 3],
+            expected[i % 3],
+            expected[i % 3],
+            255,
+          ], reason: 'vertical=$vertical pixel=$i');
+        }
+      } finally {
+        resized.dispose();
+        source.dispose();
+      }
+    }
+  });
+
+  test(
+    'two-dimensional fractional coverage includes edge and center cells',
+    () async {
+      final rgba = Uint8List(3 * 3 * 4);
+      for (var i = 3; i < rgba.length; i += 4) {
+        rgba[i] = 255;
+      }
+      rgba.setRange(0, 4, [90, 0, 0, 255]);
+      rgba.setRange(8, 12, [0, 90, 0, 255]);
+      rgba.setRange(24, 28, [0, 0, 90, 255]);
+      rgba.setRange(16, 20, [255, 180, 90, 255]);
+      final source = await imageFromRgba(rgba, 3, 3);
+      final resized = await resizeCompositionSource(source, 2, 2);
+      try {
+        // Each 1.5 x 1.5 box contains 1/4 of the center (1/9 normalized)
+        // and a whole corresponding corner (4/9 normalized).
+        expect(await pixels(resized), [
+          68,
+          20,
+          10,
+          255,
+          28,
+          60,
+          10,
+          255,
+          28,
+          20,
+          50,
+          255,
+          28,
+          20,
+          10,
+          255,
+        ]);
+      } finally {
+        resized.dispose();
+        source.dispose();
+      }
+    },
+  );
+
+  test(
+    'noninteger reduction preserves every channel of a constant color',
+    () async {
+      final rgba = Uint8List.fromList([
+        for (var i = 0; i < 35; i++) ...[17, 129, 240, 255],
+      ]);
+      final source = await imageFromRgba(rgba, 7, 5);
+      final resized = await resizeCompositionSource(source, 3, 2);
+      try {
+        expect(await pixels(resized), [
+          for (var i = 0; i < 6; i++) ...[17, 129, 240, 255],
+        ]);
+      } finally {
+        resized.dispose();
+        source.dispose();
+      }
+    },
+  );
+
+  test('fractional alpha edges composite premultiplied color on white first', () async {
+    // Half-red rawRgba is already premultiplied. On white it is [255,127,127].
+    final source = await imageFromRgba(
+      Uint8List.fromList([0, 0, 255, 255, 128, 0, 0, 128, 0, 0, 0, 0]),
+      3,
+      1,
+    );
+    final resized = await resizeCompositionSource(source, 2, 1);
+    try {
+      // Boxes weigh blue:red 2:1, then red:white 1:2.
+      expect(await pixels(resized), [85, 42, 212, 255, 255, 212, 212, 255]);
+    } finally {
+      resized.dispose();
+      source.dispose();
+    }
+  });
+
   test(
     'area average retains thin stripes and composites alpha on white',
     () async {
