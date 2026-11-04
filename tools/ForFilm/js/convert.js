@@ -9,17 +9,28 @@ function getFilmCanvasHeight() { return isArk512Selected() ? 480 : getCanvasHeig
 var ark512Generation = 0;
 var ark512Result = null;
 var ark512Imported = null;
+var ark512WarmChroma = .25;
+var sourceWarmChroma = 0;
+var ark512WarmControlActive = false;
 function cancelArk512Preview() {
     ark512Generation++;
     ark512Result = null;
 }
 function syncArk512Controls() {
     var active = isArk512Selected();
-    document.getElementById('sourceFitContainer').style.display = active ? 'none' : '';
+    var warmControl = document.getElementById('warmChroma');
+    if (active !== ark512WarmControlActive) {
+        if (ark512WarmControlActive) ark512WarmChroma = Number(warmControl.value);
+        else sourceWarmChroma = Number(warmControl.value);
+        ark512WarmControlActive = active;
+        warmControl.value = active ? ark512WarmChroma : sourceWarmChroma;
+        document.getElementById('warmChromaValue').textContent = warmControl.value;
+    }
+    document.getElementById('sourceFitContainer').style.display = '';
     document.getElementById('ark512Controls').hidden = !active;
     document.getElementById('toggleDither').disabled = active;
-    document.getElementById('toggleDither').textContent = active ? '固定 FS' : isDitheringEnabled ? '禁用抖动' : '启用抖动';
-    ['contrast','saturation'].forEach(function(id){document.getElementById(id).disabled=active&&!!ark512Imported;});
+    document.getElementById('toggleDither').textContent = active ? '蛇形 FS' : isDitheringEnabled ? '禁用抖动' : '启用抖动';
+    ['contrast','saturation','ditherStrength','rangeFit','warmChroma'].forEach(function(id){document.getElementById(id).disabled=active&&!!ark512Imported;});
     document.getElementById('ark512Hint').hidden = !active;
     document.getElementById('ark512ContinuousTone').disabled = !!ark512Imported;
 }
@@ -35,7 +46,7 @@ async function updateArk512Preview(imageData, ctx) {
         logical.data.set(imageData.data.subarray(source,source+4),(y*w+x)*4);
     }
     try {
-        var result = await window.Ark512.render(logical, {continuousTone:document.getElementById('ark512ContinuousTone').checked,cancelled:function(){return generation!==ark512Generation;}});
+        var result = await window.Ark512.render(logical, {continuousTone:document.getElementById('ark512ContinuousTone').checked,warmChroma:Number(document.getElementById('warmChroma').value),rangeFit:Number(document.getElementById('rangeFit').value),ditherStrength:Number(document.getElementById('ditherStrength').value),cancelled:function(){return generation!==ark512Generation;}});
         if(generation!==ark512Generation) return;
         var nativeCodes = new Uint16Array(w*h), rgba = new Uint8ClampedArray(w*h*4);
         for(var ly=0;ly<h;ly++) for(var lx=0;lx<w;lx++) {
@@ -147,7 +158,7 @@ const rgbPalette = [
 function syncAdjustSliders() {
     var ditherType = document.getElementById('ditherType').value;
     document.getElementById('ditherStrengthContainer').style.display =
-        (ditherType === 'ark512I006' || ditherType === 'adaptive' || ditherType === 'atkinsonEnhanced' || ditherType === 'szEnhanced' || ditherType === 'atkinsonSzCalib') ? 'none' : '';
+        (ditherType === 'adaptive' || ditherType === 'atkinsonEnhanced' || ditherType === 'szEnhanced' || ditherType === 'atkinsonSzCalib') ? 'none' : '';
     var colorAdjust = document.getElementById('colorAdjustContainer');
     if (colorAdjust) {
         colorAdjust.style.display = (ditherType === 'szEnhanced') ? 'none' : '';
@@ -167,8 +178,8 @@ function getSourceFitProfile() {
 function syncSourceFitControls() {
     var profile = getSourceFitProfile();
     var type = document.getElementById('ditherType').value;
-    if(type === 'ark512I006') { syncArk512Controls(); return; }
     syncArk512Controls();
+    if(type === 'ark512I006') return;
     var sz = type === 'szEnhanced' || type === 'atkinsonSzCalib';
     document.getElementById('rangeFit').disabled = !profile || sz;
     document.getElementById('warmChroma').disabled = !profile;
@@ -531,6 +542,7 @@ function resetImage() {
     ctx.clearRect(0, 0, getFilmCanvasWidth(), getFilmCanvasHeight());
     document.getElementById('imageResult').innerHTML = '';
     document.getElementById('fileName').value = 'output.film';
+    syncSourceFitControls();
 }
 
 function rotateCanvas() {
@@ -569,6 +581,7 @@ function rotateCanvas() {
 let _rafId = null;
 let _debounceTimer = null;
 function debounceUpdateImage() {
+    if (ark512Imported && isArk512Selected()) return;
     cancelArk512Preview();
     ark512Imported = null;
     if (_debounceTimer) clearTimeout(_debounceTimer);

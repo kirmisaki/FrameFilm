@@ -204,6 +204,7 @@ class _FrameEditorState extends State<FrameEditor> {
         saturation: previous.saturation,
         rangeFit: previous.rangeFit,
         warmChroma: previous.warmChroma,
+        i006WarmChroma: previous.i006WarmChroma,
         algorithm: previous.algorithm,
         dither: previous.dither,
         ditherStrength: previous.ditherStrength,
@@ -244,6 +245,7 @@ class _FrameEditorState extends State<FrameEditor> {
     double? saturation,
     double? rangeFit,
     double? warmChroma,
+    double? i006WarmChroma,
     bool? dither,
     ImageResampling? resampling,
     bool? continuousTone,
@@ -262,6 +264,7 @@ class _FrameEditorState extends State<FrameEditor> {
         saturation: saturation ?? o.saturation,
         rangeFit: rangeFit ?? o.rangeFit,
         warmChroma: warmChroma ?? o.warmChroma,
+        i006WarmChroma: i006WarmChroma ?? o.i006WarmChroma,
         dither: dither ?? o.dither,
         algorithm: format != null
             ? FrameAlgorithm.atkinsonEnhanced
@@ -398,12 +401,14 @@ class _FrameEditorState extends State<FrameEditor> {
     double value,
     double min,
     double max,
-    ValueChanged<double> callback,
-  ) => Column(
+    ValueChanged<double> callback, {
+    int fractionDigits = 1,
+  }) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text('$title  ${value.toStringAsFixed(1)}'),
+      Text('$title  ${value.toStringAsFixed(fractionDigits)}'),
       Slider(
+        key: ValueKey('film-slider-$title'),
         value: value.clamp(min, max),
         min: min,
         max: max,
@@ -463,6 +468,7 @@ class _FrameEditorState extends State<FrameEditor> {
           FrameAlgorithm.bayer,
           FrameAlgorithm.colorQualMeasured,
           FrameAlgorithm.colorQualCalibrated,
+          FrameAlgorithm.abc512I006,
         ].contains(o.algorithm))
           _slider('抖动强度', o.ditherStrength, 0, 5, (v) => _change(strength: v)),
         if (o.algorithm == FrameAlgorithm.abc512I006)
@@ -476,12 +482,34 @@ class _FrameEditorState extends State<FrameEditor> {
           ),
         _slider('对比度', o.contrast, .5, 2, (v) => _change(contrast: v)),
         _slider('饱和度', o.saturation, 0, 3, (v) => _change(saturation: v)),
-        if (o.format != FrameFormat.monoFast &&
-            o.algorithm != FrameAlgorithm.abc512I006) ...[
-          if (!sourceFitIsSz(o) && sourceFitProfile(o) != null)
-            _slider('明暗范围拟合', o.rangeFit, 0, 1, (v) => _change(rangeFit: v)),
-          _slider('暖色收缩', o.warmChroma, 0, 1, (v) => _change(warmChroma: v)),
-          const Text('暖色偏黄时可选，按本屏显示调整。'),
+        if (o.format != FrameFormat.monoFast) ...[
+          if (o.algorithm == FrameAlgorithm.abc512I006 ||
+              (!sourceFitIsSz(o) && sourceFitProfile(o) != null))
+            _slider(
+              '明暗范围拟合',
+              o.rangeFit,
+              0,
+              1,
+              (v) => _change(rangeFit: v),
+              fractionDigits: 2,
+            ),
+          _slider(
+            '暖色收缩',
+            o.algorithm == FrameAlgorithm.abc512I006
+                ? o.i006WarmChroma
+                : o.warmChroma,
+            0,
+            1,
+            (v) => o.algorithm == FrameAlgorithm.abc512I006
+                ? _change(i006WarmChroma: v)
+                : _change(warmChroma: v),
+            fractionDigits: 2,
+          ),
+          Text(
+            o.algorithm == FrameAlgorithm.abc512I006
+                ? '暖色收缩默认 0.25；抖动强度 0 关闭扩散。'
+                : '暖色偏黄时可选，按本屏显示调整。',
+          ),
         ],
         Wrap(
           spacing: 8,
@@ -496,7 +524,7 @@ class _FrameEditorState extends State<FrameEditor> {
                   : () => _change(dither: !o.dither),
               child: Text(
                 o.algorithm == FrameAlgorithm.abc512I006
-                    ? '固定蛇形 FS'
+                    ? '蛇形 FS'
                     : o.dither
                     ? '禁用抖动'
                     : '启用抖动',

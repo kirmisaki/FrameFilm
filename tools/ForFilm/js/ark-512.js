@@ -4,6 +4,8 @@ const Y=[.2126,.7152,.0722],clip=x=>Math.max(0,Math.min(1,x)),dot=c=>c[0]*Y[0]+c
 const smooth=(a,b,x)=>{const t=clip((x-a)/(b-a));return t*t*(3-2*t);};
 const linear=x=>x/255<=.04045?x/255/12.92:((x/255+.055)/1.055)**2.4;
 const srgb=x=>Math.round(255*(clip(x)<=.0031308?12.92*clip(x):1.055*clip(x)**(1/2.4)-.055));
+const light=y=>y>(6/29)**3?116*y**(1/3)-16:(29/3)**3*y;
+const inverseLight=l=>{const f=(l+16)/116;return f>6/29?f*f*f:3*(6/29)**2*(f-4/29);};
 // Exact nearest neighbor; equal distances always prefer the original palette index.
 // The far branch includes equality so a lower-index tie cannot be pruned.
 class ColorTree {
@@ -42,6 +44,11 @@ class ColorTree {
 async function render(image,options){
 options=options||{};const p=root.Ark512Profile,w=image.width,h=image.height,n=w*h;
 if(!p)throw new Error('I006 配色资料未加载');
+const warmStrength=options.warmChroma === undefined ? .25 : options.warmChroma;
+const rangeFit=options.rangeFit===undefined?0:options.rangeFit;
+const ditherStrength=options.ditherStrength===undefined?1:options.ditherStrength;
+if(![warmStrength,rangeFit,ditherStrength].every(Number.isFinite)||warmStrength<0||warmStrength>1||rangeFit<0||rangeFit>1||ditherStrength<0||ditherStrength>5)throw new Error('无效 I006 调整参数');
+const blackL=light(p.floor);
 const recipeTree = new ColorTree(p.recipeLinear), outputTree = new ColorTree(p.outputLinear);
 const check=()=>{if(options.cancelled&&options.cancelled())throw new Error('预览已取消');};
 const pause=async()=>{check();await new Promise(r=>setTimeout(r,0));check();};
@@ -49,9 +56,14 @@ const commonY=new Float64Array(n),mask=new Uint8Array(n),work=new Float64Array(n
 for(let y=0;y<h;y++){
  for(let x=0;x<w;x++){
  const i=y*w+x,a=i*4;let c=[0,1,2].map(k=>p.floor+(1-p.floor)*linear(image.data[a+k]));
+ if(rangeFit>0){
+ const rgb=[0,1,2].map(k=>linear(image.data[a+k])),sourceY=dot(rgb),mappedY=inverseLight(blackL+(100-blackL)*light(sourceY)/100),chroma=rgb.map(v=>(v-sourceY)*(1-p.floor));let k=1;
+ for(const v of chroma)if(Math.abs(v)>1e-15)k=Math.min(k,(v>=0?1-mappedY:mappedY)/Math.abs(v));
+ c=c.map((v,j)=>v*(1-rangeFit)+(mappedY+chroma[j]*k)*rangeFit);
+ }
  const sy=dot(c),spread=Math.max(...c)-Math.min(...c),warm=Math.min(c[0]-c[2],(c[0]+c[1])/2-c[2]);
  const gate=smooth(.015,.10,warm)*smooth(.02,.12,spread)*smooth(.10,.45,sy);
- if(gate>0)c=c.map(v=>sy+(v-sy)*(1-.25*gate));
+ if(gate>0&&warmStrength>0)c=c.map(v=>sy+(v-sy)*(1-warmStrength*gate));
  const cy=dot(c),sp=Math.max(...c)-Math.min(...c),wa=Math.min(c[0]-c[2],(c[0]+c[1])/2-c[2]);
  mask[i]=cy>=.035&&cy<=.14&&wa>=.015&&sp>=.02&&sp<=.12&&c[0]>=c[1]&&c[1]>=c[2]&&c[0]-c[1]<=.4*cy?1:0;
  const dir=c.map((v,k)=>v-p.center[k]);let scale=1;
@@ -67,7 +79,7 @@ for(let y=0;y<h;y++){
  const i=y*w+x,c=[clip(work[i*3]),clip(work[i*3+1]),clip(work[i*3+2])],j=outputTree.nearest(c);// Duplicate camera-model coordinates retain the archived physical tuple representative.
  // Error diffusion still uses the exact originally selected color below.
  const code=p.outputCodes[j];codes[i]=p.codeAliases?.[code] ?? code;
- for(const [dx,dy,weight] of [[d,0,7],[-d,1,3],[0,1,5],[d,1,1]]){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy<h)for(let k=0;k<3;k++)work[(yy*w+xx)*3+k]+=Math.max(-1,Math.min(1,c[k]-p.outputLinear[j][k]))*(weight/16);}
+ for(const [dx,dy,weight] of [[d,0,7],[-d,1,3],[0,1,5],[d,1,1]]){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy<h)for(let k=0;k<3;k++)work[(yy*w+xx)*3+k]+=Math.max(-1,Math.min(1,c[k]-p.outputLinear[j][k]))*(weight/16)*ditherStrength;}
  }
  if(y%4===3)await pause();
 }
@@ -78,7 +90,7 @@ for(let y=0;y<h;y++){
  const i=y*w+x;if(!mask[i])continue;const value=clip(commonY[i]);let j=0;
  for(let k=1;k<ys.length;k++)if(Math.abs(value-ys[k])<Math.abs(value-ys[j]))j=k;
  codes[i]=shadow[j];const error=Math.max(-1,Math.min(1,value-ys[j]));
- for(const [dx,dy,weight] of [[d,0,7],[-d,1,3],[0,1,5],[d,1,1]]){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy<h&&mask[yy*w+xx])commonY[yy*w+xx]+=error*(weight/16);}
+ for(const [dx,dy,weight] of [[d,0,7],[-d,1,3],[0,1,5],[d,1,1]]){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy<h&&mask[yy*w+xx])commonY[yy*w+xx]+=error*(weight/16)*ditherStrength;}
  }
  if(y%8===7)await pause();
 }

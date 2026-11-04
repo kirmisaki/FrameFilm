@@ -31,6 +31,7 @@ class FrameOptions {
     this.saturation = 1,
     this.rangeFit = 0,
     this.warmChroma = 0,
+    this.i006WarmChroma = .25,
     this.dither = false,
     this.algorithm = FrameAlgorithm.atkinsonEnhanced,
     this.ditherStrength = 1,
@@ -42,6 +43,7 @@ class FrameOptions {
   final int quarterTurns;
   final double zoom, panX, panY, brightness, contrast, saturation;
   final double rangeFit, warmChroma;
+  final double i006WarmChroma;
   final bool dither;
   final bool continuousTone;
   final FrameAlgorithm algorithm;
@@ -222,6 +224,7 @@ Future<ui.Image> _render(
     options.ditherStrength,
     options.rangeFit,
     options.warmChroma,
+    options.i006WarmChroma,
   ];
   if (values.any((v) => !v.isFinite) || options.zoom <= 0) {
     throw ArgumentError('无效图片调整参数');
@@ -437,6 +440,9 @@ Future<FrameResult> convertFrame(
       480,
       720,
       continuousTone: options.continuousTone,
+      warmChroma: options.i006WarmChroma,
+      rangeFit: options.rangeFit,
+      ditherStrength: options.ditherStrength,
       checkCancelled: () => _check(isCancelled),
       onProgress: onProgress,
     );

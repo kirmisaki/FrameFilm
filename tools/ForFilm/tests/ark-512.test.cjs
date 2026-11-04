@@ -42,6 +42,20 @@ const api=context.window.Ark512;
  assert.notDeepEqual([...continuousResult.codes],[...defaultResult.codes]);
  assert.deepEqual([...sample.data],continuousFixture.rgba);
  assert.deepEqual([...continuousResult.rgba],[...api.preview(continuousResult.codes,sample.width,sample.height)]);
+ const controlsFixture=JSON.parse(fs.readFileSync(path.join(__dirname,'../../../app/flutter_app/test/fixtures/ark512_controls.json'),'utf8'));
+ const controlImage={width:controlsFixture.width,height:controlsFixture.height,data:Uint8ClampedArray.from(controlsFixture.rgba)};
+ for(const item of controlsFixture.cases){
+  const result=await api.render(controlImage,item.options);
+  assert.deepEqual([...result.codes],item.expectedCodes,item.name);
+ }
+ for(const key of ['warmChroma','rangeFit','ditherStrength']) for(const value of [NaN,Infinity,-.1,key==='ditherStrength'?5.1:1.1]) {
+  await assert.rejects(api.render(controlImage,{[key]:value}),/无效 I006/);
+ }
+ const independent=await api.render(controlImage,{continuousTone:true,ditherStrength:0});
+ for(let i=0;i<independent.codes.length;i++){
+  const onePixel=await api.render({width:1,height:1,data:controlImage.data.slice(i*4,i*4+4)},{continuousTone:true,ditherStrength:0});
+  assert.equal(independent.codes[i],onePixel.codes[0],'zero strength must not propagate RGB or shadow errors');
+ }
  // Root creates this shared Python-reference fixture for both JS and Dart.
  if(process.argv[2]){
   const fixture=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));

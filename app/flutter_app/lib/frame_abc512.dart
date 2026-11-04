@@ -67,6 +67,16 @@ double _smooth(double low, double high, double v) {
   return t * t * (3 - 2 * t);
 }
 
+double _lightness(double y) => y > math.pow(6 / 29, 3)
+    ? (116 * math.pow(y, 1 / 3) - 16).toDouble()
+    : (math.pow(29 / 3, 3) * y).toDouble();
+double _inverseLightness(double l) {
+  final f = (l + 16) / 116;
+  return f > 6 / 29
+      ? f * f * f
+      : (3 * math.pow(6 / 29, 2) * (f - 4 / 29)).toDouble();
+}
+
 int _srgb(double linear) {
   final v = linear.clamp(0.0, 1.0);
   final s = v <= .0031308 ? 12.92 * v : 1.055 * math.pow(v, 1 / 2.4) - .055;
@@ -87,20 +97,35 @@ void paintAbc512Codes(Uint8List rgba, Uint16List codes) {
   }
 }
 
-/// Frozen I006: floor, .25 warm contraction, radial hull, old recipe targets,
+/// Defaults preserve frozen I006: floor, .25 warm contraction, radial hull, recipe targets,
 /// 423 actual tuple FS, then source-derived warm-shadow masked scalar FS.
 Future<Uint16List> quantizeAbc512(
   Uint8List rgba,
   int width,
   int height, {
   bool continuousTone = false,
+  double warmChroma = .25,
+  double rangeFit = 0,
+  double ditherStrength = 1,
   void Function()? checkCancelled,
   void Function(double)? onProgress,
 }) async {
   if (width <= 0 || height <= 0 || rgba.length != width * height * 4) {
     throw ArgumentError('像素尺寸不匹配');
   }
+  if (!warmChroma.isFinite ||
+      !rangeFit.isFinite ||
+      !ditherStrength.isFinite ||
+      warmChroma < 0 ||
+      warmChroma > 1 ||
+      rangeFit < 0 ||
+      rangeFit > 1 ||
+      ditherStrength < 0 ||
+      ditherStrength > 5) {
+    throw ArgumentError('无效 I006 调整参数');
+  }
   checkCancelled?.call();
+  final blackL = _lightness(abc512Floor);
   final size = width * height,
       commonY = Float64List(width * height),
       mask = Uint8List(width * height);
@@ -121,6 +146,30 @@ Future<Uint16List> quantizeAbc512(
         3,
         (c) => abc512Floor + (1 - abc512Floor) * _linearLut[rgba[i * 4 + c]],
       );
+      // Match epd_source_fit.fit_source: blend the scalar-floor baseline with
+      // fixed display-L* fitting before warm contraction, without byte roundtrips.
+      if (rangeFit > 0) {
+        final rgb = List<double>.generate(
+          3,
+          (c) => _linearLut[rgba[i * 4 + c]],
+        );
+        final sourceY = _y(rgb);
+        final mappedY = _inverseLightness(
+          blackL + (100 - blackL) * _lightness(sourceY) / 100,
+        );
+        final chroma = rgb
+            .map((c) => (c - sourceY) * (1 - abc512Floor))
+            .toList();
+        var k = 1.0;
+        for (final c in chroma) {
+          if (c.abs() > 1e-15) {
+            k = math.min(k, (c >= 0 ? 1 - mappedY : mappedY) / c.abs());
+          }
+        }
+        for (var c = 0; c < 3; c++) {
+          v[c] = v[c] * (1 - rangeFit) + (mappedY + chroma[c] * k) * rangeFit;
+        }
+      }
       final luminance = _y(v),
           excess = math.min(v[0] - v[2], (v[0] + v[1]) / 2 - v[2]);
       final spread = v.reduce(math.max) - v.reduce(math.min);
@@ -128,9 +177,9 @@ Future<Uint16List> quantizeAbc512(
           _smooth(.015, .10, excess) *
           _smooth(.02, .12, spread) *
           _smooth(.10, .45, luminance);
-      if (gate > 0) {
+      if (gate > 0 && warmChroma > 0) {
         v = v
-            .map((c) => luminance + (c - luminance) * (1 - .25 * gate))
+            .map((c) => luminance + (c - luminance) * (1 - warmChroma * gate))
             .toList();
       }
       final sy = _y(v),
@@ -198,7 +247,9 @@ Future<Uint16List> quantizeAbc512(
         if (xx < 0 || xx >= width || yy >= height) continue;
         for (var c = 0; c < 3; c++) {
           work[(yy * width + xx) * 3 + c] +=
-              (value[c] - color[c]).clamp(-1.0, 1.0) * (tap.$3 / 16);
+              (value[c] - color[c]).clamp(-1.0, 1.0) *
+              (tap.$3 / 16) *
+              ditherStrength;
         }
       }
     }
@@ -224,7 +275,7 @@ Future<Uint16List> quantizeAbc512(
             xx < width &&
             yy < height &&
             mask[yy * width + xx] != 0) {
-          commonY[yy * width + xx] += error * (tap.$3 / 16);
+          commonY[yy * width + xx] += error * (tap.$3 / 16) * ditherStrength;
         }
       }
     }

@@ -11,6 +11,8 @@ void main() {
     'continuous tone survives editing selection and rotation, reset opts out',
     (tester) async {
       expect(const FrameOptions().continuousTone, false);
+      expect(const FrameOptions().i006WarmChroma, .25);
+      expect(const FrameOptions().warmChroma, 0);
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder);
       canvas.drawColor(const ui.Color(0xff906050), ui.BlendMode.src);
@@ -38,14 +40,58 @@ void main() {
           ),
         ),
       );
+      expect(find.text('暖色收缩  0.25'), findsOneWidget);
+      expect(find.text('明暗范围拟合  0.00'), findsOneWidget);
+      for (final bounds in [
+        ('抖动强度', 0.0, 5.0),
+        ('明暗范围拟合', 0.0, 1.0),
+        ('暖色收缩', 0.0, 1.0),
+        ('对比度', .5, 2.0),
+        ('饱和度', 0.0, 3.0),
+      ]) {
+        final slider = tester.widget<Slider>(
+          find.byKey(ValueKey('film-slider-${bounds.$1}')),
+        );
+        expect(slider.min, bounds.$2);
+        expect(slider.max, bounds.$3);
+        expect(slider.onChanged, isNotNull);
+      }
       final toggle = find.byKey(const ValueKey('film-continuous-tone'));
       await tester.ensureVisible(toggle);
       await tester.tap(toggle);
       await tester.pump();
       expect(c.options.continuousTone, true);
-      final contrast = tester.widget<Slider>(find.byType(Slider).first);
-      contrast.onChanged!(1.2);
+      Future<void> change(String name, double value) async {
+        final slider = tester.widget<Slider>(
+          find.byKey(ValueKey('film-slider-$name')),
+        );
+        slider.onChanged!(value);
+        await tester.pump();
+      }
+
+      await change('抖动强度', 2.2);
+      await change('明暗范围拟合', .6);
+      await change('暖色收缩', .8);
+      await change('对比度', 1.2);
+      await change('饱和度', 1.4);
+      expect(c.options.ditherStrength, 2.2);
+      expect(c.options.rangeFit, .6);
+      expect(c.options.i006WarmChroma, .8);
+      expect(c.options.warmChroma, 0);
+      expect(c.options.contrast, 1.2);
+      expect(c.options.saturation, 1.4);
+      final dropdown = find.byType(DropdownButtonFormField<FrameAlgorithm>);
+      tester
+          .widget<DropdownButtonFormField<FrameAlgorithm>>(dropdown)
+          .onChanged!(FrameAlgorithm.colorQual);
       await tester.pump();
+      await change('暖色收缩', .35);
+      tester
+          .widget<DropdownButtonFormField<FrameAlgorithm>>(dropdown)
+          .onChanged!(FrameAlgorithm.abc512I006);
+      await tester.pump();
+      expect(c.options.i006WarmChroma, .8);
+      expect(c.options.warmChroma, .35);
       expect(c.options.continuousTone, true);
       await tester.ensureVisible(find.text('上传图像'));
       await tester.runAsync(() async {
@@ -61,11 +107,21 @@ void main() {
       await tester.tap(find.text('旋转90度'));
       await tester.pump();
       expect(c.options.quarterTurns, 1);
+      expect(c.options.ditherStrength, 2.2);
+      expect(c.options.rangeFit, .6);
+      expect(c.options.i006WarmChroma, .8);
+      expect(c.options.warmChroma, .35);
+      expect(c.options.contrast, 1.2);
+      expect(c.options.saturation, 1.4);
       expect(c.options.continuousTone, true);
       await tester.ensureVisible(find.text('重置'));
       await tester.tap(find.text('重置'));
       await tester.pump();
       expect(c.options.continuousTone, false);
+      expect(c.options.i006WarmChroma, .25);
+      expect(c.options.warmChroma, 0);
+      expect(c.options.rangeFit, 0);
+      expect(c.options.ditherStrength, 1);
       expect(c.source, isNull);
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 1));
