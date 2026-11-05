@@ -421,8 +421,8 @@ static wallet_card_t *wallet_read_card(hal_nfc_card_t *id, wallet_scan_status_t 
         page = start + 4;
     }
 
-    /* 页 0/2/3 基本校验 */
-    uint8_t bcc0 = (uint8_t)(0x88 ^ mem[0] ^ mem[1] ^ mem[2] ^ mem[3]);
+    /* 页 0/2/3 基本校验（7 字节 UID：BCC0 = 0x88 ^ UID0..2，BCC1 = UID3..6） */
+    uint8_t bcc0 = (uint8_t)(0x88 ^ mem[0] ^ mem[1] ^ mem[2]);
     uint8_t bcc1 = (uint8_t)(mem[4] ^ mem[5] ^ mem[6] ^ mem[7]);
     if(mem[3] != bcc0 || mem[8] != bcc1 || mem[12] != 0xE1)
     {

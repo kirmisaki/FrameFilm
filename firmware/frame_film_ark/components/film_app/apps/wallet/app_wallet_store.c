@@ -62,6 +62,13 @@ static void card_mem_free(wallet_card_t *c)
     c->mem_len = 0;
 }
 
+/* FATFS 的 mkdir 不会递归建父目录：/sdcard/app 也必须先建出来。 */
+static void wallet_ensure_dir(void)
+{
+    (void)mkdir("/sdcard/app", 0777);
+    (void)mkdir(WALLET_DIR, 0777);
+}
+
 static void store_reset(void)
 {
     for(int i = 0; i < WALLET_MAX_CARDS; i++)
@@ -245,7 +252,7 @@ int wallet_store_find(uint8_t kind, const uint8_t *uid, uint8_t uid_len)
 int wallet_store_load(void)
 {
     store_reset();
-    (void)mkdir(WALLET_DIR, 0777);
+    wallet_ensure_dir();
 
     FILE *f = fopen(WALLET_FILE, "rb");
     if(f == NULL)
@@ -331,7 +338,7 @@ void wallet_store_unload(void)
 int wallet_store_save(void)
 {
     if(!m_loaded) return -1;
-    (void)mkdir(WALLET_DIR, 0777);
+    wallet_ensure_dir();
 
     uint32_t crc = crc32_begin();
     for(int i = 0; i < m_count; i++)
@@ -546,6 +553,7 @@ int wallet_store_cover_load(int idx, uint8_t **payload, uint32_t *crc)
 int wallet_store_cover_save(int idx, const uint8_t *payload, uint32_t crc)
 {
     if(idx < 0 || idx >= m_count || payload == NULL) return -1;
+    wallet_ensure_dir();
 
     char path[64];
     if(cover_path(m_cards[idx].id, path, sizeof(path)) != 0) return -1;

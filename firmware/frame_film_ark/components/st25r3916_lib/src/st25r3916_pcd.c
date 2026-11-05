@@ -37,16 +37,23 @@ static esp_err_t field_on(st25r_handle_t h)
 {
     uint8_t v = 0;
     if (!st25r_reg_read8(h, ST25R_REG_OP_CONTROL, &v)) {
+        ESP_LOGE(TAG, "field_on: read OP_CONTROL failed");
         return ESP_FAIL;
     }
     if (v & ST25R_OP_TX_EN) {
         return ESP_ERR_INVALID_STATE;
     }
     if (!st25r_cmd(h, ST25R_CMD_NFC_INITIAL_FIELD_ON)) {
+        ESP_LOGE(TAG, "field_on: NFC_INITIAL_FIELD_ON failed");
         return ESP_FAIL;
     }
     vTaskDelay(pdMS_TO_TICKS(5));
-    return st25r_reg_modify(h, ST25R_REG_OP_CONTROL, 0, ST25R_OP_TX_EN | ST25R_OP_RX_EN) ? ESP_OK : ESP_FAIL;
+    /* 打开 TX/RX（set = tx_en|rx_en），写反成 clear 会把刚拉起的场立刻关掉。 */
+    if (!st25r_reg_modify(h, ST25R_REG_OP_CONTROL, ST25R_OP_TX_EN | ST25R_OP_RX_EN, 0)) {
+        ESP_LOGE(TAG, "field_on: enable TX/RX failed");
+        return ESP_FAIL;
+    }
+    return ESP_OK;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -57,14 +64,26 @@ esp_err_t st25r_pcd_configure(st25r_handle_t h)
     if (!h || !h->ready) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (!st25r_cmd(h, ST25R_CMD_STOP_ALL_ACTIVITIES) || st25r_reg_clear(h, ST25R_REG_OP_CONTROL, ST25R_OP_WU)) {
+    if (!st25r_cmd(h, ST25R_CMD_STOP_ALL_ACTIVITIES)) {
+        ESP_LOGE(TAG, "configure: STOP_ALL_ACTIVITIES failed");
+        return ESP_FAIL;
+    }
+    if (!st25r_reg_clear(h, ST25R_REG_OP_CONTROL, ST25R_OP_WU)) {
+        ESP_LOGE(TAG, "configure: clear WU failed");
         return ESP_FAIL;
     }
 
     /* Initiator, ISO14443A, automatic anticollision (ar = auto). */
-    if (!st25r_reg_write8(h, ST25R_REG_MODE, (uint8_t)(ST25R_MODE_OM_ISO14443A | 0x01)) ||
-        !st25r_reg_write8(h, ST25R_REG_BITRATE, 0x00) ||
-        !st25r_reg_write8(h, ST25R_REG_ISO14443A, 0x00)) {
+    if (!st25r_reg_write8(h, ST25R_REG_MODE, (uint8_t)(ST25R_MODE_OM_ISO14443A | 0x01))) {
+        ESP_LOGE(TAG, "configure: write MODE failed");
+        return ESP_FAIL;
+    }
+    if (!st25r_reg_write8(h, ST25R_REG_BITRATE, 0x00)) {
+        ESP_LOGE(TAG, "configure: write BITRATE failed");
+        return ESP_FAIL;
+    }
+    if (!st25r_reg_write8(h, ST25R_REG_ISO14443A, 0x00)) {
+        ESP_LOGE(TAG, "configure: write ISO14443A failed");
         return ESP_FAIL;
     }
 
@@ -87,6 +106,7 @@ esp_err_t st25r_pcd_configure(st25r_handle_t h)
         !st25r_reg_write8(h, ST25R_REG_RX_CONF3, 0xD8) ||
         !st25r_reg_write8(h, ST25R_REG_RX_CONF4, 0x22) ||
         !st25r_cmd(h, ST25R_CMD_RESET_RX_GAIN)) {
+        ESP_LOGE(TAG, "configure: receiver setup failed");
         return ESP_FAIL;
     }
     st25r_irq_mask_all(h, 0);
@@ -298,7 +318,15 @@ esp_err_t st25r_reader_begin(st25r_handle_t h)
         return ESP_ERR_INVALID_ARG;
     }
     st25r_lock(h);
-    const esp_err_t err = st25r_pcd_configure(h);
+    esp_err_t err = st25r_pcd_configure(h);
+    if (err != ESP_OK) {
+        /* 从模拟模式切回来时芯片可能停在目标/透明状态：重跑一次芯片初始化再配。 */
+        ESP_LOGW(TAG, "configure failed (%s), re-init chip and retry", esp_err_to_name(err));
+        if (st25r_chip_init(h) == ESP_OK) {
+            err = st25r_pcd_configure(h);
+        }
+        ESP_LOGW(TAG, "retry result: %s", esp_err_to_name(err));
+    }
     st25r_unlock(h);
     return err;
 }
@@ -339,6 +367,8 @@ esp_err_t st25r_reader_poll(st25r_handle_t h, st25r_card_t *card, uint32_t timeo
          * transaction is woken up again on the next poll. */
         if (!st25r_pcd_request(h, true, &atqa)) {
             st25r_unlock(h);
+            /* 连续轮询时让出 CPU，否则 IDLE1 长时间得不到调度会触发任务看门狗。 */
+            vTaskDelay(1);
             continue;
         }
 
@@ -363,6 +393,7 @@ esp_err_t st25r_reader_poll(st25r_handle_t h, st25r_card_t *card, uint32_t timeo
         st25r_unlock(h);
 
         if (!ok || !complete) {
+            vTaskDelay(1);
             continue;
         }
 
