@@ -73,7 +73,7 @@ static void set_state(st25r_handle_t h, st25r_picc_state_t next)
     if (next == ST25R_PICC_IDLE && prev == ST25R_PICC_OFF) {
         emit(h, ST25R_PICC_EVT_FIELD_ON, NULL, 0);
     }
-    ESP_LOGD(TAG, "state %d -> %d", (int)prev, (int)next);
+    ESP_LOGI(TAG, "state %d -> %d", (int)prev, (int)next);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -451,33 +451,6 @@ esp_err_t st25r_picc_configure(st25r_handle_t h, const st25r_card_t *card)
     /* Start from the powered-off state and wait for a reader field. */
     (void)goto_off(h);
     set_state(h, ST25R_PICC_OFF);
-
-    /* Modulation setup that makes the load modulation visible on this module
-     * (verified with a scope: AUX_MOD selects the internal driver, PT_MOD sets
-     * the depth, ANT_TUNE drives the resonant network). */
-    st25r_reg_write8(h, ST25R_REG_OP_CONTROL, 0xC3); /* en | rx_en | en_fd_auto */
-    st25r_reg_write8(h, ST25R_REG_MODE, ST25R_MODE_LISTEN_NFC_A);
-    st25r_reg_write8(h, ST25R_REG_ANT_TUNE1, 0x82);
-    st25r_reg_write8(h, ST25R_REG_ANT_TUNE2, 0x82);
-    st25r_reg_write8(h, ST25R_B(ST25R_REG_B_AUX_MODULATION), 0x70); /* lm_ext_pol|lm_ext|lm_dri */
-    st25r_reg_write8(h, ST25R_REG_PT_MOD, 0x0F);
-    st25r_reg_write8(h, ST25R_REG_IO_CONF2, ST25R_IO2_IO_DRV_LVL);
-
-    uint8_t pt = 0;
-    if (st25r_reg_read8(h, ST25R_REG_NFCIP1_PT, &pt)) {
-        st25r_reg_write8(h, ST25R_REG_NFCIP1_PT, (uint8_t)((pt & 0x0F) | (5u << 4))); /* fdel = 5 */
-    }
-    st25r_reg_clear(h, ST25R_REG_TIMER_EMV, ST25R_TIMER_MRT_STEP);
-    st25r_reg_write8(h, ST25R_REG_MASK_RX_TIMER, 0x02);
-
-    uint8_t txd = 0;
-    if (st25r_reg_read8(h, ST25R_REG_TX_DRIVER, &txd)) {
-        st25r_reg_write8(h, ST25R_REG_TX_DRIVER, (uint8_t)(txd & 0xF0));
-    }
-    uint8_t ram = 0;
-    if (st25r_reg_read8(h, ST25R_B(ST25R_REG_B_RES_AM_MOD), &ram)) {
-        st25r_reg_write8(h, ST25R_B(ST25R_REG_B_RES_AM_MOD), (uint8_t)(ram | 0x80));
-    }
     return ESP_OK;
 }
 
