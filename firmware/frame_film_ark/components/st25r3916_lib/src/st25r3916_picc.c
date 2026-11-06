@@ -73,7 +73,7 @@ static void set_state(st25r_handle_t h, st25r_picc_state_t next)
     if (next == ST25R_PICC_IDLE && prev == ST25R_PICC_OFF) {
         emit(h, ST25R_PICC_EVT_FIELD_ON, NULL, 0);
     }
-    ESP_LOGI(TAG, "state %d -> %d", (int)prev, (int)next);
+    ESP_LOGD(TAG, "state %d -> %d", (int)prev, (int)next);
 }
 
 /* ------------------------------------------------------------------------- */
