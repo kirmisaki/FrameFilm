@@ -17,6 +17,7 @@
 
 #include "hal_nfc.h"
 #include "service_ble.h"
+#include "service_param.h"
 
 #include "ui_core.h"
 #include "ui_ops.h"
@@ -24,6 +25,7 @@
 
 #include "app_shell.h"
 #include "app_typography.h"
+#include "app_language.h"
 #include "app_manager.h"
 #include "app_wallet.h"
 #include "app_wallet_store.h"
@@ -89,6 +91,7 @@ static uint8_t m_mode = WALLET_MODE_EMU;
 static uint8_t m_scan_state = WALLET_SCAN_FAIL;
 
 static atomic_bool m_scan_cancel;
+static atomic_bool m_emu_resync;    // 读卡期间离开了卡包：等 reader_end 完成后再恢复模拟
 static _Atomic(wallet_card_t *) m_scan_result = NULL;
 static TaskHandle_t m_scan_task = NULL;
 
@@ -139,7 +142,41 @@ typedef struct {
 
 static wallet_ble_sess_t m_sess;
 
+/* NFC 总开关：持久化在 service_param 的 app8 槽位（默认开）。
+   不放进 ServiceParam_Def_t —— 改结构体布局会触发整体重置。 */
+#define WALLET_CFG_VER              (1)
+typedef struct {
+    uint8_t nfc_enable;
+} wallet_cfg_t;
+static wallet_cfg_t m_cfg;
+static uint8_t m_cfg_loaded = 0;
+static int m_emu_idx = -1;          // 当前正在模拟的卡下标；-1 = 未模拟
+
 /**************************** helpers ****************************/
+static void wallet_cfg_load(void)
+{
+    if(m_cfg_loaded) return;
+    m_cfg_loaded = 1;
+    m_cfg.nfc_enable = 1;
+    if(service_param_app_load(SERVICE_PARAM_APP_ID_NFC_CFG, &m_cfg,
+                              (uint16_t)sizeof(m_cfg), WALLET_CFG_VER) != 0 || m_cfg.nfc_enable > 1)
+    {
+        m_cfg.nfc_enable = 1;   // 无数据/损坏：默认开启，保持升级前"进卡包即模拟"的行为
+    }
+}
+
+uint8_t app_wallet_nfc_enabled(void)
+{
+    wallet_cfg_load();
+    return m_cfg.nfc_enable;
+}
+
+static void wallet_stop_emu(void)
+{
+    (void)hal_nfc_emu_stop();
+    m_emu_idx = -1;
+}
+
 static uint32_t crc32_begin(void) { return 0xFFFFFFFFu; }
 
 static uint32_t crc32_feed(uint32_t c, const void *data, size_t len)
@@ -212,16 +249,74 @@ static void wallet_start_emu(int idx)
     wallet_card_t *c = wallet_store_get(idx);
     if(c == NULL)
     {
-        (void)hal_nfc_emu_stop();
+        wallet_stop_emu();
+        return;
+    }
+    /* 已在模拟同一张卡：不重启，避免切 app / 刷快照时把射频打断 */
+    if(idx == m_emu_idx && hal_nfc_emu_running())
+    {
         return;
     }
     hal_nfc_card_t h;
     wallet_card_to_hal(c, &h);
     esp_err_t err = hal_nfc_emu_start(&h);
+    m_emu_idx = (err == ESP_OK) ? idx : -1;
     if(err != ESP_OK)
     {
         sys_logw(WALLET_TAG, "emu start failed: %s", esp_err_to_name(err));
     }
+}
+
+/* 卡内容被改写（BLE 写入/覆盖）后必须真正重启一次，幂等判断会漏掉"同下标新内容" */
+static void wallet_restart_emu(int idx)
+{
+    wallet_stop_emu();
+    wallet_start_emu(idx);
+}
+
+void app_wallet_emu_sync(void)
+{
+    if(!app_wallet_nfc_enabled() || !hal_nfc_ready())
+    {
+        wallet_stop_emu();
+        return;
+    }
+    if(!wallet_store_loaded())
+    {
+        (void)wallet_store_load();
+    }
+    if(wallet_store_count() <= 0)
+    {
+        wallet_stop_emu();
+        return;
+    }
+    int cur = wallet_store_current();
+    if(cur < 0 || cur >= wallet_store_count())
+    {
+        cur = 0;
+    }
+    wallet_start_emu(cur);
+}
+
+uint8_t app_wallet_emu_active(void)
+{
+    return (m_emu_idx >= 0 && hal_nfc_emu_running()) ? 1 : 0;
+}
+
+void app_wallet_set_nfc_enabled(uint8_t enable)
+{
+    wallet_cfg_load();
+    enable = enable ? 1 : 0;
+    if(m_cfg.nfc_enable == enable)
+    {
+        app_wallet_emu_sync();
+        return;
+    }
+    m_cfg.nfc_enable = enable;
+    (void)service_param_app_save(SERVICE_PARAM_APP_ID_NFC_CFG, &m_cfg,
+                                 (uint16_t)sizeof(m_cfg), WALLET_CFG_VER);
+    app_wallet_emu_sync();
+    sys_logi(WALLET_TAG, "nfc %s", enable ? "on" : "off");
 }
 
 static void wallet_build_snapshot(void)
@@ -246,16 +341,24 @@ static void wallet_build_snapshot(void)
 
     if(!hal_nfc_ready())
     {
-        snprintf(m_snap.status, sizeof(m_snap.status), "NFC NOT READY");
+        snprintf(m_snap.status, sizeof(m_snap.status), "%s", app_text("NFC 硬件未就绪", "NFC NOT READY"));
+    }
+    else if(!app_wallet_nfc_enabled())
+    {
+        snprintf(m_snap.status, sizeof(m_snap.status), "%s", app_text("NFC 已关闭", "NFC OFF"));
     }
     else if(m_mode == WALLET_MODE_COPY)
     {
         switch(m_scan_state)
         {
-        case WALLET_SCAN_SCANNING: snprintf(m_snap.status, sizeof(m_snap.status), "READING..."); break;
-        case WALLET_SCAN_DONE:     snprintf(m_snap.status, sizeof(m_snap.status), "READ OK"); break;
-        case WALLET_SCAN_UNSUPPORTED: snprintf(m_snap.status, sizeof(m_snap.status), "UNSUPPORTED CARD"); break;
-        default:                   snprintf(m_snap.status, sizeof(m_snap.status), "READ TIMEOUT"); break;
+        case WALLET_SCAN_SCANNING: snprintf(m_snap.status, sizeof(m_snap.status), "%s",
+                                           app_text("正在读卡…", "READING...")); break;
+        case WALLET_SCAN_DONE:     snprintf(m_snap.status, sizeof(m_snap.status), "%s",
+                                           app_text("读取成功", "READ OK")); break;
+        case WALLET_SCAN_UNSUPPORTED: snprintf(m_snap.status, sizeof(m_snap.status), "%s",
+                                              app_text("暂不支持", "UNSUPPORTED CARD")); break;
+        default:                   snprintf(m_snap.status, sizeof(m_snap.status), "%s",
+                                           app_text("读取失败", "READ FAILED")); break;
         }
         if(m_scan_state == WALLET_SCAN_DONE)
         {
@@ -273,7 +376,8 @@ static void wallet_build_snapshot(void)
     else
     {
         snprintf(m_snap.status, sizeof(m_snap.status), "%s",
-                 c ? "EMULATING / TAP READER" : "NO CARD SELECTED");
+                 c ? app_text("模拟中 · 等待读卡器", "EMULATING / TAP READER")
+                   : app_text("未选择卡片", "NO CARD SELECTED"));
     }
 }
 
@@ -485,6 +589,12 @@ static void wallet_scan_task(void *arg)
     if(result == NULL && status == WSCAN_UNSUPPORTED) { /* keep */ }
     (void)hal_nfc_reader_end();
 
+    /* 读卡期间用户已离开卡包：reader 先收尾，再恢复常驻模拟（避免 reader_end 打断 PICC） */
+    if(atomic_exchange(&m_emu_resync, false))
+    {
+        app_wallet_emu_sync();
+    }
+
     if(!atomic_load(&m_scan_cancel))
     {
         atomic_store(&m_scan_result, result);
@@ -502,9 +612,13 @@ static void wallet_scan_task(void *arg)
 
 static void wallet_start_read(void)
 {
+    if(!app_wallet_nfc_enabled())
+    {
+        return;   // NFC 总开关关闭：不启动读卡
+    }
     wallet_cancel_scan();
     wallet_take_pending();
-    (void)hal_nfc_emu_stop();
+    wallet_stop_emu();
 
     m_mode = WALLET_MODE_COPY;
     m_scan_state = WALLET_SCAN_SCANNING;
@@ -533,7 +647,7 @@ static void wallet_back_to_emu(void)
     wallet_cancel_scan();
     wallet_take_pending();
     m_mode = WALLET_MODE_EMU;
-    wallet_start_emu(wallet_store_current());
+    app_wallet_emu_sync();
 }
 
 /**************************** app 接口 ****************************/
@@ -550,16 +664,8 @@ static const char *wallet_enter_block_reason(void)
     atomic_store(&m_scan_cancel, false);
     wallet_take_pending();
 
-    if(wallet_store_count() > 0)
-    {
-        int cur = wallet_store_current();
-        if(cur < 0 || cur >= wallet_store_count()) cur = 0;
-        wallet_start_emu(cur);
-    }
-    else
-    {
-        (void)hal_nfc_emu_stop();
-    }
+    /* 常驻模拟：开关开且有卡就以当前选中的卡模拟（无卡/关闭则停） */
+    app_wallet_emu_sync();
     return NULL;
 }
 
@@ -589,7 +695,7 @@ static void wallet_commit_pending(void)
     {
         wallet_store_select(idx);
         (void)wallet_store_save();
-        wallet_start_emu(idx);
+        wallet_restart_emu(idx);   // 同 UID 覆盖时内容已变，必须重启模拟
     }
     else
     {
@@ -655,6 +761,7 @@ static void wallet_on_event(const app_event_t *e)
 static bool wallet_on_double(void)
 {
     if(m_mode != WALLET_MODE_EMU) return false;
+    if(!app_wallet_nfc_enabled()) return false;   // NFC 关闭时双击交回框架（退回主菜单）
     wallet_start_read();
     return true;
 }
@@ -667,21 +774,33 @@ static bool wallet_on_back(void)
     return true;
 }
 
-void app_wallet_sleep_prepare(void)
+void app_wallet_leave(void)
 {
     wallet_cancel_scan();
     wallet_take_pending();
     m_mode = WALLET_MODE_EMU;
-    if(!wallet_store_loaded()) (void)wallet_store_load();
-    if(wallet_store_count() > 0)
+    if(m_scan_task != NULL)
     {
-        int cur = wallet_store_current();
-        if(cur < 0 || cur >= wallet_store_count()) cur = 0;
-        wallet_start_emu(cur);
+        /* 读卡任务还在跑：先别动射频，等它 reader_end 完成后自行恢复模拟 */
+        atomic_store(&m_emu_resync, true);
+        return;
     }
-    else
+    app_wallet_emu_sync();   // 离开卡包不停模拟：开关开且有卡就继续模拟当前卡
+}
+
+void app_wallet_sleep_prepare(void)
+{
+    wallet_cancel_scan();
+    wallet_take_pending();
+    atomic_store(&m_emu_resync, false);
+    m_mode = WALLET_MODE_EMU;
+    if(!wallet_store_loaded()) (void)wallet_store_load();
+    app_wallet_emu_sync();
+    if(!app_wallet_nfc_enabled())
     {
-        (void)hal_nfc_emu_stop();
+        /* 总开关关闭：连芯片一起卸掉，monitor 的 sleep_arm 会失败，
+           入睡后不再被 NFC 场唤醒（也省掉场检测的待机电流）。 */
+        hal_nfc_deinit();
     }
 }
 
@@ -689,7 +808,8 @@ void app_wallet_deactivate(void)
 {
     wallet_cancel_scan();
     wallet_take_pending();
-    (void)hal_nfc_emu_stop();
+    atomic_store(&m_emu_resync, false);
+    wallet_stop_emu();
     m_mode = WALLET_MODE_EMU;
 }
 
@@ -727,7 +847,7 @@ static void wallet_ui_apply_snapshot(void)
             lv_label_set_text_fmt(m_idx_label, "%02u", (unsigned)(m_snap.current + 1));
             lv_label_set_text(m_name_label, m_snap.name);
             lv_label_set_text(m_type_label, m_snap.type);
-            lv_label_set_text_fmt(m_count_label, "%u CARDS", (unsigned)m_snap.count);
+            lv_label_set_text_fmt(m_count_label, app_text("%u 张卡片", "%u CARDS"), (unsigned)m_snap.count);
 
             for(int i = 0; i < WALLET_UI_MAX_ROWS; i++)
             {
@@ -774,46 +894,52 @@ static void wallet_ui_apply_snapshot(void)
         {
             lv_obj_add_flag(m_cover_img, LV_OBJ_FLAG_HIDDEN);
             lv_obj_remove_flag(m_default_panel, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(m_default_type, "NO CARD");
+            lv_label_set_text(m_default_type, app_text("无卡片", "NO CARD"));
             lv_label_set_text(m_idx_label, "--");
-            lv_label_set_text(m_name_label, "WALLET");
+            lv_label_set_text(m_name_label, app_text("卡包", "WALLET"));
             lv_label_set_text(m_type_label, "");
-            lv_label_set_text(m_count_label, "0 CARDS");
+            lv_label_set_text(m_count_label, app_text("0 张卡片", "0 CARDS"));
             for(int i = 0; i < WALLET_UI_MAX_ROWS; i++)
             {
                 lv_obj_add_flag(m_row_obj[i], LV_OBJ_FLAG_HIDDEN);
             }
         }
         lv_label_set_text(m_status_label, m_snap.status);
-        app_shell_set_text(&m_shell, "UP/DOWN CARD  DOUBLE READ  BACK EXIT  HOLD SLEEP", "WALLET");
+        app_shell_set_text(&m_shell,
+                           app_text("上下切卡  双击读卡  返回退出  长按休眠",
+                                    "UP/DOWN CARD  DOUBLE READ  BACK EXIT  HOLD SLEEP"),
+                           app_text("卡包", "WALLET"));
         return;
     }
 
     /* COPY */
     lv_obj_add_flag(m_emu_page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(m_copy_page, LV_OBJ_FLAG_HIDDEN);
-    app_shell_set_text(&m_shell, "ENTER CANCEL/COPY  BACK EMU  HOLD SLEEP", "WALLET COPY");
+    app_shell_set_text(&m_shell,
+                       app_text("单击取消/复制  返回退出  长按休眠",
+                                "ENTER CANCEL/COPY  BACK EMU  HOLD SLEEP"),
+                       app_text("卡包 读卡", "WALLET COPY"));
 
-    const char *title = "READING...";
-    const char *sub = "PLACE CARD ON NFC AREA";
-    const char *action = "ENTER CANCEL";
+    const char *title = app_text("正在读卡…", "READING...");
+    const char *sub = app_text("将卡片贴在设备 NFC 区域", "PLACE CARD ON NFC AREA");
+    const char *action = app_text("单击取消", "ENTER CANCEL");
     if(m_snap.scan == WALLET_SCAN_DONE)
     {
-        title = "READ OK";
-        sub = "PRESS ENTER TO COPY";
-        action = "COPY CARD";
+        title = app_text("读取成功", "READ OK");
+        sub = app_text("按确认键复制到卡包", "PRESS ENTER TO COPY");
+        action = app_text("复制卡", "COPY CARD");
     }
     else if(m_snap.scan == WALLET_SCAN_UNSUPPORTED)
     {
-        title = "UNSUPPORTED";
-        sub = "ISO14443-4 / SECURE CARD";
-        action = "ENTER RETRY";
+        title = app_text("暂不支持", "UNSUPPORTED");
+        sub = app_text("ISO14443-4 / 加密卡", "ISO14443-4 / SECURE CARD");
+        action = app_text("单击重试", "ENTER RETRY");
     }
     else if(m_snap.scan == WALLET_SCAN_FAIL)
     {
-        title = "READ FAILED";
-        sub = "TIMEOUT / NO CARD";
-        action = "ENTER RETRY";
+        title = app_text("读取失败", "READ FAILED");
+        sub = app_text("超时 / 无卡片", "TIMEOUT / NO CARD");
+        action = app_text("单击重试", "ENTER RETRY");
     }
     lv_label_set_text(m_copy_title, title);
     lv_label_set_text(m_copy_sub, sub);
@@ -821,7 +947,7 @@ static void wallet_ui_apply_snapshot(void)
 
     if(m_snap.scan == WALLET_SCAN_DONE)
     {
-        lv_label_set_text_fmt(m_copy_meta[0], "TYPE   %s",
+        lv_label_set_text_fmt(m_copy_meta[0], app_text("类型   %s", "TYPE   %s"),
                               wallet_type_name(m_snap.copy_kind, m_snap.copy_format));
         char uid[64] = {0};
         for(int i = 0; i < m_snap.copy_uid_len; i++)
@@ -830,10 +956,12 @@ static void wallet_ui_apply_snapshot(void)
             snprintf(t, sizeof(t), "%02X ", m_snap.copy_uid[i]);
             strncat(uid, t, sizeof(uid) - strlen(uid) - 1);
         }
-        lv_label_set_text_fmt(m_copy_meta[1], "UID    %s", uid);
-        lv_label_set_text_fmt(m_copy_meta[2], "SIZE   %u BYTES", (unsigned)m_snap.copy_mem_len);
+        lv_label_set_text_fmt(m_copy_meta[1], app_text("UID    %s", "UID    %s"), uid);
+        lv_label_set_text_fmt(m_copy_meta[2], app_text("容量   %u 字节", "SIZE   %u BYTES"),
+                              (unsigned)m_snap.copy_mem_len);
         lv_label_set_text(m_copy_meta[3], m_snap.copy_format == HAL_NFC_DATA_NONE ?
-                          "DATA   UID ONLY" : "DATA   IMAGE READ");
+                          app_text("内容   仅卡号", "DATA   UID ONLY") :
+                          app_text("内容   已读取整片镜像", "DATA   IMAGE READ"));
         lv_obj_remove_flag(m_copy_cta, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(m_copy_action, LV_OBJ_FLAG_HIDDEN);
     }
@@ -913,7 +1041,10 @@ static void wallet_ui_on_key(input_press_type_t key)
 
 static void wallet_ui_create(lv_obj_t *root)
 {
-    app_shell_build(root, "UP/DOWN CARD  DOUBLE READ  BACK EXIT  HOLD SLEEP", "WALLET", &m_shell);
+    app_shell_build(root,
+                    app_text("上下切卡  双击读卡  返回退出  长按休眠",
+                             "UP/DOWN CARD  DOUBLE READ  BACK EXIT  HOLD SLEEP"),
+                    app_text("卡包", "WALLET"), &m_shell);
     app_shell_request_status();
 
     lv_obj_t *body = lv_obj_create(root);
@@ -939,17 +1070,18 @@ static void wallet_ui_create(lv_obj_t *root)
     lv_obj_set_flex_flow(m_default_panel, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(m_default_panel, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     wallet_label(m_default_panel, &lv_font_unscii_16, lv_color_white(), "NFC");
-    m_default_type = wallet_label(m_default_panel, &lv_font_unscii_8, lv_color_white(), "NO COVER");
+    m_default_type = wallet_label(m_default_panel, app_font_small(), lv_color_white(),
+                                  app_text("无封面", "NO COVER"));
 
     lv_obj_t *bar = wallet_black_box(m_emu_page, WALLET_COVER_W, 48);
     lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_hor(bar, 14, LV_PART_MAIN);
     lv_obj_set_style_pad_column(bar, 10, LV_PART_MAIN);
-    m_idx_label = wallet_label(bar, &lv_font_unscii_8, lv_color_white(), "01");
-    m_name_label = wallet_label(bar, &lv_font_unscii_16, lv_color_white(), "WALLET");
+    m_idx_label = wallet_label(bar, app_font_small(), lv_color_white(), "01");
+    m_name_label = wallet_label(bar, app_font_body(), lv_color_white(), app_text("卡包", "WALLET"));
     lv_obj_set_flex_grow(m_name_label, 1);
-    m_type_label = wallet_label(bar, &lv_font_unscii_8, lv_color_white(), "NTAG215");
+    m_type_label = wallet_label(bar, app_font_small(), lv_color_white(), "NTAG215");
 
     lv_obj_t *hint = lv_obj_create(m_emu_page);
     lv_obj_remove_style_all(hint);
@@ -961,8 +1093,9 @@ static void wallet_ui_create(lv_obj_t *root)
     lv_obj_set_flex_flow(hint, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(hint, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_hor(hint, 4, LV_PART_MAIN);
-    wallet_label(hint, &lv_font_unscii_8, lv_color_black(), "DOUBLE ENTER - READ");
-    m_count_label = wallet_label(hint, &lv_font_unscii_8, lv_color_black(), "0 CARDS");
+    wallet_label(hint, app_font_small(), lv_color_black(),
+                 app_text("双击确认键 · 进入读卡", "DOUBLE ENTER - READ"));
+    m_count_label = wallet_label(hint, app_font_small(), lv_color_black(), app_text("0 张卡片", "0 CARDS"));
 
     lv_obj_t *list = lv_obj_create(m_emu_page);
     lv_obj_remove_style_all(list);
@@ -983,13 +1116,13 @@ static void wallet_ui_create(lv_obj_t *root)
         lv_obj_set_flex_flow(m_row_obj[i], LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(m_row_obj[i], LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_pad_column(m_row_obj[i], 10, LV_PART_MAIN);
-        m_row_idx[i] = wallet_label(m_row_obj[i], &lv_font_unscii_8, lv_color_black(), "01");
-        m_row_name[i] = wallet_label(m_row_obj[i], &lv_font_unscii_16, lv_color_black(), "CARD");
+        m_row_idx[i] = wallet_label(m_row_obj[i], app_font_small(), lv_color_black(), "01");
+        m_row_name[i] = wallet_label(m_row_obj[i], app_font_body(), lv_color_black(), "CARD");
         lv_obj_set_flex_grow(m_row_name[i], 1);
-        m_row_type[i] = wallet_label(m_row_obj[i], &lv_font_unscii_8, lv_color_black(), "NTAG215");
+        m_row_type[i] = wallet_label(m_row_obj[i], app_font_small(), lv_color_black(), "NTAG215");
     }
 
-    m_status_label = wallet_label(m_emu_page, &lv_font_unscii_8, lv_color_black(), "");
+    m_status_label = wallet_label(m_emu_page, app_font_small(), lv_color_black(), "");
 
     /* ---- COPY ---- */
     m_copy_page = lv_obj_create(body);
@@ -1009,20 +1142,24 @@ static void wallet_ui_create(lv_obj_t *root)
     lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(panel, 10, LV_PART_MAIN);
     wallet_label(panel, &lv_font_unscii_16, lv_color_black(), "NFC");
-    m_copy_title = wallet_label(panel, &lv_font_unscii_16, lv_color_black(), "READING...");
-    m_copy_sub = wallet_label(panel, &lv_font_unscii_8, lv_color_black(), "PLACE CARD ON NFC AREA");
-    m_copy_action = wallet_label(panel, &lv_font_unscii_8, lv_color_black(), "ENTER CANCEL");
+    m_copy_title = wallet_label(panel, app_font_body(), lv_color_black(),
+                                app_text("正在读卡…", "READING..."));
+    m_copy_sub = wallet_label(panel, app_font_small(), lv_color_black(),
+                              app_text("将卡片贴在设备 NFC 区域", "PLACE CARD ON NFC AREA"));
+    m_copy_action = wallet_label(panel, app_font_small(), lv_color_black(),
+                                 app_text("单击取消", "ENTER CANCEL"));
 
     for(int i = 0; i < 4; i++)
     {
-        m_copy_meta[i] = wallet_label(m_copy_page, &lv_font_unscii_8, lv_color_black(), "");
+        m_copy_meta[i] = wallet_label(m_copy_page, app_font_small(), lv_color_black(), "");
     }
 
     m_copy_cta = wallet_black_box(m_copy_page, WALLET_COVER_W, 44);
     lv_obj_set_flex_flow(m_copy_cta, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(m_copy_cta, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(m_copy_cta, 18, LV_PART_MAIN);
-    wallet_label(m_copy_cta, &lv_font_unscii_16, lv_color_white(), "COPY CARD  ENTER");
+    wallet_label(m_copy_cta, app_font_body(), lv_color_white(),
+                 app_text("复制卡         ENTER", "COPY CARD  ENTER"));
     lv_obj_add_flag(m_copy_cta, LV_OBJ_FLAG_HIDDEN);
 
     wallet_ui_apply_snapshot();
@@ -1384,11 +1521,15 @@ static void ble_card_commit(void)
         return;
     }
 
-    if(app_manager_get_current() == APP_ID_WALLET)
+    if(app_wallet_nfc_enabled())
     {
-        wallet_start_emu(idx);
-        wallet_post_snapshot();
+        wallet_restart_emu(idx);   // 卡内容已写入，必须重启模拟
     }
+    else
+    {
+        wallet_stop_emu();         // 开关关闭：卡入库但不模拟
+    }
+    if(app_manager_get_current() == APP_ID_WALLET) wallet_post_snapshot();
 
     rsp[0] = WST_OK;
     rsp[1] = wallet_store_get(idx)->id;
@@ -1543,11 +1684,8 @@ static void ble_wallet_ctrl(const uint8_t *d, uint8_t n)
         if(idx < 0) { resp(BLE_FILM_TRANS_CH_NFC_WALLET_CTRL, &(uint8_t){WST_NOTFOUND}, 1); return; }
         wallet_store_select(idx);
         (void)wallet_store_save();
-        if(app_manager_get_current() == APP_ID_WALLET)
-        {
-            wallet_start_emu(idx);
-            wallet_post_snapshot();
-        }
+        app_wallet_emu_sync();   // 常驻模拟：不在卡包时也立即切到新选中的卡
+        if(app_manager_get_current() == APP_ID_WALLET) wallet_post_snapshot();
         uint8_t out[2] = {WST_OK, (uint8_t)wallet_store_current()};
         resp(BLE_FILM_TRANS_CH_NFC_WALLET_CTRL, out, 2);
         return;
@@ -1562,12 +1700,8 @@ static void ble_wallet_ctrl(const uint8_t *d, uint8_t n)
         snprintf(path, sizeof(path), WALLET_DIR "/cover_%u.bin", (unsigned)del_id);
         (void)remove(path);
         (void)wallet_store_save();
-        if(app_manager_get_current() == APP_ID_WALLET)
-        {
-            if(wallet_store_count() > 0) wallet_start_emu(wallet_store_current());
-            else (void)hal_nfc_emu_stop();
-            wallet_post_snapshot();
-        }
+        app_wallet_emu_sync();   // 删到无卡即停模拟；仍有卡则模拟新的当前卡
+        if(app_manager_get_current() == APP_ID_WALLET) wallet_post_snapshot();
         uint8_t out[3] = {WST_OK, (uint8_t)wallet_store_count(), (uint8_t)wallet_store_current()};
         resp(BLE_FILM_TRANS_CH_NFC_WALLET_CTRL, out, 3);
         return;

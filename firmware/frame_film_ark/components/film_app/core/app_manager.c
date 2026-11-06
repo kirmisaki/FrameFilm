@@ -115,6 +115,7 @@ static uint8_t m_sleep_page = 0; // 休眠卡占屏中（同上；此后设备�
 static atomic_bool m_sleep_stop_sent = false;
 static atomic_bool m_sleep_stopped = false;
 #define APP_SLEEP_STOP_CMD 0xFFFFFFFEu
+#define APP_NFC_SYNC_CMD   0xFFFFFFFDu   // 内部：让 NFC 常驻模拟跟上当前卡（开机页/唤醒时）
 
 /* 参数通道反查表：param_ch / param_ch+1 → 归属 app。注册时构建，与“当前 app”无关，
    手机可在显示图片时预设动图参数，事件照样送达目标 app */
@@ -491,6 +492,14 @@ static void app_handle_event(const app_event_t *e)
             atomic_store(&m_sleep_stop_sent, false);
         return;
     }
+#if (SYS_NFC_ENABLE == 1)
+    /* 开机页占屏期间也让 NFC 模拟生效：必须在下面的 boot/sleep 门闸之前处理 */
+    if(e->type == APP_EVT_UI_MSG && e->cmd == APP_NFC_SYNC_CMD)
+    {
+        app_wallet_emu_sync();
+        return;
+    }
+#endif
     /* Extended 0x4B is acknowledged after the app task has resolved the name.
        Busy gates reject it explicitly, so the client may retry without a timer. */
     if(e->type == APP_EVT_SYS && e->cmd == SYS_EVT_BLE_APP_CMD &&
@@ -772,7 +781,8 @@ static uint8_t app_do_switch_target(app_id_t id, const char *filename)
 #if (SYS_NFC_ENABLE == 1)
     if(m_current_app == APP_ID_WALLET)
     {
-        app_wallet_deactivate();
+        /* 离开卡包只收起读卡，模拟继续（NFC 常驻生效） */
+        app_wallet_leave();
     }
 #endif
     app_stop_current();
@@ -802,6 +812,12 @@ static uint8_t app_do_switch_target(app_id_t id, const char *filename)
         m_boot_evt_pending = 0;
         app_manager_notify_boot();
     }
+#if (SYS_NFC_ENABLE == 1)
+    /* NFC 常驻模拟：切到任何 app 后都保证"开关开 + 有卡"时继续模拟当前卡。
+       放在切入之后：卡包自己的 enter_block_reason 已完成首次启动，这里是幂等的兜底，
+       也让开机（首个 app 就是图片等）时模拟从一开始就生效。 */
+    app_wallet_emu_sync();
+#endif
     return 0;
 }
 
@@ -1175,6 +1191,10 @@ void app_manager_boot_show(const app_ui_ops_t *ops, app_id_t next)
     app_manager_boot_mark();
     /* 页面 id 用 APP_ID_MAX：开机画面不是 app，不在注册表里也不参与切换 */
     ui_core_page_enter((uint8_t)APP_ID_MAX, ops);
+#if (SYS_NFC_ENABLE == 1)
+    /* 开机画面要占屏数秒；这期间就把 NFC 模拟拉到当前卡，贴卡即可被读到 */
+    (void)app_manager_post_ui_msg(APP_NFC_SYNC_CMD, NULL, 0);
+#endif
     m_boot_page = 1;
     m_boot_ui_shown = 1;
 }

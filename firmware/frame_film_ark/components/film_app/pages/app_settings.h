@@ -22,8 +22,12 @@ extern "C" {
 #define SET_KIND_TOGGLE     (2)   // 开关：ENTER 切换
 #define SET_KIND_CYCLE      (3)   // 枚举：ENTER 在候选值间循环
 
-/* 行数：设备信息 7 行 + 系统参数 7 行 + app 参数 4 行 */
+/* 行数：设备信息 7 行 + NFC 开关（仅 NFC 机型） + 系统参数 7 行 + app 参数 4 行 */
+#if (SYS_NFC_ENABLE == 1)
+#define SETTINGS_ROW_NUM    (19)
+#else
 #define SETTINGS_ROW_NUM    (18)
+#endif
 
 /*********************************************************************
 * TYPEDEFS
@@ -52,6 +56,8 @@ typedef struct {
     uint8_t sleep_auto;     // 0/1
     uint8_t wifi_on;        // 0/1
     uint8_t bt_on;          // 0/1
+    uint8_t nfc_on;         // NFC 总开关 0/1（无 NFC 机型恒 0）
+    uint8_t nfc_emu;        // NFC 正在模拟卡片 0/1
     uint8_t led_mode_sel;   // LED 模式候选下标（0=ALWAYS 1=OFF 2=AUTO）
     uint8_t wake_sel;       // WAKE INTERVAL 候选下标
     uint8_t hb_sel;         // HEARTBEAT 候选下标

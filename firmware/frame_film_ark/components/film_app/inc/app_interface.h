@@ -121,6 +121,8 @@ typedef struct {
     uint8_t wifi_conn;  // WiFi 是否已连上 0/1（wifi_on 为 0 时无意义）
     uint8_t bt_on;      // 蓝牙开关 0/1
     uint8_t bt_conn;    // 蓝牙是否已连接 0/1（bt_on 为 0 时无意义）
+    uint8_t nfc_on;     // NFC 开关 0/1（无 NFC 的机型恒 0）
+    uint8_t nfc_emu;    // NFC 正在模拟卡片 0/1
 } app_status_t;
 
 #define APP_UI_REQ_SETTINGS_APPLY   (0x01)  // 上行：payload = [row(1)][value(1)]

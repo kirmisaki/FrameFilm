@@ -51,6 +51,9 @@
 #include "app_animation.h"  /* 动图 app 参数 TAG / 取值范围 */
 #include "app_boot_cfg.h"   /* 开机行为参数（BOOT PAGE / START APP 两行） */
 #include "app_language.h"
+#if (SYS_NFC_ENABLE == 1)
+#include "app_wallet.h"     /* NFC 总开关（NFC 行） */
+#endif
 #include "app_settings.h"
 #include "app_manager.h"
 
@@ -59,7 +62,7 @@
  */
 #define APP_SET_TAG         "app_set"
 
-#define ROW_H               (29)     // 行高（18 行，分节标题缩为 17px）
+#define ROW_H               (28)     // 行高（19 行，分节标题缩为 17px）
 #define Y_LIST              (66)     // 列表起点（表头 + 分节标题之下）
 
 /* BATTERY 行的电量条几何：外框 62 宽（含 1px 描边），填充按内宽 60 按比例给 */
@@ -104,7 +107,7 @@ static const char *const BOOTPAGE_OPTS[BOOTPAGE_OPT_NUM] = {
 };
 #define STARTAPP_OPT_NUM    (APP_START_NUM)
 static const char *const STARTAPP_OPTS[STARTAPP_OPT_NUM] = {
-    "菜单", "上次", "图片", "模板", "时钟", "动图", "设置", "通行证", "WALLET"
+    "菜单", "上次", "图片", "模板", "时钟", "动图", "设置", "通行证", "卡包"
 };                                              // 顺序 == app_start_t
 
 /* ---- app 参数行的候选值 ----
@@ -142,12 +145,11 @@ static const char *const SEC_TITLES[] = {
 _Static_assert(sizeof(settings_snapshot_t) <= UI_CMD_DATA_MAX,
                "settings_snapshot_t exceeds ui cmd payload");
 
-/* 列表总高：3 个分节标题（3 行标题 + 3 处 4px 间距） + 18 行。
-   正文可用高度 = 720 - 状态栏 30 - 提示行 28 - 上下留白 36 = 626，
-   扣掉表头 16 + 间距 24 后余 586 —— 列表 585 装得下，不会溢出到提示行。
-   行高仍为 29；新增语言行的 14px 来自三个分节标题各收 5px。
-   再加行就必须先压缩分节标题或拆页，别再动 ROW_H（再压行内文字会挤）。 */
-#define SET_LIST_H          (3 * (17 + 4) + SETTINGS_ROW_NUM * ROW_H)
+/* 列表总高：3 个分节标题（3 行标题 + 3 处 2px 间距） + 19 行（NFC 机型）。
+   正文可用高度 = 720 - 状态栏 30 - 提示行 28 - 上下留白 36 = 626；
+   列表从表头下方的 y=24 起，可用 602 —— 19 行共 589，余 13px 不会顶到提示行。
+   行高由 29 收到 28、分节间距由 4 收到 2，都是为 NFC 行腾出的空间；再压行内文字会挤。 */
+#define SET_LIST_H          (3 * (17 + 2) + SETTINGS_ROW_NUM * ROW_H)
 
 /*********************************************************************
 * TYPEDEFS
@@ -162,7 +164,7 @@ typedef struct {
 /* 字段编号（避免依赖结构体偏移，页面对快照只读） */
 enum {
     F_BAT = 0, F_WIFI, F_BT, F_LED, F_PANEL, F_STORAGE, F_FW,
-    F_SLEEP, F_AUTOWAKE, F_WIFI_ON, F_BT_ON, F_WAKE_SEL, F_HB_SEL,
+    F_SLEEP, F_AUTOWAKE, F_WIFI_ON, F_BT_ON, F_NFC, F_WAKE_SEL, F_HB_SEL,
     F_BOOT_PAGE, F_START_APP, F_LANGUAGE,
     F_IMG_PLAY, F_IMG_INT, F_ANIM_LOOP, F_ANIM_SPEED,
 };
@@ -172,6 +174,9 @@ static const settings_row_t ROWS[SETTINGS_ROW_NUM] = {
     { 0, "电量",         SET_KIND_BAR,    F_BAT        },
     { 0, "WiFi",         SET_KIND_TOGGLE, F_WIFI_ON    },
     { 0, "蓝牙",         SET_KIND_TOGGLE, F_BT_ON      },
+#if (SYS_NFC_ENABLE == 1)
+    { 0, "NFC",          SET_KIND_TOGGLE, F_NFC        },
+#endif
     { 0, "指示灯",       SET_KIND_CYCLE,  F_LED        },
     { 0, "屏幕",         SET_KIND_TEXT,   F_PANEL      },
     { 0, "存储",         SET_KIND_TEXT,   F_STORAGE    },
@@ -189,7 +194,11 @@ static const settings_row_t ROWS[SETTINGS_ROW_NUM] = {
     { 2, "动图速度",     SET_KIND_CYCLE,  F_ANIM_SPEED },
 };
 static const char *const ROW_KEYS_EN[SETTINGS_ROW_NUM] = {
-    "BATTERY", "WIFI", "BLUETOOTH", "LED", "PANEL", "STORAGE", "FIRMWARE",
+    "BATTERY", "WIFI", "BLUETOOTH",
+#if (SYS_NFC_ENABLE == 1)
+    "NFC",
+#endif
+    "LED", "PANEL", "STORAGE", "FIRMWARE",
     "BOOT PAGE", "START APP", "LANGUAGE", "SLEEP MODE", "AUTO WAKE",
     "WAKE INTERVAL", "HEARTBEAT", "IMG PLAY", "IMG INTERVAL", "ANIM LOOP", "ANIM SPEED"
 };
@@ -270,6 +279,10 @@ static const char *row_text(uint8_t idx)
                               (m_snap.wifi_conn ? app_text("已连接", "Connected") : app_text("未连接", "Idle"));
     case F_BT_ON:      return !m_snap.bt_on ? app_text("已关闭", "Off") :
                               (m_snap.bt_conn ? app_text("已连接", "Connected") : app_text("等待连接", "Waiting"));
+#if (SYS_NFC_ENABLE == 1)
+    case F_NFC:        return !m_snap.nfc_on ? app_text("已关闭", "Off") :
+                              (m_snap.nfc_emu ? app_text("模拟中", "Emulating") : app_text("无卡", "No card"));
+#endif
     case F_PANEL:      return m_snap.panel;
     case F_STORAGE:
     {
@@ -303,6 +316,9 @@ static uint8_t row_on(uint8_t idx)
     {
     case F_WIFI_ON:  return m_snap.wifi_on;
     case F_BT_ON:    return m_snap.bt_on;
+#if (SYS_NFC_ENABLE == 1)
+    case F_NFC:      return m_snap.nfc_on;
+#endif
     case F_SLEEP:    return m_snap.sleep_mode;
     case F_AUTOWAKE: return m_snap.sleep_auto;
     default:         return 0;
@@ -412,6 +428,13 @@ static void settings_snapshot_pull(void)
 
     m_snap.wifi_on = g_service_param.network.wifi_enable ? 1 : 0;
     m_snap.bt_on   = g_service_param.ble.ble_enable ? 1 : 0;
+#if (SYS_NFC_ENABLE == 1)
+    m_snap.nfc_on  = app_wallet_nfc_enabled();
+    m_snap.nfc_emu = app_wallet_emu_active();
+#else
+    m_snap.nfc_on  = 0;
+    m_snap.nfc_emu = 0;
+#endif
     m_snap.wifi_conn = (m_snap.wifi_on && service_wifi_get_connect_status()) ? 1 : 0;
     m_snap.bt_conn   = (m_snap.bt_on && service_ble_gatts_get_connect()) ? 1 : 0;
     snprintf(m_snap.wifi, sizeof(m_snap.wifi), "%s",
@@ -505,6 +528,14 @@ static void settings_apply(uint8_t row, uint8_t value)
         service_ble_apply_enable(value);
         service_param_save();
         break;
+
+#if (SYS_NFC_ENABLE == 1)
+    /* NFC 总开关：落盘 + 立即起停模拟（开关/卡库状态由卡包模块内部校验） */
+    case F_NFC:
+        if(value > 1) { return; }
+        app_wallet_set_nfc_enabled(value);
+        break;
+#endif
 
     /* LED 模式：只落参数，运行期由 monitor 的 LED 事件按它决定亮/不亮（最迟 500ms 生效） */
     case F_LED:
@@ -804,6 +835,9 @@ static void set_toggle(void)
     {
     case F_WIFI_ON:     m_snap.wifi_on    = (uint8_t)!m_snap.wifi_on;    req[1] = m_snap.wifi_on;    break;
     case F_BT_ON:       m_snap.bt_on      = (uint8_t)!m_snap.bt_on;      req[1] = m_snap.bt_on;      break;
+#if (SYS_NFC_ENABLE == 1)
+    case F_NFC:         m_snap.nfc_on     = (uint8_t)!m_snap.nfc_on;     req[1] = m_snap.nfc_on;     break;
+#endif
     case F_SLEEP:       m_snap.sleep_mode = (uint8_t)!m_snap.sleep_mode; req[1] = m_snap.sleep_mode; break;
     case F_AUTOWAKE:    m_snap.sleep_auto = (uint8_t)!m_snap.sleep_auto; req[1] = m_snap.sleep_auto; break;
     case F_LED:         m_snap.led_mode_sel = (uint8_t)((m_snap.led_mode_sel + 1) % LED_OPT_NUM);
@@ -891,7 +925,7 @@ static void set_ui_create(lv_obj_t *root)
             lv_obj_set_scrollable(sh, false);
             lv_obj_set_size(sh, LV_PCT(100), 17);
             lv_obj_set_pos(sh, 0, y);
-            y += 21;
+            y += 19;
 
             tab = lv_obj_create(sh);
             lv_obj_remove_style_all(tab);
@@ -989,8 +1023,12 @@ static void set_ui_create(lv_obj_t *root)
             lv_obj_center(t);
             m_row_val[i] = t;
 
-            /* 开关行左侧的状态文案（WiFi / 蓝牙：状态 + 开关同一行） */
-            if(ROWS[i].field == F_WIFI_ON || ROWS[i].field == F_BT_ON)
+            /* 开关行左侧的状态文案（WiFi / 蓝牙 / NFC：状态 + 开关同一行） */
+            if(ROWS[i].field == F_WIFI_ON || ROWS[i].field == F_BT_ON
+#if (SYS_NFC_ENABLE == 1)
+               || ROWS[i].field == F_NFC
+#endif
+              )
             {
                 lv_obj_t *st = set_label(row, app_font_small(), lv_color_black(), "");
                 lv_obj_align(st, LV_ALIGN_RIGHT_MID, -48, 0);
@@ -1062,6 +1100,8 @@ static void set_ui_on_msg(uint32_t cmd, const void *data, uint8_t len)
         st.wifi_conn = m_snap.wifi_conn;
         st.bt_on   = m_snap.bt_on;
         st.bt_conn = m_snap.bt_conn;
+        st.nfc_on  = m_snap.nfc_on;
+        st.nfc_emu = m_snap.nfc_emu;
         app_shell_apply(&m_shell, &st);
         return;
     }

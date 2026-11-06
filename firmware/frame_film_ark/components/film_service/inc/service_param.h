@@ -39,7 +39,10 @@ extern "C" {
 /* 保留槽位：不属于任何 app，放 app 层自己的参数（当前是"开机行为"，见 app_boot_cfg）。
  * 借用同一套 blob 持久化（magic/size/version 校验 + "app<id>" key），复用现成基础设施。 */
 #define SERVICE_PARAM_APP_ID_BOOT_CFG                              (7)
-#define SERVICE_PARAM_APP_NUM                                      (8)
+/* 保留槽位：NFC 总开关（卡包模块使用，见 app_wallet.c）。
+ * 不放进 ServiceParam_Def_t —— 改结构体布局会触发整体重置，连带清掉 WiFi 配网与时区。 */
+#define SERVICE_PARAM_APP_ID_NFC_CFG                               (8)
+#define SERVICE_PARAM_APP_NUM                                      (9)
 
 /* 单个 app 状态 blob 中 app 数据的最大字节数（不含 6 字节头）。
  * 各 app 的状态结构体大小不得超过该值，app 侧以 _Static_assert 自行校验。 */

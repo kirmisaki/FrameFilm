@@ -194,7 +194,9 @@ static pass_load_result_t pass_prepare(void)
                  ((uint32_t)status.wifi_on << 8) |
                  ((uint32_t)status.wifi_conn << 9) |
                  ((uint32_t)status.bt_on << 10) |
-                 ((uint32_t)status.bt_conn << 11));
+                 ((uint32_t)status.bt_conn << 11) |
+                 ((uint32_t)status.nfc_on << 12) |
+                 ((uint32_t)status.nfc_emu << 13));
     atomic_store(&m_pending, next);
     atomic_store(&m_prepare_result, result);
     return result;
@@ -209,6 +211,8 @@ static void pass_apply_status(void)
         .wifi_conn = (uint8_t)((bits >> 9) & 1u),
         .bt_on = (uint8_t)((bits >> 10) & 1u),
         .bt_conn = (uint8_t)((bits >> 11) & 1u),
+        .nfc_on = (uint8_t)((bits >> 12) & 1u),
+        .nfc_emu = (uint8_t)((bits >> 13) & 1u),
     };
     app_shell_apply(&m_shell, &status);
 }
