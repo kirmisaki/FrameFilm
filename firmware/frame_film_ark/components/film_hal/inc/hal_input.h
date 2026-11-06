@@ -5,6 +5,7 @@
 /*********************************************************************
  * INCLUDES
  */
+#include "sdkconfig.h"
 
 
 /*********************************************************************
@@ -17,6 +18,11 @@ extern "C" {
 /*********************************************************************
  * MACROS
  */
+#if CONFIG_ARK_INPUT_BACK_KEY
+#define HAL_INPUT_HAS_BACK_KEY      1
+#else
+#define HAL_INPUT_HAS_BACK_KEY      0
+#endif
 
 
 /*********************************************************************
@@ -30,6 +36,7 @@ typedef enum {
     INPUT_PRESS_DOWN,   // 编码器-
     INPUT_PRESS_PRESSED,
     INPUT_PRESS_DOUBLE, // 确认键双击（app_manager 用它"退出 app"）
+    INPUT_PRESS_BACK,   // n16r8 的 GPIO18 返回键
     INPUT_PRESS_MAX,
 } input_press_type_t;
 

@@ -13,6 +13,12 @@ set(public_include "inc")
 
 set(requires film_sys led_strip driver fatfs esp_adc button esp_wifi esp_netif esp_event esp_hw_support spi_flash esp_psram)
 
+if(CONFIG_ARK_HAS_NFC)
+    list(APPEND srcs "src/hal_nfc.c")
+    list(APPEND requires st25r3916_lib)
+    list(APPEND public_include "../st25r3916_lib/include")
+endif()
+
 if(CONFIG_ARK_EPD_PROFILE)
     list(APPEND requires esp_timer)
 endif()

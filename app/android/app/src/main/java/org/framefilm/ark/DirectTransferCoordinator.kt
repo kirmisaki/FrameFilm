@@ -172,11 +172,12 @@ class DirectTransferCoordinator(
             capabilitiesChecked = true
             useAp = ArkApNetworkController.supported && data != null && data[4].toInt() and 0x10 != 0
             val declaresHardware = data != null && data[4].toInt() and 0x40 != 0
-            checkFirmwareHardware(declaresHardware)
+            val legacyNfcPossible = data != null && (data[4].toInt() and 0x50) == 0x10
+            checkFirmwareHardware(declaresHardware, legacyNfcPossible)
         }
     }
 
-    private fun checkFirmwareHardware(declaresHardware: Boolean) {
+    private fun checkFirmwareHardware(declaresHardware: Boolean, legacyNfcPossible: Boolean) {
         ble.command(0x5D) { result ->
             if (!active || stopping) return@command
             val image = checkNotNull(firmware)
@@ -184,12 +185,12 @@ class DirectTransferCoordinator(
             if (!ble.isReady) {
                 stop("读取硬件身份时 Ark 蓝牙已断开"); return@command
             }
-            if (error != null) {
-                if (declaresHardware || error !is TimeoutException) {
-                    stop("无法读取设备硬件身份：${error.message}"); return@command
-                }
-                // Only an undeclared, unanswered identity command may use the
-                // user's confirmation for this connected device and this file.
+            if (error != null && (declaresHardware || error !is TimeoutException)) {
+                stop("无法读取设备硬件身份：${error.message}"); return@command
+            }
+            // Old upstream NFC uses 0x5D for card data and rejects our empty request with PARAM.
+            val legacyNfcReply = legacyNfcPossible && result.getOrNull()?.contentEquals(byteArrayOf(2)) == true
+            if (error != null || legacyNfcReply) {
                 val selected = legacyHardwareTarget
                 if (selected == null) {
                     stop("旧固件不提供硬件身份；请手动选择并确认实际硬件型号后重试"); return@command
@@ -262,13 +263,15 @@ class DirectTransferCoordinator(
             } else snapshot(0, before) {
                 if (active && !stopping) {
                     if (useAp) prepareArkAp()
-                    else {
-                        emit("connecting", "创建 2.4GHz 直连组")
-                        p2p.createGroup2Ghz()
-                    }
+                    else prepareP2p()
                 }
             }
         }
+    }
+
+    private fun prepareP2p() {
+        emit("connecting", "创建 2.4GHz 直连组")
+        p2p.createGroup2Ghz()
     }
 
     private fun prepareArkAp() {
@@ -278,6 +281,13 @@ class DirectTransferCoordinator(
             if (!active) return@command
             if (stopping) { cancelApSession(); return@command }
             val data = result.getOrElse { stop("无法确认 Ark 热点准备结果：${it.message}"); return@command }
+            if (data.contentEquals(byteArrayOf(2))) {
+                // Older upstream NFC builds reject the empty request as an invalid card begin.
+                apPrepareSubmitted = false
+                useAp = false
+                prepareP2p()
+                return@command
+            }
             if (data.isNotEmpty() && data[0] != 0.toByte()) {
                 apPrepareSubmitted = false
                 stop("Ark 未接受热点准备（代码 ${data[0].toInt() and 255}）")

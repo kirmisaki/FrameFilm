@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FrameFilm Ark · 卡包 App 原型（480×720 / 1-bit）</title>
+<style>
+/* ============================================================
+   FrameFilm Ark — NFC 卡包 App 原型
+   目标：E6 3.70" 720×480 彩色电子纸，逻辑竖屏 480×720
+   约束：纯 1-bit（黑/白）、无动画、每次按键一整帧
+   本文件零依赖，双击即可在浏览器打开
+   ============================================================ */
+:root{
+  --ink:#000; --paper:#fff;
+  --font-ui:'Helvetica Neue',Helvetica,Arial,'PingFang SC','Microsoft YaHei',sans-serif;
+  --font-mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,'Courier New',monospace;
+  --pad:20px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:#16171a;color:#c9cbc6;
+  font:14px/1.65 var(--font-ui);
+  padding:48px 24px 96px;
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.03) 0 1px,transparent 1px 6px);
+}
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto}
+a{color:#d8dad2}
+
+/* ---------- 页头 ---------- */
+.masthead{border-bottom:2px solid #3a3c40;padding-bottom:20px;margin-bottom:40px}
+.masthead .kicker{font:11px/1 var(--font-mono);letter-spacing:.22em;color:#7d8178;text-transform:uppercase}
+.masthead h1{font-size:34px;font-weight:700;letter-spacing:-.01em;color:#f2f3ee;margin:14px 0 10px}
+.masthead p{max-width:72ch;color:#9a9d94;font-size:14px}
+.masthead .meta{margin-top:16px;font:11px/1.9 var(--font-mono);color:#6d7168;letter-spacing:.06em}
+
+section{margin-bottom:56px}
+h2{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#f2f3ee;
+   display:flex;align-items:center;gap:12px;margin-bottom:22px;font-weight:700}
+h2::before{content:'';width:0;height:0;border-left:11px solid #f2f3ee;border-top:6px solid transparent;border-bottom:6px solid transparent;flex:none}
+h2::after{content:'';height:1px;background:#3a3c40;flex:1}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #2c2e31;vertical-align:top}
+th{font:11px/1.5 var(--font-mono);letter-spacing:.12em;color:#7d8178;text-transform:uppercase;font-weight:400}
+td:first-child{color:#e6e8e2;white-space:nowrap}
+td code{font:12px/1.5 var(--font-mono);color:#b9bcb3;background:#202224;padding:1px 5px;border-radius:2px}
+
+.stage{display:grid;grid-template-columns:500px 1fr;gap:40px;align-items:start}
+@media (max-width:1000px){.stage{grid-template-columns:1fr}}
+
+/* ---------- 设备 ---------- */
+.device{
+  width:480px;height:720px;position:relative;flex:none;box-sizing:content-box;
+  background:#0c0d0e;padding:10px;
+}
+.device-inner{width:100%;height:100%;background:var(--paper);color:var(--ink);position:relative;overflow:hidden;font-family:var(--font-ui)}
+.device-tag{font:10px/1 var(--font-mono);letter-spacing:.2em;color:#7d8178;margin-top:12px;text-align:right}
+
+.status{position:relative;height:30px;display:flex;align-items:center;gap:10px;padding:0 14px;
+        border-bottom:1px solid var(--ink);font:10px/1 var(--font-mono);letter-spacing:.1em}
+.status .brand{display:flex;align-items:center;gap:7px;font-weight:700;letter-spacing:.14em}
+.status .sp{flex:1}
+.status .clock{position:absolute;left:50%;transform:translateX(-50%);font-weight:700;letter-spacing:.14em}
+.status .cell{display:flex;align-items:center;gap:5px}
+.pip{width:9px;height:9px;border:1px solid var(--ink)}
+.pip.on{background:var(--ink)}
+.tri-r{width:0;height:0;border-left:8px solid var(--ink);border-top:5px solid transparent;border-bottom:5px solid transparent}
+
+.foot{position:absolute;left:0;right:0;bottom:0;height:28px;display:flex;align-items:center;
+      gap:10px;padding:0 14px;border-top:1px solid var(--ink);font:9.5px/1 var(--font-mono);letter-spacing:.06em;white-space:pre}
+.foot .sp{flex:1}
+.body{position:absolute;left:0;right:0;top:30px;bottom:28px;padding:18px var(--pad)}
+.micro{font:9.5px/1.6 var(--font-mono);letter-spacing:.14em;text-transform:uppercase}
+.dim{opacity:.62}
+.rule{height:1px;background:var(--ink)}
+
+/* ---------- 卡包页 ---------- */
+.w-body{display:flex;flex-direction:column}
+.w-head{display:flex;align-items:flex-end;justify-content:space-between;
+        font:11px/1 var(--font-mono);letter-spacing:.15em;text-transform:uppercase;height:22px}
+.w-head .r{font-size:10px;color:#000}
+.w-rule{margin:10px 0 15px}
+
+.chamfer{clip-path:polygon(10px 0,calc(100% - 10px) 0,100% 10px,100% calc(100% - 10px),calc(100% - 10px) 100%,10px 100%,0 calc(100% - 10px),0 10px)}
+
+.w-plate{
+  height:248px;position:relative;flex:none;background:var(--paper);
+  overflow:hidden;
+}
+.w-cover{height:200px;position:relative;overflow:hidden;background:var(--paper)}
+.w-bar{height:48px;background:var(--ink);color:var(--paper);display:flex;align-items:center;gap:10px;padding:0 14px}
+.w-bar .idx{font:10px/1 var(--font-mono);letter-spacing:.12em;opacity:.8}
+.w-bar .name{font-size:18px;font-weight:700;letter-spacing:.06em;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.w-bar .type{font:10px/1 var(--font-mono);letter-spacing:.12em}
+
+/* 封面：纯 1-bit 几何图案，实际固件由 BLE 上传的 440×200 1bpp 图替换 */
+.cv-default{background:var(--ink)}
+.cv-default::before{content:'';position:absolute;left:50%;top:50%;width:116px;height:116px;border:2px solid var(--paper);transform:translate(-50%,-50%) rotate(45deg)}
+.cv-default::after{content:'NFC';position:absolute;left:0;right:0;bottom:18px;text-align:center;color:var(--paper);font:12px/1 var(--font-mono);letter-spacing:.42em;text-indent:.42em}
+.cv-a{background:var(--paper)}
+.cv-a::before{content:'';position:absolute;left:0;top:0;width:62%;height:100%;background:var(--ink);clip-path:polygon(0 0,100% 0,64% 100%,0 100%)}
+.cv-a::after{content:'';position:absolute;right:34px;top:40px;width:92px;height:120px;border:3px solid var(--ink)}
+.cv-b{background:var(--ink)}
+.cv-b::before{content:'';position:absolute;inset:22px;border:2px solid var(--paper)}
+.cv-b::after{content:'';position:absolute;left:50%;top:50%;width:96px;height:96px;border:2px solid var(--paper);border-radius:50%;transform:translate(-50%,-50%)}
+.cv-c{background-image:repeating-linear-gradient(0deg,var(--ink) 0 1px,transparent 1px 12px),repeating-linear-gradient(90deg,var(--ink) 0 1px,transparent 1px 12px)}
+.cv-c::before{content:'';position:absolute;left:34px;top:34px;width:132px;height:132px;background:var(--ink);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.cv-c::after{content:'';position:absolute;right:30px;bottom:30px;width:88px;height:88px;border:3px solid var(--ink);border-radius:50%}
+
+.w-hintstrip{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:10px 2px;
+             border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);
+             font:9.5px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;flex:none}
+
+.w-listhead{display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px;
+            font:9.5px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;flex:none}
+.w-list{display:flex;flex-direction:column;flex:none}
+.w-row{height:38px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--ink);padding:0 10px;font-size:13px}
+.w-row:last-child{border-bottom:0}
+.w-row.cur{background:var(--ink);color:var(--paper);border-bottom-color:var(--ink)}
+.w-row .idx{font:10px/1 var(--font-mono);letter-spacing:.1em;width:22px;flex:none}
+.w-row .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.w-row .tp{font:9.5px/1 var(--font-mono);letter-spacing:.08em;flex:none}
+.w-row .mk{width:10px;text-align:center;font-size:10px;flex:none}
+.w-status{margin-top:auto;font:10px/1.4 var(--font-mono);letter-spacing:.08em;min-height:18px}
+.w-status.warn{font-weight:700}
+
+/* 空状态 */
+.w-empty{height:520px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center}
+.w-empty .glyph{width:96px;height:96px;border:2px solid var(--ink);position:relative}
+.w-empty .glyph::before,.w-empty .glyph::after{content:'';position:absolute;background:var(--ink)}
+.w-empty .glyph::before{left:16px;right:16px;top:30px;height:2px}
+.w-empty .glyph::after{left:16px;right:16px;top:44px;height:2px}
+.w-empty h3{font-size:26px;letter-spacing:.18em;font-weight:700}
+.w-empty .rule{width:220px}
+.w-empty p{font-size:13px;letter-spacing:.06em}
+.w-empty .sub{font:9.5px/1.6 var(--font-mono);letter-spacing:.12em;opacity:.7}
+
+/* 读卡页 */
+.w-copy-panel{height:300px;border:1px solid var(--ink);display:flex;flex-direction:column;
+              align-items:center;justify-content:center;gap:12px;text-align:center;padding:20px}
+.w-copy-panel .nfc{width:88px;height:88px}
+.w-copy-title{font-size:24px;font-weight:700;letter-spacing:.12em}
+.w-copy-sub{font-size:13px;letter-spacing:.04em}
+.w-copy-sub.mono{font:9.5px/1.6 var(--font-mono);letter-spacing:.12em}
+.w-seg{display:flex;gap:3px;margin-top:4px}
+.w-seg i{width:26px;height:6px;border:1px solid var(--ink)}
+.w-seg i.on{background:var(--ink)}
+.w-meta{margin-top:18px;border-top:1px solid var(--ink)}
+.w-meta .row{display:flex;justify-content:space-between;gap:10px;padding:9px 2px;border-bottom:1px solid var(--ink);font-size:12px}
+.w-meta .row .k{font:9.5px/1.6 var(--font-mono);letter-spacing:.12em;opacity:.7}
+.w-meta .row .v{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.04em;text-align:right}
+.w-action{margin-top:auto;font:10px/1.4 var(--font-mono);letter-spacing:.1em;text-align:center}
+.w-cta{height:44px;background:var(--ink);color:var(--paper);display:flex;align-items:center;justify-content:center;
+       gap:18px;font-size:14px;letter-spacing:.18em;flex:none;margin-top:14px;cursor:pointer;user-select:none}
+.w-cta .k{font:10px/1 var(--font-mono);letter-spacing:.12em;opacity:.72}
+.w-cta:hover{background:#1a1a1a}
+
+/* 主菜单占位 */
+.w-menu{display:flex;flex-direction:column;margin-top:4px}
+.w-menu .row{height:52px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--ink);padding:0 12px;font-size:15px}
+.w-menu .row.on{background:var(--ink);color:var(--paper)}
+.w-menu .row .idx{font:10px/1 var(--font-mono);letter-spacing:.12em;width:24px}
+.w-menu .row .en{margin-left:auto;font:9.5px/1 var(--font-mono);letter-spacing:.14em;opacity:.65}
+
+/* 休眠卡 */
+.sleepcard{position:absolute;left:0;right:0;top:136px;bottom:0;display:flex;flex-direction:column;align-items:center;gap:0}
+.sleepcard>*{flex:none}
+.sleepcard .rule{width:400px}
+.sleep-glyph{width:180px;height:180px;border:2px solid var(--ink);position:relative;margin-bottom:44px}
+.sleep-glyph::before{content:'';position:absolute;left:34px;right:34px;top:62px;height:2px;background:var(--ink)}
+.sleep-glyph::after{content:'';position:absolute;left:34px;right:34px;top:84px;height:2px;background:var(--ink)}
+.sleep-word{font-size:36px;font-weight:700;letter-spacing:.28em;text-indent:.28em;margin:20px 0}
+.sleep-hint{font-size:16px;letter-spacing:.12em;margin-top:22px}
+.sleep-foot{position:absolute;left:0;right:0;bottom:50px;text-align:center;
+            font:9.5px/1.6 var(--font-mono);letter-spacing:.1em;padding:0 40px}
+
+/* ---------- 右侧控制 ---------- */
+.side{display:flex;flex-direction:column;gap:22px}
+.side h3{font:11px/1 var(--font-mono);letter-spacing:.18em;text-transform:uppercase;color:#f2f3ee;margin-bottom:10px}
+.controls{display:flex;flex-direction:column;gap:12px;border:1px solid #3a3c40;padding:18px}
+.ctrl{display:flex;align-items:center;gap:10px;font-size:13px;color:#c9cbc6}
+.ctrl label{flex:1}
+.ctrl select,.ctrl input[type=text]{background:#202224;border:1px solid #4a4d52;color:#d8dad2;padding:5px 8px;font:11px/1.4 var(--font-mono)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button{font:11px/1 var(--font-mono);letter-spacing:.08em;background:#202224;border:1px solid #4a4d52;
+       color:#d8dad2;padding:8px 10px;cursor:pointer}
+button:hover{background:#2a2c2f;border-color:#6b6f75}
+button.primary{background:#e6e8e2;color:#111;border-color:#e6e8e2}
+.pad{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.keys{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;color:#d8dad2;padding:5px 8px;border-radius:3px}
+.klist{font:11px/2 var(--font-mono);color:#8b8f85}
+.klist b{color:#e6e8e2;font-weight:400}
+.note{font-size:12.5px;color:#8b8f85;padding-left:14px;border-left:2px solid #3a3c40}
+.note b{color:#d8dad2;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="kicker">FrameFilm Ark / NFC Wallet / Prototype 01</div>
+  <h1>卡包 · NFC WALLET</h1>
+  <p>480×720 竖屏、纯 1-bit 的卡包 app 原型。包含封面卡片板、模拟模式、读卡复制、空状态、NFC 未就绪、
+     返回键/双击返回两种按键变体，以及 BLE 远程建卡、封面、重命名/删除后的界面状态。</p>
+  <div class="meta">
+    TARGET &nbsp; E6 3.70" 720×480 → 480×720 (logical portrait)<br>
+    DEPTH &nbsp;&nbsp; 1 bpp &nbsp;·&nbsp; REFRESH &nbsp;每按键一整帧（约 410 ms）&nbsp;·&nbsp; INPUT &nbsp;UP / DOWN / ENTER / BACK<br>
+    BACK &nbsp;&nbsp;&nbsp; n16r8 = GPIO18 返回键；n4r2 = 双击确认键
+  </div>
+</header>
+
+<section>
+  <h2>01 可交互原型</h2>
+  <div class="stage">
+    <div>
+      <div class="device"><div class="device-inner" id="screen"></div></div>
+      <div class="device-tag">480 × 720 / 1 bpp / 1:1</div>
+      <div class="pad">
+        <button data-act="up">↑ UP</button>
+        <button data-act="down">↓ DOWN</button>
+        <button data-act="enter" class="primary">ENTER</button>
+        <button data-act="back">BACK</button>
+        <button data-act="sleep">长按休眠</button>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="controls">
+        <h3>原型控制</h3>
+        <div class="ctrl">
+          <label for="scan">扫描结果</label>
+          <select id="scan">
+            <option value="ntag215">NTAG215 成功</option>
+            <option value="m1">M1 成功（仅卡号）</option>
+            <option value="timeout">超时</option>
+            <option value="unsupported">不支持</option>
+          </select>
+        </div>
+        <div class="ctrl">
+          <label for="nfcbad">模拟 NFC 硬件未就绪</label>
+          <input id="nfcbad" type="checkbox">
+        </div>
+        <div class="btns">
+          <button id="ble">BLE 远程建卡</button>
+          <button id="clear">清空卡片</button>
+          <button id="reset">恢复演示数据</button>
+        </div>
+
+        <h3 style="margin-top:16px">上位机（BLE）卡管理</h3>
+        <div class="ctrl">
+          <label for="cname">当前卡名称</label>
+          <input id="cname" type="text" maxlength="23" placeholder="门禁卡">
+        </div>
+        <div class="btns">
+          <button id="rename">重命名</button>
+          <button id="del">删除当前卡</button>
+        </div>
+        <div class="btns">
+          <button id="cover">上传/更换封面</button>
+          <button id="clearcover">清除封面</button>
+        </div>
+      </div>
+
+      <div>
+        <h3>键盘</h3>
+        <div class="keys">
+          <kbd>↑ / ↓</kbd><kbd>ENTER</kbd><kbd>ESC / BACKSPACE</kbd><kbd>按住 ENTER 0.8s</kbd>
+        </div>
+        <div class="klist" style="margin-top:10px">
+          <b>模拟</b>　↑↓ 切卡 · <b>双击 ENTER 进入读卡</b> · BACK 回主菜单 · 长按休眠<br>
+          <b>读卡</b>　进入即自动扫描 · 单击取消/重试 · 成功后单击「复制卡」入包 · BACK 回模拟<br>
+          <b>卡包仅在 n16r8</b>（4 键 + NFC）；n4r2 没有 NFC，不会出现卡包<br>
+          <b>BACK</b>　GPIO18 返回键；单击确认仍有 350ms 双击窗口
+        </div>
+      </div>
+
+      <div class="note">
+        <b>刷新约束：</b>原型里的状态切换都是一次整屏重绘，没有转场/动画/滚动。
+        列表只显示 5 行窗口，避免在 480×720 上做滚动。
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>02 版式规格</h2>
+  <table>
+    <tr><th>区域</th><th>坐标 / 尺寸</th><th>说明</th></tr>
+    <tr><td>状态栏</td><td>0 – 30 px</td><td>电量 / WiFi / 蓝牙 / 居中时间，沿用 app_shell</td></tr>
+    <tr><td>正文</td><td>x 20 – 460，y 48 – 674</td><td>440 宽；上下留白 18 px</td></tr>
+    <tr><td>卡片板</td><td>440 × 248，y 96</td><td>封面 440×200 + 信息条 48；切角 10 px</td></tr>
+    <tr><td>卡封面</td><td>440 × 200</td><td>1-bit 图（FFUI 1bpp）；**不显示 UID**</td></tr>
+    <tr><td>信息条</td><td>440 × 48（y 296）</td><td>编号 + 卡名 + 类型；黑底白字</td></tr>
+    <tr><td>模式页签</td><td>无</td><td>进入即模拟；双击确认键进入读卡二级页</td></tr>
+    <tr><td>读卡入口提示</td><td>440 × 36，y 360</td><td>“双击确认键 · 进入读卡” + 卡片数量</td></tr>
+    <tr><td>卡片列表</td><td>440 × 5 × 38，y 442</td><td>当前卡黑底；超出 5 张只显示窗口</td></tr>
+    <tr><td>状态行</td><td>y 646</td><td>模拟中 / 未选择 / 硬件未就绪 / 远程建卡成功</td></tr>
+    <tr><td>提示行</td><td>692 – 720</td><td>按键提示 + 页面名</td></tr>
+    <tr><td>读卡面板</td><td>440 × 300，y 96</td><td>NFC 图标 + 状态字 + 操作提示</td></tr>
+    <tr><td>读卡结果</td><td>y 416 – 600</td><td>类型 / UID / 容量 / 内容四行</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>03 状态与数据</h2>
+  <table>
+    <tr><th>状态</th><th>触发</th><th>界面</th></tr>
+    <tr><td>EMU 有卡</td><td>进入卡包 / 选中卡</td><td>封面 + 信息条 + 列表 + “模拟中 · 等待读卡器”</td></tr>
+    <tr><td>EMU 无封面</td><td>卡未上传封面</td><td>几何默认封面 + 信息条；不显示 UID</td></tr>
+    <tr><td>EMU 空卡包</td><td>无 SD / 清空</td><td>钱包图标 + “尚未添加卡片” + 双击读卡</td></tr>
+    <tr><td>EMU 硬件未就绪</td><td>chip_info 失败</td><td>状态行 “NFC 硬件未就绪”，双击不进入读卡</td></tr>
+    <tr><td>COPY scanning</td><td>双击进入读卡页</td><td>“正在读卡…” + 分段指示 + 单击取消</td></tr>
+    <tr><td>COPY done</td><td>读到 NTAG / M1</td><td>结果四行 + 底部「复制卡」按钮</td></tr>
+    <tr><td>COPY fail</td><td>超时 / 不支持</td><td>失败原因 + 单击重试</td></tr>
+    <tr><td>MENU</td><td>BACK</td><td>主菜单占位；ENTER 重新进入卡包</td></tr>
+    <tr><td>SLEEP</td><td>长按 ENTER</td><td>休眠卡；ENTER 模拟唤醒</td></tr>
+  </table>
+  <div class="note" style="margin-top:14px">
+    数据模型：最多 16 张卡；每条包含 id / kind / uid_len / sak / atqa / uid / name / mem_len / has_cover / cover_len。
+    本原型只绘制元数据与封面缩略图，NTAG 内存镜像不进入 UI 快照；封面区不显示 UID。
+  </div>
+</section>
+
+<section>
+  <h2>04 与固件的对应</h2>
+  <table>
+    <tr><th>原型元素</th><th>固件落点</th></tr>
+    <tr><td>卡片板 / 封面 / 列表</td><td><code>apps/wallet/app_wallet.c</code> + <code>wallet_snapshot_t</code>；封面走 <code>APP_UI_MSG_WALLET_COVER</code>（L8 所有权移交）</td></tr>
+    <tr><td>上位机管理</td><td><code>0x5F</code> 的 SELECT / RENAME / DELETE / CLEAR_COVER；封面 <code>0x60~0x62</code></td></tr>
+    <tr><td>读卡面板 / 结果四行</td><td>扫描任务结果 → <code>SYS_EVT_NFC_SCAN_DONE</code> → app_task 持有 pending，等「复制卡」再落盘</td></tr>
+    <tr><td>模拟/读卡切换</td><td><code>app_entry_t.on_double</code> → <code>WALLET_CMD_READ</code>（进入即扫描）</td></tr>
+    <tr><td>「复制卡」按钮</td><td><code>WALLET_CMD_ACTION</code> → 提交 pending 结果到 wallet.bin</td></tr>
+    <tr><td>切卡</td><td><code>hal_nfc_emu_stop()</code> + <code>hal_nfc_emu_start()</code></td></tr>
+    <tr><td>BACK</td><td><code>INPUT_PRESS_BACK</code> + <code>app_entry_t.on_back</code></td></tr>
+    <tr><td>BLE 远程建卡结果</td><td><code>0x5C~0x5E</code> → COMMIT → 新卡设为 current → 重启模拟</td></tr>
+  </table>
+  <div class="note" style="margin-top:14px">
+    完整协议与休眠/唤醒时序见 <a href="../docs/knowledge/nfc_wallet.md">docs/knowledge/nfc_wallet.md</a>。
+  </div>
+</section>
+
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var DEMO = [
+    { id:1, name:'门禁卡', kind:'m1',     type:'M1 / UID', uid:'11 22 33 44',             uidLen:4, mem:0,   pages:0,   cover:0 },
+    { id:2, name:'公司卡', kind:'ntag215', type:'NTAG215', uid:'04 11 22 33 44 55 66',      uidLen:7, mem:504, pages:135, cover:1 },
+    { id:3, name:'家门',   kind:'ntag213', type:'NTAG213', uid:'04 A1 B2 C3 D4 E5 F6',      uidLen:7, mem:144, pages:45,  cover:2 },
+    { id:4, name:'健身柜', kind:'m1',     type:'M1 / UID', uid:'AA BB CC DD',             uidLen:4, mem:0,   pages:0,   cover:0 }
+  ];
+
+  var state = {
+    screen:'wallet',      // wallet | menu | sleep
+    mode:'emu',           // emu | copy
+    copy:'scanning',      // scanning | done | fail | unsupported
+    cards: DEMO.slice(),
+    current: 0,
+    scanResult: 'ntag215',
+    nfcBad: false,
+    readCard: null,
+    notice: '',
+    nextId: 5
+  };
+
+  var scanTimer = null;
+  var noticeTimer = null;
+  var longTimer = null;
+  var clickTimer = null;
+  var lastClick = 0;
+  var longFired = false;
+
+  var screenEl = document.getElementById('screen');
+
+  function esc(s){
+    return String(s).replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+  function pad2(n){ return (n < 10 ? '0' : '') + n; }
+  function nowHHMM(){
+    var d = new Date();
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function currentCard(){
+    return state.cards.length ? state.cards[state.current] : null;
+  }
+  function backHint(){
+    return 'BACK 退出';
+  }
+  function emuHint(){
+    return '↑↓ 切卡   双击读卡   BACK 退出   长按休眠';
+  }
+  function copyHint(){
+    return '单击取消/复制   BACK 退出   长按休眠';
+  }
+
+  function statusBar(brand){
+    return '<div class="status">' +
+      '<span class="brand"><i class="tri-r"></i>' + esc(brand || 'NFC WALLET') + '</span>' +
+      '<span class="sp"></span>' +
+      '<span class="cell"><span class="pip on"></span><span class="pip on"></span>82%</span>' +
+      '<span class="clock">' + nowHHMM() + '</span>' +
+    '</div>';
+  }
+  function foot(hint, page){
+    return '<div class="foot"><span>' + esc(hint) + '</span><span class="sp"></span><span>' + esc(page) + '</span></div>';
+  }
+
+  /* ---------- 模拟页 ---------- */
+  function plateHTML(c){
+    if(!c){
+      return '<div class="w-empty">' +
+        '<div class="glyph"></div>' +
+        '<h3>卡包</h3>' +
+        '<div class="rule"></div>' +
+        '<p>尚未添加卡片</p>' +
+        '<p class="sub">双击确认键进入读卡</p>' +
+      '</div>';
+    }
+    var cover = c.cover ? ('cv-' + ['', 'a', 'b', 'c'][c.cover]) : 'cv-default';
+    return '<div class="w-plate chamfer">' +
+      '<div class="w-cover ' + cover + '"></div>' +
+      '<div class="w-bar">' +
+        '<span class="idx">' + pad2(state.current + 1) + '</span>' +
+        '<span class="name">' + esc(c.name) + '</span>' +
+        '<span class="type">' + esc(c.type) + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function listHTML(){
+    if(!state.cards.length){ return ''; }
+    var n = state.cards.length;
+    var show = Math.min(5, n);
+    var start = Math.max(0, Math.min(state.current - 2, n - show));
+    var html = '';
+    for(var i = 0; i < show; i++){
+      var idx = start + i;
+      var c = state.cards[idx];
+      html += '<div class="w-row' + (idx === state.current ? ' cur' : '') + '">' +
+        '<span class="idx">' + pad2(idx + 1) + '</span>' +
+        '<span class="nm">' + esc(c.name) + '</span>' +
+        '<span class="tp">' + esc(c.type) + '</span>' +
+        '<span class="mk">' + (idx === state.current ? '●' : '') + '</span>' +
+      '</div>';
+    }
+    return html;
+  }
+
+  function walletEmuHTML(){
+    var c = currentCard();
+    var status = state.nfcBad ? 'NFC 硬件未就绪' : (c ? '模拟中 · 等待读卡器 · 可贴卡唤醒' : '未选择卡片');
+    if(state.notice){ status = state.notice; }
+    var body;
+    if(!c){
+      body = plateHTML(null);
+    } else {
+      body = plateHTML(c) +
+        '<div class="w-hintstrip"><span>双击确认键 · 进入读卡</span><span>' + state.cards.length + ' 张卡片</span></div>' +
+        '<div class="w-listhead"><span>卡片 ' + pad2(state.current + 1) + ' / ' + pad2(state.cards.length) + '</span><span>上下切卡</span></div>' +
+        '<div class="w-list">' + listHTML() + '</div>';
+    }
+    return statusBar() +
+      '<div class="body w-body">' +
+        '<div class="w-head"><span>NFC WALLET</span><span class="r">' +
+          (state.cards.length ? pad2(state.current + 1) + ' / ' + pad2(state.cards.length) : '-- / --') +
+        '</span></div>' +
+        '<div class="rule w-rule"></div>' +
+        body +
+        '<div class="w-status' + (state.nfcBad ? ' warn' : '') + '">' + esc(status) + '</div>' +
+      '</div>' +
+      foot(emuHint(), '卡包 · EMU');
+  }
+
+  /* ---------- 读卡页 ---------- */
+  function nfcIcon(){
+    return '<svg class="nfc" viewBox="0 0 88 88" fill="none" stroke="currentColor" stroke-width="3">' +
+      '<rect x="10" y="22" width="44" height="44" rx="3"></rect>' +
+      '<path d="M18 34h28M18 44h18M18 54h24"></path>' +
+      '<path d="M62 28c6 8 6 24 0 32M70 20c10 13 10 35 0 48"></path>' +
+    '</svg>';
+  }
+
+  function copyMetaHTML(){
+    var c = state.readCard;
+    var type = c ? (c.kind === 'm1' ? 'M1 / UID ONLY' : c.type) : '--';
+    var uid = c ? c.uid : '--';
+    var cap = c ? (c.kind === 'm1' ? '仅卡号 / 扇区不可读' : (c.pages + ' 页 / ' + c.mem + ' B')) : '--';
+    var content = c ? (c.kind === 'm1' ? '身份已读取' : '整片镜像已读取') : '--';
+    return '<div class="w-meta">' +
+      '<div class="row"><span class="k">类型</span><span class="v">' + esc(type) + '</span></div>' +
+      '<div class="row"><span class="k">UID</span><span class="v">' + esc(uid) + '</span></div>' +
+      '<div class="row"><span class="k">容量</span><span class="v">' + esc(cap) + '</span></div>' +
+      '<div class="row"><span class="k">内容</span><span class="v">' + esc(content) + '</span></div>' +
+    '</div>';
+  }
+
+  function walletCopyHTML(){
+    var title = '正在读卡…';
+    var sub = '将卡片贴在设备 NFC 区域';
+    var mono = '单击取消';
+    var action = '单击取消';
+    var seg = '<div class="w-seg"><i class="on"></i><i class="on"></i><i></i><i></i></div>';
+
+    if(state.copy === 'done'){
+      title = '读取成功';
+      sub = '确认后复制到卡包';
+      mono = '';
+      action = '';
+      seg = '';
+    } else if(state.copy === 'fail'){
+      title = '读取失败';
+      sub = '超时 · 未检测到卡片';
+      mono = '单击重试';
+      action = '单击重试';
+      seg = '';
+    } else if(state.copy === 'unsupported'){
+      title = '暂不支持';
+      sub = 'ISO14443-4 / 加密卡无法复制';
+      mono = '单击重试';
+      action = '单击重试';
+      seg = '';
+    }
+
+    return statusBar() +
+      '<div class="body w-body">' +
+        '<div class="w-head"><span>读取卡片</span><span class="r">COPY</span></div>' +
+        '<div class="rule w-rule"></div>' +
+        '<div class="w-copy-panel chamfer">' +
+          nfcIcon() +
+          '<div class="w-copy-title">' + esc(title) + '</div>' +
+          '<div class="w-copy-sub">' + esc(sub) + '</div>' +
+          (mono ? '<div class="w-copy-sub mono">' + esc(mono) + '</div>' : '') +
+          seg +
+        '</div>' +
+        (state.copy === 'done' ? copyMetaHTML() : '') +
+        (state.copy === 'done'
+          ? '<div class="w-cta" id="cta" style="margin-top:auto"><span>复制卡</span><span class="k">ENTER</span></div>'
+          : '<div class="w-action">' + esc(action) + '</div>') +
+      '</div>' +
+      foot(copyHint(), '卡包 · COPY');
+  }
+
+  function walletHTML(){
+    return state.mode === 'emu' ? walletEmuHTML() : walletCopyHTML();
+  }
+
+  /* ---------- 其它页面 ---------- */
+  function menuHTML(){
+    var items = ['图片','通行证','卡包','模板','时钟','动图','设置'];
+    var rows = '';
+    for(var i = 0; i < items.length; i++){
+      rows += '<div class="row' + (i === 2 ? ' on' : '') + '">' +
+        '<span class="idx">' + pad2(i + 1) + '</span>' +
+        '<span>' + items[i] + '</span>' +
+        '<span class="en">' + ['IMAGE','PASS','WALLET','TPL','CLOCK','ANIM','SET'][i] + '</span>' +
+      '</div>';
+    }
+    return statusBar('FRAMEFILMARK') +
+      '<div class="body w-body">' +
+        '<div class="w-head"><span>MAIN MENU</span><span class="r">PLACEHOLDER</span></div>' +
+        '<div class="rule w-rule"></div>' +
+        '<div class="w-menu">' + rows + '</div>' +
+        '<div class="w-status">原型占位：ENTER 重新进入卡包；BACK 在菜单里无动作</div>' +
+      '</div>' +
+      foot('↑↓ 选择   单击进入   ' + backHint() + '   长按休眠', '主菜单');
+  }
+
+  function sleepHTML(){
+    return '<div class="sleepcard">' +
+      '<div class="sleep-glyph"></div>' +
+      '<div class="rule"></div>' +
+      '<div class="sleep-word">已休眠</div>' +
+      '<div class="rule"></div>' +
+      '<div class="sleep-hint">按确认键唤醒</div>' +
+      '<div class="sleep-foot">NFC 贴卡可直接唤醒到卡包（原型：按 ENTER 模拟唤醒）</div>' +
+    '</div>';
+  }
+
+  function render(){
+    var html;
+    if(state.screen === 'sleep'){ html = sleepHTML(); }
+    else if(state.screen === 'menu'){ html = menuHTML(); }
+    else { html = walletHTML(); }
+    screenEl.innerHTML = html;
+
+    /* 管理面板：输入框跟随当前卡，但不要打断正在输入的用户 */
+    var input = document.getElementById('cname');
+    if(input && document.activeElement !== input){
+      var c = currentCard();
+      input.value = c ? c.name : '';
+    }
+  }
+
+  /* ---------- 动作 ---------- */
+  function setNotice(text){
+    state.notice = text || '';
+    if(noticeTimer) clearTimeout(noticeTimer);
+    if(text){
+      noticeTimer = setTimeout(function(){
+        noticeTimer = null;
+        state.notice = '';
+        if(state.screen === 'wallet' && state.mode === 'emu') render();
+      }, 2600);
+    }
+  }
+
+  function cancelScan(){
+    if(scanTimer){ clearTimeout(scanTimer); scanTimer = null; }
+  }
+
+  function makeScanCard(kind){
+    if(kind === 'm1'){
+      return {
+        id: state.nextId++, name:'新 M1 卡', kind:'m1', type:'M1 / UID',
+        uid:'DE AD BE EF', uidLen:4, mem:0, pages:0, cover:0
+      };
+    }
+    return {
+      id: state.nextId++, name:'新 NTAG 卡', kind:'ntag215', type:'NTAG215',
+      uid:'04 5A 6B 7C 8D 9E AF', uidLen:7, mem:504, pages:135, cover:1
+    };
+  }
+
+  function upsert(card){
+    for(var i = 0; i < state.cards.length; i++){
+      if(state.cards[i].uid === card.uid && state.cards[i].kind === card.kind){
+        /* 重复读同一张卡：保留原 id 与自定义封面 */
+        state.cards[i] = Object.assign({}, state.cards[i], card, {
+          id: state.cards[i].id,
+          cover: state.cards[i].cover
+        });
+        return i;
+      }
+    }
+    state.cards.push(card);
+    return state.cards.length - 1;
+  }
+
+  function startScan(){
+    cancelScan();
+    state.mode = 'copy';
+    state.copy = 'scanning';
+    state.readCard = null;
+    render();
+    scanTimer = setTimeout(function(){
+      scanTimer = null;
+      var r = state.scanResult;
+      if(r === 'timeout'){
+        state.copy = 'fail';
+        state.readCard = null;
+      } else if(r === 'unsupported'){
+        state.copy = 'unsupported';
+        state.readCard = null;
+      } else {
+        /* 只拿结果，不落卡包；等「复制卡」再提交 */
+        state.readCard = makeScanCard(r);
+        state.copy = 'done';
+      }
+      render();
+    }, 1500);
+  }
+
+  function enterCopy(){
+    if(state.nfcBad){
+      setNotice('NFC 硬件未就绪');
+      render();
+      return;
+    }
+    startScan();
+  }
+
+  function commitReadCard(){
+    if(!state.readCard){ return; }
+    var idx = upsert(state.readCard);
+    state.current = idx;
+    state.readCard = null;
+    state.copy = 'scanning';
+    state.mode = 'emu';
+    setNotice('已复制到卡包');
+    render();
+  }
+
+  function actEnter(){
+    if(state.screen === 'sleep'){
+      state.screen = 'wallet';
+      state.mode = 'emu';
+      render();
+      return;
+    }
+    if(state.screen === 'menu'){
+      state.screen = 'wallet';
+      state.mode = 'emu';
+      render();
+      return;
+    }
+    if(state.mode === 'emu'){
+      /* 模拟页单击不做事；双击才进入读卡 */
+      return;
+    }
+    /* copy */
+    if(state.copy === 'scanning'){
+      cancelScan();
+      state.readCard = null;
+      state.mode = 'emu';
+      render();
+    } else if(state.copy === 'done'){
+      commitReadCard();
+    } else {
+      startScan();
+    }
+  }
+
+  function onDouble(){
+    if(state.screen !== 'wallet'){ return; }
+    if(state.mode === 'emu'){
+      enterCopy();
+    }
+    /* 读卡页双击无动作；返回统一走 BACK */
+  }
+
+  function onBack(){
+    if(state.screen === 'sleep'){ return; }
+    if(state.screen === 'menu'){ return; }
+    if(state.mode === 'copy'){
+      cancelScan();
+      state.mode = 'emu';
+      state.copy = 'scanning';
+      state.readCard = null;
+      render();
+      return;
+    }
+    state.screen = 'menu';
+    render();
+  }
+
+  function onUpDown(delta){
+    if(state.screen !== 'wallet' || state.mode !== 'emu' || state.cards.length < 2){ return; }
+    var n = state.cards.length;
+    state.current = (state.current + delta + n) % n;
+    render();
+  }
+
+  function goSleep(){
+    cancelScan();
+    state.screen = 'sleep';
+    render();
+  }
+
+  /* ---------- 键盘 ---------- */
+  function handleEnterClick(){
+    /* 菜单/休眠页直接响应，不参与双击配对 */
+    if(state.screen === 'menu' || state.screen === 'sleep'){
+      actEnter();
+      return;
+    }
+    /* 卡包内两个变体都要识别双击：双击 = 进入读卡（模拟页） */
+    var now = Date.now();
+    if(clickTimer && now - lastClick < 350){
+      clearTimeout(clickTimer);
+      clickTimer = null;
+      lastClick = 0;
+      onDouble();
+      return;
+    }
+    lastClick = now;
+    clickTimer = setTimeout(function(){
+      clickTimer = null;
+      actEnter();
+    }, 350);
+  }
+
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'ArrowUp'){ e.preventDefault(); onUpDown(-1); return; }
+    if(e.key === 'ArrowDown'){ e.preventDefault(); onUpDown(1); return; }
+    if(e.key === 'Escape' || e.key === 'Backspace'){ e.preventDefault(); onBack(); return; }
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      if(e.repeat){ return; }
+      longFired = false;
+      longTimer = setTimeout(function(){
+        longTimer = null;
+        longFired = true;
+        goSleep();
+      }, 800);
+    }
+  });
+
+  document.addEventListener('keyup', function(e){
+    if(e.key !== 'Enter'){ return; }
+    if(longTimer){ clearTimeout(longTimer); longTimer = null; }
+    if(longFired){ longFired = false; return; }
+    handleEnterClick();
+  });
+
+  /* ---------- 屏幕按钮 ---------- */
+  document.querySelector('.pad').addEventListener('click', function(e){
+    var b = e.target.closest('button');
+    if(!b){ return; }
+    var act = b.getAttribute('data-act');
+    if(act === 'up') onUpDown(-1);
+    else if(act === 'down') onUpDown(1);
+    else if(act === 'enter') handleEnterClick();
+    else if(act === 'back') onBack();
+    else if(act === 'sleep') goSleep();
+  });
+
+  /* 「复制卡」动作条：等价于按一次确认键 */
+  screenEl.addEventListener('click', function(e){
+    if(e.target.closest('#cta')){ handleEnterClick(); }
+  });
+
+  /* ---------- 控制面板 ---------- */
+  document.getElementById('scan').addEventListener('change', function(e){
+    state.scanResult = e.target.value;
+  });
+  document.getElementById('nfcbad').addEventListener('change', function(e){
+    state.nfcBad = e.target.checked;
+    render();
+  });
+  document.getElementById('ble').addEventListener('click', function(){
+    var card = {
+      id: state.nextId++, name:'远程卡', kind:'ntag215', type:'NTAG215',
+      uid:'04 7A 8B 9C AD BD CD', uidLen:7, mem:504, pages:135, cover:2
+    };
+    var idx = upsert(card);
+    state.current = idx;
+    state.mode = 'emu';
+    state.copy = 'scanning';
+    state.screen = 'wallet';
+    setNotice('远程建卡成功 · 已设为当前卡');
+    render();
+  });
+  document.getElementById('clear').addEventListener('click', function(){
+    cancelScan();
+    state.cards = [];
+    state.current = 0;
+    state.mode = 'emu';
+    state.copy = 'scanning';
+    state.readCard = null;
+    state.screen = 'wallet';
+    setNotice('卡包已清空');
+    render();
+  });
+  document.getElementById('reset').addEventListener('click', function(){
+    cancelScan();
+    state.cards = DEMO.slice();
+    state.current = 0;
+    state.mode = 'emu';
+    state.copy = 'scanning';
+    state.readCard = null;
+    state.screen = 'wallet';
+    state.nextId = 5;
+    state.notice = '';
+    render();
+  });
+
+  /* ---------- 上位机卡管理（示意） ---------- */
+  document.getElementById('rename').addEventListener('click', function(){
+    var c = currentCard();
+    if(!c){ setNotice('没有可重命名的卡'); render(); return; }
+    var name = document.getElementById('cname').value.trim();
+    if(!name){ setNotice('名称不能为空'); render(); return; }
+    if(new TextEncoder().encode(name).length > 23){
+      setNotice('名称最多 23 字节'); render(); return;
+    }
+    c.name = name;
+    setNotice('已重命名 · ' + name);
+    render();
+  });
+
+  document.getElementById('del').addEventListener('click', function(){
+    if(!state.cards.length){ setNotice('卡包为空'); render(); return; }
+    var idx = state.current;
+    state.cards.splice(idx, 1);
+    if(state.cards.length){
+      state.current = Math.min(idx, state.cards.length - 1);
+    } else {
+      state.current = 0;
+      state.mode = 'emu';
+      state.copy = 'scanning';
+      state.readCard = null;
+    }
+    setNotice('已删除卡片');
+    render();
+  });
+
+  document.getElementById('cover').addEventListener('click', function(){
+    var c = currentCard();
+    if(!c){ setNotice('没有可上传封面的卡'); render(); return; }
+    c.cover = c.cover ? (c.cover % 3) + 1 : 1;
+    setNotice('封面已上传 · 440×200 1bpp');
+    render();
+  });
+
+  document.getElementById('clearcover').addEventListener('click', function(){
+    var c = currentCard();
+    if(!c){ setNotice('没有可操作的卡'); render(); return; }
+    c.cover = 0;
+    setNotice('封面已清除');
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

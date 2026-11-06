@@ -59,6 +59,8 @@ typedef struct {
     lv_obj_t *wifi_pip;
     lv_obj_t *bt_label;     // "BT"
     lv_obj_t *bt_pip;
+    lv_obj_t *nfc_label;    // "NFC"（关闭时整项隐藏；无 NFC 机型恒隐藏）
+    lv_obj_t *nfc_pip;
     lv_obj_t *time_label;   // 居中 "HH:MM"（由 tick 维护）
     lv_obj_t *hint_label;
     lv_obj_t *page_label;

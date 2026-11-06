@@ -59,7 +59,10 @@
         const identity = advertised
             ? await ctx.request(0x5d, new Uint8Array())
             : await optionalQuery(ctx, 0x5d);
-        const hardware = identity ? fw.parseHardware(identity) : null;
+        // Historical upstream NFC returns PARAM to an empty card-data request.
+        const legacyNfcReply = caps && (caps[4] & 0x50) === 0x10 &&
+            identity?.length === 1 && identity[0] === 2;
+        const hardware = identity && !legacyNfcReply ? fw.parseHardware(identity) : null;
         const build = fw.parseBuild(await ctx.request(0x56, new Uint8Array()));
         el('ark-ota-legacy').hidden = !!hardware;
         const expected = hardware || fw.target(el('ark-ota-legacy-target').value);

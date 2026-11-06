@@ -96,6 +96,9 @@
 static const menu_item_t MENU_ITEMS[APP_MENU_ENTRY_NUM] = {
     { "图片",   "IMG", "浏览存储中的照片，上下切换图片", "图片浏览", "休眠后保留当前图片", UI_ICON_IMAGE },
     { "通行证", "PAS", "查看个人档案与身份资料",         "个人档案", "确认键重新加载资料", UI_ICON_PASS },
+#if (SYS_NFC_ENABLE == 1)
+    { "卡包",   "WLT", "NFC 卡包：模拟 / 读卡 / 封面",   "卡包",     "双击确认键进入读卡", UI_ICON_WALLET },
+#endif
     { "模板",   "TPL", "显示实时推送的天气与日历内容",   "实时内容", "接收手机推送",       UI_ICON_TEMPLATE },
     { "时钟",   "CLK", "查看设备时间、日期与星期",       "时间显示", "保持设备时间同步",   UI_ICON_CLOCK },
     { "动图",   "ANI", "播放多帧画面，支持调整速度",     "连续播放", "设置中调整播放参数", UI_ICON_ANIMATION },
@@ -104,6 +107,9 @@ static const menu_item_t MENU_ITEMS[APP_MENU_ENTRY_NUM] = {
 static const menu_item_t MENU_ITEMS_EN[APP_MENU_ENTRY_NUM] = {
     {"IMAGE", "IMG", "SD PHOTO WALL / UP-DOWN PAGING", "DIRECT", "MONO SESSION REBUILD", UI_ICON_IMAGE},
     {"PASS", "PAS", "PERSONAL PROFILE / ID RECORD", "UI", "ENTER TO RELOAD PROFILE", UI_ICON_PASS},
+#if (SYS_NFC_ENABLE == 1)
+    {"WALLET", "WLT", "NFC CARD WALLET / EMULATE, READ, COVER", "WALLET", "DOUBLE ENTER TO READ", UI_ICON_WALLET},
+#endif
     {"TEMPLATE", "TPL", "LIVE PUSH CONTENT / WEATHER, CALENDAR", "DIRECT", "MONO SESSION REBUILD", UI_ICON_TEMPLATE},
     {"CLOCK", "CLK", "DEVICE TIME / DATE AND WEEKDAY", "UI", "UI PAGE (LOW COST)", UI_ICON_CLOCK},
     {"ANIMATION", "ANI", "FRAME ANIMATION / ADJUSTABLE RATE", "DIRECT", "MONO SESSION REBUILD", UI_ICON_ANIMATION},

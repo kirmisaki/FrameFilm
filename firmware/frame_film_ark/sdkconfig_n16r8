@@ -2440,6 +2440,13 @@ CONFIG_WIFI_PROV_STA_ALL_CHANNEL_SCAN=y
 # end of Wi-Fi Provisioning Manager
 
 #
+# Ark hardware
+#
+CONFIG_ARK_HAS_NFC=y
+CONFIG_ARK_INPUT_BACK_KEY=y
+# end of Ark hardware
+
+#
 # Ark EPD diagnostics
 #
 # CONFIG_ARK_EPD_PROFILE is not set

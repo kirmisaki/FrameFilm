@@ -537,7 +537,22 @@ private fun legacyHardwareConfirmationIsAttemptScoped() {
     check(0x57 !in project.ble.channels)
 }
 
+private fun upstreamNfcFirmwareKeepsLegacyTransfer() {
+    val f = Fixture()
+    ArkApNetworkController.supported = true
+    val image = f.image.copy(hardware = boardHardware(ArkHardware.N16R8))
+    f.session.startFirmwareTransfer(f.file, image, ArkHardware.N16R8)
+    f.ble.reply(0x59, byteArrayOf(1, 0, 0, 0, 0x1f))
+    f.ble.reply(0x5D, byteArrayOf(2))
+    f.ble.reply(0x56, buildInfo(otherElf))
+    f.ble.reply(0x42, byteArrayOf(2, 2, 0xd0.toByte(), 1, 0xe0.toByte()))
+    f.finishSnapshot()
+    f.ble.reply(0x5C, byteArrayOf(2))
+    check(f.p2p.hasPendingCleanup && f.ble.pending?.channel == 0x57)
+}
+
 fun main() {
+    upstreamNfcFirmwareKeepsLegacyTransfer()
     hardwareTargetsAndRetriesCannotGuess()
     legacyHardwareConfirmationIsAttemptScoped()
     directTerminalAfterEarlyReady()

@@ -18,6 +18,7 @@ void main() {
         await tester.pumpAndSettle();
       }
 
+      const hardware = HardwareIdentity.n4r2;
       final gateway = FakeGateway();
       addTearDown(gateway.events.close);
       await tester.pumpWidget(FrameFilmApp(gateway: gateway));
@@ -28,7 +29,10 @@ void main() {
           'importedFirmware': {
             'name': 'ark.bin',
             'size': 1939280,
+            'project': 'frame_film_ark',
             'elfSha256': 'target-build',
+            'fileSha256': 'target-file',
+            ...hardware.packageMetadata,
           },
           'transfer': {
             'kind': 'firmware',
@@ -67,6 +71,8 @@ void main() {
       gateway.events.add(
         DeviceSnapshot.fromMap({
           'connected': true,
+          'hardwareIdentitySupported': true,
+          'hardware': hardware.toMap(),
           'transfer': {
             'kind': 'firmware',
             'phase': 'cleanup',
@@ -86,6 +92,8 @@ void main() {
       gateway.events.add(
         DeviceSnapshot.fromMap({
           'connected': true,
+          'hardwareIdentitySupported': true,
+          'hardware': hardware.toMap(),
           'transfer': {
             'kind': 'firmware',
             'phase': 'error',
@@ -111,7 +119,9 @@ void main() {
       await show(const Key('retry-transfer'));
       expect(find.text('上次升级中断，清理完成，可重试'), findsOneWidget);
       expect(find.text('固件构建已确认'), findsNothing);
-      await tester.tap(find.byKey(const Key('retry-transfer')));
+      final retry = find.byKey(const Key('retry-transfer'));
+      expect(tester.widget<FilledButton>(retry).onPressed, isNotNull);
+      await tester.tap(retry);
       await tester.pump();
       expect(gateway.calls, contains('retryTransfer'));
       await tester.pumpWidget(const SizedBox());

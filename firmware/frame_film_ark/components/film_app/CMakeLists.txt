@@ -36,6 +36,11 @@ set(private_include "core"
 
 set(requires film_service film_hal film_sys film_ui)
 
+if(CONFIG_ARK_HAS_NFC)
+    list(APPEND srcs "apps/wallet/app_wallet.c" "apps/wallet/app_wallet_store.c")
+    list(APPEND private_include "apps/wallet")
+endif()
+
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS ${public_include} ${private_include}
                        REQUIRES ${requires}

@@ -632,8 +632,9 @@ static void ble_task_handle(void *pvParameters)
     }
 }
 
-static bool ble_cmd_conflicts_with_direct(uint8_t ch)
+static bool ble_cmd_conflicts_with_direct(const ble_cmd_t *cmd)
 {
+    uint8_t ch = cmd->ch;
     switch(ch)
     {
     case BLE_FILM_TRANS_CH_FILE_NAME:
@@ -653,6 +654,16 @@ static bool ble_cmd_conflicts_with_direct(uint8_t ch)
     case BLE_FILM_TRANS_CH_APP_IMAGE_PARAM:
     case BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM:
     case BLE_FILM_TRANS_CH_APP_ANIM_PARAM:
+#if (SYS_NFC_ENABLE == 1)
+    case BLE_FILM_TRANS_CH_NFC_CARD_BEGIN:
+    case BLE_FILM_TRANS_CH_NFC_CARD_DATA:
+        return cmd->len != 0;
+    case BLE_FILM_TRANS_CH_NFC_CARD_COMMIT:
+    case BLE_FILM_TRANS_CH_NFC_WALLET_CTRL:
+    case BLE_FILM_TRANS_CH_NFC_COVER_BEGIN:
+    case BLE_FILM_TRANS_CH_NFC_COVER_DATA:
+    case BLE_FILM_TRANS_CH_NFC_COVER_COMMIT:
+#endif
     case BLE_FILM_TRANS_CH_CTRL_TIME_SYNC:
     case BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF:
     case BLE_FILM_TRANS_CH_CTRL_SLEEPMODE:
@@ -796,6 +807,31 @@ reply:
     service_ble_send_resp(BLE_FILM_TRANS_CH_PROFILE_READ, out, (uint8_t)(9 + actual));
 }
 
+static void ble_cmd_publish_app(const ble_cmd_t *cmd)
+{
+    /* payload: [0]=ch, [1..]=命令数据，值语义拷贝，app 侧在自身任务执行 */
+    uint8_t evt[SYS_EVENT_PAYLOAD_MAX];
+    uint8_t n = cmd->len;
+    if(cmd->ch == BLE_FILM_TRANS_CH_CTRL_APP_SWITCH && n > SYS_EVENT_PAYLOAD_MAX - 1)
+    {
+        uint8_t response[2] = {cmd->pdata[0], 1};
+        service_ble_send_resp(cmd->ch, response, sizeof(response));
+        return;
+    }
+    if(n > SYS_EVENT_PAYLOAD_MAX - 1)
+    {
+        sys_logw(BEL_SERVICE_TAG, "app cmd 0x%02X len=%u exceeds event payload %u, truncate",
+                 cmd->ch, (unsigned)cmd->len, (unsigned)(SYS_EVENT_PAYLOAD_MAX - 1));
+        n = SYS_EVENT_PAYLOAD_MAX - 1;
+    }
+    evt[0] = cmd->ch;
+    if(n > 0 && cmd->pdata != NULL)
+    {
+        memcpy(&evt[1], cmd->pdata, n);
+    }
+    sys_event_publish(SYS_EVT_BLE_APP_CMD, evt, (uint16_t)(n + 1));
+}
+
 static void ble_cmd_process(ble_cmd_t *cmd)
 {
     if(cmd == NULL)
@@ -816,7 +852,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                     (cmd->ch == BLE_FILM_TRANS_CH_DIRECT_START ||
                      cmd->ch == BLE_FILM_TRANS_CH_DIRECT_FILE_START ||
                      cmd->ch == BLE_FILM_TRANS_CH_DIRECT_OTA_START);
-    if(service_wifi_direct_busy() && !ap_start && ble_cmd_conflicts_with_direct(cmd->ch))
+    if(service_wifi_direct_busy() && !ap_start && ble_cmd_conflicts_with_direct(cmd))
     {
         const uint8_t busy = 1;
         service_ble_send_resp(cmd->ch, &busy, 1);
@@ -827,6 +863,14 @@ static void ble_cmd_process(ble_cmd_t *cmd)
     {
         case BLE_FILM_TRANS_CH_DIRECT_AP_PREPARE:
         {
+#if (SYS_NFC_ENABLE == 1)
+            /* 0x5C/0x5D: empty requests are SoftAP/hardware, NFC carries data. */
+            if(cmd->len != 0)
+            {
+                ble_cmd_publish_app(cmd);
+                break;
+            }
+#endif
             uint8_t out[1 + 33 + 64 + 16] = {2};
             char ssid[33], password[64];
             if(cmd->len == 0) {
@@ -846,9 +890,12 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_CAPABILITIES_GET:
         {
             if(cmd->len != 0) break;
-            uint8_t capabilities[5] = {1, 0, 0, 0, 31 | 0x40};
+            uint8_t capabilities[5] = {1, 0, 0, 0, 0x5F};
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
             capabilities[4] |= 0x20;  /* Experimental ABC9 playback. */
+#endif
+#if (SYS_NFC_ENABLE == 1)
+            capabilities[4] |= 0x80;
 #endif
             service_ble_send_resp(cmd->ch, capabilities, sizeof(capabilities));
             break;
@@ -898,7 +945,13 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_HARDWARE_INFO_GET:
         {
-            if(cmd->len != 0) break;
+            if(cmd->len != 0)
+            {
+#if (SYS_NFC_ENABLE == 1)
+                ble_cmd_publish_app(cmd);
+#endif
+                break;
+            }
             HalHardwareInfo_t info;
             hal_hardware_get_info(&info);
             uint8_t data[14 + 32] = {1};
@@ -1664,28 +1717,15 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM_GET :
         case BLE_FILM_TRANS_CH_APP_ANIM_PARAM :
         case BLE_FILM_TRANS_CH_APP_ANIM_PARAM_GET :
+#if (SYS_NFC_ENABLE == 1)
+        case BLE_FILM_TRANS_CH_NFC_CARD_COMMIT :
+        case BLE_FILM_TRANS_CH_NFC_WALLET_CTRL :
+        case BLE_FILM_TRANS_CH_NFC_COVER_BEGIN :
+        case BLE_FILM_TRANS_CH_NFC_COVER_DATA :
+        case BLE_FILM_TRANS_CH_NFC_COVER_COMMIT :
+#endif
         {
-            /* payload: [0]=ch, [1..]=命令数据，值语义拷贝，app 侧在自身任务执行 */
-            uint8_t evt[SYS_EVENT_PAYLOAD_MAX];
-            uint8_t n = cmd->len;
-            if(cmd->ch == BLE_FILM_TRANS_CH_CTRL_APP_SWITCH && n > SYS_EVENT_PAYLOAD_MAX - 1)
-            {
-                uint8_t response[2] = {cmd->pdata[0], 1};
-                service_ble_send_resp(cmd->ch, response, sizeof(response));
-                break;
-            }
-            if(n > SYS_EVENT_PAYLOAD_MAX - 1)
-            {
-                sys_logw(BEL_SERVICE_TAG, "app cmd 0x%02X len=%u exceeds event payload %u, truncate",
-                         cmd->ch, (unsigned)cmd->len, (unsigned)(SYS_EVENT_PAYLOAD_MAX - 1));
-                n = SYS_EVENT_PAYLOAD_MAX - 1;
-            }
-            evt[0] = cmd->ch;
-            if(n > 0 && cmd->pdata != NULL)
-            {
-                memcpy(&evt[1], cmd->pdata, n);
-            }
-            sys_event_publish(SYS_EVT_BLE_APP_CMD, evt, (uint16_t)(n + 1));
+            ble_cmd_publish_app(cmd);
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_APP_CURRENT_GET : // 查询当前 app

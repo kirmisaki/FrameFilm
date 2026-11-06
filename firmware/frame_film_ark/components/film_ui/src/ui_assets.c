@@ -97,6 +97,7 @@ typedef struct {
 static ui_asset_slot_t m_icons[UI_ICON_NUM] = {
     { .code = "image",     .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_image     },
     { .code = "pass",      .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_pass      },
+    { .code = "wallet",    .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_wallet    },
     { .code = "template",  .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_template  },
     { .code = "clock",     .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_clock     },
     { .code = "animation", .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_animation },

@@ -24,6 +24,13 @@ extern "C" {
 /*********************************************************************
 * TYPEDEFS
 */
+typedef enum {
+    HAL_PWR_WAKE_NONE = 0,
+    HAL_PWR_WAKE_KEY,       // EXT0：GPIO5 按键
+    HAL_PWR_WAKE_TIMER,     // 定时器
+    HAL_PWR_WAKE_NFC,       // EXT1：GPIO7 IRQ
+    HAL_PWR_WAKE_OTHER,
+} hal_pwr_wake_cause_t;
 
 
 /*********************************************************************
@@ -93,6 +100,11 @@ extern void hal_pwr_set_timer_wakeup(uint32_t minutes);
  * @return bool true-从深度睡眠唤醒，false-正常启动
  */
 extern bool hal_pwr_check_wakeup(void);
+
+/**
+ * @brief 本次启动的唤醒原因（区分按键 / 定时 / NFC IRQ）
+ */
+extern hal_pwr_wake_cause_t hal_pwr_get_wakeup_cause(void);
 
 /**
  * @brief 唤醒条件此刻是否已经成立

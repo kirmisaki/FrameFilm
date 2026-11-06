@@ -42,8 +42,8 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
 OUT_PNG = ROOT / "tools/ui-assets/png"
 OUT_SD = ROOT / "assets/app"
-OUT_C_INC = ROOT / "firmware/frame_film/components/film_ui/inc"
-OUT_C_SRC = ROOT / "firmware/frame_film/components/film_ui/src"
+OUT_C_INC = ROOT / "firmware/frame_film_ark/components/film_ui/inc"
+OUT_C_SRC = ROOT / "firmware/frame_film_ark/components/film_ui/src"
 
 MAGIC = b"FFUI"
 HDR_LEN = 16
@@ -127,13 +127,14 @@ def load_1bit(src_name, w, h, fit):
 # ---------------------------------------------------------------- 资源清单
 ASSETS = [
     # (C 符号名, SD 文件名, 源图, (宽, 高), SD 子目录, 缩放方式)
-    ("ui_def_icon_image",     "icon",  "ui_icon_image.png",     (ICON, ICON),        "image",     "stretch"),
-    ("ui_def_icon_pass",      "icon",  "pass.png",              (ICON, ICON),        "pass",      "contain"),
-    ("ui_def_icon_template",  "icon",  "ui_icon_template.png",  (ICON, ICON),        "template",  "stretch"),
-    ("ui_def_icon_clock",     "icon",  "ui_icon_clock.png",     (ICON, ICON),        "clock",     "stretch"),
-    ("ui_def_icon_animation", "icon",  "ui_icon_animation.png", (ICON, ICON),        "animation", "stretch"),
-    ("ui_def_icon_settings",  "icon",  "ui_icon_settings.png",  (ICON, ICON),        "settings",  "stretch"),
-    ("ui_def_badge",          "badge", "icon1.png",             (BADGE_W, BADGE_H),  "_ui",       "stretch"),
+    ("ui_def_icon_image",     "icon",  "ui_def_icon_image.png",     (ICON, ICON),        "image",     "stretch"),
+    ("ui_def_icon_pass",      "icon",  "ui_def_icon_pass.png",      (ICON, ICON),        "pass",      "contain"),
+    ("ui_def_icon_wallet",    "icon",  "ui_def_icon_wallet.png",    (ICON, ICON),        "wallet",    "contain"),
+    ("ui_def_icon_template",  "icon",  "ui_def_icon_template.png",  (ICON, ICON),        "template",  "stretch"),
+    ("ui_def_icon_clock",     "icon",  "ui_def_icon_clock.png",     (ICON, ICON),        "clock",     "stretch"),
+    ("ui_def_icon_animation", "icon",  "ui_def_icon_animation.png", (ICON, ICON),        "animation", "stretch"),
+    ("ui_def_icon_settings",  "icon",  "ui_def_icon_settings.png",  (ICON, ICON),        "settings",  "stretch"),
+    ("ui_def_badge",          "badge", "ui_def_badge.png",          (BADGE_W, BADGE_H),  "_ui",       "stretch"),
 ]
 
 

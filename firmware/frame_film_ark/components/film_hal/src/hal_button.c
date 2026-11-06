@@ -32,6 +32,7 @@
 #include <string.h>
 #include "iot_button.h"
 #include "driver/gpio.h"
+#include "sdkconfig.h"
 
 #include "hal_api.h"
 
@@ -43,7 +44,14 @@
 #define BUTTON_PIN_UP                     (6)    // 上/右按键
 #define BUTTON_PIN_DOWN                   (4)    // 下/左按键
 #define BUTTON_PIN_CONFIRM                (5)    // 确认按键
+#define BUTTON_PIN_BACK                   (18)   // n16r8 返回键
 #define BUTTON_ACTIVE_LEVEL               (0)    // 按键激活电平为低电平
+
+#if CONFIG_ARK_INPUT_BACK_KEY
+#define BUTTON_NUM                        (4)
+#else
+#define BUTTON_NUM                        (3)
+#endif
 
 #define BUTTON_MAX_CALLBACKS              (5)
 
@@ -66,7 +74,7 @@ typedef struct
 
 typedef struct
 {
-    button_t buttons[3];  // 0: UP, 1: DOWN, 2: CONFIRM
+    button_t buttons[BUTTON_NUM];  // 0: UP, 1: DOWN, 2: CONFIRM, 3: BACK (n16r8)
     bool initialized;
 } button_mgr_t;
 
@@ -91,6 +99,9 @@ static button_mgr_t m_button_mgr;
 static void button_up_cb(void *button_handle, void *usr_data);
 static void button_down_cb(void *button_handle, void *usr_data);
 static void button_confirm_cb(void *button_handle, void *usr_data);
+#if CONFIG_ARK_INPUT_BACK_KEY
+static void button_back_cb(void *button_handle, void *usr_data);
+#endif
 static void trigger_callbacks(input_press_type_t type);
 
 /*********************************************************************
@@ -189,6 +200,31 @@ void hal_input_init(void)
         sys_loge(BUTTON_TAG, "Failed to create CONFIRM button");
     }
 
+#if CONFIG_ARK_INPUT_BACK_KEY
+    // 初始化返回按键（n16r8，仅短按）
+    button_config_t back_cfg =
+    {
+        .type = BUTTON_TYPE_GPIO,
+        .long_press_time = BUTTON_LONG_PRESS_TIME_MS,
+        .short_press_time = BUTTON_SHORT_PRESS_TIME_MS,
+        .gpio_button_config = {
+            .gpio_num = BUTTON_PIN_BACK,
+            .active_level = BUTTON_ACTIVE_LEVEL,
+        },
+    };
+    m_button_mgr.buttons[3].handle = iot_button_create(&back_cfg);
+    if (m_button_mgr.buttons[3].handle)
+    {
+        iot_button_register_cb(m_button_mgr.buttons[3].handle, BUTTON_SINGLE_CLICK, button_back_cb, NULL);
+        m_button_mgr.buttons[3].initialized = true;
+        sys_logi(BUTTON_TAG, "BACK button initialized");
+    }
+    else
+    {
+        sys_loge(BUTTON_TAG, "Failed to create BACK button");
+    }
+#endif
+
     m_button_mgr.initialized = true;
     sys_logi(BUTTON_TAG, "button initialized (espressif__button)");
 }
@@ -200,7 +236,7 @@ void hal_input_deinit(void)
         return;
     }
 
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < BUTTON_NUM; i++)
     {
         if (m_button_mgr.buttons[i].handle)
         {
@@ -213,7 +249,11 @@ void hal_input_deinit(void)
     // 将按键引脚设为高阻态
     gpio_config_t io_conf =
     {
-        .pin_bit_mask = (1ULL << BUTTON_PIN_UP) | (1ULL << BUTTON_PIN_DOWN) | (1ULL << BUTTON_PIN_CONFIRM),
+        .pin_bit_mask = (1ULL << BUTTON_PIN_UP) | (1ULL << BUTTON_PIN_DOWN) | (1ULL << BUTTON_PIN_CONFIRM)
+#if CONFIG_ARK_INPUT_BACK_KEY
+                        | (1ULL << BUTTON_PIN_BACK)
+#endif
+                        ,
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -274,6 +314,18 @@ static void button_confirm_cb(void *button_handle, void *usr_data)
         trigger_callbacks(INPUT_PRESS_DOUBLE);
     }
 }
+
+#if CONFIG_ARK_INPUT_BACK_KEY
+static void button_back_cb(void *button_handle, void *usr_data)
+{
+    button_event_t event = iot_button_get_event(button_handle);
+    if (event == BUTTON_SINGLE_CLICK)
+    {
+        sys_logi(BUTTON_TAG, "BACK SHORT PRESS");
+        trigger_callbacks(INPUT_PRESS_BACK);
+    }
+}
+#endif
 
 static void trigger_callbacks(input_press_type_t type)
 {

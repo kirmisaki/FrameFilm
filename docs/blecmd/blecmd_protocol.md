@@ -6,7 +6,7 @@
 - [2. 协议框架](#2-协议框架)
 - [3. 通道定义](#3-通道定义)
 - [4. 命令详解](#4-命令详解)
-- Ark 扩展：[临时 WiFi 直传](#411-ark-临时-wifi-直传)、[通行证资料](#412-ark-通行证资料读取0x53)、[设备名称](#413-ark-设备名称0x54--0x55)、[WiFi OTA](#414-ark-wifi-ota0x560x58)、[SoftAP 直传](#418-ark-softap-文件直传0x5c)
+- Ark 扩展：[临时 WiFi 直传](#411-ark-临时-wifi-直传)、[通行证资料](#412-ark-通行证资料读取0x53)、[设备名称](#413-ark-设备名称0x54--0x55)、[WiFi OTA](#414-ark-wifi-ota0x560x58)、[SoftAP 直传](#418-ark-softap-文件直传0x5c)、[NFC 卡包](#420-nfc-卡包0x5c-0x62仅-n16r8)
 - [5. 校验和计算](#5-校验和计算)
 - [6. C 语言示例](#6-c-语言示例)
 - [7. 版本历史](#7-版本历史)
@@ -309,7 +309,7 @@
 
 | 通道 | 名称 | 请求 | 响应 |
 |---|---|---|---|
-| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit3=按文件名打开图片、bit4=Ark SoftAP 直传、bit5=实验 ABC9 512 色预览播放、bit6=硬件身份查询 |
+| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit3=按文件名打开图片、bit4=Ark SoftAP 直传、bit5=实验 ABC9 512 色预览播放、bit6=硬件身份查询、bit7=NFC 卡包（仅 N16R8） |
 
 ### 3.16 Ark 通用 WiFi 文件上传（0x5A）
 
@@ -321,7 +321,7 @@
 
 ### 3.17 Ark SoftAP 准备（0x5C）
 
-仅 `frame_film_ark` 支持，拓扑与兼容规则见 [§4.17](#418-ark-softap-文件直传0x5c)。
+仅 `frame_film_ark` 支持，拓扑与兼容规则见 [§4.18](#418-ark-softap-文件直传0x5c)。
 
 | 通道 | 名称 | 请求 DATA | 同通道响应 DATA |
 |---|---|---|---|
@@ -332,6 +332,22 @@
 | 通道 | 名称 | 请求 DATA | 同通道响应 DATA |
 |---|---|---|---|
 | 0x5D | HARDWARE_INFO_GET | 空 | schema(u8=1)、chipId(u16 BE)、chipRevision(u16 BE)、physicalFlashBytes(u32 BE)、psramBytes(u32 BE)、psramBus(u8)、targetId(ASCII NUL) |
+
+### 3.19 NFC 卡包通道（0x5C ~ 0x62，仅 n16r8）
+
+仅 `frame_film_ark` 的 **n16r8** 变体（`CONFIG_ARK_HAS_NFC`）实现，卡库保存在 SD 卡（`wallet.bin`，封面 `cover_<id>.bin`）。n4r2 不处理 NFC 操作，经典固件不实现该功能。字段与状态码见 [§4.20](#420-nfc-卡包0x5c-0x62仅-n16r8)。
+
+| 通道 | 名称 | 请求 DATA | 同通道响应 DATA |
+|---|---|---|---|
+| 0x5C | NFC_CARD_BEGIN | `kind(1) mode(1) uid_len(1) sak(1) atqa(2) uid(uid_len) name_len(1) name( name_len ) total(2) crc32(4)` | 成功 `0, 0, 180`（3B）；失败 1B 状态 |
+| 0x5D | NFC_CARD_DATA | `offset(2, BE) + chunk(≤180)` | `status, received(2, BE)`（3B） |
+| 0x5E | NFC_CARD_COMMIT | 空 | `status, id, count, current, uid_len, uid...` |
+| 0x5F | NFC_WALLET_CTRL | `op(1) [+参数]` | 见 §4.18.4 |
+| 0x60 | NFC_COVER_BEGIN | `id(1) fmt(1) w(2) h(2) total(2) crc32(4)` | 成功 `0, 0, 180`；失败 1B |
+| 0x61 | NFC_COVER_DATA | `offset(2, BE) + chunk(≤180)` | `status, received(2, BE)`（3B） |
+| 0x62 | NFC_COVER_COMMIT | 空 | `status, id, 1`（3B） |
+
+状态码：`0` OK / `1` BUSY / `2` PARAM / `3` NOSD / `4` NOTFOUND / `5` NOMEM / `6` SAVE / `7` EMU_FAIL。
 
 ## 4. 命令详解
 
@@ -1509,9 +1525,9 @@ SUM  = (0x55 + 0x4E + 0x01 + 0x02) & 0xFF = 0xA6
 
 ### 4.15 Ark 能力查询（0x59）与彩色通行证
 
-仅 `frame_film_ark` 实现 `CAPABILITIES_GET`：请求 LEN=0，回包 LEN=5，`capVersion=1(u8)` 后接 `flags(u32 BE)`。bit0 (`0x00000001`) 表示支持通行证彩色 `profile.bin`；bit1 (`0x00000002`) 表示支持 0x5A 通用 WiFi 文件上传，bit2 (`0x00000004`) 表示支持只读 SD 目录与统计 0x5B，bit3 (`0x00000008`) 表示支持0x4B按文件名原子打开图片，bit4 (`0x00000010`) 表示支持 Ark SoftAP 直传准备命令 0x5C，bit5 (`0x00000020`) 表示支持实验 ABC9 512 色预览播放，bit6 (`0x00000040`) 表示支持硬件身份查询0x5D；其余未定义位保留。capVersion 保持 1；旧固件不响应此命令，客户端按能力位选择功能，不能凭用户可见版本号判断能力。
+仅 `frame_film_ark` 实现 `CAPABILITIES_GET`：请求 LEN=0，回包 LEN=5，`capVersion=1(u8)` 后接 `flags(u32 BE)`。bit0 (`0x00000001`) 表示支持通行证彩色 `profile.bin`；bit1 (`0x00000002`) 表示支持 0x5A 通用 WiFi 文件上传，bit2 (`0x00000004`) 表示支持只读 SD 目录与统计 0x5B，bit3 (`0x00000008`) 表示支持0x4B按文件名原子打开图片，bit4 (`0x00000010`) 表示支持 Ark SoftAP 直传准备命令 0x5C，bit5 (`0x00000020`) 表示支持实验 ABC9 512 色预览播放，bit6 (`0x00000040`) 表示支持硬件身份查询0x5D，bit7（`0x00000080`）表示支持 NFC 卡包，仅 N16R8 固件设置；其余未定义位保留。capVersion 保持 1；旧固件不响应此命令，客户端按能力位选择功能，不能凭用户可见版本号判断能力。
 
-bit5 仅在 `CONFIG_ARK_EPD_ABC_PREVIEW=y`（默认）或 `CONFIG_ARK_EPD_ABC_DIAG=y`、实际 ABC9 播放路径已编译时宣告；bit0–bit4 的既有含义不变，包含硬件查询能力的默认 flags 为 `0x0000007F`，两个 ABC 开关均关闭时为 `0x0000005F`。此位只表示能播放 [实验 ABC9 容器](../film/film.md#私有-abc9-实验容器)：Format `0x7F`、720×480 单帧、`ABC9` 标记、691232 字节，LE16 低9位 A/B/C 码；不声明已完成512实色校准，也不启用诊断图生成或其他 lab 模式。客户端只有收到该位才开放实验预览上传与播放；旧固件或无该位时保留既有出图选项。
+bit5 仅在 `CONFIG_ARK_EPD_ABC_PREVIEW=y`（默认）或 `CONFIG_ARK_EPD_ABC_DIAG=y`、实际 ABC9 播放路径已编译时宣告；bit0–bit4 的既有含义不变，包含硬件查询能力的默认 flags 为 `0x0000007F`，两个 ABC 开关均关闭时为 `0x0000005F`。N16R8 在此基础上额外设置 bit7。此位只表示能播放 [实验 ABC9 容器](../film/film.md#私有-abc9-实验容器)：Format `0x7F`、720×480 单帧、`ABC9` 标记、691232 字节，LE16 低9位 A/B/C 码；不声明已完成512实色校准，也不启用诊断图生成或其他 lab 模式。客户端只有收到该位才开放实验预览上传与播放；旧固件或无该位时保留既有出图选项。
 
 通行证卡片文件仍放在 `/sdcard/app/pass/profile.bin`，文件头 16B：`FFUI`(4B)、version(1B)、format(1B)、width=440(u16 LE)、height=608(u16 LE)、保留零(6B)。原 v1/format1 的正文为 33440B、每字节 MSB 起 8 个黑白像素（1=黑）；新 v2/format2 的正文为 133760B、每字节高 nibble 为左像素，色码为黑0、白1、黄2、红3、蓝5、绿6。整文件分别为 33456B 和 133776B。彩色卡仅在 Ark UI 通行证页合成到黑白外壳，整屏走 EPD 4bpp 彩色刷新；退出页面回到原黑白 UI 路径。
 
@@ -1539,7 +1555,7 @@ HTTP 响应需为 200 且有非零 Content-Length；文件可为任意非空二�
 
 `DIRECT_AP_PREPARE` 请求 DATA 必须为空。设备预留直传会话并异步启动 SoftAP，响应 DATA 为 `status(u8)`；status=0 表示已接受准备，响应 DATA 随后包含 `SSID\0PASSWORD\0IP\0`，字符串为 ASCII NUL 结尾，IP 为设备 AP 地址。status=1 忙、2 参数错误、3 资源不足时响应只有 status 字节。接受不代表 AP 已就绪；客户端应使用返回的凭据连接，按需重试连接，随后以既有 0x50 或 0x5A（文件）或 0x57（OTA）启动下载。启动 payload 保持原格式，SSID 和密码必须与 0x5C 返回值一致，URL 指向手机 STA 地址上的现有 HTTP 文件服务。0x50/0x5A/0x57 的原始请求结构与内容校验语义不变。
 
-0x59 的 capVersion 保持 1，flags 继续使用 u32 大端；新增 bit4（`0x00000010`）表示 Ark SoftAP 直传能力，bit0–bit3 含义不变。客户端仅在该位存在时使用 0x5C；否则沿用旧 P2P 流程。
+0x59 的 capVersion 保持 1，flags 继续使用 u32 大端；新增 bit4（`0x00000010`）表示 Ark SoftAP 直传能力，bit0–bit3 含义不变。客户端在该位存在时可发送空请求 0x5C。早期上游 NFC 固件也使用 bit4，但会对空 0x5C 返回参数错误 2；遇到该响应时可回退到旧 P2P 流程。
 
 会话准备阶段 BLE 保持可用，0x52 可取消已接受的准备；0x51 仍查询同一会话状态。实际进入数据期时，固件按计划暂停 BLE 以完成 WiFi 传输。取消路径先关闭手机 HTTP socket；设备恢复 BLE 后，客户端重新连接并用 0x51 确认终态与字节数。HTTP 服务端发送进度仅表示手机已发送数据，不能作为 SD 保存成功证据；只有设备恢复 BLE 后报告的 0x51 DONE 才表示保存完成。既有 0x51 状态字段、0x52 幂等取消语义和 0x58 OTA apply 语义均保留。普通文件传输正常结束无需重启；OTA 仍须 READY 后调用 0x58 apply，再重连并以构建 fingerprint 确认升级结果。
 
@@ -1548,7 +1564,7 @@ HTTP 响应需为 200 且有非零 Content-Length；文件可为任意非空二�
 
 ### 4.19 Ark 硬件身份与 OTA 目标匹配（0x5D）
 
-0x53 仍为通行证资料读取，0x56 的 v1 BUILD_INFO 格式保持不变。硬件身份使用独立的0x5D；客户端可先查询0x59 bit6。0x5D请求为空，响应全部字段如下：
+0x53 仍为通行证资料读取，0x56 的 v1 BUILD_INFO 格式保持不变。硬件身份使用空请求 0x5D；客户端可先查询 0x59 bit6。历史上游 NFC 固件会对空请求返回参数错误 2。在 bit4 已设置且 bit6 未设置时，此响应按旧固件无硬件身份处理，升级仍须手动选型确认。硬件身份响应字段如下：
 
 | 响应偏移 | 长度 | 字段 |
 |---|---|---|
@@ -1580,6 +1596,65 @@ HTTP 响应需为 200 且有非零 Content-Length；文件可为任意非空二�
 App应按设备targetId选择发布产物，并校验下载/导入镜像内的descriptor。固件BLE OTA与HTTP OTA共用目标收尾校验：ESP-IDF镜像完整性、芯片/项目、descriptor及实际硬件目标均匹配，且大小不超过现有OTA槽，才允许选择新boot partition。错误目标、缺descriptor或未知硬件均不能激活，当前镜像保留。HTTP拒绝表现为原有OTA错误7，BLE沿用失败后重启当前镜像的行为。该校验不修改原电纸屏驱动或显示版本3.2.5。
 
 旧设备首次获得0x5D需要一次明确型号的升级；新客户端不得根据版本3.2.5、广播名、同款屏幕或0x56的ELF指纹猜硬件型号。缺少可信硬件信息时保留其他功能，禁止自动推荐/推送未知目标。OTA app.bin不会迁移Flash分区表，n16r8镜像不自动将1900K OTA槽变为4096K；容量仍以0x56返回的实际OTA槽上限为准。
+
+### 4.20 NFC 卡包（0x5C ~ 0x62，仅 n16r8）
+
+> 通道概览见 §3.19。仅 `frame_film_ark` 的 n16r8 变体实现；需要 SD 卡，卡库为 `wallet.bin`，封面为 `cover_<id>.bin`。设备端通过 ST25R3916 复制/模拟卡片，手机端只负责建卡、管理、下发封面。
+
+合并后的固件使用 0x59 bit7 宣告 NFC。早期上游固件使用 bit4，客户端需用 0x5F 的只读列表确认，避免把历史 SoftAP 固件误识别为 NFC。0x5C/0x5D 的空请求分别用于 SoftAP 准备和硬件查询，有 DATA 的请求在 N16R8 上进入 NFC 建卡和写数据。
+
+#### 4.20.1 卡片类型与内容长度
+
+| kind | 含义 | 内容长度 total（mode=0 时固定） |
+|---|---|---|
+| 0 | M1 / UID（只模拟卡号） | 0 |
+| 1 | NTAG213 | 180 |
+| 2 | NTAG215 | 540 |
+| 3 | NTAG216 | 924 |
+| 4 | M1 1K（块镜像） | 1024 |
+| 5 | M1 2K（块镜像） | 2048 |
+| 6 | M1 4K（块镜像） | 4096 |
+
+`mode`：`0` 完整内容、`1` 仅 UID（只对 NTAG 有效）、`2` M1 块镜像（只对 kind≥4 有效）。
+NTAG 的 `uid_len` 必须为 7、`sak=0x00`、ATQA=`0x0044`；M1 的 `uid_len` 必须为 4，kind=0 时 `sak` 取 `0x08/0x18/0x38`。
+
+#### 4.20.2 NFC_CARD_BEGIN (0x5C) - 开始建卡
+
+```
++------+------+------+-----+------+-----+----------+---------+-------+-------+--------+-----+
+| HEAD |  CH  | LEN  |kind |mode  |uidlen|  sak    | atqa(2) | uid   | name_len| name  |total|
++------+------+------+-----+------+-----+----------+---------+-------+-------+--------+-----+
+                                                                        crc32(4) 在 total 之后
+```
+
+成功回 `status=0, 0, 180`（3B，180 为单包建议分片上限）；失败只回 1B 状态码。设备为该会话分配缓冲区，随后用 0x5D 按 `offset` 递增上传内容，最后 0x5E 提交。
+
+#### 4.20.3 NFC_CARD_DATA / NFC_CARD_COMMIT（0x5D / 0x5E）
+
+- `0x5D`：`offset(2, BE) + chunk`，`offset` 必须等于设备已收到的字节数，`chunk ≤ 180`；回 `status, received(2, BE)`。
+- `0x5E`：无 DATA。设备校验 CRC32 后落盘并**自动选中新卡**，若当前正在卡包 app 内则立即切换模拟。成功回 `status, id, count, current, uid_len, uid...`。
+
+#### 4.20.4 NFC_WALLET_CTRL (0x5F) - 卡库管理
+
+| op | 名称 | 请求 | 响应 |
+|---|---|---|---|
+| 0x00 | LIST | `start(1)` | `status, count, current, start, cnt, 记录...` |
+| 0x01 | SELECT | `id` | `status, current` |
+| 0x02 | DELETE | `id` | `status, count, current` |
+| 0x03 | GET | `id` | `status, id, kind, uid_len, sak, atqa(2), uid(7), flags, name_len, name, mem_len(2), cover_len(2)` |
+| 0x04 | STATS | 无 | `status, count, current, max` |
+| 0x05 | RENAME | `id, len(1), name` | `status, id, len, name` |
+| 0x06 | CLEAR_COVER | `id` | `status, id` |
+
+LIST 单条记录：`id, kind, uid_len, sak, atqa(2), uid(7), flags, name_len, name`。
+
+#### 4.20.5 封面（0x60 ~ 0x62）
+
+- `0x60`：`id, fmt(=1 表示 1bpp), w(2)=440, h(2)=200, total(2)=11000, crc32(4)`；成功回 `0, 0, 180`。
+- `0x61`：`offset(2, BE) + chunk(≤180)`，与卡片内容上传相同。
+- `0x62`：无 DATA，校验 CRC 后写 `cover_<id>.bin`，成功回 `status, id, 1`。
+
+封面为 440×200 单色位图，每行 55 字节、MSB 在左（1=黑）。设备端不显示卡号，封面区只显示图片或默认卡面。
 
 ## 5. 校验和计算
 

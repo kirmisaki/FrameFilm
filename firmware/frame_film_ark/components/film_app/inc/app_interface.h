@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "hal_input.h"
+#include "sys_cfg.h"
 #include "ui_core.h"    /* app_ui_ops_t 前向声明 + ui_core_* 声明（本身不含 lvgl） */
 
 /*********************************************************************
@@ -56,6 +57,7 @@ typedef enum {
                            // ⚠ 追加在末尾而不是插进中间：这些 id 会落盘
                            // （service_param_app_current_set / app 参数 blob），
                            // 中间插入会让老设备上的 id 含义整体错位
+    APP_ID_WALLET,         // 卡包（NFC，仅 n16r8；UI 层显示）
     APP_ID_MAX,
 } app_id_t;
 
@@ -66,7 +68,11 @@ typedef enum {
  * APP_ID_MENU 自身不是可选项（它就是菜单）。
  * 显示顺序由 app_manager 的 m_menu_entries 定义，UI 页面侧的视觉表需与其一致。
  */
+#if (SYS_NFC_ENABLE == 1)
+#define APP_MENU_ENTRY_NUM      (7)
+#else
 #define APP_MENU_ENTRY_NUM      (6)
+#endif
 
 /**
  * @brief 显示层归属
@@ -115,6 +121,8 @@ typedef struct {
     uint8_t wifi_conn;  // WiFi 是否已连上 0/1（wifi_on 为 0 时无意义）
     uint8_t bt_on;      // 蓝牙开关 0/1
     uint8_t bt_conn;    // 蓝牙是否已连接 0/1（bt_on 为 0 时无意义）
+    uint8_t nfc_on;     // NFC 开关 0/1（无 NFC 的机型恒 0）
+    uint8_t nfc_emu;    // NFC 正在模拟卡片 0/1
 } app_status_t;
 
 #define APP_UI_REQ_SETTINGS_APPLY   (0x01)  // 上行：payload = [row(1)][value(1)]
@@ -192,6 +200,13 @@ typedef struct {
     uint8_t param_ch;            // 参数设置通道；查询通道为 param_ch + 1；0 表示无参数通道
     void (*on_param_set)(const uint8_t *tlv, uint8_t len); // BLE 参数设置（TLV 列表，可 NULL）
     uint8_t (*on_param_get)(uint8_t *out, uint8_t max);    // BLE 参数查询，返回写入字节数
+
+    /* ---- 可选导航钩子（app_task 上下文） ----
+     * on_back  ：BACK 键先交给 app；返回 true 表示已消费，false 交回框架回主菜单。
+     * on_double：确认键双击先交给 app；返回 true 表示已消费。
+     * 只有 n16r8 的卡包实现；其它 app 留 NULL。 */
+    bool (*on_back)(void);
+    bool (*on_double)(void);
 } app_entry_t;
 
 /*********************************************************************

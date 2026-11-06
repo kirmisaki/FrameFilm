@@ -50,6 +50,9 @@
 #include "app_typography.h"
 #include "ui_boot_logo.h"
 #include "app_manager.h"
+#if (SYS_NFC_ENABLE == 1)
+#include "app_wallet.h"    /* 状态栏 NFC 开关 / 模拟状态 */
+#endif
 
 /*********************************************************************
  * MACROS
@@ -276,11 +279,17 @@ void app_shell_build(lv_obj_t *root, const char *hint, const char *page, app_she
         lv_obj_t *wifi_pip;
         lv_obj_t *bt_label;
         lv_obj_t *bt_pip;
+        lv_obj_t *nfc_label;
+        lv_obj_t *nfc_pip;
 
         wifi_label = shell_label(status, lv_color_black(), "WIFI");
         wifi_pip = shell_pip(status);
         bt_label = shell_label(status, lv_color_black(), "BT");
         bt_pip = shell_pip(status);
+        /* NFC 开关状态（右上角，与 WiFi/蓝牙同一套图标）：
+           关=整项隐藏；开=空框；正在模拟卡片=实心框 */
+        nfc_label = shell_label(status, lv_color_black(), "NFC");
+        nfc_pip = shell_pip(status);
         bat = shell_label(status, lv_color_black(), "--%");
 
         if(out != NULL)
@@ -290,6 +299,8 @@ void app_shell_build(lv_obj_t *root, const char *hint, const char *page, app_she
             out->wifi_pip = wifi_pip;
             out->bt_label = bt_label;
             out->bt_pip = bt_pip;
+            out->nfc_label = nfc_label;
+            out->nfc_pip = nfc_pip;
         }
     }
 
@@ -459,6 +470,8 @@ void app_shell_apply(app_shell_t *s, const app_status_t *st)
     }
     shell_ind_set(s->wifi_label, s->wifi_pip, st->wifi_on, st->wifi_conn);
     shell_ind_set(s->bt_label, s->bt_pip, st->bt_on, st->bt_conn);
+    /* NFC：开=空框，正在模拟=实心框（与 WiFi 的"开/连"两档同一语汇） */
+    shell_ind_set(s->nfc_label, s->nfc_pip, st->nfc_on, st->nfc_emu);
 
     /* 顺带对一次时间：同步时间（BLE 0x4D）后状态栏要立刻反映出来，
        而校时事件不一定伴随状态采集 */
@@ -497,6 +510,13 @@ void app_shell_status_snapshot(app_status_t *st)
        但"关着"与"连着"在状态栏是两档不同的表现，别让它们混起来 */
     st->wifi_conn = (st->wifi_on && service_wifi_get_connect_status()) ? 1 : 0;
     st->bt_conn   = (st->bt_on && service_ble_gatts_get_connect()) ? 1 : 0;
+#if (SYS_NFC_ENABLE == 1)
+    st->nfc_on  = app_wallet_nfc_enabled();
+    st->nfc_emu = app_wallet_emu_active();
+#else
+    st->nfc_on  = 0;
+    st->nfc_emu = 0;
+#endif
 }
 
 void app_shell_on_event(const app_event_t *e)

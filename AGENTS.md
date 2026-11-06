@@ -270,5 +270,6 @@ idf.py build flash monitor                 # 默认 n4r2：4MB Flash / Quad PSRA
 - `docs/knowledge/` — AI 知识库（项目总览/架构/规范/命令速查）
 - `docs/knowledge/ui_layer.md` — UI 层设计（分层/线程模型/刷新策略/校准清单）
 - `tools/ui-mockup/index.html` — 设备端 UI 视觉设计稿（双击可开，零依赖）
+- `tools/ui-mockup/wallet.html` — NFC 卡包 App 交互原型（480×720 / 1-bit，含 3/4 键返回差异）
 - `tools/ui-assets/gen_ui_assets.py` — UI 图标生成（SD 可替换资源 + 内置默认图）
 - `tools/framefilm-dock-upload/SKILL.md` — Dock USB 传图工具（用法 / 参数 / 排查表）

@@ -33,7 +33,11 @@
 #include "esp_pm.h"
 
 #include "sys_log.h"
+#include "sys_cfg.h"
 #include "hal_pwr.h"
+#if (SYS_NFC_ENABLE == 1)
+#include "hal_nfc.h"
+#endif
 
 /*********************************************************************
  * MACROS
@@ -207,5 +211,35 @@ bool hal_pwr_wake_condition_met(void)
     /* 查的就是 hal_pwr_enter_sleep() 里 esp_sleep_enable_ext0_wakeup() 配的那一路。
        用 WAKEUP_GPIO_LEVEL 而不是某颗键的有效电平：这是"唤醒源"的语义，
        不是"按键"的语义，两者恰好重合但不该混为一谈。 */
-    return (gpio_get_level(WAKEUP_GPIO_NUM) == WAKEUP_GPIO_LEVEL) ? true : false;
+    if(gpio_get_level(WAKEUP_GPIO_NUM) == WAKEUP_GPIO_LEVEL)
+    {
+        return true;
+    }
+#if (SYS_NFC_ENABLE == 1)
+    /* NFC 场还在时也不要入睡：EXT1 是高电平触发，IRQ 高会立刻醒回来。 */
+    if(hal_nfc_irq_active())
+    {
+        return true;
+    }
+#endif
+    return false;
+}
+
+hal_pwr_wake_cause_t hal_pwr_get_wakeup_cause(void)
+{
+    esp_sleep_wakeup_cause_t reason = esp_sleep_get_wakeup_cause();
+    switch(reason)
+    {
+    case ESP_SLEEP_WAKEUP_EXT0:  return HAL_PWR_WAKE_KEY;
+    case ESP_SLEEP_WAKEUP_TIMER: return HAL_PWR_WAKE_TIMER;
+    case ESP_SLEEP_WAKEUP_EXT1:
+#if (SYS_NFC_ENABLE == 1)
+        if(esp_sleep_get_ext1_wakeup_status() & (1ULL << HAL_NFC_PIN_IRQ))
+        {
+            return HAL_PWR_WAKE_NFC;
+        }
+#endif
+        return HAL_PWR_WAKE_OTHER;
+    default: return HAL_PWR_WAKE_NONE;
+    }
 }

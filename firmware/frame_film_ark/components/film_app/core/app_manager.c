@@ -48,6 +48,9 @@
 #include "app_manager.h"
 #include "app_render.h"
 #include "app_sleep.h"  /* app_sleep_run：主菜单长按 = 手动休眠 */
+#if (SYS_NFC_ENABLE == 1)
+#include "app_wallet.h"
+#endif
 #include "ui_conf.h"    /* UI_CALIB_FRAME：标定帧模式下的开机页行为 */
 
 /*********************************************************************
@@ -97,7 +100,11 @@ static app_id_t m_last_guest_app = APP_ID_MAX;  // 最近一次切入的非图�
 /* 主菜单轮播表：下标即选择索引（UI 页据此显示"第 N 项"）。
    顺序必须与 app_menu.c 的 MENU_ITEMS 一致——那边是视觉表，这里是行为表。 */
 static const app_id_t m_menu_entries[APP_MENU_ENTRY_NUM] = {
-    APP_ID_IMAGE, APP_ID_PASS, APP_ID_TEMPLATE, APP_ID_CLOCK, APP_ID_ANIMATION, APP_ID_SETTINGS,
+    APP_ID_IMAGE, APP_ID_PASS,
+#if (SYS_NFC_ENABLE == 1)
+    APP_ID_WALLET,
+#endif
+    APP_ID_TEMPLATE, APP_ID_CLOCK, APP_ID_ANIMATION, APP_ID_SETTINGS,
 };
 static uint8_t m_menu_sel = 0;   // 主菜单当前选中索引
 static uint8_t m_boot_page = 0;  // 开机画面占屏中（此期间不进入任何 app，按键丢弃）
@@ -108,6 +115,7 @@ static uint8_t m_sleep_page = 0; // 休眠卡占屏中（同上；此后设备�
 static atomic_bool m_sleep_stop_sent = false;
 static atomic_bool m_sleep_stopped = false;
 #define APP_SLEEP_STOP_CMD 0xFFFFFFFEu
+#define APP_NFC_SYNC_CMD   0xFFFFFFFDu   // 内部：让 NFC 常驻模拟跟上当前卡（开机页/唤醒时）
 
 /* 参数通道反查表：param_ch / param_ch+1 → 归属 app。注册时构建，与“当前 app”无关，
    手机可在显示图片时预设动图参数，事件照样送达目标 app */
@@ -160,6 +168,7 @@ static input_press_type_t ble_key_to_press(uint8_t key)
         case BLE_KEY_UP:     return INPUT_PRESS_UP;
         case BLE_KEY_DOWN:   return INPUT_PRESS_DOWN;
         case BLE_KEY_DOUBLE: return INPUT_PRESS_DOUBLE;
+        case BLE_KEY_BACK:   return INPUT_PRESS_BACK;
         default:             return INPUT_PRESS_NONE;
     }
 }
@@ -473,12 +482,24 @@ static void app_handle_event(const app_event_t *e)
             if(app && app->layer != APP_LAYER_UI && app->on_exit) app->on_exit();
             app_state_save();
         }
+#if (SYS_NFC_ENABLE == 1)
+        /* 休眠前以当前卡进入模拟，供 monitor 保持供电并武装 IRQ。 */
+        app_wallet_sleep_prepare();
+#endif
         if(ui_core_stop_for_sleep() == 0)
             atomic_store(&m_sleep_stopped, true);
         else
             atomic_store(&m_sleep_stop_sent, false);
         return;
     }
+#if (SYS_NFC_ENABLE == 1)
+    /* 开机页占屏期间也让 NFC 模拟生效：必须在下面的 boot/sleep 门闸之前处理 */
+    if(e->type == APP_EVT_UI_MSG && e->cmd == APP_NFC_SYNC_CMD)
+    {
+        app_wallet_emu_sync();
+        return;
+    }
+#endif
     /* Extended 0x4B is acknowledged after the app task has resolved the name.
        Busy gates reject it explicitly, so the client may retry without a timer. */
     if(e->type == APP_EVT_SYS && e->cmd == SYS_EVT_BLE_APP_CMD &&
@@ -508,6 +529,14 @@ static void app_handle_event(const app_event_t *e)
     /* BLE app 参数通道：先于菜单态闸门处理，保证目标 app 即便不是当前 app 也能收到 */
     if(e->type == APP_EVT_SYS && (uint16_t)e->cmd == SYS_EVT_BLE_APP_CMD && e->len >= 1)
     {
+#if (SYS_NFC_ENABLE == 1)
+        if(e->payload[0] >= BLE_FILM_TRANS_CH_NFC_CARD_BEGIN &&
+           e->payload[0] <= BLE_FILM_TRANS_CH_NFC_COVER_COMMIT)
+        {
+            app_wallet_on_ble_cmd(e->payload[0], &e->payload[1], (uint8_t)(e->len - 1));
+            return;
+        }
+#endif
         if(app_param_ch_route(e->payload[0], &e->payload[1], (uint8_t)(e->len - 1)))
         {
             return;
@@ -749,6 +778,13 @@ static uint8_t app_do_switch_target(app_id_t id, const char *filename)
         m_boot_ui_shown = 0;
         ui_core_page_exit();
     }
+#if (SYS_NFC_ENABLE == 1)
+    if(m_current_app == APP_ID_WALLET)
+    {
+        /* 离开卡包只收起读卡，模拟继续（NFC 常驻生效） */
+        app_wallet_leave();
+    }
+#endif
     app_stop_current();
     /* 切出兜底保存（幂等，覆盖 app 内部未显式保存的改动）。
        仅在旧 app 确实运行过时保存：启动首次切换时它尚未 on_enter/载入状态，
@@ -776,6 +812,12 @@ static uint8_t app_do_switch_target(app_id_t id, const char *filename)
         m_boot_evt_pending = 0;
         app_manager_notify_boot();
     }
+#if (SYS_NFC_ENABLE == 1)
+    /* NFC 常驻模拟：切到任何 app 后都保证"开关开 + 有卡"时继续模拟当前卡。
+       放在切入之后：卡包自己的 enter_block_reason 已完成首次启动，这里是幂等的兜底，
+       也让开机（首个 app 就是图片等）时模拟从一开始就生效。 */
+    app_wallet_emu_sync();
+#endif
     return 0;
 }
 
@@ -793,6 +835,12 @@ static void app_manager_sleep_from_app(void)
 {
     /* 即使不画休眠卡，也必须冻结后续事件直到 deep sleep。 */
     m_sleep_page = 1;
+#if (SYS_NFC_ENABLE == 1)
+    if(m_current_app == APP_ID_WALLET)
+    {
+        app_wallet_deactivate();
+    }
+#endif
     app_stop_current();
     if(m_app_running)
     {
@@ -841,12 +889,35 @@ static app_input_result_t app_manager_process_input(input_press_type_t key)
         return APP_INPUT_CONSUMED;
     }
 
-    /* 其余 app：**双击**确认键退回主菜单（原长按语义挪到这里）。
-       主菜单不可用（无 UI 层的机型）时按键交回 app，避免"按了没反应" */
-    if(key == INPUT_PRESS_DOUBLE && app_menu_available())
+    /* 返回：BACK（n16r8）优先给 app 消费；没有 BACK 的旧硬件仍用双击返回。
+       双击在 n16r8 的卡包内另有语义（进入读卡页），由 on_double 消费。 */
+    if(key == INPUT_PRESS_BACK || key == INPUT_PRESS_DOUBLE)
     {
-        app_menu_open();
-        return APP_INPUT_CONSUMED;
+        if(m_current_app == APP_ID_MENU)
+        {
+            return APP_INPUT_CONSUMED;   // 菜单是根
+        }
+
+        const app_entry_t *cur = m_app_registry[m_current_app];
+        if(key == INPUT_PRESS_DOUBLE && cur != NULL && cur->on_double != NULL && cur->on_double())
+        {
+            return APP_INPUT_CONSUMED;
+        }
+        if(key == INPUT_PRESS_BACK && cur != NULL && cur->on_back != NULL && cur->on_back())
+        {
+            return APP_INPUT_CONSUMED;
+        }
+
+        if((key == INPUT_PRESS_BACK) || (HAL_INPUT_HAS_BACK_KEY == 0))
+        {
+            if(app_menu_available())
+            {
+                app_menu_open();
+                return APP_INPUT_CONSUMED;
+            }
+            return APP_INPUT_PASS;
+        }
+        return APP_INPUT_PASS;   // n16r8 的非卡包 app：双击无动作，返回统一走 BACK
     }
 
     /* 长按确认键 = 手动休眠，且**不出示休眠卡**：屏上保持当前 app 的画面。
@@ -1126,6 +1197,10 @@ void app_manager_boot_show(const app_ui_ops_t *ops, app_id_t next)
     m_boot_page = 1;
     m_boot_ui_shown = 1;
     ui_core_page_enter((uint8_t)APP_ID_MAX, ops);
+#if (SYS_NFC_ENABLE == 1)
+    /* 开机画面占屏期间也恢复当前卡模拟。 */
+    (void)app_manager_post_ui_msg(APP_NFC_SYNC_CMD, NULL, 0);
+#endif
 }
 
 void app_manager_boot_end(void)

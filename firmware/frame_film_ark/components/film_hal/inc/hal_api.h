@@ -13,6 +13,7 @@
 #include "hal_sd.h"
 #include "hal_pwr.h"
 #include "hal_epd.h"
+#include "hal_nfc.h"
 
 /*********************************************************************
  * CPPMIX

@@ -14,6 +14,9 @@ extern const uint8_t ui_def_icon_image[800];
 extern const uint8_t ui_def_icon_pass[800];
 
 /* 80x80, 800 B */
+extern const uint8_t ui_def_icon_wallet[800];
+
+/* 80x80, 800 B */
 extern const uint8_t ui_def_icon_template[800];
 
 /* 80x80, 800 B */

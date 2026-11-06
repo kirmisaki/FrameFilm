@@ -893,6 +893,47 @@
             </div>
         </div>
 
+        <!-- ================= Ark NFC 卡包 ================= -->
+        <div id="wallet-page" class="page">
+            <div class="card">
+                <div class="card__title">NFC 卡包（n16r8）</div>
+                <p id="wallet-connection" class="field-hint" role="status">连接 Ark 后读取设备卡包。</p>
+                <div class="btn-row">
+                    <button type="button" class="secondary-button" id="wallet-connect">前往设备连接</button>
+                    <button type="button" class="secondary-button" id="wallet-refresh" data-ark-connected disabled>刷新卡包</button>
+                </div>
+                <div id="wallet-list" class="wallet-list"></div>
+                <hr>
+                <div class="field">
+                    <label for="wallet-kind">类型</label>
+                    <select id="wallet-kind">
+                        <option value="1">NTAG213</option>
+                        <option value="2" selected>NTAG215</option>
+                        <option value="3">NTAG216</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="wallet-uid">UID（14 位十六进制）</label>
+                    <input id="wallet-uid" type="text" maxlength="14" placeholder="04A01122334455">
+                </div>
+                <div class="field">
+                    <label for="wallet-name">卡片名称</label>
+                    <input id="wallet-name" type="text" maxlength="23" placeholder="我的 NTAG 卡">
+                </div>
+                <div class="field">
+                    <label for="wallet-ndef">NDEF 文本</label>
+                    <textarea id="wallet-ndef" rows="3" maxlength="500" placeholder="Hello FrameFilm"></textarea>
+                </div>
+                <div class="field">
+                    <label for="wallet-cover">封面（可选，440×200 1-bit）</label>
+                    <input id="wallet-cover" type="file" accept="image/*">
+                </div>
+                <div class="btn-row">
+                    <button type="button" class="primary-button" id="wallet-create" data-ark-connected disabled>创建 NTAG 卡</button>
+                </div>
+            </div>
+        </div>
+
         <!-- ================= 设置 ================= -->
         <div id="config-page" class="page">
             <div class="card" id="ark-system-section" hidden>
@@ -1251,6 +1292,10 @@
             <svg class="ic" viewBox="0 0 24 24"><use href="#i-photo"/></svg>
             <span>通行证</span>
         </a>
+        <a href="#" class="nav-item" data-page="wallet-page">
+            <svg class="ic" viewBox="0 0 24 24"><use href="#i-photo"/></svg>
+            <span>卡包</span>
+        </a>
         <a href="#" class="nav-item" data-page="config-page">
             <svg class="ic" viewBox="0 0 24 24"><use href="#i-gear"/></svg>
             <span>设置</span>
@@ -1298,7 +1343,7 @@
 <script src="js/bluetooth.js?rev=ark-ota-1"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
 <script src="js/ark-firmware.js"></script>
-<script src="js/ark-ota.js"></script>
+<script src="js/ark-ota.js?rev=ark-ota-2"></script>
 <script src="js/usb.js"></script>
 <script src="js/keyboard.js"></script>
 <script src="js/source-fit.js"></script>
@@ -1307,6 +1352,7 @@
 <script src="js/convert.js?v=e4panel-2"></script>
 <script src="js/frame.js?v=ark-state-2"></script>
 <script src="js/frame-nav.js"></script>
+<script src="js/nfc-wallet.js?v=nfc-2"></script>
 <script src="js/batch.js?v=fix-1"></script>
 <script src="js/gif-decoder.js"></script>
 <script src="js/animation.js?v=ark-state-2"></script>

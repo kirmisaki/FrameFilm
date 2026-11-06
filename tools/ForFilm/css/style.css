@@ -1373,3 +1373,8 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
         margin-bottom: 0;
     }
 }
+
+/* NFC wallet */
+.wallet-rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.wallet-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(127,127,127,.35);border-radius:10px}
+.wallet-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
