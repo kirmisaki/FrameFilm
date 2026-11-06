@@ -1069,9 +1069,22 @@
                     </div>
                     <input type="file" id="ota-file-input" accept=".bin" style="display: none;" onchange="handleOtaFileSelect(event)">
                     <div class="action-controls">
-                        <button class="secondary-button" onclick="selectOtaFile()">选择文件</button>
+                        <button class="secondary-button" id="ark-ota-check" type="button" onclick="ArkOta.check()">检查更新</button>
+                        <button class="secondary-button" id="ota-local-btn" type="button" onclick="selectOtaFile()">选择文件</button>
                         <span id="ota-file-size" class="file-size-text">未选择</span>
                         <button class="secondary-button" onclick="startOtaUpgrade()" id="ota-upgrade-btn">开始升级</button>
+                    </div>
+                    <label class="fw-option" id="ark-ota-legacy" hidden>旧固件 · 实物规格
+                        <select id="ark-ota-legacy-target">
+                            <option value="">请选择</option>
+                            <option value="ark-esp32s3-n4r2">Ark N4R2 · 4 MB Flash / 2 MB PSRAM</option>
+                            <option value="ark-esp32s3-n16r8">Ark N16R8 · 16 MB Flash / 8 MB PSRAM</option>
+                        </select>
+                    </label>
+                    <p id="ark-ota-online-status" class="field-hint" role="status"></p>
+                    <div class="action-controls">
+                        <a class="secondary-button" id="ark-ota-download-link" rel="noopener" target="_blank" hidden>下载匹配的 OTA 文件</a>
+                        <button class="secondary-button" id="ark-ota-import-online" type="button" onclick="ArkOta.choose(true)" hidden>导入已下载 OTA</button>
                     </div>
                     <div id="ota-transfer-container" class="transfer-container" style="display: none;">
                         <div id="ota-transfer-status" class="transfer-status">准备传输...</div>
@@ -1166,6 +1179,21 @@
                         <span>烧录固件文件</span>
                     </div>
                     <div class="switch-row__hint">用 USB 串口直接写设备 Flash（等价命令行 <code>idf.py flash</code>）：比蓝牙 OTA 快得多，且能刷 bootloader 与分区表。刷完设备会复位，需要重新连接蓝牙。</div>
+                    <div class="action-controls">
+                        <label class="fw-option">Ark 硬件规格
+                            <select id="fw-online-target" onchange="resetOnlineFlash()">
+                                <option value="">按实物选择</option>
+                                <option value="ark-esp32s3-n4r2">N4R2 · 4 MB Flash / 2 MB PSRAM</option>
+                                <option value="ark-esp32s3-n16r8">N16R8 · 16 MB Flash / 8 MB PSRAM</option>
+                            </select>
+                        </label>
+                        <button class="secondary-button" id="fw-online-check" type="button" onclick="getOnlineFlash()">联网获取完整固件</button>
+                    </div>
+                    <p class="field-hint" id="fw-online-status" role="status"></p>
+                    <div class="action-controls">
+                        <a class="secondary-button" id="fw-online-link" rel="noopener" target="_blank" hidden>下载完整镜像</a>
+                        <button class="secondary-button" id="fw-online-import" type="button" onclick="selectFirmwareFiles(true)" hidden>导入已下载镜像</button>
+                    </div>
                     <input type="file" id="fw-file-input" accept=".bin" multiple style="display: none;" onchange="handleFirmwareFiles(event)">
                     <div class="action-controls">
                         <button class="secondary-button" id="fw-select-btn" type="button" onclick="selectFirmwareFiles()">选择固件文件</button>
@@ -1267,8 +1295,10 @@
 <script src="js/utils.js?v=prts-6"></script>
 <script src="js/atkinson_enhanced_lut.js"></script>
 <script src="js/sz_enhanced.js"></script>
-<script src="js/bluetooth.js?rev=fix-transfer-1"></script>
+<script src="js/bluetooth.js?rev=ark-ota-1"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
+<script src="js/ark-firmware.js"></script>
+<script src="js/ark-ota.js"></script>
 <script src="js/usb.js"></script>
 <script src="js/keyboard.js"></script>
 <script src="js/source-fit.js"></script>
@@ -1282,7 +1312,7 @@
 <script src="js/animation.js?v=ark-state-2"></script>
 <!-- 串口烧录：esptool-js（内嵌，官方 bundle 转经典脚本，挂 window.ESPTOOL）+ 本仓库的烧录流程 -->
 <script src="js/esptool-js.js"></script>
-<script src="js/serial-flash.js"></script>
+<script src="js/serial-flash.js?rev=ark-online-1"></script>
 <script src="js/main.js"></script>
 <script src="js/ark-theme.js?v=prts-3"></script>
 <script src="js/ark-controls.js?v=ark-state-1"></script>

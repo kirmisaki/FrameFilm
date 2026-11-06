@@ -35,6 +35,8 @@ let fwFiles = [];       // [{ file, name, size }]
 let fwBusy = false;     // 正在烧写：禁止重入
 let fwPort = null;      // 保留最近一次选中的串口（仅用于提示）
 let fwMergedDetected = null;   // 合并镜像自动判定结果：null=未判定，true/false=已判定
+let fwOnlineCandidate = null;
+let fwOnlineImport = false;
 
 /* ---------------------------------------------------------------- 环境/工具 */
 
@@ -83,10 +85,17 @@ function fwSetProgress(pct) {
 }
 
 function fwSetControlsEnabled(enabled) {
-    ['fw-select-btn', 'fw-clear-btn', 'fw-detect-btn', 'fw-flash-btn'].forEach(function (id) {
+    ['fw-select-btn', 'fw-clear-btn', 'fw-online-target', 'fw-online-check', 'fw-online-import'].forEach(function (id) {
         const el = document.getElementById(id);
         if (el) el.disabled = !enabled;
     });
+    const canFlash = enabled && serialFlashSupported() && fwKernelReady();
+    ['fw-detect-btn', 'fw-flash-btn', 'fw-erase-all', 'fw-baud'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = !canFlash;
+    });
+    const merged = document.getElementById('fw-merged-image');
+    if (merged) merged.disabled = !enabled || fwFiles.some(item => item.onlineTarget);
 }
 
 /* ------------------------------------------------------------------ 文件管理 */
@@ -124,12 +133,14 @@ function fwMergedImageChecked() {
 
 /** 选中文件真正使用的偏移（考虑“合并镜像”） */
 function fwAddressOf(item) {
+    if (item.onlineTarget) return FW_ADDR_BOOTLOADER;
     if (fwMergedImageChecked() && fwFiles.length === 1) return 0x0;
     return item.address;
 }
 
-function selectFirmwareFiles() {
+function selectFirmwareFiles(online = false) {
     if (fwBusy) return;
+    fwOnlineImport = online;
     const input = document.getElementById('fw-file-input');
     if (input) input.click();
 }
@@ -142,12 +153,34 @@ function fwPeekMergedImage(file) {
     });
 }
 
-function handleFirmwareFiles(event) {
+async function handleFirmwareFiles(event) {
     /* 先复制 FileList 再清空 input：清空会把同一个 FileList 对象一起清掉 */
     const picked = Array.prototype.slice.call(event.target.files || []);
     event.target.value = '';
 
-    if (!picked.length) return;
+    if (!picked.length || fwBusy) return;
+
+    const online = fwOnlineImport;
+    fwOnlineImport = false;
+    if (online) {
+        if (!fwOnlineCandidate || picked.length !== 1) {
+            fwOnlineStatus('请选择刚下载的一个完整镜像文件。');
+            return;
+        }
+        fwBusy = true;
+        fwSetControlsEnabled(false);
+        try {
+            const item = fwOnlineCandidate;
+            if (picked[0].size !== item.size) throw new Error('文件大小与发布附件不一致');
+            await fwStageOnline(new Uint8Array(await picked[0].arrayBuffer()), item);
+        } catch (error) {
+            fwOnlineStatus('导入失败：' + error.message);
+        } finally {
+            fwBusy = false;
+            fwSetControlsEnabled(true);
+        }
+        return;
+    }
 
     const bad = picked.filter(function (f) { return !/\.bin$/i.test(f.name); });
     if (bad.length) {
@@ -158,6 +191,7 @@ function handleFirmwareFiles(event) {
     fwFiles = picked.map(function (f) {
         return { file: f, name: f.name, size: f.size, address: fwResolveAddress(f.name) };
     });
+    fwSetControlsEnabled(true);
 
     fwRenderFileList();
 
@@ -166,7 +200,9 @@ function handleFirmwareFiles(event) {
     fwMergedDetected = null;
 
     if (fwFiles.length === 1) {
-        fwPeekMergedImage(fwFiles[0].file).then(function (merged) {
+        const file = fwFiles[0].file;
+        fwPeekMergedImage(file).then(function (merged) {
+            if (fwFiles.length !== 1 || fwFiles[0].file !== file) return;
             fwMergedDetected = merged;
             if (cb) cb.checked = merged;
             fwLog(merged
@@ -174,6 +210,7 @@ function handleFirmwareFiles(event) {
                 : '普通固件：0x8000 处没有分区表，按文件名规则配偏移');
             fwRenderFileList();
         }).catch(function () {
+            if (fwFiles.length !== 1 || fwFiles[0].file !== file) return;
             fwMergedDetected = null;
             fwRenderFileList();
         });
@@ -195,11 +232,68 @@ function fwOnMergedToggle() {
 function clearFirmwareFiles() {
     if (fwBusy) return;
     fwFiles = [];
+    fwMergedDetected = null;
+    document.getElementById('fw-merged-image').checked = false;
+    fwSetControlsEnabled(true);
     fwRenderFileList();
     const box = document.getElementById('fw-log');
     if (box) { box.textContent = ''; box.style.display = 'none'; }
     fwSetStatus('准备…');
     fwSetProgress(0);
+}
+
+function fwOnlineStatus(message) {
+    document.getElementById('fw-online-status').textContent = message;
+}
+
+function resetOnlineFlash() {
+    fwOnlineCandidate = null;
+    fwOnlineImport = false;
+    const link = document.getElementById('fw-online-link');
+    link.hidden = true;
+    link.removeAttribute('href');
+    document.getElementById('fw-online-import').hidden = true;
+    if (fwFiles.some(item => item.onlineTarget)) clearFirmwareFiles();
+    fwOnlineStatus('');
+}
+
+async function fwStageOnline(bytes, item) {
+    await ArkFirmware.verifyFlash(bytes, item);
+    const file = new File([bytes], item.name);
+    fwFiles = [{ file, name: item.name, size: bytes.length, onlineTarget: item.targetId }];
+    fwMergedDetected = true;
+    document.getElementById('fw-merged-image').checked = true;
+    fwRenderFileList();
+    fwOnlineStatus(item.tag + ' · 完整镜像已校验，写入地址 0x0。');
+}
+
+async function getOnlineFlash() {
+    if (fwBusy) return;
+    const hardware = ArkFirmware.target(document.getElementById('fw-online-target').value);
+    if (!hardware) { fwOnlineStatus('请按设备实物选择硬件规格。'); return; }
+    resetOnlineFlash();
+    fwBusy = true;
+    fwSetControlsEnabled(false);
+    fwOnlineStatus('正在查找 ' + hardware.label + ' 的完整镜像…');
+    try {
+        const item = ArkFirmware.selectFlash(await ArkFirmware.latest(), hardware);
+        fwOnlineCandidate = item;
+        try {
+            await fwStageOnline(await ArkFirmware.download(item), item);
+        } catch (error) {
+            if (!(error instanceof ArkFirmware.DownloadUnavailable)) throw error;
+            const link = document.getElementById('fw-online-link');
+            link.href = item.url;
+            link.hidden = false;
+            document.getElementById('fw-online-import').hidden = false;
+            fwOnlineStatus(item.tag + ' · ' + hardware.label + ' · 下载后导入该完整镜像。');
+        }
+    } catch (error) {
+        fwOnlineStatus('获取失败：' + error.message);
+    } finally {
+        fwBusy = false;
+        fwSetControlsEnabled(true);
+    }
 }
 
 function fwRenderFileList() {
@@ -421,7 +515,9 @@ async function startSerialFlash() {
     /* 手动勾了“合并镜像”但内容不像合并镜像：确认框里再提醒一次 */
     const riskyMerged = fwMergedImageChecked() && fwFiles.length === 1 && fwMergedDetected === false;
 
+    const onlineTarget = ArkFirmware.target(fwFiles[0].onlineTarget);
     const tip = '即将向设备写入固件：\n\n' + plan +
+        (onlineTarget ? '\n\n请确认实物为 ' + onlineTarget.label + '，包括 PSRAM 规格。' : '') +
         '\n\n共 ' + fwFormatBytes(totalSize) + (eraseAll ? '（先整片擦除 Flash）' : '') +
         (riskyMerged ? '\n\n注意：该文件在 0x8000 处没有分区表，却按“合并镜像”从 0x0 写入；若不是合并镜像会覆盖 bootloader。' : '') +
         '\n\n期间请勿断开 USB、勿断电。bootloader / 分区表写坏后需要重新烧录才能恢复。\n\n继续？';
@@ -439,7 +535,15 @@ async function startSerialFlash() {
     try {
         conn = await fwConnectLoader();
 
-        if (!/S3/i.test(conn.chip || '')) {
+        if (onlineTarget) {
+            const flashSize = await conn.loader.detectFlashSize();
+            const expectedSize = (onlineTarget.flashBytes / (1024 * 1024)) + 'MB';
+            if (!/ESP32-S3\b/i.test(conn.chip || '') || flashSize !== expectedSize) {
+                await fwHardReset(conn.transport);
+                throw new Error('串口检测到 ' + conn.chip + ' / ' + (flashSize || 'Flash 未知') +
+                    '，与 ' + onlineTarget.label + ' 所需的 ESP32-S3 / ' + expectedSize + ' 不匹配');
+            }
+        } else if (!/S3/i.test(conn.chip || '')) {
             if (!confirm('检测到的芯片是「' + conn.chip + '」，但本仓库固件都是 ESP32-S3。\n\n确定继续烧写？')) {
                 throw new Error('已按用户要求中止（芯片型号不匹配）');
             }
@@ -508,8 +612,6 @@ async function startSerialFlash() {
             hint.textContent = '内核已就绪：esptool-js（' + fwBaudrate() + ' 波特率，约 40～60 秒写入 1.8 MB）。';
         }
     }
-    if (!supported || !ready) {
-        fwSetControlsEnabled(false);
-    }
+    fwSetControlsEnabled(true);
     fwRenderFileList();
 })();

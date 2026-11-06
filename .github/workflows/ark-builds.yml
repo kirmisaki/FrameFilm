@@ -421,6 +421,11 @@ jobs:
           framefilm-ark-firmware.json maps actual image hardware descriptors to their compatible device targets.
           The app checks framefilm-ark-flutter.json for versionCode; firmware updates use the ELF build fingerprint.
           EOF
+          {
+            printf '\n<!-- framefilm-ark-firmware:v1\n'
+            cat "$firmware_metadata"
+            printf '%s\n' '-->'
+          } >> release-notes.md
           release_status="$(curl --silent --show-error --location \
             --output "$RUNNER_TEMP/ark-release.json" --write-out '%{http_code}' \
             --header "Authorization: Bearer $GH_TOKEN" \
