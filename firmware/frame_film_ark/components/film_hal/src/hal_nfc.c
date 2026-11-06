@@ -142,7 +142,9 @@ esp_err_t hal_nfc_emu_start(const hal_nfc_card_t *card)
     if(m_nfc == NULL || card == NULL) return ESP_ERR_INVALID_STATE;
 
     (void)st25r_reader_end(m_nfc);
-    (void)st25r_picc_end(m_nfc);
+    /* 必须走 ntag_end：picc_end 不清 h->ntag.active，残留会让下一次 ntag_begin 直接
+       返回 ESP_ERR_INVALID_STATE（表现为模拟一次之后就再也打不开） */
+    (void)st25r_ntag_end(m_nfc);
 
     st25r_ntag_type_t ntag_type;
     if(card->data_format == HAL_NFC_DATA_NTAG_PAGES && ntag_type_of(card->kind, &ntag_type))
@@ -206,7 +208,8 @@ esp_err_t hal_nfc_emu_start(const hal_nfc_card_t *card)
 esp_err_t hal_nfc_emu_stop(void)
 {
     if(m_nfc == NULL) return ESP_ERR_INVALID_STATE;
-    return st25r_picc_end(m_nfc);
+    /* 同 emu_start：用 ntag_end 顺带清掉 active，避免残留状态卡死后续模拟 */
+    return st25r_ntag_end(m_nfc);
 }
 
 esp_err_t hal_nfc_emu_set_card(const hal_nfc_card_t *card)

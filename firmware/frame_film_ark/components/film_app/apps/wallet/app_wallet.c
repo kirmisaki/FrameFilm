@@ -265,6 +265,11 @@ static void wallet_start_emu(int idx)
     {
         sys_logw(WALLET_TAG, "emu start failed: %s", esp_err_to_name(err));
     }
+    else
+    {
+        sys_logi(WALLET_TAG, "emu start idx=%d kind=%u uid_len=%u", idx,
+                 (unsigned)c->kind, (unsigned)c->uid_len);
+    }
 }
 
 /* 卡内容被改写（BLE 写入/覆盖）后必须真正重启一次，幂等判断会漏掉"同下标新内容" */
@@ -276,6 +281,13 @@ static void wallet_restart_emu(int idx)
 
 void app_wallet_emu_sync(void)
 {
+    /* 读卡任务占用射频时不能启模拟：emu_start 会先 reader_end 把读卡场关掉，
+       扫描会静默失败。等任务收尾后由 m_emu_resync 恢复。 */
+    if(m_scan_task != NULL)
+    {
+        atomic_store(&m_emu_resync, true);
+        return;
+    }
     if(!app_wallet_nfc_enabled() || !hal_nfc_ready())
     {
         wallet_stop_emu();
@@ -588,6 +600,10 @@ static void wallet_scan_task(void *arg)
     if(atomic_load(&m_scan_cancel)) status = WSCAN_CANCELLED;
     if(result == NULL && status == WSCAN_UNSUPPORTED) { /* keep */ }
     (void)hal_nfc_reader_end();
+    sys_logi(WALLET_TAG, "scan end status=%u", (unsigned)status);
+
+    /* 先清句柄：下面的 emu_sync 要看到"读卡已收尾"，否则会被自身的门闸挡回去 */
+    m_scan_task = NULL;
 
     /* 读卡期间用户已离开卡包：reader 先收尾，再恢复常驻模拟（避免 reader_end 打断 PICC） */
     if(atomic_exchange(&m_emu_resync, false))
@@ -606,7 +622,6 @@ static void wallet_scan_task(void *arg)
         wallet_free_card(result);
     }
 
-    m_scan_task = NULL;
     vTaskDelete(NULL);
 }
 
@@ -638,6 +653,11 @@ static void wallet_start_read(void)
     {
         (void)hal_nfc_reader_end();
         m_scan_state = WALLET_SCAN_FAIL;
+        sys_logw(WALLET_TAG, "scan task create failed");
+    }
+    else
+    {
+        sys_logi(WALLET_TAG, "reader begin ok");
     }
     wallet_post_snapshot();
 }

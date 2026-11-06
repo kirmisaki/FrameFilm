@@ -145,7 +145,9 @@ static bool ntag_handle(st25r_handle_t h, const uint8_t *d, uint16_t len)
     switch (d[0]) {
         case NTAG_CMD_GET_VERSION: {
             const uint8_t version[8] = {0x00, 0x04, 0x04, 0x02, 0x01, 0x00, info->version_sz, 0x03};
-            return ntag_tx_data(h, version, sizeof(version));
+            const bool ok = ntag_tx_data(h, version, sizeof(version));
+            ESP_LOGD(TAG, "GET_VERSION -> %02X %02X %02X ok=%d", version[5], version[6], version[7], (int)ok);
+            return ok;
         }
         case NTAG_CMD_READ: {
             if (len < 2 || d[1] > info->pages - 1) {
@@ -157,11 +159,12 @@ static bool ntag_handle(st25r_handle_t h, const uint8_t *d, uint16_t len)
                 const uint16_t off = (uint16_t)(page * 4u + i);
                 buf[i] = (off < h->ntag.size) ? m[off] : 0x00;
             }
-            if (!ntag_tx_ack(h)) {
-                return false;
-            }
-            esp_rom_delay_us(90); /* FDT between ACK and data */
-            return ntag_tx_data(h, buf, sizeof(buf));
+            /* M5 参考实现直接回 16 字节，不带软件 ACK / 额外延时：
+               芯片的被动目标逻辑会处理 ACK 与 FDT，软件再插 ACK 反而会让读数失败。 */
+            const bool ok = ntag_tx_data(h, buf, sizeof(buf));
+            ESP_LOGD(TAG, "READ p=%u -> %02X %02X %02X %02X ok=%d", page,
+                     buf[0], buf[1], buf[2], buf[3], (int)ok);
+            return ok;
         }
         case NTAG_CMD_FAST_READ: {
             if (len < 3 || d[1] > d[2] || d[2] > info->pages - 1) {
@@ -174,7 +177,9 @@ static bool ntag_handle(st25r_handle_t h, const uint8_t *d, uint16_t len)
             if (count > 500u) {
                 return ntag_tx_nak(h);
             }
-            return ntag_tx_data(h, m + off, count);
+            const bool ok = ntag_tx_data(h, m + off, count);
+            ESP_LOGD(TAG, "FAST_READ %u..%u (%u B) ok=%d", d[1], d[2], count, (int)ok);
+            return ok;
         }
         case NTAG_CMD_WRITE: {
             if (len < 6 || d[1] < 4 || d[1] > info->last_user) {

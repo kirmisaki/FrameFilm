@@ -73,6 +73,13 @@ esp_err_t st25r_pcd_configure(st25r_handle_t h)
         return ESP_FAIL;
     }
 
+    /* 卡模拟在没有外部场时会把模拟前端（含振荡器）断电，读卡前必须重新拉起，
+       否则 NFC_INITIAL_FIELD_ON 没有时钟可用、场拉不起来（读卡静默失败）。 */
+    if (!st25r_enable_osc(h)) {
+        ESP_LOGE(TAG, "configure: oscillator did not start");
+        return ESP_FAIL;
+    }
+
     /* Initiator, ISO14443A, automatic anticollision (ar = auto). */
     if (!st25r_reg_write8(h, ST25R_REG_MODE, (uint8_t)(ST25R_MODE_OM_ISO14443A | 0x01))) {
         ESP_LOGE(TAG, "configure: write MODE failed");
@@ -88,6 +95,19 @@ esp_err_t st25r_pcd_configure(st25r_handle_t h)
     }
 
     st25r_reg_clear(h, ST25R_REG_AUX_DEF, ST25R_AUX_DIS_CORR);
+
+    /* 从卡模拟切回来时，模拟路径改过的这些寄存器必须复位：
+       - ANT_TUNE 被模拟写成 0x00/0xFF（负载调制用），读卡时必须回到 0x82/0x82，
+         否则天线失谐、读卡距离骤降甚至完全读不到卡；
+       - NFCIP1_PT 的低 3 位是"被动目标自动应答"，留在读卡模式会干扰发射；
+       - AUX_DEF 的 UID 长度停在 7（模拟 NTAG），读卡侧应为默认的 4；
+       - MASK_RX_TIMER 被模拟设成 ~100µs，读卡侧要清掉。 */
+    st25r_reg_write8(h, ST25R_REG_ANT_TUNE1, 0x82);
+    st25r_reg_write8(h, ST25R_REG_ANT_TUNE2, 0x82);
+    st25r_reg_clear(h, ST25R_REG_NFCIP1_PT,
+                    ST25R_PT_D_AC_AP2P | ST25R_PT_D_212_424_1R | ST25R_PT_D_106_AC_A);
+    st25r_reg_modify(h, ST25R_REG_AUX_DEF, 0, ST25R_AUX_UID_LEN_MASK);
+    st25r_reg_write8(h, ST25R_REG_MASK_RX_TIMER, 0x00);
 
     st25r_reg_write8(h, ST25R_B(ST25R_REG_B_OVERSHOOT_1), 0x40);
     st25r_reg_write8(h, ST25R_B(ST25R_REG_B_OVERSHOOT_2), 0x03);
@@ -114,6 +134,10 @@ esp_err_t st25r_pcd_configure(st25r_handle_t h)
     const esp_err_t err = field_on(h);
     if (err == ESP_OK) {
         h->reader_active = true;
+        uint8_t op = 0, aux = 0;
+        (void)st25r_reg_read8(h, ST25R_REG_OP_CONTROL, &op);
+        (void)st25r_reg_read8(h, ST25R_REG_AUX_DISPLAY, &aux);
+        ESP_LOGI(TAG, "reader ready: op=%02X aux=%02X", op, aux);
     }
     return err;
 }
@@ -196,6 +220,11 @@ bool st25r_pcd_request(st25r_handle_t h, bool wakeup, uint16_t *atqa)
         bool to_rxe = false;
         irq |= st25r_wait_irq_ex(h, ST25R_IRQ_RXE, ST25R_TIMEOUT_REQ_MS, &to_rxe);
         if ((irq & ST25R_IRQ_RXE) == 0) {
+            /* 现场诊断：没有任何应答时，周期性看一眼芯片到底有没有报中断/冲突 */
+            static uint32_t s_no_answer;
+            if ((++s_no_answer % 250u) == 1u) {
+                ESP_LOGD(TAG, "no ATQA: irq=%08X", (unsigned)irq);
+            }
             return false;
         }
     }
@@ -205,6 +234,7 @@ bool st25r_pcd_request(st25r_handle_t h, bool wakeup, uint16_t *atqa)
         return false;
     }
     *atqa = (uint16_t)(((uint16_t)rbuf[1] << 8) | rbuf[0]);
+    ESP_LOGI(TAG, "ATQA %04X (irq=%08X)", (unsigned)*atqa, (unsigned)irq);
     return true;
 }
 
@@ -240,6 +270,7 @@ bool st25r_pcd_anticollision(st25r_handle_t h, uint8_t lv, uint8_t out[5])
                                                &timed_out);
         collision = (irq & ST25R_IRQ_COL) != 0;
         if (timed_out || (!collision && !(irq & ST25R_IRQ_RXE))) {
+            ESP_LOGI(TAG, "anticoll lv%u no answer (irq=%08X)", lv, (unsigned)irq);
             return false;
         }
 
@@ -283,7 +314,8 @@ bool st25r_pcd_anticollision(st25r_handle_t h, uint8_t lv, uint8_t out[5])
         return false;
     }
     if (offset + actual != 5 || out[4] != bcc8(out)) {
-        ESP_LOGD(TAG, "anticollision answer failed BCC");
+        ESP_LOGI(TAG, "anticoll BCC fail: got %02X %02X %02X %02X %02X", out[0], out[1], out[2], out[3],
+                 out[4]);
         return false;
     }
     return true;
@@ -318,14 +350,14 @@ esp_err_t st25r_reader_begin(st25r_handle_t h)
         return ESP_ERR_INVALID_ARG;
     }
     st25r_lock(h);
-    esp_err_t err = st25r_pcd_configure(h);
+    /* 从卡模拟切回来时，芯片里残留的 PT 内存/调制/定时器/中断状态太多，
+       逐项枚举容易漏；这里直接重跑一次芯片初始化（SET_DEFAULT + 读卡默认值），
+       与上电时的读卡路径完全一致。 */
+    esp_err_t err = st25r_chip_init(h);
     if (err != ESP_OK) {
-        /* 从模拟模式切回来时芯片可能停在目标/透明状态：重跑一次芯片初始化再配。 */
-        ESP_LOGW(TAG, "configure failed (%s), re-init chip and retry", esp_err_to_name(err));
-        if (st25r_chip_init(h) == ESP_OK) {
-            err = st25r_pcd_configure(h);
-        }
-        ESP_LOGW(TAG, "retry result: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "chip re-init failed (%s)", esp_err_to_name(err));
+    } else {
+        err = st25r_pcd_configure(h);
     }
     st25r_unlock(h);
     return err;

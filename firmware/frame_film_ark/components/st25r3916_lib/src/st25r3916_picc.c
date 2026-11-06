@@ -131,6 +131,10 @@ static st25r_picc_state_t goto_idle(st25r_handle_t h)
         irq_take(h, ST25R_IRQ_OSC);
     }
 
+    /* goto_off() 把 MODE 复位成"速率检测"并关掉前端；每次场到来都重新落一遍
+       监听/调制参数，否则下一次读卡器场不会被自动应答。 */
+    st25r_reg_write8(h, ST25R_REG_MODE, ST25R_MODE_LISTEN_NFC_A);
+
     st25r_reg_set(h, ST25R_REG_AUX_DEF, ST25R_AUX_NO_CRC_RX);
 
     if (h->emu.state == ST25R_PICC_ACTIVE && !h->emu.wakeup) {
@@ -287,6 +291,8 @@ static st25r_picc_state_t update_active(st25r_handle_t h)
         return goto_idle(h);
     }
     if (errs || bytes <= 2) {
+        /* 调试：说明读卡器发来的帧被芯片判成错误/短帧 */
+        ESP_LOGD(TAG, "active drop errs=%08X bytes=%u bits=%u", (unsigned)errs, bytes, bits);
         st25r_cmd(h, ST25R_CMD_CLEAR_FIFO);
         st25r_cmd(h, ST25R_CMD_UNMASK_RECEIVE_DATA);
         return h->emu.wakeup ? goto_halt(h) : goto_idle(h);
@@ -448,9 +454,25 @@ esp_err_t st25r_picc_configure(st25r_handle_t h, const st25r_card_t *card)
 
     st25r_cmd(h, ST25R_CMD_UNMASK_RECEIVE_DATA);
 
-    /* Start from the powered-off state and wait for a reader field. */
+    /* Start from the powered-off state and wait for a reader field.
+       与 M5 参考实现的 start_emulation() 一致：不再额外覆盖调制寄存器，
+       被动目标模式由芯片自行处理负载调制。 */
     (void)goto_off(h);
     set_state(h, ST25R_PICC_OFF);
+
+    /* 一次性回读关键寄存器，便于现场确认配置是否真的落下 */
+    uint8_t mode = 0, op = 0, a1 = 0, a2 = 0, auxm = 0, ptm = 0, mrt = 0, tx = 0, ram = 0;
+    (void)st25r_reg_read8(h, ST25R_REG_MODE, &mode);
+    (void)st25r_reg_read8(h, ST25R_REG_OP_CONTROL, &op);
+    (void)st25r_reg_read8(h, ST25R_REG_ANT_TUNE1, &a1);
+    (void)st25r_reg_read8(h, ST25R_REG_ANT_TUNE2, &a2);
+    (void)st25r_reg_read8(h, ST25R_B(ST25R_REG_B_AUX_MODULATION), &auxm);
+    (void)st25r_reg_read8(h, ST25R_REG_PT_MOD, &ptm);
+    (void)st25r_reg_read8(h, ST25R_REG_MASK_RX_TIMER, &mrt);
+    (void)st25r_reg_read8(h, ST25R_REG_TX_DRIVER, &tx);
+    (void)st25r_reg_read8(h, ST25R_B(ST25R_REG_B_RES_AM_MOD), &ram);
+    ESP_LOGD(TAG, "picc cfg: mode=%02X op=%02X ant=%02X/%02X aux=%02X ptmod=%02X mrt=%02X tx=%02X ram=%02X",
+             mode, op, a1, a2, auxm, ptm, mrt, tx, ram);
     return ESP_OK;
 }
 
@@ -538,6 +560,9 @@ esp_err_t st25r_picc_end(st25r_handle_t h)
     }
     st25r_lock(h);
     st25r_field_off(h);
+    /* 与 M5 的 stop_emulation() 对齐：离开监听模式时把 MODE 归零（退出 target 位），
+       否则下一次 initiator 配置前的残留状态会让芯片停在被动目标逻辑上。 */
+    st25r_reg_write8(h, ST25R_REG_MODE, 0x00);
     h->emu.state = ST25R_PICC_OFF;
     h->emu.running = false;
     st25r_unlock(h);

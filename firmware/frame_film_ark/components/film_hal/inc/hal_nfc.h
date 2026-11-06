@@ -33,7 +33,7 @@ extern "C" {
 #define HAL_NFC_SPI_CLOCK_HZ            (10000000)
 
 #define HAL_NFC_WAKE_ENABLE             (1)
-#define HAL_NFC_PICC_TASK_PRIO          (6)
+#define HAL_NFC_PICC_TASK_PRIO          (10)     /* 高于 UI/监控任务，保证 87µs FDT 内应答 */
 #define HAL_NFC_PICC_TASK_CORE          (1)
 #define HAL_NFC_PICC_TASK_STACK         (4096)
 
