@@ -12,7 +12,7 @@ OUT = ARK / "components/film_ui/src/ui_fonts.c"
 BODY = ROOT / ".output/ark/SourceHanSansCN-Bold.otf"
 TITLE = ROOT / ".output/ark/SourceHanSansCN-Medium.otf"
 LARGE_TEXT = {
-    24: "图片通行证模板时钟动图设置IMAGEPASSTEMPLATECLOCKANIMATIONSETTINGS",
+    24: "图片通行证模板时钟动图设置卡包IMAGEPASSTEMPLATECLOCKANIMATIONSETTINGS",
     36: "通行证已休眠PASSSTANDBY",
 }
 TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.S)
