@@ -21,6 +21,7 @@ enum FrameAlgorithm {
   colorQualMeasured,
   colorQualCalibrated,
   abc512I006,
+  colorQualNeutral407,
 }
 
 // Film code order: black, white, yellow, red, blue, green.
@@ -460,8 +461,9 @@ Future<Uint8List> quantizeFramePixels(
   if (width <= 0 || height <= 0 || rgba.length != width * height * 4) {
     throw ArgumentError('像素尺寸不匹配');
   }
-  if (algorithm == FrameAlgorithm.abc512I006) {
-    throw ArgumentError('I006 需要 Uint16 ABC9 Film 路径');
+  if (algorithm == FrameAlgorithm.abc512I006 ||
+      algorithm == FrameAlgorithm.colorQualNeutral407) {
+    throw ArgumentError('此算法需要 Uint16 ABC9 Film 路径');
   }
   if (dither && algorithm == FrameAlgorithm.szEnhanced) {
     return quantizeSz(
@@ -492,7 +494,7 @@ Future<Uint8List> quantizeFramePixels(
     final palette = fast ? colorFastPalette : colorQualPalette;
     final candidates = fast ? colorFastCandidates : colorQualCandidates;
     final labs = palette.map((c) => _lab(c[0], c[1], c[2], ae: true)).toList();
-    int select(int r, int g, int b) {
+    int select(int r, int g, int b, int _) {
       final lab = _lab(r, g, b, ae: true);
       var best = candidates.first, distance = double.infinity;
       for (final index in candidates) {
@@ -521,7 +523,7 @@ Future<Uint8List> quantizeFramePixels(
   }
   if (dither && algorithm == FrameAlgorithm.atkinsonSzCalib) {
     await _compressSz(rgba, width, height, checkCancelled);
-    int select(int r, int g, int b) {
+    int select(int r, int g, int b, int _) {
       var best = 0, distance = double.infinity;
       for (var i = 0; i < _szPalette.length; i++) {
         final p = _szPalette[i];
@@ -687,7 +689,7 @@ Future<Uint8List> _rollingQuantize(
   Uint8List data,
   int width,
   int height,
-  int Function(int, int, int) select,
+  int Function(int, int, int, int) select,
   List<List<int>> residual,
   List<List<int>> preview,
   double strength,
@@ -706,7 +708,7 @@ Future<Uint8List> _rollingQuantize(
         3,
         (c) => _clamp(data[pos + c] + ((current[slot + c] + 4) >> 3)),
       );
-      final code = select(rgb[0], rgb[1], rgb[2]);
+      final code = select(rgb[0], rgb[1], rgb[2], pixel);
       codes[pixel] = code;
       for (var c = 0; c < 3; c++) {
         final error = (rgb[c] - residual[code][c]) * strength;
@@ -731,6 +733,89 @@ Future<Uint8List> _rollingQuantize(
     await _afterRow(y, height, .05, .9, checkCancelled, onProgress);
   }
   return codes;
+}
+
+/// W611V002: use state 407 only for near-neutral midtones. Pixels outside
+/// that range keep their original ColorQual codes, including at color edges.
+Future<Uint16List> quantizeColorQualNeutral407(
+  Uint8List rgba,
+  int width,
+  int height, {
+  void Function()? checkCancelled,
+  void Function(double)? onProgress,
+}) async {
+  final baseline = await quantizeFramePixels(
+    Uint8List.fromList(rgba),
+    width,
+    height,
+    algorithm: FrameAlgorithm.colorQual,
+    checkCancelled: checkCancelled,
+    onProgress: (p) => onProgress?.call(p / 2),
+  );
+  const neutralSlot = 64;
+  const palette = [
+    ...colorQualPalette,
+    [176, 176, 176],
+  ];
+  const candidates = [...colorQualCandidates, neutralSlot];
+  final labs = palette.map((c) => _lab(c[0], c[1], c[2], ae: true)).toList();
+
+  double smooth(double value, double low, double high) {
+    final t = ((value - low) / (high - low)).clamp(0.0, 1.0);
+    return t * t * (3 - 2 * t);
+  }
+
+  int select(int r, int g, int b, int pixel) {
+    final p = pixel * 4;
+    final source = _lab(rgba[p], rgba[p + 1], rgba[p + 2], ae: true);
+    final chroma = math.sqrt(source[1] * source[1] + source[2] * source[2]);
+    final weight =
+        (1 - smooth(chroma, 8, 14)) *
+        smooth(source[0], 55, 62) *
+        (1 - smooth(source[0], 78, 84));
+    if (weight == 0) return baseline[pixel];
+
+    final lab = _lab(r, g, b, ae: true);
+    final penalty = 16 * (1 / weight - 1);
+    var best = candidates.first, distance = double.infinity;
+    for (final index in candidates) {
+      final color = labs[index];
+      final dl = lab[0] - color[0],
+          da = lab[1] - color[1],
+          db = lab[2] - color[2];
+      final score =
+          2 * dl * dl +
+          da * da +
+          db * db +
+          (index == neutralSlot ? penalty : 0);
+      if (score < distance) {
+        best = index;
+        distance = score;
+      }
+    }
+    return best;
+  }
+
+  final slots = await _rollingQuantize(
+    rgba,
+    width,
+    height,
+    select,
+    palette,
+    palette,
+    1,
+    checkCancelled,
+    (p) => onProgress?.call(.45 + p / 2),
+  );
+  final tuples = Uint16List(slots.length);
+  for (var i = 0; i < slots.length; i++) {
+    final slot = slots[i];
+    final phase = slot >> 3;
+    tuples[i] = slot == neutralSlot
+        ? 407
+        : (phase << 6) | (phase << 3) | (slot & 7);
+  }
+  return tuples;
 }
 
 Future<void> _compressSz(
