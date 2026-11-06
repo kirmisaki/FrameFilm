@@ -35,7 +35,7 @@ class FrameOptions {
     this.dither = false,
     this.algorithm = FrameAlgorithm.atkinsonEnhanced,
     this.ditherStrength = 1,
-    this.continuousTone = false,
+    this.continuousTone = true,
   });
   final FrameFormat format;
   final FrameFit fit;

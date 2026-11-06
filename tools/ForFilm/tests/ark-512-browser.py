@@ -21,6 +21,7 @@ with sync_playwright() as p:
         page.locator('[data-page="convert-page"]').click()
         page.locator('#ditherType').select_option('ark512I006')
         assert page.locator('#ark512Controls').is_visible()
+        assert page.locator('#ark512ContinuousTone').is_checked()
         page.locator('#imageFile').set_input_files({'name':'I006-gradient.svg','mimeType':'image/svg+xml','buffer':svg})
         page.wait_for_function('ark512Result !== null')
         assert page.evaluate('[canvas.width,canvas.height]') == [720,480]

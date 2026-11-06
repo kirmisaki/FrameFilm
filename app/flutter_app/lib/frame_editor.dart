@@ -475,8 +475,8 @@ class _FrameEditorState extends State<FrameEditor> {
           SwitchListTile(
             key: const ValueKey('film-continuous-tone'),
             contentPadding: EdgeInsets.zero,
-            title: const Text('连续色调（测试）'),
-            subtitle: const Text('开启后使用 I006 实机对照中的连续色调方案。'),
+            title: const Text('连续色调'),
+            subtitle: const Text('默认开启，关闭可对照原 I006 配方。'),
             value: o.continuousTone,
             onChanged: locked ? null : (v) => _change(continuousTone: v),
           ),

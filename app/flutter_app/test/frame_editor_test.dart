@@ -8,9 +8,9 @@ import 'package:framefilm_ark/frame_editor.dart';
 
 void main() {
   testWidgets(
-    'continuous tone survives editing selection and rotation, reset opts out',
+    'continuous tone defaults on, keeps an explicit opt-out, and resets on',
     (tester) async {
-      expect(const FrameOptions().continuousTone, false);
+      expect(const FrameOptions().continuousTone, true);
       expect(const FrameOptions().i006WarmChroma, .25);
       expect(const FrameOptions().warmChroma, 0);
       final recorder = ui.PictureRecorder();
@@ -57,10 +57,11 @@ void main() {
         expect(slider.onChanged, isNotNull);
       }
       final toggle = find.byKey(const ValueKey('film-continuous-tone'));
+      expect(tester.widget<SwitchListTile>(toggle).value, true);
       await tester.ensureVisible(toggle);
       await tester.tap(toggle);
       await tester.pump();
-      expect(c.options.continuousTone, true);
+      expect(c.options.continuousTone, false);
       Future<void> change(String name, double value) async {
         final slider = tester.widget<Slider>(
           find.byKey(ValueKey('film-slider-$name')),
@@ -92,7 +93,7 @@ void main() {
       await tester.pump();
       expect(c.options.i006WarmChroma, .8);
       expect(c.options.warmChroma, .35);
-      expect(c.options.continuousTone, true);
+      expect(c.options.continuousTone, false);
       await tester.ensureVisible(find.text('上传图像'));
       await tester.runAsync(() async {
         await tester.tap(find.text('上传图像'));
@@ -101,7 +102,7 @@ void main() {
         }
       });
       expect(c.source, bytes);
-      expect(c.options.continuousTone, true);
+      expect(c.options.continuousTone, false);
       await tester.pump();
       await tester.ensureVisible(find.text('旋转90度'));
       await tester.tap(find.text('旋转90度'));
@@ -113,11 +114,11 @@ void main() {
       expect(c.options.warmChroma, .35);
       expect(c.options.contrast, 1.2);
       expect(c.options.saturation, 1.4);
-      expect(c.options.continuousTone, true);
+      expect(c.options.continuousTone, false);
       await tester.ensureVisible(find.text('重置'));
       await tester.tap(find.text('重置'));
       await tester.pump();
-      expect(c.options.continuousTone, false);
+      expect(c.options.continuousTone, true);
       expect(c.options.i006WarmChroma, .25);
       expect(c.options.warmChroma, 0);
       expect(c.options.rangeFit, 0);
