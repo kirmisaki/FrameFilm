@@ -82,7 +82,9 @@ jobs:
           case "$release_status" in
             200)
               complete=true
-              for asset in frame_film_ark-n4r2.bin frame_film_ark-n16r8.bin framefilm-ark-firmware.json framefilm-ark-flutter.apk framefilm-ark-flutter.json; do
+              for asset in frame_film_ark-n4r2.bin frame_film_ark-n16r8.bin \
+                frame_film_ark-n4r2-flash.bin frame_film_ark-n16r8-flash.bin \
+                framefilm-ark-firmware.json framefilm-ark-flutter.apk framefilm-ark-flutter.json; do
                 if ! jq -e --arg name "$asset" \
                   'any(.assets[]; .name == $name and .state == "uploaded" and .size > 0)' \
                   "$RUNNER_TEMP/ark-release.json" >/dev/null; then
@@ -273,12 +275,10 @@ jobs:
             suffix: ''
             build_dir: build
             sdkconfig: sdkconfig
-            flash_name: frame_film_ark-flash.bin
           - name: n16r8
             suffix: -n16r8
             build_dir: build_n16r8
             sdkconfig: sdkconfig_n16r8
-            flash_name: frame_film_ark_n16r8-flash.bin
     defaults:
       run:
         shell: bash
@@ -291,7 +291,7 @@ jobs:
         env:
           BUILD_DIR: ${{ matrix.variant.build_dir }}
           SDKCONFIG_FILE: ${{ matrix.variant.sdkconfig }}
-          FLASH_NAME: ${{ matrix.variant.flash_name }}
+          FLASH_NAME: frame_film_ark-${{ matrix.variant.name }}-flash.bin
           VARIANT_NAME: ${{ matrix.variant.name }}
         run: |
           set -euo pipefail
@@ -301,20 +301,25 @@ jobs:
           idf.py -B "$BUILD_DIR" -D "SDKCONFIG=$PWD/$SDKCONFIG_FILE" build 2>&1 | tee ci-logs/build.log
           idf.py -B "$BUILD_DIR" size 2>&1 | tee ci-logs/size.log
           PYTHONPATH=../../tools/ci python -c 'import json,sys; from ark_firmware_manifest import inspect_image; m=inspect_image(sys.argv[1]); assert m["targetId"]=="ark-esp32s3-"+sys.argv[2]; print(json.dumps(m,indent=2))' "$BUILD_DIR/frame_film_ark.bin" "$VARIANT_NAME" | tee ci-logs/hardware.json
-          idf.py -B "$BUILD_DIR" merge-bin -o "$FLASH_NAME" 2>&1 | tee ci-logs/merge.log
+          idf.py -B "$BUILD_DIR" merge-bin -f raw -o "$FLASH_NAME" 2>&1 | tee ci-logs/merge.log
       - name: Upload Ark OTA image
         uses: actions/upload-artifact@v7
         with:
           name: ark-firmware-ota${{ matrix.variant.suffix }}
           if-no-files-found: error
           path: firmware/frame_film_ark/${{ matrix.variant.build_dir }}/frame_film_ark.bin
-      - name: Upload Ark serial flash and debug files
+      - name: Upload complete Ark serial flash image
+        uses: actions/upload-artifact@v7
+        with:
+          name: ark-firmware-flash-${{ matrix.variant.name }}
+          if-no-files-found: error
+          path: firmware/frame_film_ark/${{ matrix.variant.build_dir }}/frame_film_ark-${{ matrix.variant.name }}-flash.bin
+      - name: Upload Ark debug files
         uses: actions/upload-artifact@v7
         with:
           name: ark-firmware-debug${{ matrix.variant.suffix }}
           if-no-files-found: error
           path: |
-            firmware/frame_film_ark/${{ matrix.variant.build_dir }}/${{ matrix.variant.flash_name }}
             firmware/frame_film_ark/${{ matrix.variant.build_dir }}/bootloader/bootloader.bin
             firmware/frame_film_ark/${{ matrix.variant.build_dir }}/partition_table/partition-table.bin
             firmware/frame_film_ark/${{ matrix.variant.build_dir }}/ota_data_initial.bin
@@ -355,6 +360,16 @@ jobs:
         with:
           name: ark-firmware-ota-n16r8
           path: release-input/n16r8
+      - name: Download this run's n4r2 complete image
+        uses: actions/download-artifact@v8
+        with:
+          name: ark-firmware-flash-n4r2
+          path: release-firmware
+      - name: Download this run's n16r8 complete image
+        uses: actions/download-artifact@v8
+        with:
+          name: ark-firmware-flash-n16r8
+          path: release-firmware
       - name: Download this run's app
         uses: actions/download-artifact@v8
         with:
@@ -377,22 +392,32 @@ jobs:
             --output release-firmware
           image_n4=release-firmware/frame_film_ark-n4r2.bin
           image_n16=release-firmware/frame_film_ark-n16r8.bin
+          flash_n4=release-firmware/frame_film_ark-n4r2-flash.bin
+          flash_n16=release-firmware/frame_film_ark-n16r8-flash.bin
           firmware_metadata=release-firmware/framefilm-ark-firmware.json
           apk="$(find app-release-input -type f -name framefilm-ark-flutter.apk -print -quit)"
           metadata="$(find app-release-input -type f -name framefilm-ark-flutter.json -print -quit)"
-          test -s "$image_n4" && test -s "$image_n16" && test -s "$firmware_metadata" && test -s "$apk" && test -s "$metadata"
+          assets=("$image_n4" "$image_n16" "$flash_n4" "$flash_n16" "$firmware_metadata" "$apk" "$metadata")
+          for asset in "${assets[@]}"; do
+            test -s "$asset" || { echo "::error::Missing release asset: $asset"; exit 1; }
+          done
           node -e 'const m=require("./"+process.argv[1]); if(m.versionName!==process.env.VERSION_NAME || String(m.versionCode)!==process.env.VERSION_CODE) process.exit(1)' "$metadata"
           node app/flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
             /dev/null app/flutter_app/pubspec.yaml workflow_dispatch release-notes.md
           digest_n4="$(sha256sum "$image_n4" | cut -d ' ' -f 1)"
           digest_n16="$(sha256sum "$image_n16" | cut -d ' ' -f 1)"
+          digest_flash_n4="$(sha256sum "$flash_n4" | cut -d ' ' -f 1)"
+          digest_flash_n16="$(sha256sum "$flash_n16" | cut -d ' ' -f 1)"
           cat >> release-notes.md <<EOF
 
           Source commit: $(git rev-parse HEAD)
           N4R2 OTA SHA256: ${digest_n4}
           N16R8 OTA SHA256: ${digest_n16}
+          N4R2 complete serial image SHA256: ${digest_flash_n4}
+          N16R8 complete serial image SHA256: ${digest_flash_n16}
 
-          Both named .bin files are raw OTA application images, not merged serial-flash images.
+          OTA: use the hardware-matched frame_film_ark-n4r2.bin or frame_film_ark-n16r8.bin.
+          USB serial: use the hardware-matched *-flash.bin as a merged image at 0x0.
           framefilm-ark-firmware.json maps actual image hardware descriptors to their compatible device targets.
           The app checks framefilm-ark-flutter.json for versionCode; firmware updates use the ELF build fingerprint.
           EOF
@@ -403,11 +428,44 @@ jobs:
             "https://api.github.com/repos/$GH_REPO/releases/tags/$TAG")"
           case "$release_status" in
             200)
-              gh release upload "$TAG" "$image_n4" "$image_n16" "$firmware_metadata" "$apk" "$metadata" --repo "$GH_REPO" --clobber
+              published_asset_exists() {
+                jq -e --arg name "$1" \
+                  'any(.assets[]; .name == $name and .state == "uploaded" and .size > 0)' \
+                  "$RUNNER_TEMP/ark-release.json" >/dev/null
+              }
+              core_complete=true
+              for asset in "$image_n4" "$image_n16" "$firmware_metadata" "$apk" "$metadata"; do
+                if ! published_asset_exists "${asset##*/}"; then
+                  core_complete=false
+                fi
+              done
+              if [ "$core_complete" = true ]; then
+                missing_flash=()
+                for asset in "$flash_n4" "$flash_n16"; do
+                  if ! published_asset_exists "${asset##*/}"; then
+                    missing_flash+=("$asset")
+                  fi
+                done
+                if [ "${#missing_flash[@]}" -eq 0 ]; then
+                  exit 0
+                fi
+                # A rebuild of the same tag can change the ELF fingerprint.
+                # Keep the published OTA and serial images on the same app bytes.
+                gh release download "$TAG" --repo "$GH_REPO" --dir published-ota \
+                  --pattern "${image_n4##*/}" --pattern "${image_n16##*/}"
+                if ! cmp -s "$image_n4" "published-ota/${image_n4##*/}" ||
+                   ! cmp -s "$image_n16" "published-ota/${image_n16##*/}"; then
+                  echo "::error::Rebuilt OTA images differ from published assets. Create a new Ark release to publish complete images."
+                  exit 1
+                fi
+                gh release upload "$TAG" "${missing_flash[@]}" --repo "$GH_REPO" --clobber
+                exit 0
+              fi
+              gh release upload "$TAG" "${assets[@]}" --repo "$GH_REPO" --clobber
               gh release edit "$TAG" --repo "$GH_REPO" --title "$RELEASE_TITLE" --notes-file release-notes.md
               ;;
             404)
-              gh release create "$TAG" "$image_n4" "$image_n16" "$firmware_metadata" "$apk" "$metadata" --repo "$GH_REPO" \
+              gh release create "$TAG" "${assets[@]}" --repo "$GH_REPO" \
                 --verify-tag --title "$RELEASE_TITLE" \
                 --notes-file release-notes.md --latest=false
               ;;
