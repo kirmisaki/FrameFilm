@@ -94,7 +94,6 @@ const frameAlgorithmLabels = {
   FrameAlgorithm.colorQualMeasured: '实测校色 · 原值',
   FrameAlgorithm.colorQualCalibrated: '实测校色 · 校正 2.5%',
   FrameAlgorithm.abc512I006: '512色预览 · I006',
-  FrameAlgorithm.colorQualNeutral407: 'ColorQual + 中性灰 · 实验',
 };
 
 class FrameEditor extends StatefulWidget {
@@ -421,9 +420,8 @@ class _FrameEditorState extends State<FrameEditor> {
   @override
   Widget build(BuildContext context) {
     final o = c.options;
-    final canStage = !o.usesAbc9 || widget.abc9PreviewSupported;
-    final neutral407 =
-        o.usesAbc9 && o.algorithm == FrameAlgorithm.colorQualNeutral407;
+    final canStage =
+        o.algorithm != FrameAlgorithm.abc512I006 || widget.abc9PreviewSupported;
     final devicePreview =
         o.dither ||
         o.format != FrameFormat.sixColor ||
@@ -431,7 +429,7 @@ class _FrameEditorState extends State<FrameEditor> {
         o.algorithm == FrameAlgorithm.colorQual ||
         o.algorithm == FrameAlgorithm.colorQualMeasured ||
         o.algorithm == FrameAlgorithm.colorQualCalibrated ||
-        o.usesAbc9;
+        o.algorithm == FrameAlgorithm.abc512I006;
     final png = devicePreview ? c.result?.png : c.crop;
     final sections = <Widget>[
       _section('上传与算法', [
@@ -478,13 +476,13 @@ class _FrameEditorState extends State<FrameEditor> {
             key: const ValueKey('film-continuous-tone'),
             contentPadding: EdgeInsets.zero,
             title: const Text('连续色调（测试）'),
-            subtitle: const Text('减少预归色带；实屏效果待确认。'),
+            subtitle: const Text('开启后使用 I006 实机对照中的连续色调方案。'),
             value: o.continuousTone,
             onChanged: locked ? null : (v) => _change(continuousTone: v),
           ),
         _slider('对比度', o.contrast, .5, 2, (v) => _change(contrast: v)),
         _slider('饱和度', o.saturation, 0, 3, (v) => _change(saturation: v)),
-        if (o.format != FrameFormat.monoFast && !neutral407) ...[
+        if (o.format != FrameFormat.monoFast) ...[
           if (o.algorithm == FrameAlgorithm.abc512I006 ||
               (!sourceFitIsSz(o) && sourceFitProfile(o) != null))
             _slider(
@@ -518,13 +516,14 @@ class _FrameEditorState extends State<FrameEditor> {
           runSpacing: 8,
           children: [
             OutlinedButton(
-              onPressed: _sending || _exporting || o.usesAbc9
+              onPressed:
+                  _sending ||
+                      _exporting ||
+                      o.algorithm == FrameAlgorithm.abc512I006
                   ? null
                   : () => _change(dither: !o.dither),
               child: Text(
-                neutral407
-                    ? 'Atkinson'
-                    : o.algorithm == FrameAlgorithm.abc512I006
+                o.algorithm == FrameAlgorithm.abc512I006
                     ? '蛇形 FS'
                     : o.dither
                     ? '禁用抖动'
@@ -618,8 +617,6 @@ class _FrameEditorState extends State<FrameEditor> {
         ),
         if (o.algorithm == FrameAlgorithm.abc512I006)
           const Text('512 色预览版，采用 I006 实验配色。屏幕实际颜色可能与预览不同；设备显示需要配套的预览固件。'),
-        if (neutral407)
-          const Text('沿用 ColorQual 配色，对接近中性的中间调补充灰阶。发送需要支持 ABC9 的 Ark 固件。'),
         if (o.algorithm == FrameAlgorithm.szEnhanced)
           const Text('SZ 增强使用原图色彩进行校正，启用抖动时不叠加亮度、对比度及饱和度。'),
         if (o.algorithm == FrameAlgorithm.colorFast55 ||
@@ -633,7 +630,7 @@ class _FrameEditorState extends State<FrameEditor> {
       ]),
       const SizedBox(height: 16),
       _section('预览', [
-        if (!canStage) const Text('当前设备固件尚未确认支持 ABC9；可在本地预览和导出。'),
+        if (!canStage) const Text('当前设备固件尚未确认支持 512 色预览；可先在本地预览和导出。'),
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
@@ -741,8 +738,9 @@ class _FrameEditorState extends State<FrameEditor> {
         Text(
           !c.hasCurrentResult && c.source != null
               ? '实时构图预览 · 正在转换设备色彩'
-              : neutral407
-              ? '工作 RGB 预览 · 实屏颜色以设备为准'
+              : o.algorithm == FrameAlgorithm.abc512I006 &&
+                    o.format != FrameFormat.monoFast
+              ? 'I006 相机相对色彩模拟'
               : devicePreview
               ? '设备色彩预览'
               : '原色构图预览 · 下载和发送会转换为设备色彩',
@@ -772,7 +770,9 @@ class _FrameEditorState extends State<FrameEditor> {
                 onPressed: !locked && c.hasCurrentResult
                     ? () => _export('download')
                     : null,
-                child: Text(o.usesAbc9 ? '导出实验 film' : '下载'),
+                child: Text(
+                  o.algorithm == FrameAlgorithm.abc512I006 ? '导出实验 film' : '下载',
+                ),
               ),
             if (io.canDownloadFrame)
               OutlinedButton(

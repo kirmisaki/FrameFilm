@@ -48,11 +48,6 @@ class FrameOptions {
   final bool continuousTone;
   final FrameAlgorithm algorithm;
   final double ditherStrength;
-
-  bool get usesAbc9 =>
-      format != FrameFormat.monoFast &&
-      (algorithm == FrameAlgorithm.abc512I006 ||
-          algorithm == FrameAlgorithm.colorQualNeutral407);
 }
 
 class FrameResult {
@@ -279,7 +274,8 @@ bool sourceFitIsSz(FrameOptions o) =>
     (o.algorithm == FrameAlgorithm.szEnhanced ||
         o.algorithm == FrameAlgorithm.atkinsonSzCalib);
 SourceFitProfile? sourceFitProfile(FrameOptions o) {
-  if (o.format == FrameFormat.monoFast || o.usesAbc9) {
+  if (o.format == FrameFormat.monoFast ||
+      o.algorithm == FrameAlgorithm.abc512I006) {
     return null;
   }
   if (o.algorithm == FrameAlgorithm.colorQualMeasured) {
@@ -306,7 +302,8 @@ SourceFitProfile? sourceFitProfile(FrameOptions o) {
 }
 
 void adjustFrameSourceFit(Uint8List rgba, FrameOptions options) {
-  if (options.format == FrameFormat.monoFast || options.usesAbc9) {
+  if (options.format == FrameFormat.monoFast ||
+      options.algorithm == FrameAlgorithm.abc512I006) {
     return;
   }
   fitSourceRgba(
@@ -326,7 +323,8 @@ void adjustFrameCompositionRgba(
   if (!(options.dither && options.algorithm == FrameAlgorithm.szEnhanced)) {
     adjustFrameRgba(rgba, options, applySourceFit: false);
   }
-  if (options.format == FrameFormat.monoFast || options.usesAbc9) {
+  if (options.format == FrameFormat.monoFast ||
+      options.algorithm == FrameAlgorithm.abc512I006) {
     return;
   }
   fitSourceRgba(
@@ -382,8 +380,9 @@ Future<FrameResult> convertFrame(
   void Function(double)? onProgress,
   bool Function()? isCancelled,
 }) async {
-  if (options.format == FrameFormat.abc512 && !options.usesAbc9) {
-    throw ArgumentError('ABC9 仅支持对应的实验算法');
+  if (options.format == FrameFormat.abc512 &&
+      options.algorithm != FrameAlgorithm.abc512I006) {
+    throw ArgumentError('ABC9 仅支持 I006 实验算法');
   }
   final image = await _render(source, options, isCancelled);
   late Uint8List rgba;
@@ -406,7 +405,9 @@ Future<FrameResult> convertFrame(
     cropPng = await _encodeRgba(cropRgba);
     _check(isCancelled);
   }
-  final format = options.usesAbc9
+  final format =
+      options.algorithm == FrameAlgorithm.abc512I006 &&
+          options.format != FrameFormat.monoFast
       ? FrameFormat.abc512
       : options.format == FrameFormat.monoFast
       ? FrameFormat.monoFast
@@ -442,14 +443,6 @@ Future<FrameResult> convertFrame(
       warmChroma: options.i006WarmChroma,
       rangeFit: options.rangeFit,
       ditherStrength: options.ditherStrength,
-      checkCancelled: () => _check(isCancelled),
-      onProgress: onProgress,
-    );
-  } else if (algorithm == FrameAlgorithm.colorQualNeutral407) {
-    indices = await quantizeColorQualNeutral407(
-      rgba,
-      480,
-      720,
       checkCancelled: () => _check(isCancelled),
       onProgress: onProgress,
     );
