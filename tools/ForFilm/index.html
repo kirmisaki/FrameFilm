@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm</title>
-    <link id="style-sheet" rel="stylesheet" href="css/style.css">
+    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=wallet-cover-1">
     <link rel="stylesheet" href="css/keyboard.css">
     <!-- ARK 通行证版皮肤：默认不生效，连上 FRAMEFILMARK 后由 js/ark-theme.js 激活 -->
     <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=prts-4">
@@ -925,8 +925,33 @@
                     <textarea id="wallet-ndef" rows="3" maxlength="500" placeholder="Hello FrameFilm"></textarea>
                 </div>
                 <div class="field">
-                    <label for="wallet-cover">封面（可选，440×200 1-bit）</label>
-                    <input id="wallet-cover" type="file" accept="image/*">
+                    <label>封面（可选，440×200 1-bit）</label>
+                    <div class="wallet-cover" id="wallet-cover-editor">
+                        <div class="wallet-cover-preview" id="wallet-cover-preview" title="拖动移动 · 滚轮 / 双指缩放">
+                            <canvas id="wallet-cover-canvas" width="440" height="200"></canvas>
+                            <span class="wallet-cover-empty" id="wallet-cover-empty">导入图片后可在这里预览 1-bit 效果</span>
+                        </div>
+                        <div class="btn-row wallet-cover-actions">
+                            <button type="button" class="secondary-button" id="wallet-cover-import">导入图片</button>
+                            <button type="button" class="secondary-button" id="wallet-cover-rotate" disabled>旋转 90°</button>
+                            <button type="button" class="secondary-button" id="wallet-cover-fit" disabled>适应画幅</button>
+                            <button type="button" class="secondary-button" id="wallet-cover-clear" disabled>清除</button>
+                        </div>
+                        <input id="wallet-cover-file" type="file" accept="image/*" hidden>
+                        <div class="wallet-cover-controls">
+                            <label for="wallet-cover-threshold">阈值 <b id="wallet-cover-threshold-val">128</b></label>
+                            <input id="wallet-cover-threshold" type="range" min="1" max="254" step="1" value="128" disabled>
+                            <label class="wallet-cover-dither"><input id="wallet-cover-dither" type="checkbox" disabled> 抖动</label>
+                        </div>
+                        <div class="field-hint" id="wallet-cover-hint">导入图片后可预览 1-bit 效果；拖动/缩放只影响封面构图</div>
+                        <div class="wallet-cover-target" id="wallet-cover-target" hidden>
+                            <span class="field-hint" id="wallet-cover-target-text"></span>
+                            <div class="btn-row">
+                                <button type="button" class="primary-button" id="wallet-cover-upload" disabled>上传封面到这张卡</button>
+                                <button type="button" class="secondary-button" id="wallet-cover-cancel">取消</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="btn-row">
                     <button type="button" class="primary-button" id="wallet-create" data-ark-connected disabled>创建 NTAG 卡</button>
@@ -1358,7 +1383,7 @@
 <script src="js/convert.js?v=e4panel-2"></script>
 <script src="js/frame.js?v=ark-state-2"></script>
 <script src="js/frame-nav.js"></script>
-<script src="js/nfc-wallet.js?v=nfc-2"></script>
+<script src="js/nfc-wallet.js?v=nfc-3"></script>
 <script src="js/batch.js?v=fix-1"></script>
 <script src="js/gif-decoder.js"></script>
 <script src="js/animation.js?v=ark-state-2"></script>

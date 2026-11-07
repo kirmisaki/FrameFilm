@@ -211,36 +211,292 @@
         } catch (e) { setConnection('重命名失败：' + e.message); }
     }
 
-    function fileToCover(file) {
-        return new Promise(function (resolve, reject) {
-            var img = new Image();
-            var url = URL.createObjectURL(file);
-            img.onload = function () {
-                try {
-                    var canvas = document.createElement('canvas');
-                    canvas.width = COVER_W;
-                    canvas.height = COVER_H;
-                    var ctx = canvas.getContext('2d');
-                    ctx.fillStyle = '#fff';
-                    ctx.fillRect(0, 0, COVER_W, COVER_H);
-                    var scale = Math.min(COVER_W / img.width, COVER_H / img.height);
-                    var w = Math.round(img.width * scale);
-                    var h = Math.round(img.height * scale);
-                    ctx.drawImage(img, (COVER_W - w) / 2, (COVER_H - h) / 2, w, h);
-                    var data = ctx.getImageData(0, 0, COVER_W, COVER_H).data;
-                    var payload = new Uint8Array(COVER_PAYLOAD);
-                    for (var i = 0; i < COVER_W * COVER_H; i++) {
-                        var r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
-                        var luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                        if (luma < 128) payload[i >> 3] |= 0x80 >> (i & 7);
-                    }
-                    resolve(payload);
-                } catch (e) { reject(e); }
-                finally { URL.revokeObjectURL(url); }
-            };
-            img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('图片读取失败')); };
-            img.src = url;
+    /* ---------- 封面编辑器：导入图片 → 1-bit 预览 / 调整 ---------- */
+    var COVER_BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+    var COVER_SCALE_MIN = 0.2;
+    var COVER_SCALE_MAX = 8;
+
+    var m_coverImage = null;
+    var m_coverRot = 0;
+    var m_coverScale = 1;
+    var m_coverOffX = 0;
+    var m_coverOffY = 0;
+    var m_coverThreshold = 128;
+    var m_coverDither = false;
+    var m_coverPayload = null;
+    var m_coverTargetId = 0;
+    var m_coverPointers = {};
+    var m_coverDrag = null;
+    var m_coverPinch = null;
+    var m_coverOut = null;
+    var m_coverWork = document.createElement('canvas');
+    m_coverWork.width = COVER_W;
+    m_coverWork.height = COVER_H;
+
+    function coverClampScale(s) {
+        return Math.max(COVER_SCALE_MIN, Math.min(COVER_SCALE_MAX, s));
+    }
+
+    function coverReset() {
+        m_coverRot = 0;
+        m_coverScale = 1;
+        m_coverOffX = 0;
+        m_coverOffY = 0;
+    }
+
+    function coverSyncControls() {
+        var has = !!m_coverImage;
+        ['wallet-cover-rotate', 'wallet-cover-fit', 'wallet-cover-clear',
+         'wallet-cover-threshold', 'wallet-cover-dither'].forEach(function (id) {
+            var el = $(id);
+            if (el) el.disabled = !has;
         });
+        var upload = $('wallet-cover-upload');
+        if (upload) upload.disabled = !has || !connected();
+        var hint = $('wallet-cover-hint');
+        if (hint) {
+            hint.textContent = has
+                ? '拖动移动 · 滚轮 / 双指缩放 · 旋转调整构图；预览即上传的 1-bit 结果'
+                : '导入图片后可预览 1-bit 效果；拖动/缩放只影响封面构图';
+        }
+    }
+
+    /* 把源图按“适应画幅 + 用户缩放/位移/旋转”画到 440×200，再按阈值（可选 Bayer
+       抖动）量化成 1bpp。画布直接显示量化结果，保证预览与上传内容完全一致。 */
+    function coverRender() {
+        var canvas = $('wallet-cover-canvas');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        var empty = $('wallet-cover-empty');
+        if (!m_coverImage) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, COVER_W, COVER_H);
+            m_coverPayload = null;
+            if (empty) empty.hidden = false;
+            return;
+        }
+        if (empty) empty.hidden = true;
+
+        var work = m_coverWork.getContext('2d');
+        work.setTransform(1, 0, 0, 1, 0, 0);
+        work.fillStyle = '#fff';
+        work.fillRect(0, 0, COVER_W, COVER_H);
+
+        var rot = ((m_coverRot % 4) + 4) % 4;
+        var rw = (rot % 2 === 0) ? m_coverImage.width : m_coverImage.height;
+        var rh = (rot % 2 === 0) ? m_coverImage.height : m_coverImage.width;
+        var fit = Math.min(COVER_W / rw, COVER_H / rh);
+        var s = fit * coverClampScale(m_coverScale);
+        work.save();
+        work.translate(COVER_W / 2 + m_coverOffX, COVER_H / 2 + m_coverOffY);
+        work.rotate(rot * Math.PI / 2);
+        work.imageSmoothingEnabled = true;
+        work.imageSmoothingQuality = 'high';
+        work.drawImage(m_coverImage,
+            -m_coverImage.width * s / 2, -m_coverImage.height * s / 2,
+            m_coverImage.width * s, m_coverImage.height * s);
+        work.restore();
+
+        var src = work.getImageData(0, 0, COVER_W, COVER_H);
+        if (!m_coverOut) m_coverOut = ctx.createImageData(COVER_W, COVER_H);
+        var out = m_coverOut;
+        var payload = new Uint8Array(COVER_PAYLOAD);
+        var threshold = m_coverThreshold;
+        var dither = m_coverDither;
+        for (var y = 0; y < COVER_H; y++) {
+            var row = COVER_BAYER[y & 3];
+            for (var x = 0; x < COVER_W; x++) {
+                var i = y * COVER_W + x;
+                var o = i * 4;
+                var lum = 0.299 * src.data[o] + 0.587 * src.data[o + 1] + 0.114 * src.data[o + 2];
+                if (dither) lum += (row[x & 3] - 8) * 8;
+                var black = lum < threshold;
+                var v = black ? 0 : 255;
+                out.data[o] = out.data[o + 1] = out.data[o + 2] = v;
+                out.data[o + 3] = 255;
+                if (black) payload[i >> 3] |= 0x80 >> (i & 7);
+            }
+        }
+        ctx.putImageData(out, 0, 0);
+        m_coverPayload = payload;
+    }
+
+    function coverLoad(file) {
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function (ev) {
+            var img = new Image();
+            img.onload = function () {
+                m_coverImage = img;
+                coverReset();
+                coverRender();
+                coverSyncControls();
+                setConnection('封面已导入，可拖动/缩放并调整阈值');
+            };
+            img.onerror = function () { setConnection('封面图片读取失败'); };
+            img.src = ev.target.result;
+        };
+        reader.onerror = function () { setConnection('封面图片读取失败'); };
+        reader.readAsDataURL(file);
+    }
+
+    function coverClear() {
+        m_coverImage = null;
+        m_coverPayload = null;
+        coverReset();
+        coverRender();
+        coverSyncControls();
+    }
+
+    function coverSetTarget(id) {
+        m_coverTargetId = id;
+        var box = $('wallet-cover-target');
+        var text = $('wallet-cover-target-text');
+        if (id) {
+            var name = 'CARD';
+            for (var i = 0; i < m_cards.length; i++) {
+                if (m_cards[i].id === id) name = m_cards[i].name || name;
+            }
+            if (text) text.textContent = '正在为「' + name + '」设置封面';
+            if (box) box.hidden = false;
+            var editor = $('wallet-cover-editor');
+            if (editor) editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (box) {
+            box.hidden = true;
+        }
+        coverSyncControls();
+    }
+
+    async function coverUploadTarget() {
+        if (!m_coverTargetId) return;
+        if (!m_coverPayload) { setConnection('请先导入封面图片'); return; }
+        var id = m_coverTargetId;
+        var payload = m_coverPayload;
+        try {
+            await run('上传封面', async function (ctx) {
+                await uploadCover(ctx, id, payload, function (pct) {
+                    setConnection('正在上传封面… ' + pct + '%');
+                });
+            });
+            setConnection('封面已上传');
+            coverSetTarget(0);
+            await refresh();
+        } catch (e) { setConnection('封面上传失败：' + e.message); }
+    }
+
+    function coverPoint(ev) {
+        var canvas = $('wallet-cover-canvas');
+        var rect = canvas.getBoundingClientRect();
+        return {
+            x: (ev.clientX - rect.left) * COVER_W / Math.max(1, rect.width),
+            y: (ev.clientY - rect.top) * COVER_H / Math.max(1, rect.height)
+        };
+    }
+
+    function coverDist(a, b) {
+        var dx = a.x - b.x;
+        var dy = a.y - b.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function bindCoverEditor() {
+        var canvas = $('wallet-cover-canvas');
+        var importBtn = $('wallet-cover-import');
+        var fileInput = $('wallet-cover-file');
+        if (importBtn && fileInput) importBtn.addEventListener('click', function () { fileInput.click(); });
+        if (fileInput) fileInput.addEventListener('change', function () {
+            coverLoad(this.files && this.files[0]);
+            this.value = '';
+        });
+
+        var rotateBtn = $('wallet-cover-rotate');
+        if (rotateBtn) rotateBtn.addEventListener('click', function () {
+            if (!m_coverImage) return;
+            m_coverRot = (m_coverRot + 1) % 4;
+            coverRender();
+        });
+        var fitBtn = $('wallet-cover-fit');
+        if (fitBtn) fitBtn.addEventListener('click', function () {
+            if (!m_coverImage) return;
+            coverReset();
+            coverRender();
+        });
+        var clearBtn = $('wallet-cover-clear');
+        if (clearBtn) clearBtn.addEventListener('click', coverClear);
+        var threshold = $('wallet-cover-threshold');
+        if (threshold) threshold.addEventListener('input', function () {
+            m_coverThreshold = +this.value;
+            var label = $('wallet-cover-threshold-val');
+            if (label) label.textContent = this.value;
+            coverRender();
+        });
+        var dither = $('wallet-cover-dither');
+        if (dither) dither.addEventListener('change', function () {
+            m_coverDither = this.checked;
+            coverRender();
+        });
+        var uploadBtn = $('wallet-cover-upload');
+        if (uploadBtn) uploadBtn.addEventListener('click', coverUploadTarget);
+        var cancelBtn = $('wallet-cover-cancel');
+        if (cancelBtn) cancelBtn.addEventListener('click', function () { coverSetTarget(0); });
+
+        if (!canvas) return;
+        canvas.addEventListener('pointerdown', function (e) {
+            if (!m_coverImage) return;
+            e.preventDefault();
+            if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+            m_coverPointers[e.pointerId] = coverPoint(e);
+            var ids = Object.keys(m_coverPointers);
+            if (ids.length === 1) {
+                m_coverDrag = { id: e.pointerId, x: m_coverPointers[e.pointerId].x, y: m_coverPointers[e.pointerId].y };
+                m_coverPinch = null;
+            } else if (ids.length === 2) {
+                m_coverDrag = null;
+                m_coverPinch = {
+                    dist: coverDist(m_coverPointers[ids[0]], m_coverPointers[ids[1]]),
+                    scale: m_coverScale
+                };
+            }
+        });
+        canvas.addEventListener('pointermove', function (e) {
+            if (!m_coverImage || !m_coverPointers[e.pointerId]) return;
+            m_coverPointers[e.pointerId] = coverPoint(e);
+            var ids = Object.keys(m_coverPointers);
+            if (ids.length >= 2 && m_coverPinch) {
+                var d = coverDist(m_coverPointers[ids[0]], m_coverPointers[ids[1]]);
+                if (m_coverPinch.dist > 0) {
+                    m_coverScale = coverClampScale(m_coverPinch.scale * d / m_coverPinch.dist);
+                    coverRender();
+                }
+                e.preventDefault();
+                return;
+            }
+            if (m_coverDrag && m_coverDrag.id === e.pointerId) {
+                var p = m_coverPointers[e.pointerId];
+                m_coverOffX += p.x - m_coverDrag.x;
+                m_coverOffY += p.y - m_coverDrag.y;
+                m_coverDrag.x = p.x;
+                m_coverDrag.y = p.y;
+                coverRender();
+                e.preventDefault();
+            }
+        });
+        function endPointer(e) {
+            delete m_coverPointers[e.pointerId];
+            if (m_coverDrag && m_coverDrag.id === e.pointerId) m_coverDrag = null;
+            if (Object.keys(m_coverPointers).length < 2) m_coverPinch = null;
+        }
+        canvas.addEventListener('pointerup', endPointer);
+        canvas.addEventListener('pointercancel', endPointer);
+        canvas.addEventListener('wheel', function (e) {
+            if (!m_coverImage) return;
+            e.preventDefault();
+            m_coverScale = coverClampScale(m_coverScale * (e.deltaY > 0 ? 0.9 : 1.1));
+            coverRender();
+        }, { passive: false });
+
+        coverRender();
+        coverSyncControls();
     }
 
     async function uploadCover(ctx, id, payload, onStatus) {
@@ -292,12 +548,7 @@
         begin.push((total >> 8) & 0xFF, total & 0xFF);
         begin.push((crc >>> 24) & 0xFF, (crc >>> 16) & 0xFF, (crc >>> 8) & 0xFF, crc & 0xFF);
 
-        var file = $('wallet-cover').files && $('wallet-cover').files[0];
-        var cover = null;
-        if (file) {
-            try { cover = await fileToCover(file); }
-            catch (e) { setConnection('封面转换失败：' + e.message); return; }
-        }
+        var cover = m_coverPayload;
 
         setConnection('正在创建 ' + kindName(kind) + '…');
         try {
@@ -332,6 +583,7 @@
     }
 
     function bindButtons() {
+        bindCoverEditor();
         var refreshBtn = $('wallet-refresh');
         if (refreshBtn) refreshBtn.addEventListener('click', refresh);
         var createBtn = $('wallet-create');
@@ -348,7 +600,7 @@
             if (b.dataset.walletSelect) selectCard(parseInt(b.dataset.walletSelect, 10));
             else if (b.dataset.walletRename) renameCard(parseInt(b.dataset.walletRename, 10));
             else if (b.dataset.walletDelete) deleteCard(parseInt(b.dataset.walletDelete, 10));
-            else if (b.dataset.walletCover) uploadCoverForCard(parseInt(b.dataset.walletCover, 10));
+            else if (b.dataset.walletCover) editCardCover(parseInt(b.dataset.walletCover, 10));
         });
         var navWallet = document.querySelector('.nav-item[data-page="wallet-page"]');
         if (navWallet) navWallet.addEventListener('click', function () {
@@ -359,28 +611,13 @@
             document.querySelectorAll('#wallet-page [data-ark-connected]').forEach(function (el) {
                 el.disabled = !on;
             });
+            coverSyncControls();
             if (on && document.getElementById('wallet-page').classList.contains('active')) refresh();
         });
     }
 
-    async function uploadCoverForCard(id) {
-        var input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.onchange = async function () {
-            if (!input.files || !input.files[0]) return;
-            try {
-                var payload = await fileToCover(input.files[0]);
-                await run('上传封面', async function (ctx) {
-                    await uploadCover(ctx, id, payload, function (pct) {
-                        setConnection('正在上传封面… ' + pct + '%');
-                    });
-                });
-                setConnection('封面已上传');
-                await refresh();
-            } catch (e) { setConnection('封面上传失败：' + e.message); }
-        };
-        input.click();
+    function editCardCover(id) {
+        coverSetTarget(id);
     }
 
     document.addEventListener('DOMContentLoaded', bindButtons);

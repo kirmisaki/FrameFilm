@@ -1378,3 +1378,15 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
 .wallet-rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}
 .wallet-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(127,127,127,.35);border-radius:10px}
 .wallet-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.wallet-cover{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.wallet-cover-preview{position:relative;width:100%;max-width:440px;aspect-ratio:440/200;background:#fff;border:1px solid rgba(127,127,127,.35);border-radius:10px;overflow:hidden;touch-action:none;cursor:grab;user-select:none}
+.wallet-cover-preview:active{cursor:grabbing}
+.wallet-cover-preview canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+.wallet-cover-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;text-align:center;color:rgba(127,127,127,.9);font-size:13px;pointer-events:none}
+.wallet-cover-empty[hidden]{display:none}
+.wallet-cover-actions{flex-wrap:wrap}
+.wallet-cover-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.wallet-cover-controls input[type="range"]{flex:1;min-width:160px}
+.wallet-cover-dither{display:inline-flex;align-items:center;gap:6px}
+.wallet-cover-target{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid rgba(127,127,127,.35);border-radius:10px}
+.wallet-cover-target[hidden]{display:none}
