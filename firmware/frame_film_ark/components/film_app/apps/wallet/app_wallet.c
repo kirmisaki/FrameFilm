@@ -789,6 +789,13 @@ static bool wallet_on_double(void)
 static bool wallet_on_back(void)
 {
     if(m_mode != WALLET_MODE_COPY) return false;
+    if(m_scan_state == WALLET_SCAN_DONE && app_wallet_nfc_enabled())
+    {
+        /* 已读到卡但暂不复制：丢弃这次结果，回到读卡页继续读下一张 */
+        wallet_take_pending();
+        wallet_start_read();
+        return true;
+    }
     wallet_back_to_emu();
     wallet_post_snapshot();
     return true;
@@ -935,10 +942,19 @@ static void wallet_ui_apply_snapshot(void)
     /* COPY */
     lv_obj_add_flag(m_emu_page, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(m_copy_page, LV_OBJ_FLAG_HIDDEN);
-    app_shell_set_text(&m_shell,
-                       app_text("单击取消/复制  返回退出  长按休眠",
-                                "ENTER CANCEL/COPY  BACK EMU  HOLD SLEEP"),
-                       app_text("卡包 读卡", "WALLET COPY"));
+    const char *hint = app_text("单击取消  返回退出  长按休眠",
+                                "ENTER CANCEL  BACK EXIT  HOLD SLEEP");
+    if(m_snap.scan == WALLET_SCAN_DONE)
+    {
+        hint = app_text("单击复制  返回继续读卡  长按休眠",
+                        "ENTER COPY  BACK READ AGAIN  HOLD SLEEP");
+    }
+    else if(m_snap.scan == WALLET_SCAN_FAIL || m_snap.scan == WALLET_SCAN_UNSUPPORTED)
+    {
+        hint = app_text("单击重试  返回退出  长按休眠",
+                        "ENTER RETRY  BACK EXIT  HOLD SLEEP");
+    }
+    app_shell_set_text(&m_shell, hint, app_text("卡包 读卡", "WALLET COPY"));
 
     const char *title = app_text("正在读卡…", "READING...");
     const char *sub = app_text("将卡片贴在设备 NFC 区域", "PLACE CARD ON NFC AREA");
