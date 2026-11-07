@@ -105,9 +105,9 @@
         return rsp;
     }
 
-    function parseList(rsp) {
-        m_cards = [];
-        m_current = rsp[2] || 0;
+    /* 解析一页 LIST 回复并追加到 out；返回本页卡片数。
+       固件一帧最多 192 字节，卡片多/名字长时会分页，靠 start 参数翻页。 */
+    function parsePage(rsp, out) {
         var n = rsp[4] || 0;
         var pos = 5;
         for (var i = 0; i < n; i++) {
@@ -120,11 +120,12 @@
             var uid = rsp.slice(pos, pos + 7); pos += 7;
             var flags = rsp[pos++];
             var nameLen = rsp[pos++];
+            if (pos + nameLen > rsp.length) nameLen = rsp.length - pos;
             var name = '';
             for (var k = 0; k < nameLen && pos < rsp.length; k++) name += String.fromCharCode(rsp[pos++]);
-            m_cards.push({ id: id, kind: kind, uidLen: uidLen, sak: sak, atqa: atqa, uid: uid, flags: flags, name: name });
+            out.push({ id: id, kind: kind, uidLen: uidLen, sak: sak, atqa: atqa, uid: uid, flags: flags, name: name });
         }
-        renderList();
+        return n;
     }
 
     function renderList() {
@@ -157,8 +158,22 @@
         setConnection('正在读取卡包…');
         try {
             await run('刷新 NFC 卡包', async function (ctx) {
-                var rsp = await walletCtrl(ctx, [0x00, 0x00]);
-                parseList(rsp);
+                var all = [];
+                var current = 0;
+                var total = 0;
+                var start = 0;
+                for (var guard = 0; guard < 256; guard++) {
+                    var rsp = await walletCtrl(ctx, [0x00, start]);
+                    total = rsp[1] || 0;
+                    current = rsp[2] || 0;
+                    var cnt = parsePage(rsp, all);
+                    if (!cnt) break;               // 没有更多卡
+                    start += cnt;
+                    if (start >= total) break;
+                }
+                m_cards = all;
+                m_current = current;
+                renderList();
             });
             setConnection('卡包已刷新 · ' + m_cards.length + ' 张卡');
         } catch (e) {
