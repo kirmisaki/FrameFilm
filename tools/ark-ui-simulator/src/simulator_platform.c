@@ -114,6 +114,7 @@ void ui_core_page_enter(uint8_t app_id, const app_ui_ops_t *ops) { (void)app_id;
 void ui_core_page_exit(void) { simulator_show(NULL, NULL); }
 void app_manager_sleep_show(const app_ui_ops_t *ops) { simulator_show(ops, NULL); }
 void service_monitor_request_sleep(void) { }
+void service_monitor_set_auto_sleep_timeout(uint32_t sec) { (void)sec; }
 
 void hal_epd_mono_session_begin(void) { }
 void hal_epd_mono_session_end(void) { }
@@ -130,6 +131,25 @@ void service_wifi_disconnect(void) { }
 void service_wifi_deinit(void) { }
 void service_ble_apply_enable(uint8_t on) { g_service_param.ble.ble_enable = on; }
 void service_param_save(void) { }
+
+/* The settings page stores a single versioned timeout selection in app4. */
+static uint8_t settings_cfg_value, settings_cfg_version;
+
+int service_param_app_load(uint8_t app_id, void *buf, uint16_t size, uint8_t ver)
+{
+    if(app_id != SERVICE_PARAM_APP_ID_SETTINGS || size != 1 ||
+       settings_cfg_version == 0 || settings_cfg_version != ver) return -1;
+    memcpy(buf, &settings_cfg_value, size);
+    return 0;
+}
+
+int service_param_app_save(uint8_t app_id, const void *buf, uint16_t size, uint8_t ver)
+{
+    if(app_id != SERVICE_PARAM_APP_ID_SETTINGS || size != 1) return -1;
+    memcpy(&settings_cfg_value, buf, size);
+    settings_cfg_version = ver;
+    return 0;
+}
 
 const app_boot_cfg_t *app_boot_cfg_get(void) { return &boot_cfg; }
 void app_boot_cfg_set(uint8_t boot_page, uint8_t start_app)

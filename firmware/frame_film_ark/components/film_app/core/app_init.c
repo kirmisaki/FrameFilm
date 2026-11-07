@@ -156,6 +156,9 @@ void film_app_init(void)
           放这里而不是更早：它要读 NVS（service 层已就绪）并查 app 注册表（上面刚注册完）。 */
     app_boot_cfg_init();
 
+    /* 6.6 载入设置页持久化参数（自动休眠超时）：必须在首个自动休眠判断之前生效 */
+    app_settings_init();
+
     /* 7. 上电流程：由 BOOT PAGE / START APP 两个参数决定（见 app_boot_cfg）
           · 显示开机画面：还需 FULL + UI 层就绪 + 菜单已注册 —— 否则连页面都建不出来，
             此时即便配了"显示"也只能跳过

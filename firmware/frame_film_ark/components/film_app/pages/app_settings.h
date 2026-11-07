@@ -60,7 +60,7 @@ typedef struct {
     uint8_t nfc_emu;        // NFC 正在模拟卡片 0/1
     uint8_t led_mode_sel;   // LED 模式候选下标（0=ALWAYS 1=OFF 2=AUTO）
     uint8_t wake_sel;       // WAKE INTERVAL 候选下标
-    uint8_t hb_sel;         // HEARTBEAT 候选下标
+    uint8_t sleep_timeout_sel; // 自动休眠超时候选下标
     uint8_t boot_page_sel;  // BOOT PAGE 候选下标（0=SHOW 1=SKIP）
     uint8_t start_app_sel;  // START APP 候选下标（app_start_t）
     uint8_t language_sel;   // 0=简体中文 1=English
@@ -81,6 +81,13 @@ typedef struct {
  * @brief 系统设置 app 接口实例（UI 层）
  */
 extern const app_entry_t g_app_settings_entry;
+
+/**
+ * @brief 载入设置页持久化参数（自动休眠超时）并应用到 monitor
+ *
+ * 必须在首个 app 启动、可能触发自动休眠之前调用（见 film_app_init）。
+ */
+void app_settings_init(void);
 
 #ifdef __cplusplus
 }

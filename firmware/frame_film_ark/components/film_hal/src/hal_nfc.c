@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_random.h"
 
 #include "sys_log.h"
 #include "hal_nfc.h"
@@ -137,6 +138,44 @@ static bool ntag_type_of(hal_nfc_kind_t kind, st25r_ntag_type_t *type)
     }
 }
 
+/* M1（UID 卡）模拟：芯片负责防冲突/SAK，认证第一帧由这里回 Nt。
+   手机/读卡器拿到 Nt 才会把它当成 MIFARE Classic 显示出来；后续加密认证
+   （nr/aR → At）不实现，所以卡能发现但读不了数据。 */
+static bool m1_auth_pending;
+
+static bool m1_on_picc_event(st25r_handle_t h, st25r_picc_event_t evt, const uint8_t *data,
+                             uint16_t len, void *ctx)
+{
+    (void)ctx;
+    if(evt == ST25R_PICC_EVT_FIELD_OFF)
+    {
+        m1_auth_pending = false;
+        return false;
+    }
+    if(evt != ST25R_PICC_EVT_FRAME || data == NULL || len == 0) return false;
+
+    ESP_LOGD(HAL_NFC_TAG, "m1 frame %02X len=%u", data[0], (unsigned)len);
+
+    if(len == 2 && (data[0] == 0x60 || data[0] == 0x61))
+    {
+        uint32_t nt = esp_random();
+        uint8_t buf[4] = {(uint8_t)(nt >> 24), (uint8_t)(nt >> 16),
+                          (uint8_t)(nt >> 8), (uint8_t)nt};
+        m1_auth_pending = true;
+        return st25r_picc_transmit_no_crc(h, buf, sizeof(buf)) == ESP_OK;
+    }
+    if(m1_auth_pending && len >= 8)
+    {
+        /* 认证第二帧（nr + aR，已加密）：没有 Crypto-1，不回 At，但保持选中 */
+        return true;
+    }
+    if(len == 2 && data[0] == 0x50)
+    {
+        m1_auth_pending = false;   /* HLTA */
+    }
+    return false;
+}
+
 esp_err_t hal_nfc_emu_start(const hal_nfc_card_t *card)
 {
     if(m_nfc == NULL || card == NULL) return ESP_ERR_INVALID_STATE;
@@ -190,7 +229,8 @@ esp_err_t hal_nfc_emu_start(const hal_nfc_card_t *card)
         return ESP_OK;
     }
 
-    /* M1 UID / M1 完整块镜像：暂按 ID 卡模拟（完整扇区等 Crypto-1）。 */
+    /* M1（UID 卡）：芯片做防冲突/SAK，软件只回认证第一帧 Nt。
+       完整扇区内容需要 Crypto-1，暂不支持（能发现卡、读不了数据）。 */
     st25r_picc_config_t picc;
     memset(&picc, 0, sizeof(picc));
     picc.card.tech = ST25R_TECH_NFC_A;
@@ -198,16 +238,18 @@ esp_err_t hal_nfc_emu_start(const hal_nfc_card_t *card)
     picc.card.sak = card->sak;
     picc.card.uid_len = card->uid_len;
     memcpy(picc.card.uid, card->uid, card->uid_len > sizeof(picc.card.uid) ? sizeof(picc.card.uid) : card->uid_len);
-    picc.callback = NULL;
+    picc.callback = m1_on_picc_event;
     picc.task_stack_size = HAL_NFC_PICC_TASK_STACK;
     picc.task_priority = HAL_NFC_PICC_TASK_PRIO;
     picc.task_core = HAL_NFC_PICC_TASK_CORE;
+    m1_auth_pending = false;
     return st25r_picc_begin(m_nfc, &picc);
 }
 
 esp_err_t hal_nfc_emu_stop(void)
 {
     if(m_nfc == NULL) return ESP_ERR_INVALID_STATE;
+    m1_auth_pending = false;
     /* 同 emu_start：用 ntag_end 顺带清掉 active，避免残留状态卡死后续模拟 */
     return st25r_ntag_end(m_nfc);
 }

@@ -212,6 +212,15 @@ void service_monitor_set_sleep_prepare_cb(service_monitor_sleep_prepare_cb_t cb)
     m_sleep_prepare_cb = cb;
 }
 
+void service_monitor_set_auto_sleep_timeout(uint32_t sec)
+{
+    if(sec < 10u) { sec = 10u; }
+    if(sec > 3600u) { sec = 3600u; }
+    m_monitor_state.wakeup_ticks = sec * 1000u / MONITOR_SLEEP_CHECK_INTERVAL_MS;
+    m_monitor_state.sleep_counter = 0;   // 重新计时，改完立即按新值生效
+    sys_logi(MONITOR_TAG, "auto sleep timeout: %u s", (unsigned)sec);
+}
+
 static void monitor_task_handle(void *pvParameters)
 {
     m_monitor_msg_hdl = xQueueCreate( MONITOR_MSG_QUEUE_LENGTH, MONITOR_MSG_QUEUE_ITEM_SIZE );

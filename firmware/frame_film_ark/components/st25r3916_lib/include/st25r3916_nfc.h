@@ -246,6 +246,14 @@ esp_err_t st25r_picc_set_card(st25r_handle_t h, const st25r_card_t *card);
  */
 esp_err_t st25r_picc_transmit(st25r_handle_t h, const uint8_t *data, uint16_t len);
 
+/**
+ * @brief Send a frame from the emulated card without the CRC trailer.
+ *
+ * ISO/IEC 14443-A parity bits are still inserted by the chip per byte. Used by
+ * MIFARE authentication replies (Nt), which carry no CRC.
+ */
+esp_err_t st25r_picc_transmit_no_crc(st25r_handle_t h, const uint8_t *data, uint16_t len);
+
 /* ------------------------------------------------------------------------- */
 /* NTAG21x emulation (NFC-A, read/write, NDEF)                               */
 /* ------------------------------------------------------------------------- */
