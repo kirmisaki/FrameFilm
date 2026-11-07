@@ -1,5 +1,10 @@
 /* Ark controls reuse ForFilm's cards, buttons and spacing. */
 [hidden] { display: none !important; }
+
+/* 通行证 / 卡包入口只对 Ark 设备开放：默认隐藏，连接 FRAMEFILMARK 后由
+   ark-controls.js 给 <body> 加 .show-ark-tabs 才显示；断开时自动退回 Film 页。 */
+body:not(.show-ark-tabs) .nav-item[data-page="pass-page"],
+body:not(.show-ark-tabs) .nav-item[data-page="wallet-page"] { display: none; }
 #ark-pass-editor { display: block; width: 100%; height: 1350px; margin-top: var(--sp-4); border: 0; background: transparent; }
 #pass-page.active { column-count: 1; }
 #ark-direct-progress { display: block; width: 100%; height: 12px; margin: 16px 0; accent-color: var(--ink); }

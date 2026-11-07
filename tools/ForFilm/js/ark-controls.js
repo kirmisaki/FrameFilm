@@ -46,6 +46,18 @@
             locks.clear();
         }
         wasBusy = busy;
+        // 通行证 / 卡包只对 Ark 设备开放：连接后显示入口，断开时隐藏并退回 Film 页
+        document.body.classList.toggle('show-ark-tabs', connected);
+        if (!connected) {
+            const activeNav = document.querySelector('.nav-item.active');
+            if (activeNav) {
+                const page = activeNav.getAttribute('data-page');
+                if (page === 'pass-page' || page === 'wallet-page') {
+                    const fallback = document.querySelector('.nav-item[data-page="convert-page"]');
+                    if (fallback) fallback.click();
+                }
+            }
+        }
         document.querySelectorAll('[data-ark-connected]').forEach(el => {
             el.disabled = !connected || busy;
         });
