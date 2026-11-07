@@ -38,6 +38,7 @@
 #include "hal_sd.h"
 #include "service_file.h"
 #include "service_param.h"
+#include "service_monitor.h"    /* 自动休眠超时下发 */
 #include "service_wifi.h"
 #include "service_ble.h"        /* service_ble_apply_enable：蓝牙开关运行期起停 */
 #include "service_ble_gatts.h"  /* 蓝牙连接状态（状态栏第二档） */
@@ -81,12 +82,18 @@ static const char *const WAKE_OPTS[WAKE_OPT_NUM] = {
 static const uint16_t WAKE_OPTS_MIN[WAKE_OPT_NUM] = {
     10, 30, 60, 120, 360, 720, 1440, 2880       // 与 WAKE_OPTS 一一对应的分钟值
 };
-#define HB_OPT_NUM          (6)
-static const char *const HB_OPTS[HB_OPT_NUM] = {
-    "5秒", "10秒", "30秒", "60秒", "120秒", "180秒"
+
+/* ---- 自动休眠超时：无操作多久后进入休眠（默认 1 分钟，与旧常量一致）---- */
+#define SLEEP_TO_OPT_NUM    (6)
+#define SLEEP_TO_DEFAULT    (1)                     // 下标 1 == 60 秒
+static const char *const SLEEP_TO_OPTS[SLEEP_TO_OPT_NUM] = {
+    "30秒", "1分钟", "2分钟", "5分钟", "10分钟", "30分钟"
 };
-static const uint16_t HB_OPTS_SEC[HB_OPT_NUM] = {
-    5, 10, 30, 60, 120, 180                      // 与 HB_OPTS 一一对应的秒值
+static const uint16_t SLEEP_TO_OPTS_SEC[SLEEP_TO_OPT_NUM] = {
+    30, 60, 120, 300, 600, 1800                  // 秒
+};
+static const char *const SLEEP_TO_EN[SLEEP_TO_OPT_NUM] = {
+    "30 S", "1 MIN", "2 MIN", "5 MIN", "10 MIN", "30 MIN"
 };
 
 /* ---- LED 模式（下标 == 落盘值，与 service_param.h 的 SERVICE_LED_MODE_* 同序）---- */
@@ -164,7 +171,7 @@ typedef struct {
 /* 字段编号（避免依赖结构体偏移，页面对快照只读） */
 enum {
     F_BAT = 0, F_WIFI, F_BT, F_LED, F_PANEL, F_STORAGE, F_FW,
-    F_SLEEP, F_AUTOWAKE, F_WIFI_ON, F_BT_ON, F_NFC, F_WAKE_SEL, F_HB_SEL,
+    F_SLEEP, F_AUTOWAKE, F_WIFI_ON, F_BT_ON, F_NFC, F_WAKE_SEL, F_SLEEP_TIMEOUT,
     F_BOOT_PAGE, F_START_APP, F_LANGUAGE,
     F_IMG_PLAY, F_IMG_INT, F_ANIM_LOOP, F_ANIM_SPEED,
 };
@@ -187,7 +194,7 @@ static const settings_row_t ROWS[SETTINGS_ROW_NUM] = {
     { 1, "自动休眠",     SET_KIND_TOGGLE, F_SLEEP      },
     { 1, "定时唤醒",     SET_KIND_TOGGLE, F_AUTOWAKE   },
     { 1, "唤醒间隔",     SET_KIND_CYCLE,  F_WAKE_SEL   },
-    { 1, "心跳间隔",     SET_KIND_CYCLE,  F_HB_SEL     },
+    { 1, "休眠时间",     SET_KIND_CYCLE,  F_SLEEP_TIMEOUT },
     { 2, "图片播放",     SET_KIND_CYCLE,  F_IMG_PLAY   },
     { 2, "图片间隔",     SET_KIND_CYCLE,  F_IMG_INT    },
     { 2, "动图播放",     SET_KIND_CYCLE,  F_ANIM_LOOP  },
@@ -200,10 +207,9 @@ static const char *const ROW_KEYS_EN[SETTINGS_ROW_NUM] = {
 #endif
     "LED", "PANEL", "STORAGE", "FIRMWARE",
     "BOOT PAGE", "START APP", "LANGUAGE", "SLEEP MODE", "AUTO WAKE",
-    "WAKE INTERVAL", "HEARTBEAT", "IMG PLAY", "IMG INTERVAL", "ANIM LOOP", "ANIM SPEED"
+    "WAKE INTERVAL", "SLEEP TIMEOUT", "IMG PLAY", "IMG INTERVAL", "ANIM LOOP", "ANIM SPEED"
 };
 static const char *const WAKE_EN[] = {"10 MIN", "30 MIN", "60 MIN", "2 H", "6 H", "12 H", "24 H", "48 H"};
-static const char *const HB_EN[] = {"5 S", "10 S", "30 S", "60 S", "120 S", "180 S"};
 static const char *const START_EN[] = {"MENU", "LAST", "IMAGE", "TEMPLATE", "CLOCK", "ANIMATION", "SETTINGS", "PASS", "WALLET"};
 static const char *const IMG_INT_EN[] = {"1 MIN", "5 MIN", "10 MIN", "30 MIN", "60 MIN"};
 static const char *const SPEED_EN[] = {"100 MS", "200 MS", "500 MS", "1 S", "2 S"};
@@ -296,7 +302,8 @@ static const char *row_text(uint8_t idx)
     }
     case F_FW:         return m_snap.fw;
     case F_WAKE_SEL:   return app_text(WAKE_OPTS[m_snap.wake_sel % WAKE_OPT_NUM], WAKE_EN[m_snap.wake_sel % WAKE_OPT_NUM]);
-    case F_HB_SEL:     return app_text(HB_OPTS[m_snap.hb_sel % HB_OPT_NUM], HB_EN[m_snap.hb_sel % HB_OPT_NUM]);
+    case F_SLEEP_TIMEOUT: return app_text(SLEEP_TO_OPTS[m_snap.sleep_timeout_sel % SLEEP_TO_OPT_NUM],
+                                          SLEEP_TO_EN[m_snap.sleep_timeout_sel % SLEEP_TO_OPT_NUM]);
     case F_BOOT_PAGE:  return app_text(BOOTPAGE_OPTS[m_snap.boot_page_sel % BOOTPAGE_OPT_NUM],
                                   m_snap.boot_page_sel ? "SKIP" : "SHOW");
     case F_START_APP:  return app_text(STARTAPP_OPTS[m_snap.start_app_sel % STARTAPP_OPT_NUM], START_EN[m_snap.start_app_sel % STARTAPP_OPT_NUM]);
@@ -340,6 +347,50 @@ static uint8_t idx_of_u16(const uint16_t *tab, uint8_t num, uint16_t v)
         }
     }
     return 0;   // 不在候选表内（如手机侧下发过任意值）：显示为第一项
+}
+
+/* ---- 设置页持久化参数（app4 槽位）----
+   自动休眠超时只存一份"候选下标"。不放进 ServiceParam_Def_t —— 改它的布局会
+   触发整体参数重置，连带清掉 WiFi 配网与时区。 */
+#define SET_CFG_VER         (1)
+typedef struct {
+    uint8_t sleep_timeout_sel;
+} settings_cfg_t;
+static settings_cfg_t m_cfg;
+static uint8_t m_cfg_loaded = 0;
+
+static settings_cfg_t *settings_cfg_get(void)
+{
+    if(!m_cfg_loaded)
+    {
+        m_cfg_loaded = 1;
+        m_cfg.sleep_timeout_sel = SLEEP_TO_DEFAULT;
+        if(service_param_app_load(SERVICE_PARAM_APP_ID_SETTINGS, &m_cfg,
+                                  (uint16_t)sizeof(m_cfg), SET_CFG_VER) != 0 ||
+           m_cfg.sleep_timeout_sel >= SLEEP_TO_OPT_NUM)
+        {
+            m_cfg.sleep_timeout_sel = SLEEP_TO_DEFAULT;
+        }
+    }
+    return &m_cfg;
+}
+
+static void settings_cfg_save(void)
+{
+    (void)service_param_app_save(SERVICE_PARAM_APP_ID_SETTINGS, &m_cfg,
+                                 (uint16_t)sizeof(m_cfg), SET_CFG_VER);
+}
+
+/**
+ * @brief 载入持久化参数并应用到 monitor（app 层初始化时调用）
+ *
+ * 必须在首次自动休眠判断之前生效；放在 film_app_init 里（见 app_init.c）。
+ */
+void app_settings_init(void)
+{
+    settings_cfg_t *cfg = settings_cfg_get();
+
+    service_monitor_set_auto_sleep_timeout(SLEEP_TO_OPTS_SEC[cfg->sleep_timeout_sel % SLEEP_TO_OPT_NUM]);
 }
 
 /**
@@ -458,7 +509,7 @@ static void settings_snapshot_pull(void)
     m_snap.sleep_auto = g_service_param.sleep.sleep_auto ? 1 : 0;
     m_snap.led_mode_sel = g_service_param.sys.led_mode % LED_OPT_NUM;
     m_snap.wake_sel   = idx_of_u16(WAKE_OPTS_MIN, WAKE_OPT_NUM, g_service_param.sleep.sleep_time);
-    m_snap.hb_sel     = idx_of_u16(HB_OPTS_SEC, HB_OPT_NUM, g_service_param.network.film_heartbeat_interval);
+    m_snap.sleep_timeout_sel = settings_cfg_get()->sleep_timeout_sel % SLEEP_TO_OPT_NUM;
 
     /* 开机行为（app 层参数，存在 app7 槽位）：下标即存盘值，直接取 */
     m_snap.boot_page_sel = app_boot_cfg_get()->boot_page % BOOTPAGE_OPT_NUM;
@@ -562,10 +613,11 @@ static void settings_apply(uint8_t row, uint8_t value)
         service_param_save();
         break;
 
-    case F_HB_SEL:
-        if(value >= HB_OPT_NUM) { return; }
-        g_service_param.network.film_heartbeat_interval = (uint8_t)HB_OPTS_SEC[value];
-        service_param_save();
+    case F_SLEEP_TIMEOUT:
+        if(value >= SLEEP_TO_OPT_NUM) { return; }
+        settings_cfg_get()->sleep_timeout_sel = value;
+        settings_cfg_save();
+        service_monitor_set_auto_sleep_timeout(SLEEP_TO_OPTS_SEC[value]);
         break;
 
     /* ---- 开机行为：两个字段一起写（本行只带一个值，另一个保持当前） ---- */
@@ -844,8 +896,8 @@ static void set_toggle(void)
                         req[1] = m_snap.led_mode_sel;  break;
     case F_WAKE_SEL:    m_snap.wake_sel   = (uint8_t)((m_snap.wake_sel + 1) % WAKE_OPT_NUM);
                         req[1] = m_snap.wake_sel;   break;
-    case F_HB_SEL:      m_snap.hb_sel     = (uint8_t)((m_snap.hb_sel + 1) % HB_OPT_NUM);
-                        req[1] = m_snap.hb_sel;     break;
+    case F_SLEEP_TIMEOUT: m_snap.sleep_timeout_sel = (uint8_t)((m_snap.sleep_timeout_sel + 1) % SLEEP_TO_OPT_NUM);
+                        req[1] = m_snap.sleep_timeout_sel; break;
     case F_BOOT_PAGE:   m_snap.boot_page_sel = (uint8_t)((m_snap.boot_page_sel + 1) % BOOTPAGE_OPT_NUM);
                         req[1] = m_snap.boot_page_sel; break;
     case F_START_APP:   m_snap.start_app_sel = (uint8_t)((m_snap.start_app_sel + 1) % STARTAPP_OPT_NUM);

@@ -80,6 +80,14 @@ extern bool service_monitor_sleep_pending(void);
 typedef bool (*service_monitor_sleep_prepare_cb_t)(void);
 extern void service_monitor_set_sleep_prepare_cb(service_monitor_sleep_prepare_cb_t cb);
 
+/**
+ * @brief 设置"无操作多久后自动休眠"（秒）
+ *
+ * 由设置页从持久化参数载入；覆盖上电时按唤醒原因给的默认值（手动唤醒 60s /
+ * 定时唤醒 30s），设置后两者统一使用该值。取值会被钳在 [10s, 3600s]。
+ */
+extern void service_monitor_set_auto_sleep_timeout(uint32_t sec);
+
 #ifdef __cplusplus
 }
 #endif
