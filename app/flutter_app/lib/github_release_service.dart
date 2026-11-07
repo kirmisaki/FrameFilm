@@ -71,7 +71,7 @@ class GitHubReleaseService {
       throw StateError(HardwareIdentity.unavailableMessage);
     }
     final data = await _get(
-      Uri.https('api.github.com', '/repos/Rafael-Ikaros/FrameFilm/releases', {
+      Uri.https('api.github.com', '/repos/kirmisaki/FrameFilm/releases', {
         'per_page': '100',
       }),
     );

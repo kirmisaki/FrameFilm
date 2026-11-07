@@ -61,7 +61,7 @@ void main() {
             if (request.url.host == 'api.github.com') {
               expect(
                 request.url.path,
-                '/repos/Rafael-Ikaros/FrameFilm/releases',
+                '/repos/kirmisaki/FrameFilm/releases',
               );
               return http.Response(
                 jsonEncode([

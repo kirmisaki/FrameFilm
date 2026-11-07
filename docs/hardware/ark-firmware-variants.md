@@ -30,7 +30,7 @@
 也可以使用 ForFilm 网页的蓝牙 OTA 完成首次安装：
 
 1. **先确认实物配置。** 根据主控模块标识、购买记录或板卡提供方确认是 N4R2 还是 N16R8。不知道配置时先向提供方核实，不要根据设备名称、720×480 屏幕或显示版本 3.2.5 猜测，也不要默认选 N4R2。
-2. 打开 [Ark Release](https://github.com/Rafael-Ikaros/FrameFilm/releases)，选择包含硬件发布清单 `framefilm-ark-firmware.json` 的正式版。在该版本的附件中，按上表下载明确命名的 **`frame_film_ark-n4r2.bin` 或 `frame_film_ark-n16r8.bin`**。这是原始 OTA 应用镜像；不要选择带 `flash` 名称的合并镜像、bootloader 或分区表。
+2. 打开 [Ark Release](https://github.com/kirmisaki/FrameFilm/releases)，选择包含硬件发布清单 `framefilm-ark-firmware.json` 的正式版。在该版本的附件中，按上表下载明确命名的 **`frame_film_ark-n4r2.bin` 或 `frame_film_ark-n16r8.bin`**。这是原始 OTA 应用镜像；不要选择带 `flash` 名称的合并镜像、bootloader 或分区表。
 3. 退出 App 的设备连接，让网页独占蓝牙连接。使用支持 Web Bluetooth 的 Chrome / Edge 打开 [ForFilm Web 工具](https://kirmisaki.github.io/FrameFilm/tools/ForFilm/)，点击 **蓝牙扫描**，在浏览器设备列表中选择自己的 Ark。在线页面不可用时，可按 [ForFilm 本地使用说明](../../tools/ForFilm/README.md#本地使用)启动本地网页。
 4. 进入底部 **设置**，找到 **设备控制 → 固件升级**，点击 **选择文件**，选择第 2 步的对应型号 `.bin`，再点击 **开始升级**。保持设备供电与浏览器连接，等待发送结束及设备重启。这里使用蓝牙 OTA，不需要点击“USB 连接”或“串口烧录 · 完整固件”。
 5. 网页显示 **100% / 已发送，待设备重启与版本核验** 只表示发送阶段结束。等设备重新启动后，断开网页蓝牙，在新版 App 中重新连接并刷新设备信息；确认连接页出现与实物一致的 **N4R2 / N16R8、Flash 和 PSRAM**，再在设置页检查在线固件更新。显示版本仍为 **3.2.5** 是正常现象，后续更新按实际构建指纹判断。

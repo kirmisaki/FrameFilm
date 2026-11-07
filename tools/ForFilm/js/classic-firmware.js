@@ -2,7 +2,7 @@
 (function (root) {
     'use strict';
 
-    const repo = 'Rafael-Ikaros/FrameFilm';
+    const repo = 'kirmisaki/FrameFilm';
     const api = 'https://api.github.com/repos/' + repo + '/releases';
     const project = 'frame_film';
     const model = 'pro';

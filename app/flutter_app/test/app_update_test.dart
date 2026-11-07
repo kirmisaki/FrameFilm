@@ -104,7 +104,7 @@ void main() {
       final service = AppUpdateService(
         client: MockClient((request) async {
           if (request.url.host == 'api.github.com') {
-            expect(request.url.path, '/repos/Rafael-Ikaros/FrameFilm/releases');
+            expect(request.url.path, '/repos/kirmisaki/FrameFilm/releases');
             return http.Response(
               jsonEncode([release('v4', '2026-01-01T00:00:00Z', owner: owner)]),
               200,
