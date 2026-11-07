@@ -192,6 +192,10 @@ static uint32_t film_frame_size_by_format(uint8_t format)
     case 0x02:  // v2 ColorQual 8bpp
     case 0x03:  // v2 ColorFast 8bpp
         return EPD_WIDTH * EPD_HEIGHT;
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    case 0x7F:
+        return EPD_WIDTH * EPD_HEIGHT * 2u;
+#endif
     default:
         return 0;
     }
@@ -260,6 +264,21 @@ static int film_parse_header(const uint8_t *hdr, film_info_t *info)
 
     uint32_t count = (uint32_t)(hdr[FILM_HDR_OFFSET_FRAMECOUNT]
                               | (hdr[FILM_HDR_OFFSET_FRAMECOUNT + 1] << 8));
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    if(info->format == 0x7F)
+    {
+        uint32_t body_size = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) |
+                             ((uint32_t)hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
+        uint16_t width = hdr[4] | ((uint16_t)hdr[5] << 8);
+        uint16_t height = hdr[6] | ((uint16_t)hdr[7] << 8);
+        if(count != 1 || width != EPD_WIDTH || height != EPD_HEIGHT ||
+           body_size != info->frame_size || memcmp(hdr + 12, "ABC9", 4) != 0)
+        {
+            sys_loge(FILM_TAG, "Invalid private ABC9 header");
+            return -1;
+        }
+    }
+#endif
     info->frame_count = (count == 0) ? 1u : count;
     return 0;
 }
@@ -283,6 +302,10 @@ static int film_read_header(uint32_t file_id, film_info_t *info)
        service_file_get_buffer() != NULL &&
        film_parse_header(service_file_get_buffer(), info) == 0)
     {
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+        if(info->format == 0x7F && service_file_get_size(file_id) != FILM_HDR_SIZE + info->frame_size)
+            return -1;
+#endif
         return 0;
     }
 
@@ -301,6 +324,9 @@ static int film_read_header(uint32_t file_id, film_info_t *info)
        用除法而不是乘法：frame_count × frame_size 可能溢出 uint32
        （如 48 帧 ColorQual ≈ 16MB 尚可，但损坏头部的 65535 帧会溢出） */
     uint32_t size = service_file_get_size(file_id);
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    if(info->format == 0x7F && size != FILM_HDR_SIZE + info->frame_size) return -1;
+#endif
     if(size < FILM_HDR_SIZE ||
        info->frame_count > (size - FILM_HDR_SIZE) / info->frame_size)
     {
@@ -372,6 +398,15 @@ static void film_show_frame(const uint8_t *frame, uint8_t format)
         return;
     }
 
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    if(format == 0x7F)
+    {
+        /* HAL validates all high bits before initialization or any REF. */
+        if(hal_epd_display_abc9(frame, EPD_WIDTH * EPD_HEIGHT * 2u) != ESP_OK)
+            sys_loge(FILM_TAG, "ABC9 frame rejected before display");
+        return;
+    }
+#endif
     hal_epd_display_init();
     switch(format)
     {

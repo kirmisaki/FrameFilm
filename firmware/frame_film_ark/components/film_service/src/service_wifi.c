@@ -38,6 +38,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_timer.h"
+#include "esp_random.h"
 #include "freertos/portmacro.h"
 
 #include "esp_http_client.h"
@@ -56,6 +57,12 @@
 #include "service_wifi.h"
 #include "service_ota.h"
 #include "service_ble.h"       /* service_ble_apply_enable：心跳下发 ble_enable 时同款起停 */
+#ifdef ARK_AP_FILE_BENCH
+#include <errno.h>
+#include "lwip/sockets.h"
+#include "esp_ota_ops.h"
+#include "ap_file_bench_secret.h"
+#endif
 
 /*********************************************************************
  * MACROS
@@ -89,6 +96,7 @@ typedef struct {
     char path[512];
     bool file;
     bool ota;
+    bool softap;
     uint32_t size;
     uint8_t sha[32];
 } wifi_direct_args_t;
@@ -98,6 +106,10 @@ static wifi_direct_status_t g_direct_status;
 static bool g_direct_busy;
 static bool g_direct_cancel;
 static bool g_direct_apply;
+static wifi_direct_args_t *g_softap_args;
+static bool g_softap_submitted;
+static bool g_softap_accepting;
+static char g_softap_password[33];
 static bool g_heartbeat_active;
 static bool g_wifi_shutting_down;
 static bool g_wifi_deinit_running;
@@ -331,7 +343,7 @@ static uint8_t wifi_direct_start(const char *ssid, const char *password, const c
     if(path && (!service_file_save_path_valid(path) || strlen(path) >= sizeof(args->path)))
         return 2;
 
-    args = malloc(sizeof(*args));
+    args = calloc(1, sizeof(*args));
     if(!args) return 3;
     strlcpy(args->ssid, ssid, sizeof(args->ssid));
     strlcpy(args->password, password, sizeof(args->password));
@@ -342,9 +354,23 @@ static uint8_t wifi_direct_start(const char *ssid, const char *password, const c
     portENTER_CRITICAL(&g_direct_lock);
     if(g_direct_busy || g_wifi_deinit_running || g_legacy_active)
     {
+        uint8_t result = 1;
+        if(g_direct_busy && g_softap_args && g_softap_accepting && !g_softap_submitted && !g_direct_cancel &&
+           strcmp(ssid, g_softap_args->ssid) == 0 && strcmp(password, g_softap_args->password) == 0)
+        {
+            strlcpy(g_softap_args->url, args->url, sizeof(args->url));
+            g_softap_args->file = path != NULL;
+            if(path) strlcpy(g_softap_args->path, path, sizeof(args->path));
+            g_softap_args->ota = sha != NULL;
+            g_softap_args->size = size;
+            if(sha) memcpy(g_softap_args->sha, sha, 32);
+            g_softap_submitted = true;
+            g_softap_accepting = false;
+            result = 0;
+        }
         portEXIT_CRITICAL(&g_direct_lock);
         free(args);
-        return 1;
+        return result;
     }
     g_direct_busy = true;
     g_direct_cancel = false;
@@ -362,6 +388,64 @@ static uint8_t wifi_direct_start(const char *ssid, const char *password, const c
         g_direct_status.state = WIFI_DIRECT_ERROR;
         g_direct_status.error = WIFI_DIRECT_ERR_RESOURCE;
         g_direct_busy = false;
+        portEXIT_CRITICAL(&g_direct_lock);
+        free(args);
+        return 3;
+    }
+    return 0;
+}
+
+bool service_wifi_softap_waiting(void)
+{
+    portENTER_CRITICAL(&g_direct_lock);
+    bool waiting = g_softap_args && g_softap_accepting && !g_softap_submitted && !g_direct_cancel;
+    portEXIT_CRITICAL(&g_direct_lock);
+    return waiting;
+}
+
+uint8_t service_wifi_softap_prepare(char ssid[33], char password[64])
+{
+    wifi_direct_args_t *args = calloc(1, sizeof(*args));
+    if(!args) return 3;
+    args->softap = true;
+    if(hal_wifi_softap_identity(args->ssid, sizeof(args->ssid)) != ESP_OK) {
+        free(args);
+        return 3;
+    }
+    /* Stable for this boot: Android can reuse approval for the same device AP. */
+    if(!g_softap_password[0]) {
+        static const char hex[] = "0123456789ABCDEF";
+        uint8_t random[16];
+        esp_fill_random(random, sizeof(random));
+        for(unsigned i = 0; i < sizeof(random); ++i) {
+            g_softap_password[2*i] = hex[random[i] >> 4];
+            g_softap_password[2*i+1] = hex[random[i] & 15];
+        }
+    }
+    strlcpy(args->password, g_softap_password, sizeof(args->password));
+    strlcpy(ssid, args->ssid, 33);
+    strlcpy(password, args->password, 64);
+    portENTER_CRITICAL(&g_direct_lock);
+    if(g_direct_busy || g_wifi_deinit_running || g_legacy_active) {
+        portEXIT_CRITICAL(&g_direct_lock);
+        free(args);
+        return 1;
+    }
+    g_direct_busy = true;
+    g_direct_cancel = false;
+    g_direct_apply = false;
+    g_wifi_shutting_down = false;
+    g_softap_submitted = false;
+    g_softap_accepting = false;
+    g_softap_args = args;
+    g_direct_status = (wifi_direct_status_t){.state = WIFI_DIRECT_CONNECTING};
+    portEXIT_CRITICAL(&g_direct_lock);
+    if(xTaskCreate(wifi_direct_task, "wifi_direct", 6144, args, 5, NULL) != pdPASS) {
+        portENTER_CRITICAL(&g_direct_lock);
+        g_softap_args = NULL;
+        g_direct_busy = false;
+        g_direct_status.state = WIFI_DIRECT_ERROR;
+        g_direct_status.error = WIFI_DIRECT_ERR_RESOURCE;
         portEXIT_CRITICAL(&g_direct_lock);
         free(args);
         return 3;
@@ -458,9 +542,16 @@ static bool wifi_direct_reap(QueueHandle_t completed, TickType_t wait,
     return true;
 }
 
+typedef int (*wifi_direct_read_t)(void *context, char *buffer, int length);
+
+static int wifi_direct_http_read(void *context, char *buffer, int length)
+{
+    return esp_http_client_read(context, buffer, length);
+}
+
 /* All borrowed slots are reaped on every exit, before the caller aborts/commits. */
-static uint8_t wifi_direct_receive(esp_http_client_handle_t client, uint32_t total,
-                                   uint32_t *saved_out)
+static uint8_t wifi_direct_receive(wifi_direct_read_t read_source, void *context, const char *source,
+                                   uint32_t total, uint32_t *saved_out)
 {
     uint8_t error = WIFI_DIRECT_ERR_NONE;
     uint32_t network_bytes = 0, saved = 0;
@@ -505,10 +596,13 @@ static uint8_t wifi_direct_receive(esp_http_client_handle_t client, uint32_t tot
                 error = WIFI_DIRECT_ERR_HTTP; break;
             }
             int64_t before = esp_timer_get_time();
-            int got = esp_http_client_read(client, (char *)slot->data + slot->len,
-                                           (int)(want - slot->len));
+            int got = read_source(context, (char *)slot->data + slot->len, (int)(want - slot->len));
             read_us += esp_timer_get_time() - before;
             ++reads;
+            if(got == -ESP_ERR_HTTP_EAGAIN) {
+                sys_logw(WIFI_SERVICE_TAG, "%s read timeout; retrying within idle deadline", source);
+                continue;
+            }
             if(got <= 0) { error = WIFI_DIRECT_ERR_HTTP; break; }
             slot->len += (uint32_t)got;
             network_bytes += (uint32_t)got;
@@ -537,20 +631,217 @@ static uint8_t wifi_direct_receive(esp_http_client_handle_t client, uint32_t tot
     if(wifi_direct_cancelled()) error = WIFI_DIRECT_ERR_CANCELLED;
     if(!error && (network_bytes != total || saved != total)) error = WIFI_DIRECT_ERR_HTTP;
     *saved_out = saved;
-    sys_logi(WIFI_SERVICE_TAG, "HTTP pipeline: net=%" PRIu32 " saved=%" PRIu32
+    sys_logi(WIFI_SERVICE_TAG, "%s pipeline: net=%" PRIu32 " saved=%" PRIu32
              " reads=%u blocks=%u read_us=%" PRId64 " queue_wait_us=%" PRId64
              " write_us=%" PRId64 " elapsed_us=%" PRId64,
-             network_bytes, saved, reads, blocks, read_us, wait_us, write_us,
+             source, network_bytes, saved, reads, blocks, read_us, wait_us, write_us,
              esp_timer_get_time() - started);
     vQueueDelete(completed);
     heap_caps_free(pool);
     return error;
 }
 
+
+#ifdef ARK_AP_FILE_BENCH
+#define AP_FILE_BENCH_BYTES 47347232U
+#define AP_FILE_BENCH_PATH "animation/HT27A001.film"
+
+typedef struct {
+    int socket;
+    uint32_t network_bytes;
+} ap_file_bench_source_t;
+
+static int ap_file_bench_read(void *context, char *buffer, int length)
+{
+    ap_file_bench_source_t *source = context;
+    int got = recv(source->socket, buffer, length, 0);
+    if(got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+        return -ESP_ERR_HTTP_EAGAIN;
+    if(got > 0) source->network_bytes += (uint32_t)got;
+    return got;
+}
+
+static void ap_file_bench_recovery(void *arg)
+{
+    (void)arg;
+    /* Allow the pipeline 15s to drain borrowed file_task buffers and abort its part. */
+    vTaskDelay(pdMS_TO_TICKS(285000));
+    service_wifi_direct_cancel();
+    vTaskDelay(pdMS_TO_TICKS(15000));
+    sys_logw(WIFI_SERVICE_TAG, "AP file bench 300s limit: returning to normal Ark");
+    sys_reboot();
+}
+
+bool service_wifi_ap_file_bench_prepare(void)
+{
+    static const uint8_t normal_sha[32] = { 0x7c, 0x2c, 0x78, 0xe1, 0xf1, 0xf8, 0x2d, 0x96, 0xad, 0x75, 0x38, 0x97, 0xab, 0x89, 0x19, 0xc4, 0xe4, 0xbe, 0x9f, 0xb4, 0xb6, 0xff, 0x02, 0x03, 0xeb, 0x40, 0x0b, 0xac, 0xc6, 0xce, 0xf3, 0x50 };
+    const esp_partition_t *normal = esp_ota_get_next_update_partition(NULL);
+    esp_app_desc_t desc;
+    if(normal == NULL || normal == esp_ota_get_running_partition() ||
+       esp_ota_get_partition_description(normal, &desc) != ESP_OK ||
+       strcmp(desc.project_name, "frame_film_ark") != 0 || strcmp(desc.version, "3.2.5") != 0 ||
+       memcmp(desc.app_elf_sha256, normal_sha, sizeof(normal_sha)) != 0) {
+        sys_loge(WIFI_SERVICE_TAG, "AP file bench normal 7c2c78e1 image missing; diagnostic not started");
+        return false;
+    }
+    if(esp_ota_set_boot_partition(normal) != ESP_OK) {
+        sys_loge(WIFI_SERVICE_TAG, "AP file bench cannot arm normal next boot; diagnostic not started");
+        return false;
+    }
+    /* Reserve before service init: ordinary STA init/heartbeat and auto-sleep stay out. */
+    portENTER_CRITICAL(&g_direct_lock);
+    g_direct_busy = true;
+    g_direct_cancel = false;
+    g_direct_status = (wifi_direct_status_t){.state = WIFI_DIRECT_CONNECTING};
+    portEXIT_CRITICAL(&g_direct_lock);
+    if(xTaskCreate(ap_file_bench_recovery, "ap_file_return", 2048, NULL, 1, NULL) != pdPASS) {
+        sys_reboot();
+        return false;
+    }
+    sys_logi(WIFI_SERVICE_TAG, "AP file bench next boot=normal 7c2c78e1; maximum runtime=300s");
+    return true;
+}
+
+static void ap_file_bench_task(void *arg)
+{
+    (void)arg;
+    int listener = -1, client = -1, commit_result = -1;
+    uint32_t saved = 0;
+    uint8_t error = WIFI_DIRECT_ERR_RESOURCE;
+    bool saving = false;
+    int64_t started = 0;
+    ap_file_bench_source_t source = {.socket = -1};
+    vTaskDelay(pdMS_TO_TICKS(12000));
+    if(wifi_direct_cancelled()) goto done;
+    if(!service_ble_ap_file_bench_stop()) goto done;
+    char ssid[32];
+    if(hal_wifi_ap_file_bench_start(ARK_AP_FILE_BENCH_PASSWORD, ssid, sizeof(ssid)) != ESP_OK)
+        goto done;
+    listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if(listener < 0) goto done;
+    int reuse = 1;
+    struct timeval timeout = {.tv_sec = 60};
+    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    if(setsockopt(listener, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) goto done;
+    struct sockaddr_in address = {
+        .sin_family = AF_INET, .sin_port = htons(5001), .sin_addr.s_addr = htonl(INADDR_ANY)
+    };
+    if(bind(listener, (struct sockaddr *)&address, sizeof(address)) != 0 || listen(listener, 1) != 0)
+        goto done;
+    sys_logi(WIFI_SERVICE_TAG, "AP file bench SSID=%s IP=192.168.4.1 channel=1 TCP=5001 bytes=%u; BLE off",
+             ssid, (unsigned)AP_FILE_BENCH_BYTES);
+    error = WIFI_DIRECT_ERR_CONNECT;
+    client = accept(listener, NULL, NULL);
+    if(client < 0 || wifi_direct_cancelled()) goto done;
+    source.socket = client;
+    timeout.tv_sec = 1;
+    if(setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) goto done;
+    timeout.tv_sec = 5;
+    if(setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0) goto done;
+    started = esp_timer_get_time();
+    error = WIFI_DIRECT_ERR_SAVE;
+    if(service_file_save_start_to(FILE_SAVE_WIFI, AP_FILE_BENCH_PATH, AP_FILE_BENCH_BYTES) != 0)
+        goto done;
+    saving = true;
+    wifi_direct_status(WIFI_DIRECT_DOWNLOADING, 0, 0, AP_FILE_BENCH_BYTES);
+    error = wifi_direct_receive(ap_file_bench_read, &source, "AP TCP", AP_FILE_BENCH_BYTES, &saved);
+    if(!error) {
+        commit_result = service_file_save_stop(FILE_SAVE_WIFI, 0);
+        if(commit_result != 0) error = WIFI_DIRECT_ERR_SAVE;
+        else saving = false;
+    }
+done:
+    if(saving) service_file_save_abort(FILE_SAVE_WIFI);
+    if(wifi_direct_cancelled() && commit_result != 0) error = WIFI_DIRECT_ERR_CANCELLED;
+    int64_t elapsed = started ? esp_timer_get_time() - started : 0;
+    sys_logi(WIFI_SERVICE_TAG, "AP file bench net=%" PRIu32 " saved=%" PRIu32
+             " elapsed_us=%" PRId64 " commit=%d error=%u",
+             source.network_bytes, saved, elapsed, commit_result, (unsigned)error);
+    if(client >= 0) {
+        char reply[128];
+        int length = snprintf(reply, sizeof(reply), "%s net=%" PRIu32 " saved=%" PRIu32
+                              " elapsed_us=%" PRId64 " commit=%d error=%u\n",
+                              error ? "ERR" : "OK", source.network_bytes, saved,
+                              elapsed, commit_result, (unsigned)error);
+        int sent = 0;
+        while(sent < length) {
+            int got = send(client, reply + sent, length - sent, 0);
+            if(got <= 0) break;
+            sent += got;
+        }
+        shutdown(client, SHUT_RDWR);
+        close(client);
+    }
+    if(listener >= 0) close(listener);
+    /* Keep g_direct_busy reserved until reboot so monitor cannot sleep in this gap. */
+    wifi_direct_status(error ? WIFI_DIRECT_ERROR : WIFI_DIRECT_DONE, error, saved, AP_FILE_BENCH_BYTES);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    sys_reboot();
+    vTaskDelete(NULL);
+}
+
+void service_wifi_ap_file_bench_start(void)
+{
+    if(xTaskCreate(ap_file_bench_task, "ap_file_bench", 6144, NULL, 5, NULL) != pdPASS)
+        sys_reboot();
+}
+#endif
+
+#ifdef ARK_TRANSFER_BENCH
+/* Receive the HTTP body into PSRAM and discard it without opening an SD file. */
+static uint8_t wifi_direct_sink(esp_http_client_handle_t client, uint32_t total,
+                                uint32_t *received_out)
+{
+    uint8_t *buffer = heap_caps_malloc(WIFI_DIRECT_SLOT_SIZE, MALLOC_CAP_SPIRAM);
+    if(!buffer) return WIFI_DIRECT_ERR_RESOURCE;
+    uint32_t received = 0, reads = 0;
+    int64_t read_us = 0, first_byte_us = -1;
+    int64_t started = esp_timer_get_time();
+    TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(120000);
+    uint8_t error = WIFI_DIRECT_ERR_NONE;
+    while(received < total && !error)
+    {
+        uint32_t want = total - received;
+        if(want > WIFI_DIRECT_SLOT_SIZE) want = WIFI_DIRECT_SLOT_SIZE;
+        uint32_t filled = 0;
+        while(filled < want)
+        {
+            if(wifi_direct_cancelled()) { error = WIFI_DIRECT_ERR_CANCELLED; break; }
+            if((int32_t)(xTaskGetTickCount() - deadline) >= 0)
+            { error = WIFI_DIRECT_ERR_HTTP; break; }
+            int64_t before = esp_timer_get_time();
+            int got = esp_http_client_read(client, (char *)buffer + filled, (int)(want - filled));
+            read_us += esp_timer_get_time() - before;
+            ++reads;
+            if(got == -ESP_ERR_HTTP_EAGAIN) {
+                sys_logw(WIFI_SERVICE_TAG, "HTTP read timeout; retrying within idle deadline");
+                continue;
+            }
+            if(got <= 0) { error = WIFI_DIRECT_ERR_HTTP; break; }
+            if(first_byte_us < 0) first_byte_us = esp_timer_get_time() - started;
+            filled += (uint32_t)got;
+            received += (uint32_t)got;
+            deadline = xTaskGetTickCount() + pdMS_TO_TICKS(120000);
+        }
+        if(filled) wifi_direct_status(WIFI_DIRECT_DOWNLOADING, 0, received, total);
+    }
+    if(wifi_direct_cancelled()) error = WIFI_DIRECT_ERR_CANCELLED;
+    if(!error && received != total) error = WIFI_DIRECT_ERR_HTTP;
+    *received_out = received;
+    sys_logi(WIFI_SERVICE_TAG, "BENCH HTTP sink only, no SD save: net=%" PRIu32
+             " reads=%" PRIu32 " first_byte_us=%" PRId64
+             " read_us=%" PRId64 " elapsed_us=%" PRId64 " result=%u",
+             received, reads, first_byte_us, read_us,
+             esp_timer_get_time() - started, (unsigned)error);
+    heap_caps_free(buffer);
+    return error;
+}
+#endif
+
 static uint8_t wifi_direct_download(const wifi_direct_args_t *args, uint32_t *received_out, uint32_t *total_out)
 {
     const char *url = args->url;
-    esp_http_client_config_t cfg = {.url = url, .timeout_ms = 5000};
+    esp_http_client_config_t cfg = {.url = url, .timeout_ms = 5000, .buffer_size = 16 * 1024};
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
     if(!client) return WIFI_DIRECT_ERR_RESOURCE;
 
@@ -571,6 +862,16 @@ static uint8_t wifi_direct_download(const wifi_direct_args_t *args, uint32_t *re
                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
 
+#ifdef ARK_TRANSFER_BENCH
+        sys_logw(WIFI_SERVICE_TAG, "BENCH diagnostic: HTTP sink then isolated SD test; upload is not saved");
+        error = wifi_direct_sink(client, total, &received);
+        *received_out = received;
+        if(error) break;
+        int sd_result = service_file_benchmark_sd(total);
+        sys_logi(WIFI_SERVICE_TAG, "BENCH SD result=%d; diagnostic upload is not saved", sd_result);
+        error = WIFI_DIRECT_ERR_CANCELLED;
+        break;
+#endif
         if(args->file)
         {
             if(service_file_save_start_to(FILE_SAVE_WIFI, args->path, total) != 0)
@@ -600,7 +901,7 @@ static uint8_t wifi_direct_download(const wifi_direct_args_t *args, uint32_t *re
             }
         }
         saving = true;
-        error = wifi_direct_receive(client, total, &received);
+        error = wifi_direct_receive(wifi_direct_http_read, client, "HTTP", total, &received);
         *received_out = received;
         if(error) break;
         int64_t commit_start = esp_timer_get_time();
@@ -667,6 +968,10 @@ static uint8_t wifi_direct_ota_download(const wifi_direct_args_t *args, uint32_t
                 break;
             uint32_t remaining = args->size - *received;
             int got = esp_http_client_read(client, (char *)chunk, remaining < 4096 ? remaining : 4096);
+            if(got == -ESP_ERR_HTTP_EAGAIN) {
+                sys_logw(WIFI_SERVICE_TAG, "HTTP read timeout; retrying within idle deadline");
+                continue;
+            }
             if(got <= 0)
                 break;
             if(service_ota_direct_write(chunk, got) != ESP_OK)
@@ -675,6 +980,7 @@ static uint8_t wifi_direct_ota_download(const wifi_direct_args_t *args, uint32_t
                 break;
             }
             *received += got;
+            deadline = xTaskGetTickCount() + pdMS_TO_TICKS(120000);
             wifi_direct_status(WIFI_DIRECT_DOWNLOADING, 0, *received, args->size);
         }
         if(wifi_direct_cancelled())
@@ -709,6 +1015,8 @@ static void wifi_direct_task(void *arg)
     bool have_config = false;
     wifi_ps_type_t old_ps = WIFI_PS_NONE;
     bool have_ps = false;
+    bool ap_touched = false;
+    bool ble_paused = false;
 
     /* A heartbeat may already be in its HTTP request. Let it finish before changing STA. */
     uint32_t wait_start = xTaskGetTickCount();
@@ -742,14 +1050,58 @@ static void wifi_direct_task(void *arg)
         if(ps_err != ESP_OK)
             sys_logw(WIFI_SERVICE_TAG, "Direct power-save boost unavailable: %s", esp_err_to_name(ps_err));
     }
-    if(!error && hal_wifi_connect(args->ssid, args->password) != ESP_OK)
-        error = WIFI_DIRECT_ERR_CONNECT;
-    if(!error && !wifi_direct_wait_connected(25000, true))
-        error = wifi_direct_cancelled() ? WIFI_DIRECT_ERR_CANCELLED : WIFI_DIRECT_ERR_CONNECT;
+    if(!error && args->softap)
+    {
+        ap_touched = true;
+        if(hal_wifi_softap_start(args->ssid, args->password) != ESP_OK)
+            error = WIFI_DIRECT_ERR_CONNECT;
+        else {
+            portENTER_CRITICAL(&g_direct_lock);
+            g_softap_accepting = true;
+            portEXIT_CRITICAL(&g_direct_lock);
+            sys_logi(WIFI_SERVICE_TAG, "SoftAP prepared: %s; waiting for phone server", args->ssid);
+            TickType_t started = xTaskGetTickCount();
+            bool submitted = false;
+            while(!error) {
+                portENTER_CRITICAL(&g_direct_lock);
+                submitted = g_softap_submitted;
+                bool cancelled = g_direct_cancel;
+                bool expired = !submitted && xTaskGetTickCount() - started >= pdMS_TO_TICKS(90000);
+                if(cancelled || expired) g_softap_accepting = false;
+                portEXIT_CRITICAL(&g_direct_lock);
+                if(cancelled) error = WIFI_DIRECT_ERR_CANCELLED;
+                else if(submitted) break;
+                else if(expired) error = WIFI_DIRECT_ERR_CONNECT;
+                else vTaskDelay(pdMS_TO_TICKS(50));
+            }
+            if(!error) {
+                /* Let the BLE start ACK finish before intentionally disconnecting. */
+                vTaskDelay(pdMS_TO_TICKS(350));
+                ble_paused = true;
+                if(!service_ble_wifi_pause()) error = WIFI_DIRECT_ERR_RESOURCE;
+            }
+        }
+    }
+    else if(!error)
+    {
+        if(hal_wifi_connect(args->ssid, args->password) != ESP_OK)
+            error = WIFI_DIRECT_ERR_CONNECT;
+        if(!error && !wifi_direct_wait_connected(25000, true))
+            error = wifi_direct_cancelled() ? WIFI_DIRECT_ERR_CANCELLED : WIFI_DIRECT_ERR_CONNECT;
+    }
+    int64_t transfer_start = esp_timer_get_time();
     if(!error) error = args->ota ? wifi_direct_ota_download(args, &received, &total) :
                                 wifi_direct_download(args, &received, &total);
+    if(args->softap) sys_logi(WIFI_SERVICE_TAG, "SoftAP transfer saved=%" PRIu32
+                             " total=%" PRIu32 " elapsed_us=%" PRId64 " error=%u",
+                             received, total, esp_timer_get_time() - transfer_start, error);
 
+    portENTER_CRITICAL(&g_direct_lock);
+    if(args->softap) g_softap_accepting = false;
+    portEXIT_CRITICAL(&g_direct_lock);
     wifi_direct_status(WIFI_DIRECT_RESTORING, error, received, total);
+    if(ap_touched && hal_wifi_initialized() && hal_wifi_softap_stop() != ESP_OK)
+        error = WIFI_DIRECT_ERR_RESTORE;
     if(have_ps && hal_wifi_set_power_save(old_ps) != ESP_OK)
         error = WIFI_DIRECT_ERR_RESTORE;
     if(wifi_touched && was_initialized)
@@ -767,6 +1119,14 @@ static void wifi_direct_task(void *arg)
         if(hal_wifi_set_ram_storage(false) != ESP_OK) error = WIFI_DIRECT_ERR_RESTORE;
     }
     else if(wifi_touched && hal_wifi_initialized()) hal_wifi_deinit();
+    if(ble_paused && !service_ble_wifi_resume()) {
+        error = WIFI_DIRECT_ERR_RESTORE;
+        /* Startup still restores ordinary BLE if a runtime stack restart fails. */
+        if(!service_ble_wifi_resume()) {
+            sys_loge(WIFI_SERVICE_TAG, "BLE restore failed; rebooting to recover connectivity");
+            sys_reboot();
+        }
+    }
 
     if(args->ota && !error)
     {
@@ -801,8 +1161,11 @@ static void wifi_direct_task(void *arg)
     sys_logi(WIFI_SERVICE_TAG, "Direct WiFi finished: state=%u bytes=%" PRIu32
              "/%" PRIu32 " error=%u", state, received, total, error);
     portENTER_CRITICAL(&g_direct_lock);
+    if(g_softap_args == args) g_softap_args = NULL;
     g_direct_busy = false;
     portEXIT_CRITICAL(&g_direct_lock);
+    /* Catch a local ON deferred in the last RESTORING tick. Resume is serialized. */
+    if(ble_paused) (void)service_ble_wifi_resume();
     free(args);
     vTaskDelete(NULL);
 }

@@ -1,0 +1,5 @@
+#ifndef ARK_SIM_SDKCONFIG_H
+#define ARK_SIM_SDKCONFIG_H
+#define CONFIG_ARK_HAS_NFC 0
+#define CONFIG_ARK_INPUT_BACK_KEY 0
+#endif

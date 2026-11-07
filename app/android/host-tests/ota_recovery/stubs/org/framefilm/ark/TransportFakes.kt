@@ -23,6 +23,8 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
     var isReady = false
         private set
     val isBusy: Boolean get() = pending != null
+    var isConnecting = false
+    var autoReady = true
     val negotiatedMtu = 200
     var pending: Pending? = null
         private set
@@ -35,15 +37,18 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
     fun scannedName(address: String): String? = devices.find { it.address == address }?.address
     fun connect(@Suppress("UNUSED_PARAMETER") device: BluetoothDevice) {
         connectCount++
-        forceReady()
+        isConnecting = true
+        if (autoReady) forceReady()
     }
     fun forceReady() {
         isReady = true
+        isConnecting = false
         listener.onState("ready")
         listener.onReady()
     }
     fun disconnectNow() {
         isReady = false
+        isConnecting = false
         val interrupted = pending
         pending = null
         interrupted?.callback?.invoke(Result.failure(IllegalStateException("BLE disconnected")))
@@ -51,7 +56,7 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
     }
     var closeCount = 0
         private set
-    fun close() { closeCount++; isReady = false }
+    fun close() { closeCount++; isReady = false; isConnecting = false }
     fun sendNoReply(@Suppress("UNUSED_PARAMETER") channel: Int,
                     @Suppress("UNUSED_PARAMETER") payload: ByteArray,
                     callback: (Result<Unit>) -> Unit) = callback(Result.success(Unit))
@@ -68,11 +73,11 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
         pending = null
         request.callback(Result.success(bytes))
     }
-    fun fail(channel: Int) {
+    fun fail(channel: Int, error: Exception = IllegalStateException("synthetic BLE failure")) {
         val request = requireNotNull(pending)
         check(request.channel == channel)
         pending = null
-        request.callback(Result.failure(IllegalStateException("synthetic BLE failure")))
+        request.callback(Result.failure(error))
     }
 }
 
@@ -115,8 +120,32 @@ class FilmHttpServer(
     @Suppress("UNUSED_PARAMETER") firmware: Boolean = false,
     @Suppress("UNUSED_PARAMETER") generic: Boolean = false,
 ) {
+    companion object { lateinit var current: FilmHttpServer }
+    init { current = this }
     val size = file.length()
     val url = "http://192.168.49.1/firmware.bin"
+    var writtenBytes = 0L
+    var transferFinished = false
+    var closed = false
     fun start() { }
-    fun close() { }
+    fun close() { closed = true }
+}
+
+class ArkApNetworkController(@Suppress("UNUSED_PARAMETER") context: Context, private val listener: Listener) {
+    interface Listener {
+        fun onReady(address: Inet4Address)
+        fun onLost()
+        fun onError(message: String)
+    }
+    companion object {
+        var supported = false
+        lateinit var current: ArkApNetworkController
+    }
+    init { current = this }
+    var closed = false
+    fun connect(@Suppress("UNUSED_PARAMETER") session: ArkApSession) {
+        listener.onReady(InetAddress.getByName("192.168.4.2") as Inet4Address)
+    }
+    fun loseNetwork() = listener.onLost()
+    fun close(): Boolean { closed = true; return true }
 }

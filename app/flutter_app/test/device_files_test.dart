@@ -34,6 +34,85 @@ class FilesGateway implements DeviceGateway {
 }
 
 void main() {
+  testWidgets(
+    'delete explains inactive app and only displays with explicit consent',
+    (tester) async {
+      final gateway = FilesGateway();
+      final controller = DeviceController(gateway);
+      addTearDown(() async {
+        controller.dispose();
+        await gateway.events.close();
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: DeviceFilesPage(controller: controller),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      DeviceSnapshot files({required bool canDelete}) =>
+          DeviceSnapshot.fromMap({
+            'connected': true,
+            'files': {
+              'loaded': true,
+              'directory': 'film',
+              'canDelete': canDelete,
+              'entries': [
+                {'id': 0, 'name': 'a.film'},
+              ],
+            },
+          });
+      controller.snapshot = files(canDelete: false);
+      controller.notifyListeners();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('device-file-0')));
+      await tester.pumpAndSettle();
+      final button = find.widgetWithText(OutlinedButton, '删除文件');
+      await tester.ensureVisible(button);
+      expect(tester.widget<OutlinedButton>(button).onPressed, isNotNull);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.text('请先打开对应 app'), findsOneWidget);
+      expect(gateway.calls, isNot(contains('displayDeviceFile')));
+      expect(gateway.calls, isNot(contains('deleteDeviceFile')));
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(gateway.calls, isNot(contains('displayDeviceFile')));
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('显示此文件'));
+      await tester.pumpAndSettle();
+      expect(
+        gateway.calls.where((c) => c == 'displayDeviceFile'),
+        hasLength(1),
+      );
+      expect(gateway.calls, isNot(contains('deleteDeviceFile')));
+
+      controller.snapshot = files(canDelete: true);
+      controller.notifyListeners();
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.text('删除设备文件？'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(gateway.calls, isNot(contains('deleteDeviceFile')));
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '删除'));
+      await tester.pumpAndSettle();
+      expect(gateway.calls.where((c) => c == 'deleteDeviceFile'), hasLength(1));
+
+      controller.busy = true;
+      controller.notifyListeners();
+      await tester.pump();
+      expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
+    },
+  );
+
   test(
     'auto files wait for initialization and commands, read once per session',
     () async {
@@ -157,14 +236,21 @@ void main() {
     controller.snapshot = filesIn('current');
     controller.notifyListeners();
     await tester.pump();
-    final displays = find.widgetWithText(TextButton, '显示');
+    final displays = find.widgetWithText(OutlinedButton, '选择显示');
     expect(displays, findsWidgets);
-    expect(tester.widget<TextButton>(displays.first).onPressed, isNull);
-    expect(find.text('显示文件前，请先选择图片目录或动画目录，确认文件所属 app。'), findsOneWidget);
+    expect(tester.widget<OutlinedButton>(displays.first).onPressed, isNotNull);
+    await tester.tap(find.byKey(const ValueKey('device-file-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(displays.first);
+    await tester.pumpAndSettle();
+    expect(find.text('请从连接页选择图片或动画目录后重试'), findsOneWidget);
     controller.snapshot = filesIn('film');
     controller.notifyListeners();
     await tester.pumpAndSettle();
-    expect(tester.widget<TextButton>(displays.first).onPressed, isNotNull);
+    expect(tester.widget<OutlinedButton>(displays.first).onPressed, isNotNull);
+    await tester.tap(find.byKey(const ValueKey('device-file-0')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<OutlinedButton>(displays.first).onPressed, isNotNull);
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -1,13 +1,18 @@
+import 'frame_abc512.dart';
+import 'source_image_fit.dart';
+import 'frame_palettes.dart';
+
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'frame_algorithms.dart';
 import 'frame_lut.dart';
+import 'image_resampling.dart';
+export 'image_resampling.dart' show ImageResampling;
 export 'frame_algorithms.dart' show FrameAlgorithm;
 
-enum FrameFormat { sixColor, monoFast, colorFast55, colorQual }
+enum FrameFormat { sixColor, monoFast, colorFast55, colorQual, abc512 }
 
 enum FrameFit { cover, contain }
 
@@ -15,6 +20,8 @@ class FrameOptions {
   const FrameOptions({
     this.format = FrameFormat.sixColor,
     this.fit = FrameFit.cover,
+    // Editors opt in; keep batch animation and other existing callers unchanged.
+    this.resampling = ImageResampling.legacyCanvas,
     this.quarterTurns = 0,
     this.zoom = 1,
     this.panX = 0,
@@ -22,15 +29,23 @@ class FrameOptions {
     this.brightness = 0,
     this.contrast = 1,
     this.saturation = 1,
+    this.rangeFit = 0,
+    this.warmChroma = 0,
+    this.i006WarmChroma = .25,
     this.dither = false,
     this.algorithm = FrameAlgorithm.atkinsonEnhanced,
     this.ditherStrength = 1,
+    this.continuousTone = true,
   });
   final FrameFormat format;
   final FrameFit fit;
+  final ImageResampling resampling;
   final int quarterTurns;
   final double zoom, panX, panY, brightness, contrast, saturation;
+  final double rangeFit, warmChroma;
+  final double i006WarmChroma;
   final bool dither;
+  final bool continuousTone;
   final FrameAlgorithm algorithm;
   final double ditherStrength;
 }
@@ -40,11 +55,15 @@ class FrameResult {
     required this.png,
     required this.film,
     required this.format,
+    this.cropPng,
     this.algorithm = FrameAlgorithm.atkinsonEnhanced,
     this.width = 480,
     this.height = 720,
   });
   final Uint8List png, film;
+
+  /// Tone-adjusted composition before quantization, from the same resampling.
+  final Uint8List? cropPng;
   final int width, height;
   final FrameFormat format;
   final FrameAlgorithm algorithm;
@@ -118,7 +137,7 @@ Future<Uint8List> quantizeFrameMono(
 /// Portrait logical coordinates map to physical (height - 1 - y, x).
 /// The small dimensions are also useful for testing orientation and bit order.
 Uint8List packFramePixels(
-  Uint8List indices, {
+  List<int> indices, {
   int width = 480,
   int height = 720,
   FrameFormat format = FrameFormat.sixColor,
@@ -130,10 +149,13 @@ Uint8List packFramePixels(
       indices.length != width * height) {
     throw ArgumentError('像素尺寸不匹配');
   }
+  final abc = format == FrameFormat.abc512;
   final mono = format == FrameFormat.monoFast;
   final indexed =
       format == FrameFormat.colorFast55 || format == FrameFormat.colorQual;
-  final bodySize = indexed
+  final bodySize = abc
+      ? indices.length * 2
+      : indexed
       ? indices.length
       : (indices.length + (mono ? 7 : 1)) ~/ (mono ? 8 : 2);
   final result = Uint8List(32 + bodySize);
@@ -141,20 +163,37 @@ Uint8List packFramePixels(
   header.setUint32(0, bodySize, Endian.little);
   header.setUint16(4, height, Endian.little);
   header.setUint16(6, width, Endian.little);
-  result[8] = indexed ? 0 : (mono ? 2 : 6);
-  result[9] = indexed
+  result[8] = abc
+      ? 0
+      : indexed
+      ? 0
+      : (mono ? 2 : 6);
+  result[9] = abc
+      ? 0x7f
+      : indexed
       ? (format == FrameFormat.colorFast55 ? 3 : 2)
       : (mono ? 1 : 0);
   header.setUint16(10, indexed ? 0 : 1, Endian.little);
-  if (!mono && !indexed) result.setRange(16, 22, [0, 255, 252, 224, 3, 28]);
+  if (abc) result.setRange(12, 16, [65, 66, 67, 57]);
+  if (!abc && !mono && !indexed) {
+    result.setRange(16, 22, [0, 255, 252, 224, 3, 28]);
+  }
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       final value = indices[y * width + x];
-      if (value >= (indexed ? 64 : (mono ? 2 : 6))) {
+      if (value < 0 ||
+          value >=
+              (abc
+                  ? 512
+                  : indexed
+                  ? 64
+                  : (mono ? 2 : 6))) {
         throw ArgumentError('无效颜色索引');
       }
       final physical = x * height + height - 1 - y;
-      if (indexed) {
+      if (abc) {
+        header.setUint16(32 + physical * 2, value, Endian.little);
+      } else if (indexed) {
         result[32 + physical] = value;
       } else if (mono) {
         if (value == 0) result[32 + physical ~/ 8] |= 128 >> (physical % 8);
@@ -183,60 +222,36 @@ Future<ui.Image> _render(
     options.contrast,
     options.saturation,
     options.ditherStrength,
+    options.rangeFit,
+    options.warmChroma,
+    options.i006WarmChroma,
   ];
   if (values.any((v) => !v.isFinite) || options.zoom <= 0) {
     throw ArgumentError('无效图片调整参数');
   }
-  // Use the shared API: direct ImageDescriptor dimensions are unavailable on Web.
-  ui.Codec? codec;
-  ui.Image? image;
-  final recorder = ui.PictureRecorder();
-  ui.Picture? picture;
-  try {
-    codec = await ui.instantiateImageCodecWithSize(
-      await ui.ImmutableBuffer.fromUint8List(source),
-      getTargetSize: (width, height) {
-        final ratio = math.min(1.0, 2048 / math.max(width, height));
-        return ui.TargetImageSize(
-          width: math.max(1, (width * ratio).round()),
-          height: math.max(1, (height * ratio).round()),
-        );
-      },
-    );
-    image = (await codec.getNextFrame()).image;
-    _check(cancelled);
-    final canvas = ui.Canvas(recorder);
-    canvas.drawColor(const ui.Color(0xffffffff), ui.BlendMode.src);
-    final turns = options.quarterTurns % 4;
-    final sw = turns.isOdd ? image.height : image.width;
-    final sh = turns.isOdd ? image.width : image.height;
-    final scale =
-        (options.fit == FrameFit.cover
-            ? math.max(480 / sw, 720 / sh)
-            : math.min(480 / sw, 720 / sh)) *
-        options.zoom;
-    canvas.translate(240 + options.panX, 360 + options.panY);
-    canvas.rotate(turns * math.pi / 2);
-    canvas.scale(scale);
-    canvas.drawImage(
-      image,
-      ui.Offset(-image.width / 2, -image.height / 2),
-      ui.Paint()..filterQuality = ui.FilterQuality.medium,
-    );
-    picture = recorder.endRecording();
-    return await picture.toImage(480, 720);
-  } finally {
-    picture?.dispose();
-    image?.dispose();
-    codec?.dispose();
-  }
+  return renderImageComposition(
+    source,
+    width: 480,
+    height: 720,
+    cover: options.fit == FrameFit.cover,
+    quarterTurns: options.quarterTurns,
+    zoom: options.zoom,
+    panX: options.panX,
+    panY: options.panY,
+    resampling: options.resampling,
+    checkCancelled: () => _check(cancelled),
+  );
 }
 
 Future<Uint8List> _png(ui.Image image) async =>
     (await image.toByteData(format: ui.ImageByteFormat.png))!.buffer
         .asUint8List();
 
-void adjustFrameRgba(Uint8List rgba, FrameOptions options) {
+void adjustFrameRgba(
+  Uint8List rgba,
+  FrameOptions options, {
+  bool applySourceFit = true,
+}) {
   if (options.brightness != 0) {
     for (var i = 0; i < rgba.length; i += 4) {
       for (var c = 0; c < 3; c++) {
@@ -250,6 +265,73 @@ void adjustFrameRgba(Uint8List rgba, FrameOptions options) {
     rgba,
     contrast: options.contrast,
     saturation: options.saturation,
+  );
+  if (applySourceFit) adjustFrameSourceFit(rgba, options);
+}
+
+bool sourceFitIsSz(FrameOptions o) =>
+    o.dither &&
+    (o.algorithm == FrameAlgorithm.szEnhanced ||
+        o.algorithm == FrameAlgorithm.atkinsonSzCalib);
+SourceFitProfile? sourceFitProfile(FrameOptions o) {
+  if (o.format == FrameFormat.monoFast ||
+      o.algorithm == FrameAlgorithm.abc512I006) {
+    return null;
+  }
+  if (o.algorithm == FrameAlgorithm.colorQualMeasured) {
+    return SourceFitProfile.measured(
+      colorQualMeasuredPalette[3],
+      colorQualMeasuredPalette[15],
+    );
+  }
+  if (o.algorithm == FrameAlgorithm.colorQualCalibrated) {
+    return SourceFitProfile.measured(
+      colorQualCalibratedPalette[3],
+      colorQualCalibratedPalette[15],
+    );
+  }
+  if (o.algorithm == FrameAlgorithm.colorQual ||
+      o.format == FrameFormat.colorQual) {
+    return legacyQualSourceProfile;
+  }
+  if (o.algorithm == FrameAlgorithm.colorFast55 ||
+      o.format == FrameFormat.colorFast55) {
+    return fastSourceProfile;
+  }
+  return nativeSixSourceProfile;
+}
+
+void adjustFrameSourceFit(Uint8List rgba, FrameOptions options) {
+  if (options.format == FrameFormat.monoFast ||
+      options.algorithm == FrameAlgorithm.abc512I006) {
+    return;
+  }
+  fitSourceRgba(
+    rgba,
+    rangeFit: sourceFitIsSz(options) ? 0 : options.rangeFit,
+    warmChroma: options.warmChroma,
+    profile: sourceFitProfile(options),
+  );
+}
+
+/// Shared pre-quantization adjustment for exact composition preview and export.
+void adjustFrameCompositionRgba(
+  Uint8List rgba,
+  FrameOptions options, {
+  SourceFitProfile? profile,
+}) {
+  if (!(options.dither && options.algorithm == FrameAlgorithm.szEnhanced)) {
+    adjustFrameRgba(rgba, options, applySourceFit: false);
+  }
+  if (options.format == FrameFormat.monoFast ||
+      options.algorithm == FrameAlgorithm.abc512I006) {
+    return;
+  }
+  fitSourceRgba(
+    rgba,
+    rangeFit: sourceFitIsSz(options) ? 0 : options.rangeFit,
+    warmChroma: options.warmChroma,
+    profile: profile ?? sourceFitProfile(options),
   );
 }
 
@@ -294,9 +376,14 @@ Future<Uint8List> prepareFrame(
 Future<FrameResult> convertFrame(
   Uint8List source,
   FrameOptions options, {
+  bool includeCropPreview = false,
   void Function(double)? onProgress,
   bool Function()? isCancelled,
 }) async {
+  if (options.format == FrameFormat.abc512 &&
+      options.algorithm != FrameAlgorithm.abc512I006) {
+    throw ArgumentError('ABC9 仅支持 I006 实验算法');
+  }
   final image = await _render(source, options, isCancelled);
   late Uint8List rgba;
   try {
@@ -305,11 +392,24 @@ Future<FrameResult> convertFrame(
   } finally {
     image.dispose();
   }
-  if (!(options.dither && options.algorithm == FrameAlgorithm.szEnhanced)) {
-    adjustFrameRgba(rgba, options);
-  }
+  adjustFrameCompositionRgba(rgba, options);
   _check(isCancelled);
-  final format = options.format == FrameFormat.monoFast
+  Uint8List? cropPng;
+  if (includeCropPreview) {
+    final cropRgba = Uint8List.fromList(rgba);
+    if (options.dither &&
+        options.algorithm == FrameAlgorithm.szEnhanced &&
+        options.warmChroma == 0) {
+      adjustFrameRgba(cropRgba, options, applySourceFit: false);
+    }
+    cropPng = await _encodeRgba(cropRgba);
+    _check(isCancelled);
+  }
+  final format =
+      options.algorithm == FrameAlgorithm.abc512I006 &&
+          options.format != FrameFormat.monoFast
+      ? FrameFormat.abc512
+      : options.format == FrameFormat.monoFast
       ? FrameFormat.monoFast
       : options.algorithm == FrameAlgorithm.colorFast55
       ? FrameFormat.colorFast55
@@ -325,7 +425,7 @@ Future<FrameResult> convertFrame(
             options.algorithm != FrameAlgorithm.colorQualCalibrated
       ? FrameAlgorithm.colorQual
       : options.algorithm;
-  Uint8List indices;
+  List<int> indices;
   if (options.format == FrameFormat.monoFast) {
     // MonoFast is a Flutter extension; retain its existing luminance/FS path.
     indices = await quantizeFrameMono(
@@ -333,6 +433,18 @@ Future<FrameResult> convertFrame(
       options.dither,
       isCancelled,
       onProgress,
+    );
+  } else if (algorithm == FrameAlgorithm.abc512I006) {
+    indices = await quantizeAbc512(
+      rgba,
+      480,
+      720,
+      continuousTone: options.continuousTone,
+      warmChroma: options.i006WarmChroma,
+      rangeFit: options.rangeFit,
+      ditherStrength: options.ditherStrength,
+      checkCancelled: () => _check(isCancelled),
+      onProgress: onProgress,
     );
   } else {
     final usesAe =
@@ -359,6 +471,7 @@ Future<FrameResult> convertFrame(
   onProgress?.call(1);
   return FrameResult(
     png: png,
+    cropPng: cropPng,
     film: film,
     format: format,
     algorithm: algorithm,

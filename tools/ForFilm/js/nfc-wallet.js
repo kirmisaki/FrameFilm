@@ -83,7 +83,19 @@
 
     function run(label, fn) {
         if (!window.ArkDevice) return Promise.reject(new Error('ArkDevice 未加载'));
-        return window.ArkDevice.run(label, fn);
+        return window.ArkDevice.run(label, async function (ctx) {
+            var caps = await ctx.request(0x59, new Uint8Array(), 2500).catch(function () { return null; });
+            if (caps && caps.length === 5 && caps[0] === 1) {
+                if ((caps[4] & 0x80) !== 0) return fn(ctx);
+                // Old NFC and old SoftAP both used bit4. Only probe the wallet's read command.
+                if ((caps[4] & 0x50) === 0x10) {
+                    var list = await ctx.request(CH_WALLET_CTRL, new Uint8Array([0]), 2500)
+                        .catch(function () { return null; });
+                    if (list && list.length >= 5 && list[0] === 0) return fn(ctx);
+                }
+            }
+            throw new Error('此固件未确认支持 NFC 卡包（需 N16R8）');
+        });
     }
 
     async function walletCtrl(ctx, payload) {

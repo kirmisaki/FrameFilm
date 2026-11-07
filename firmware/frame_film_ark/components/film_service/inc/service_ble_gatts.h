@@ -144,7 +144,12 @@ enum
  */
 extern void service_ble_gatt_server_init(void);
 extern void service_ble_gatt_server_uninit(void);
-extern void service_ble_gatt_server_reinit(void);
+extern int service_ble_gatt_wifi_pause(void);
+extern int service_ble_gatt_wifi_resume(void);
+#ifdef ARK_AP_FILE_BENCH
+extern int service_ble_gatt_ap_file_bench_deinit(void);
+#endif
+extern int service_ble_gatt_server_reinit(void);
 extern void service_ble_gatts_dev_disconnect(void);
 
 extern void service_ble_send_notify_data(uint8_t ch, uint8_t *buf, uint16_t len);

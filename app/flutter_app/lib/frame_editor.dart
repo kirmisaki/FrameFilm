@@ -51,7 +51,10 @@ class _EditorGestures extends StatelessWidget {
 
 class FrameEditorController {
   Uint8List? source, crop;
-  FrameOptions options = const FrameOptions(fit: FrameFit.contain);
+  FrameOptions options = const FrameOptions(
+    fit: FrameFit.contain,
+    resampling: ImageResampling.highQuality,
+  );
   FrameResult? result;
   final fileName = TextEditingController(text: 'output.film');
   int revision = 0, resultRevision = -1;
@@ -60,7 +63,10 @@ class FrameEditorController {
     source = null;
     crop = null;
     result = null;
-    options = const FrameOptions(fit: FrameFit.contain);
+    options = const FrameOptions(
+      fit: FrameFit.contain,
+      resampling: ImageResampling.highQuality,
+    );
     fileName.text = 'output.film';
     revision++;
     resultRevision = -1;
@@ -87,6 +93,7 @@ const frameAlgorithmLabels = {
   FrameAlgorithm.atkinsonSzCalib: 'Atkinson SZ 校色',
   FrameAlgorithm.colorQualMeasured: '实测校色 · 原值',
   FrameAlgorithm.colorQualCalibrated: '实测校色 · 校正 2.5%',
+  FrameAlgorithm.abc512I006: '512色预览 · I006',
 };
 
 class FrameEditor extends StatefulWidget {
@@ -98,11 +105,13 @@ class FrameEditor extends StatefulWidget {
     this.pickImage,
     this.pickPhoto,
     this.canSend = false,
+    this.abc9PreviewSupported = false,
     this.onSendFilm,
     this.onCancelSend,
   });
   final FrameEditorController controller;
   final bool canImportFilm, canSend;
+  final bool abc9PreviewSupported;
   final Future<void> Function(Uint8List, String) onImportFilm;
   final Future<void> Function(Uint8List, String)? onSendFilm;
   final Future<void> Function()? onCancelSend;
@@ -193,20 +202,20 @@ class _FrameEditorState extends State<FrameEditor> {
         format: previous.format,
         contrast: previous.contrast,
         saturation: previous.saturation,
+        rangeFit: previous.rangeFit,
+        warmChroma: previous.warmChroma,
+        i006WarmChroma: previous.i006WarmChroma,
         algorithm: previous.algorithm,
         dither: previous.dither,
         ditherStrength: previous.ditherStrength,
-      );
-      final crop = await prepareFrame(
-        bytes,
-        options,
-        isCancelled: () => !mounted || generation != _generation,
+        resampling: previous.resampling,
+        continuousTone: previous.continuousTone,
       );
       if (!mounted || generation != _generation) return;
       setState(() {
         c.source = bytes;
         c.options = options;
-        c.crop = crop;
+        c.crop = null;
         c.revision++;
         c.fileName.text = '${name.isEmpty ? 'output' : name}.film';
         _working = false;
@@ -234,7 +243,12 @@ class _FrameEditorState extends State<FrameEditor> {
     double? brightness,
     double? contrast,
     double? saturation,
+    double? rangeFit,
+    double? warmChroma,
+    double? i006WarmChroma,
     bool? dither,
+    ImageResampling? resampling,
+    bool? continuousTone,
   }) {
     final o = c.options;
     setState(() {
@@ -248,21 +262,25 @@ class _FrameEditorState extends State<FrameEditor> {
         brightness: brightness ?? o.brightness,
         contrast: contrast ?? o.contrast,
         saturation: saturation ?? o.saturation,
+        rangeFit: rangeFit ?? o.rangeFit,
+        warmChroma: warmChroma ?? o.warmChroma,
+        i006WarmChroma: i006WarmChroma ?? o.i006WarmChroma,
         dither: dither ?? o.dither,
         algorithm: format != null
             ? FrameAlgorithm.atkinsonEnhanced
             : (algorithm ?? o.algorithm),
         ditherStrength: strength ?? o.ditherStrength,
+        resampling: resampling ?? o.resampling,
+        continuousTone: continuousTone ?? o.continuousTone,
       );
       c.revision++;
 
       _status = c.source == null ? '参数已更新，请上传图像以生成预览' : '参数已更新，正在更新预览';
     });
     _previewRequested = c.source != null;
-    if (c.source != null &&
-        !_converting &&
-        !(_previewTimer?.isActive ?? false)) {
-      _previewTimer = Timer(const Duration(milliseconds: 80), _generate);
+    _previewTimer?.cancel();
+    if (c.source != null) {
+      _previewTimer = Timer(const Duration(milliseconds: 150), _generate);
     }
   }
 
@@ -281,12 +299,13 @@ class _FrameEditorState extends State<FrameEditor> {
       _progress = 0;
       _status = '正在更新预览';
     });
-    bool cancelled() => !mounted || generation != _generation;
+    bool cancelled() =>
+        !mounted || generation != _generation || revision != c.revision;
     try {
-      final crop = await prepareFrame(source, options, isCancelled: cancelled);
       final result = await convertFrame(
         source,
         options,
+        includeCropPreview: true,
         isCancelled: cancelled,
         onProgress: (v) {
           if (!cancelled()) setState(() => _progress = v);
@@ -294,7 +313,7 @@ class _FrameEditorState extends State<FrameEditor> {
       );
       if (cancelled() || revision != c.revision) return;
       setState(() {
-        c.crop = crop;
+        c.crop = result.cropPng;
         c.result = result;
         c.resultRevision = revision;
         _working = false;
@@ -311,9 +330,10 @@ class _FrameEditorState extends State<FrameEditor> {
       _converting = false;
       if (mounted &&
           c.source != null &&
+          !(_previewTimer?.isActive ?? false) &&
           (_previewRequested ||
               (generation == _generation && revision != c.revision))) {
-        _previewTimer = Timer(const Duration(milliseconds: 80), _generate);
+        _previewTimer = Timer(const Duration(milliseconds: 150), _generate);
       }
     }
   }
@@ -329,7 +349,12 @@ class _FrameEditorState extends State<FrameEditor> {
       _exporting = !_sending;
     });
     try {
-      if (action == 'download') {
+      if (action == 'png') {
+        await io.downloadFrame(
+          c.result!.png,
+          name.replaceFirst(RegExp(r'\.film$', caseSensitive: false), '.png'),
+        );
+      } else if (action == 'download') {
         await io.downloadFrame(c.result!.film, name);
       } else if (action == 'send') {
         await widget.onSendFilm!(c.result!.film, name);
@@ -340,7 +365,7 @@ class _FrameEditorState extends State<FrameEditor> {
         setState(
           () => _status = action == 'send'
               ? '发送完成'
-              : action == 'download'
+              : action == 'download' || action == 'png'
               ? '已下载'
               : '已导入直传区',
         );
@@ -376,12 +401,14 @@ class _FrameEditorState extends State<FrameEditor> {
     double value,
     double min,
     double max,
-    ValueChanged<double> callback,
-  ) => Column(
+    ValueChanged<double> callback, {
+    int fractionDigits = 1,
+  }) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text('$title  ${value.toStringAsFixed(1)}'),
+      Text('$title  ${value.toStringAsFixed(fractionDigits)}'),
       Slider(
+        key: ValueKey('film-slider-$title'),
         value: value.clamp(min, max),
         min: min,
         max: max,
@@ -393,13 +420,16 @@ class _FrameEditorState extends State<FrameEditor> {
   @override
   Widget build(BuildContext context) {
     final o = c.options;
+    final canStage =
+        o.algorithm != FrameAlgorithm.abc512I006 || widget.abc9PreviewSupported;
     final devicePreview =
         o.dither ||
         o.format != FrameFormat.sixColor ||
         o.algorithm == FrameAlgorithm.colorFast55 ||
         o.algorithm == FrameAlgorithm.colorQual ||
         o.algorithm == FrameAlgorithm.colorQualMeasured ||
-        o.algorithm == FrameAlgorithm.colorQualCalibrated;
+        o.algorithm == FrameAlgorithm.colorQualCalibrated ||
+        o.algorithm == FrameAlgorithm.abc512I006;
     final png = devicePreview ? c.result?.png : c.crop;
     final sections = <Widget>[
       _section('上传与算法', [
@@ -438,19 +468,67 @@ class _FrameEditorState extends State<FrameEditor> {
           FrameAlgorithm.bayer,
           FrameAlgorithm.colorQualMeasured,
           FrameAlgorithm.colorQualCalibrated,
+          FrameAlgorithm.abc512I006,
         ].contains(o.algorithm))
           _slider('抖动强度', o.ditherStrength, 0, 5, (v) => _change(strength: v)),
+        if (o.algorithm == FrameAlgorithm.abc512I006)
+          SwitchListTile(
+            key: const ValueKey('film-continuous-tone'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('连续色调'),
+            subtitle: const Text('默认开启，关闭可对照原 I006 配方。'),
+            value: o.continuousTone,
+            onChanged: locked ? null : (v) => _change(continuousTone: v),
+          ),
         _slider('对比度', o.contrast, .5, 2, (v) => _change(contrast: v)),
         _slider('饱和度', o.saturation, 0, 3, (v) => _change(saturation: v)),
+        if (o.format != FrameFormat.monoFast) ...[
+          if (o.algorithm == FrameAlgorithm.abc512I006 ||
+              (!sourceFitIsSz(o) && sourceFitProfile(o) != null))
+            _slider(
+              '明暗范围拟合',
+              o.rangeFit,
+              0,
+              1,
+              (v) => _change(rangeFit: v),
+              fractionDigits: 2,
+            ),
+          _slider(
+            '暖色收缩',
+            o.algorithm == FrameAlgorithm.abc512I006
+                ? o.i006WarmChroma
+                : o.warmChroma,
+            0,
+            1,
+            (v) => o.algorithm == FrameAlgorithm.abc512I006
+                ? _change(i006WarmChroma: v)
+                : _change(warmChroma: v),
+            fractionDigits: 2,
+          ),
+          Text(
+            o.algorithm == FrameAlgorithm.abc512I006
+                ? '暖色收缩默认 0.25；抖动强度 0 关闭扩散。'
+                : '暖色偏黄时可选，按本屏显示调整。',
+          ),
+        ],
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
             OutlinedButton(
-              onPressed: _sending || _exporting
+              onPressed:
+                  _sending ||
+                      _exporting ||
+                      o.algorithm == FrameAlgorithm.abc512I006
                   ? null
                   : () => _change(dither: !o.dither),
-              child: Text(o.dither ? '禁用抖动' : '启用抖动'),
+              child: Text(
+                o.algorithm == FrameAlgorithm.abc512I006
+                    ? '蛇形 FS'
+                    : o.dither
+                    ? '禁用抖动'
+                    : '启用抖动',
+              ),
             ),
             OutlinedButton(
               onPressed: locked || c.source == null
@@ -490,6 +568,28 @@ class _FrameEditorState extends State<FrameEditor> {
           title: const Text('扩展选项'),
           tilePadding: EdgeInsets.zero,
           children: [
+            DropdownButtonFormField<ImageResampling>(
+              key: const ValueKey('film-resampling'),
+              initialValue: o.resampling,
+              decoration: const InputDecoration(labelText: '缩图方式'),
+              isExpanded: true,
+              items: const [
+                DropdownMenuItem(
+                  value: ImageResampling.highQuality,
+                  child: Text('高质量 · 抗锯齿缩图'),
+                ),
+                DropdownMenuItem(
+                  value: ImageResampling.legacyCanvas,
+                  child: Text('标准 · 原有缩图'),
+                ),
+              ],
+              onChanged: locked
+                  ? null
+                  : (v) {
+                      if (v != null) _change(resampling: v);
+                    },
+            ),
+            const SizedBox(height: 12),
             SegmentedButton<FrameFormat>(
               segments: const [
                 ButtonSegment(value: FrameFormat.sixColor, label: Text('六色')),
@@ -515,6 +615,8 @@ class _FrameEditorState extends State<FrameEditor> {
             _slider('亮度', o.brightness, -1, 1, (v) => _change(brightness: v)),
           ],
         ),
+        if (o.algorithm == FrameAlgorithm.abc512I006)
+          const Text('512 色预览版，采用 I006 实验配色。屏幕实际颜色可能与预览不同；设备显示需要配套的预览固件。'),
         if (o.algorithm == FrameAlgorithm.szEnhanced)
           const Text('SZ 增强使用原图色彩进行校正，启用抖动时不叠加亮度、对比度及饱和度。'),
         if (o.algorithm == FrameAlgorithm.colorFast55 ||
@@ -528,6 +630,7 @@ class _FrameEditorState extends State<FrameEditor> {
       ]),
       const SizedBox(height: 16),
       _section('预览', [
+        if (!canStage) const Text('当前设备固件尚未确认支持 512 色预览；可先在本地预览和导出。'),
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
@@ -635,6 +738,9 @@ class _FrameEditorState extends State<FrameEditor> {
         Text(
           !c.hasCurrentResult && c.source != null
               ? '实时构图预览 · 正在转换设备色彩'
+              : o.algorithm == FrameAlgorithm.abc512I006 &&
+                    o.format != FrameFormat.monoFast
+              ? 'I006 相机相对色彩模拟'
               : devicePreview
               ? '设备色彩预览'
               : '原色构图预览 · 下载和发送会转换为设备色彩',
@@ -664,20 +770,34 @@ class _FrameEditorState extends State<FrameEditor> {
                 onPressed: !locked && c.hasCurrentResult
                     ? () => _export('download')
                     : null,
-                child: const Text('下载'),
+                child: Text(
+                  o.algorithm == FrameAlgorithm.abc512I006 ? '导出实验 film' : '下载',
+                ),
+              ),
+            if (io.canDownloadFrame)
+              OutlinedButton(
+                onPressed: !locked && c.hasCurrentResult
+                    ? () => _export('png')
+                    : null,
+                child: const Text('导出预览 PNG'),
               ),
             FilledButton(
               onPressed:
                   !locked &&
                       c.hasCurrentResult &&
                       widget.canSend &&
+                      canStage &&
                       widget.onSendFilm != null
                   ? () => _export('send')
                   : null,
               child: const Text('发送到设备'),
             ),
             OutlinedButton(
-              onPressed: !locked && c.hasCurrentResult && widget.canImportFilm
+              onPressed:
+                  !locked &&
+                      c.hasCurrentResult &&
+                      widget.canImportFilm &&
+                      canStage
                   ? () => _export('import')
                   : null,
               child: const Text('导入直传区'),

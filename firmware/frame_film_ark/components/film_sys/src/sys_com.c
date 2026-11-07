@@ -73,6 +73,6 @@ void sys_reboot(void)
 {
     sys_logw(COMMON_TAG, "sys restart!");
     esp_restart();
-    vTaskDelay(100);
+    vTaskDelay(pdMS_TO_TICKS(1000));
     esp_restart();
 }

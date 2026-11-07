@@ -3,6 +3,16 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(PROJECT_VER "3.2.5")
+option(ARK_AP_FILE_BENCH "Temporary SoftAP TCP to SD fixture benchmark" OFF)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(frame_film_ark)
+
+# Temporary throughput candidate: limit -O2 to the HTTP/TCP data path.
+option(ARK_NETWORK_PERF "Build network throughput candidate" OFF)
+if(ARK_NETWORK_PERF)
+    foreach(component lwip)
+        idf_component_get_property(component_target ${component} COMPONENT_LIB)
+        target_compile_options(${component_target} PRIVATE -O2)
+    endforeach()
+endif()

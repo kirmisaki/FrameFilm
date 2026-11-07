@@ -1,3 +1,7 @@
+import 'hardware_identity.dart';
+export 'hardware_identity.dart';
+import 'frame_abc9.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -69,6 +73,11 @@ class ImportedFirmware {
     required this.project,
     required this.elfSha256,
     required this.fileSha256,
+    this.targetId,
+    this.chipId,
+    this.flashBytes,
+    this.psramBytes,
+    this.psramBus,
   });
   factory ImportedFirmware.fromMap(Map data) => ImportedFirmware(
     name: data['name'] as String? ?? 'firmware.bin',
@@ -77,6 +86,11 @@ class ImportedFirmware {
     project: data['project'] as String? ?? '',
     elfSha256: data['elfSha256'] as String? ?? '',
     fileSha256: data['fileSha256'] as String? ?? '',
+    targetId: data['targetId'] as String?,
+    chipId: data['chipId'] as int?,
+    flashBytes: data['flashBytes'] as int?,
+    psramBytes: data['psramBytes'] as int?,
+    psramBus: data['psramBus'] as String?,
   );
   final String name;
   final int size;
@@ -84,6 +98,18 @@ class ImportedFirmware {
   final String project;
   final String elfSha256;
   final String fileSha256;
+  final String? targetId, psramBus;
+  final int? chipId, flashBytes, psramBytes;
+  bool matchesHardware(HardwareIdentity? hardware) =>
+      hardware?.trusted == true &&
+      project == 'frame_film_ark' &&
+      hardware!.matchesPackage({
+        'targetId': targetId,
+        'chipId': chipId,
+        'flashBytes': flashBytes,
+        'psramBytes': psramBytes,
+        'psramBus': psramBus,
+      });
 }
 
 class FilmTransfer {
@@ -170,6 +196,10 @@ class DeviceSnapshot {
   const DeviceSnapshot({
     this.files = const {},
     this.connected = false,
+    this.abc9PreviewSupported = false,
+    this.hardware,
+    this.deviceId,
+    this.hardwareIdentitySupported = false,
     this.hasConnectionState = true,
     this.message = '尚未连接设备',
     this.devices = const [],
@@ -205,6 +235,12 @@ class DeviceSnapshot {
           ? Map<String, Object?>.from(data['files'] as Map)
           : const {},
       connected: data['connected'] == true,
+      abc9PreviewSupported: data['abc9PreviewSupported'] == true,
+      hardware: data['hardware'] is Map
+          ? HardwareIdentity.fromMap(data['hardware'] as Map)
+          : null,
+      deviceId: data['deviceId'] as String?,
+      hardwareIdentitySupported: data['hardwareIdentitySupported'] == true,
       hasConnectionState: data.containsKey('connected'),
       message: data['message'] as String? ?? '尚未连接设备',
       devices: (data['devices'] as List? ?? const []).map((value) {
@@ -253,6 +289,10 @@ class DeviceSnapshot {
 
   final Map<String, Object?> files;
   final bool connected;
+  final bool abc9PreviewSupported;
+  final HardwareIdentity? hardware;
+  final String? deviceId;
+  final bool hardwareIdentitySupported;
   final bool hasConnectionState;
   final String message;
   final List<DeviceInfo> devices;
@@ -297,6 +337,23 @@ class DeviceSnapshot {
           ? files
           : previous.files,
       connected: keepConnected,
+      deviceId: !keepConnected ? null : deviceId ?? previous.deviceId,
+      hardwareIdentitySupported:
+          keepConnected &&
+          (presentKeys.contains('hardwareIdentitySupported')
+              ? hardwareIdentitySupported
+              : hardwareIdentitySupported ||
+                    previous.hardwareIdentitySupported),
+      hardware: !keepConnected
+          ? null
+          : presentKeys.contains('hardware')
+          ? hardware
+          : hardware ?? previous.hardware,
+      abc9PreviewSupported:
+          keepConnected &&
+          (presentKeys.contains('abc9PreviewSupported')
+              ? abc9PreviewSupported
+              : abc9PreviewSupported || previous.abc9PreviewSupported),
       advertisedName: !keepConnected
           ? null
           : presentKeys.contains('advertisedName')
@@ -404,14 +461,21 @@ class DeviceController extends ChangeNotifier {
         (value) {
           if (_disposed) return;
           final wasConnected = snapshot.connected;
+          final previousDeviceId = snapshot.deviceId;
           final wasTransferring = snapshot.transfer.active;
           snapshot = value.retainingTransfer(snapshot);
-          if (snapshot.connected != wasConnected) {
+          if (snapshot.connected != wasConnected ||
+              snapshot.deviceId != previousDeviceId) {
             _connectionSession++;
+            _legacyHardwareTarget = null;
             automaticFilesPending = snapshot.connected;
             automaticFilesLoading = false;
             automaticFilesFailed = false;
             _automaticFilesInitialized = false;
+          }
+          if (snapshot.hardware?.trusted == true ||
+              snapshot.hardwareIdentitySupported) {
+            _legacyHardwareTarget = null;
           }
           if (wasTransferring &&
               !snapshot.transfer.active &&
@@ -443,6 +507,28 @@ class DeviceController extends ChangeNotifier {
   bool busy = false;
   bool _disposed = false;
   int _connectionSession = 0;
+  int get connectionSession => _connectionSession;
+  HardwareIdentity? _legacyHardwareTarget;
+  HardwareIdentity? get legacyHardwareTarget => _legacyHardwareTarget;
+  bool get canSelectLegacyHardware =>
+      snapshot.connected &&
+      snapshot.hardware?.trusted != true &&
+      !snapshot.hardwareIdentitySupported;
+  HardwareIdentity? get firmwareTarget => snapshot.hardware?.trusted == true
+      ? snapshot.hardware
+      : canSelectLegacyHardware
+      ? _legacyHardwareTarget
+      : null;
+
+  void selectLegacyHardware(String targetId) {
+    if (!canSelectLegacyHardware || !canEditSettings) return;
+    final target = HardwareIdentity.target(targetId);
+    if (target == null) return;
+    _legacyHardwareTarget = target;
+    errorMessage = null;
+    notifyListeners();
+  }
+
   bool _automaticFilesScheduled = false;
   bool _automaticFilesInitialized = false;
   bool automaticFilesPending = false;
@@ -497,6 +583,15 @@ class DeviceController extends ChangeNotifier {
   Future<void> command(String method, [Map<String, Object?>? arguments]) async {
     if (_disposed) return;
     if (method == 'importGeneratedFilm' && !canImportFilm) return;
+    if (method == 'importGeneratedFilm' && arguments?['bytes'] is Uint8List) {
+      final bytes = arguments!['bytes'] as Uint8List;
+      if (isAbc9Film(bytes)) {
+        validateAbc9Film(bytes);
+        if (!snapshot.connected || !snapshot.abc9PreviewSupported) {
+          throw StateError('当前设备未声明 ABC9 实验预览能力；可本地预览或导出');
+        }
+      }
+    }
     // A failed WiFi passport job may need retry to settle its previous network.
     // Do not use canEditSettings here: it intentionally blocks unclean transfers.
     if (method == 'retryPassport' &&
@@ -595,6 +690,29 @@ class DeviceController extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
     try {
+      if (method == 'downloadFirmware' ||
+          method == 'startFirmwareTransfer' ||
+          (method == 'retryTransfer' && snapshot.transfer.kind == 'firmware')) {
+        final hardware = firmwareTarget;
+        if (!snapshot.connected || hardware == null) {
+          throw StateError(HardwareIdentity.unavailableMessage);
+        }
+        final legacy = snapshot.hardware?.trusted != true;
+        if (legacy && arguments?['legacyHardwareTarget'] != hardware.targetId) {
+          throw StateError('首次升级需要确认实物配置与所选 ${hardware.label} 一致');
+        }
+        if (!legacy && arguments?['legacyHardwareTarget'] != null) {
+          throw StateError('当前设备已提供硬件身份，请按设备型号升级');
+        }
+        if (method == 'downloadFirmware') {
+          if (arguments == null || !hardware.matchesPackage(arguments)) {
+            throw StateError('所选固件与当前设备型号不匹配，请重新检查发布');
+          }
+        } else if (snapshot.importedFirmware?.matchesHardware(hardware) !=
+            true) {
+          throw StateError('固件目标与当前设备不匹配，请选择 ${hardware.label} 对应的固件');
+        }
+      }
       await gateway.invoke(method, arguments);
     } catch (error) {
       errorMessage = '操作未完成：$error';

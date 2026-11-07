@@ -68,7 +68,7 @@ class FirmwareDownloader {
     }
 
     internal fun copy(input: InputStream, destination: File, size: Long, sha256: String?, progress: (Long) -> Unit) {
-        require(size in 1..MAX_SIZE) { "固件大小必须在 1 B 至 4 MiB 之间" }
+        require(size in 1..MAX_SIZE) { "固件大小必须在 1 B 至 16 MiB 之间" }
         val digest = MessageDigest.getInstance("SHA-256")
         var received = 0L
         destination.outputStream().use { output ->
@@ -90,5 +90,5 @@ class FirmwareDownloader {
         require(sha256 == null || actual.equals(sha256, ignoreCase = true)) { "固件 SHA256 与 Release 不一致" }
     }
 
-    companion object { const val MAX_SIZE = 4L * 1024 * 1024 }
+    companion object { const val MAX_SIZE = 16L * 1024 * 1024 }
 }

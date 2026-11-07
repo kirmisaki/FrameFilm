@@ -33,6 +33,7 @@ object GenericFileTransferTest {
                     } ?: error("No HTTP headers")
                     check(response.copyOfRange(0, bodyAt).toString(Charsets.US_ASCII).startsWith("HTTP/1.1 200 OK"))
                     check(response.copyOfRange(bodyAt + delimiter.size, response.size).contentEquals(bytes))
+                    check(server.writtenBytes == bytes.size.toLong())
                 }
             }
         } finally { file.delete() }

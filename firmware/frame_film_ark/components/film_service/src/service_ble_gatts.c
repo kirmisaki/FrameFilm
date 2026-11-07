@@ -436,6 +436,11 @@ static struct gatts_profile_inst gl_profile_tab[PROFILE_NUM] =
     },
 };
 
+/* Wi-Fi resume is ready only after advertising and both GATT services start. */
+static volatile bool s_wifi_adv_ready;
+static volatile bool s_wifi_reg_failed;
+static volatile uint8_t s_wifi_service_ready_mask;
+
 static prepare_type_env_t a_prepare_write_env;
 
 
@@ -571,6 +576,7 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
         esp_err_t create_attr_ret = esp_ble_gatts_create_attr_tab(m_service_gatt_db, gatts_if, DEV_M_IDX_NB, PROFILE_A_APP_ID);
         if (create_attr_ret)
         {
+            s_wifi_reg_failed = true;
             sys_loge(GATTS_TAG, "create attr a table failed, error code = %x", create_attr_ret);
         }
         break;
@@ -668,6 +674,10 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
     case ESP_GATTS_START_EVT:
         sys_logi(GATTS_TAG, "SERVICE_START_EVT, status %d, service_handle %d",
                  param->start.status, param->start.service_handle);
+        if (param->start.status == ESP_GATT_OK)
+            s_wifi_service_ready_mask |= (1U << PROFILE_A_APP_ID);
+        else
+            s_wifi_reg_failed = true;
         break;
     case ESP_GATTS_STOP_EVT:
         break;
@@ -703,7 +713,7 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
             ble_gatts_notify_mask = 0x00;
             service_ble_transfer_disconnected();
             sys_logi(GATTS_TAG, "ESP_GATTS_DISCONNECT_EVT, disconnect reason 0x%x", param->disconnect.reason);
-            esp_ble_gap_start_advertising(&adv_params);
+            if(!service_ble_wifi_paused()) esp_ble_gap_start_advertising(&adv_params);
             sys_event_publish(SYS_EVT_BLE_DISCONN, NULL, 0);
         }
         break;
@@ -719,10 +729,12 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
     {
         if (param->add_attr_tab.status != ESP_GATT_OK)
         {
+            s_wifi_reg_failed = true;
             sys_loge(GATTS_TAG, "create attribute a table failed, error code=0x%x", param->add_attr_tab.status);
         }
         else if (param->add_attr_tab.num_handle != DEV_M_IDX_NB)
         {
+            s_wifi_reg_failed = true;
             sys_loge(GATTS_TAG, "create attribute a table abnormally, num_handle (%d) doesn't equal to DEV_M_IDX_NB(%d)", param->add_attr_tab.num_handle, DEV_M_IDX_NB);
         }
         else
@@ -730,7 +742,12 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
             sys_logi(GATTS_TAG, "create attribute a table successfully, the number handle = %d", param->add_attr_tab.num_handle);
             memcpy(m_service_handle_table, param->add_attr_tab.handles, sizeof(m_service_handle_table));
             gl_profile_tab[PROFILE_A_APP_ID].service_handle = param->add_attr_tab.handles[0];
-            esp_ble_gatts_start_service(m_service_handle_table[0]);
+            esp_err_t start_ret = esp_ble_gatts_start_service(m_service_handle_table[0]);
+            if (start_ret != ESP_OK)
+            {
+                s_wifi_reg_failed = true;
+                sys_loge(GATTS_TAG, "start service a failed, error code = %x", start_ret);
+            }
         }
         break;
     }
@@ -755,6 +772,7 @@ static void gatts_profile_b_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
         esp_err_t create_attr_ret = esp_ble_gatts_create_attr_tab(dev_info_gatt_db, gatts_if, DEV_IDX_NB, PROFILE_B_APP_ID);
         if (create_attr_ret)
         {
+            s_wifi_reg_failed = true;
             sys_loge(GATTS_TAG, "create attr table failed, error code = %x", create_attr_ret);
         }
         break;
@@ -781,10 +799,12 @@ static void gatts_profile_b_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
     {
         if (param->add_attr_tab.status != ESP_GATT_OK)
         {
+            s_wifi_reg_failed = true;
             sys_loge(GATTS_TAG, "create attribute table failed, error code=0x%x", param->add_attr_tab.status);
         }
         else if (param->add_attr_tab.num_handle != DEV_IDX_NB)
         {
+            s_wifi_reg_failed = true;
             sys_loge(GATTS_TAG, "create attribute table abnormally, num_handle (%d) \
 doesn't equal to HRS_IDX_NB(%d)", param->add_attr_tab.num_handle, DEV_IDX_NB);
         }
@@ -792,7 +812,12 @@ doesn't equal to HRS_IDX_NB(%d)", param->add_attr_tab.num_handle, DEV_IDX_NB);
         {
             sys_logi(GATTS_TAG, "create attribute table successfully, the number handle = %d", param->add_attr_tab.num_handle);
             gl_profile_tab[PROFILE_B_APP_ID].service_handle = param->add_attr_tab.handles[0];
-            esp_ble_gatts_start_service(gl_profile_tab[PROFILE_B_APP_ID].service_handle);
+            esp_err_t start_ret = esp_ble_gatts_start_service(gl_profile_tab[PROFILE_B_APP_ID].service_handle);
+            if (start_ret != ESP_OK)
+            {
+                s_wifi_reg_failed = true;
+                sys_loge(GATTS_TAG, "start service b failed, error code = %x", start_ret);
+            }
         }
         break;
     }
@@ -817,6 +842,10 @@ doesn't equal to HRS_IDX_NB(%d)", param->add_attr_tab.num_handle, DEV_IDX_NB);
     case ESP_GATTS_START_EVT:
         sys_logi(GATTS_TAG, "SERVICE_START_EVT, status %d, service_handle %d",
                  param->start.status, param->start.service_handle);
+        if (param->start.status == ESP_GATT_OK)
+            s_wifi_service_ready_mask |= (1U << PROFILE_B_APP_ID);
+        else
+            s_wifi_reg_failed = true;
         break;
     case ESP_GATTS_STOP_EVT:
         break;
@@ -850,6 +879,7 @@ doesn't equal to HRS_IDX_NB(%d)", param->add_attr_tab.num_handle, DEV_IDX_NB);
     }
 }
 
+
 static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param)
 {
     /* If event is register event, store the gatts_if for each profile */
@@ -861,6 +891,7 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
         }
         else
         {
+            s_wifi_reg_failed = true;
             sys_logi(GATTS_TAG, "Reg app failed, app_id %04x, status %d",
                      param->reg.app_id,
                      param->reg.status);
@@ -973,7 +1004,7 @@ void service_ble_gatt_server_init(void)
     {
         sys_loge(GATTS_TAG, "set local  MTU failed, error code = %x", local_mtu_ret);
     }
-    p_ret += ret;
+    p_ret += local_mtu_ret;
 
     if (p_ret)
     {
@@ -1057,10 +1088,38 @@ void service_ble_gatt_server_uninit(void)
 }
 
 
-void service_ble_gatt_server_reinit(void)
+#ifdef ARK_AP_FILE_BENCH
+int service_ble_gatt_ap_file_bench_deinit(void)
+{
+    esp_err_t err;
+    if(esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
+        err = esp_bluedroid_disable();
+        if(err != ESP_OK) return err;
+    }
+    if(esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED) {
+        err = esp_bluedroid_deinit();
+        if(err != ESP_OK) return err;
+    }
+    if(esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+        err = esp_bt_controller_disable();
+        if(err != ESP_OK) return err;
+    }
+    if(esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_INITED) {
+        err = esp_bt_controller_deinit();
+        if(err != ESP_OK) return err;
+    }
+    return esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+}
+#endif
+
+int service_ble_gatt_server_reinit(void)
 {
     esp_err_t ret;
     esp_err_t p_ret = 0;
+
+    s_wifi_adv_ready = false;
+    s_wifi_reg_failed = false;
+    s_wifi_service_ready_mask = 0;
 
     ble_gatt_mode = BLE_GATT_MODE_S;
     ble_gatts_init = BLE_GATTS_UNINIT;
@@ -1106,7 +1165,7 @@ void service_ble_gatt_server_reinit(void)
     {
         sys_loge(GATTS_TAG, "set local  MTU failed, error code = %x", local_mtu_ret);
     }
-    p_ret += ret;
+    p_ret += local_mtu_ret;
 
     if (p_ret)
     {
@@ -1116,6 +1175,7 @@ void service_ble_gatt_server_reinit(void)
     {
         ble_gatts_init = BLE_GATTS_INIT;
     }
+    return p_ret;
 }
 
 void service_ble_gatts_dev_disconnect(void)
@@ -1154,6 +1214,8 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
         break;
     case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
         //advertising start complete event to indicate advertising start successfully or failed
+        s_wifi_adv_ready = param->adv_start_cmpl.status == ESP_BT_STATUS_SUCCESS;
+        if(!s_wifi_adv_ready) s_wifi_reg_failed = true;
         if (param->adv_start_cmpl.status != ESP_BT_STATUS_SUCCESS)
         {
             sys_loge(GATTS_TAG, "Advertising start failed");
@@ -1221,4 +1283,58 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
     default:
         break;
     }
+}
+
+/* Deinit releases runtime allocations; mem_release(BLE) would prevent recovery in this boot. */
+int service_ble_gatt_wifi_pause(void)
+{
+    esp_err_t err;
+    if(esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
+        err = esp_bluedroid_disable();
+        if(err != ESP_OK) return err;
+    }
+    if(esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED) {
+        err = esp_bluedroid_deinit();
+        if(err != ESP_OK) return err;
+    }
+    if(esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+        err = esp_bt_controller_disable();
+        if(err != ESP_OK) return err;
+    }
+    if(esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_INITED) {
+        err = esp_bt_controller_deinit();
+        if(err != ESP_OK) return err;
+    }
+    return ESP_OK;
+}
+
+int service_ble_gatt_wifi_resume(void)
+{
+    esp_err_t err;
+    if(esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE) {
+        esp_bt_controller_config_t cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+        err = esp_bt_controller_init(&cfg);
+        if(err != ESP_OK) return err;
+    }
+    if(esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_INITED) {
+        err = esp_bt_controller_enable(ESP_BT_MODE_BLE);
+        if(err != ESP_OK) return err;
+    }
+    if(esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_UNINITIALIZED) {
+        err = esp_bluedroid_init();
+        if(err != ESP_OK) return err;
+    }
+    if(esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED) {
+        err = esp_bluedroid_enable();
+        if(err != ESP_OK) return err;
+    }
+    err = service_ble_gatt_server_reinit();
+    if(err != ESP_OK) return err;
+    for(unsigned i = 0; i < 300; ++i) {
+        if(s_wifi_reg_failed) return ESP_FAIL;
+        if(s_wifi_adv_ready && s_wifi_service_ready_mask ==
+           ((1U << PROFILE_A_APP_ID) | (1U << PROFILE_B_APP_ID))) return ESP_OK;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return ESP_ERR_TIMEOUT;
 }

@@ -1,5 +1,99 @@
 // 照片转换功能
 
+function isArk512Selected() {
+    var select = document.getElementById('ditherType');
+    return !!select && select.value === 'ark512I006';
+}
+function getFilmCanvasWidth() { return isArk512Selected() ? 720 : getCanvasWidth(); }
+function getFilmCanvasHeight() { return isArk512Selected() ? 480 : getCanvasHeight(); }
+var ark512Generation = 0;
+var ark512Result = null;
+var ark512Imported = null;
+var ark512WarmChroma = .25;
+var sourceWarmChroma = 0;
+var ark512WarmControlActive = false;
+function cancelArk512Preview() {
+    ark512Generation++;
+    ark512Result = null;
+}
+function syncArk512Controls() {
+    var active = isArk512Selected();
+    var warmControl = document.getElementById('warmChroma');
+    if (active !== ark512WarmControlActive) {
+        if (ark512WarmControlActive) ark512WarmChroma = Number(warmControl.value);
+        else sourceWarmChroma = Number(warmControl.value);
+        ark512WarmControlActive = active;
+        warmControl.value = active ? ark512WarmChroma : sourceWarmChroma;
+        document.getElementById('warmChromaValue').textContent = warmControl.value;
+    }
+    document.getElementById('sourceFitContainer').style.display = '';
+    document.getElementById('ark512Controls').hidden = !active;
+    document.getElementById('toggleDither').disabled = active;
+    document.getElementById('toggleDither').textContent = active ? '蛇形 FS' : isDitheringEnabled ? '禁用抖动' : '启用抖动';
+    ['contrast','saturation','ditherStrength','rangeFit','warmChroma'].forEach(function(id){document.getElementById(id).disabled=active&&!!ark512Imported;});
+    document.getElementById('ark512Hint').hidden = !active;
+    document.getElementById('ark512ContinuousTone').disabled = !!ark512Imported;
+}
+async function updateArk512Preview(imageData, ctx) {
+    var generation = ark512Generation;
+    var status = document.getElementById('ark512Status');
+    status.textContent = '正在计算 I006 模拟预览…可继续调整图片或取消';
+    // Canvas visually rotates clockwise; logical portrait uses that same orientation.
+    var w = imageData.height, h = imageData.width;
+    var logical = {width:w, height:h, data:new Uint8ClampedArray(w*h*4)};
+    for (var y=0;y<h;y++) for(var x=0;x<w;x++) {
+        var source=((imageData.height-1-x)*imageData.width+y)*4;
+        logical.data.set(imageData.data.subarray(source,source+4),(y*w+x)*4);
+    }
+    try {
+        var result = await window.Ark512.render(logical, {continuousTone:document.getElementById('ark512ContinuousTone').checked,warmChroma:Number(document.getElementById('warmChroma').value),rangeFit:Number(document.getElementById('rangeFit').value),ditherStrength:Number(document.getElementById('ditherStrength').value),cancelled:function(){return generation!==ark512Generation;}});
+        if(generation!==ark512Generation) return;
+        var nativeCodes = new Uint16Array(w*h), rgba = new Uint8ClampedArray(w*h*4);
+        for(var ly=0;ly<h;ly++) for(var lx=0;lx<w;lx++) {
+            var i=ly*w+lx, canvasIndex=(w-1-lx)*h+ly;
+            // logical(px,py) -> native(719-py,px), exactly panel_lab.native_image.
+            nativeCodes[lx*h+(h-1-ly)]=result.codes[i];
+            rgba.set(result.rgba.subarray(i*4,i*4+4),canvasIndex*4);
+        }
+        ark512Result=window.Ark512.pack(nativeCodes,720,480);
+        ctx.putImageData(new ImageData(rgba,720,480),0,0);
+        status.textContent = 'I006 相机相对颜色模拟 · 691232 字节实验 film；实际屏幕效果需实机确认';
+    } catch(error) {
+        if(generation===ark512Generation) status.textContent=error.message;
+    }
+}
+function downloadArk512Png() {
+    if(!ark512Result) { showMessage('请等待 I006 模拟预览完成', 'info'); return; }
+    var canvas=document.getElementById('canvas');
+    // Export the portrait orientation shown in the Film frame.
+    var output=document.createElement('canvas');output.width=480;output.height=720;
+    var ctx=output.getContext('2d');ctx.translate(480,0);ctx.rotate(Math.PI/2);ctx.drawImage(canvas,0,0);
+    output.toBlob(function(blob){if(!blob)return;var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='I006-simulation.png';a.click();setTimeout(function(){URL.revokeObjectURL(url);},1000);},'image/png');
+}
+function restoreArk512Imported() {
+    if(!ark512Imported || !isArk512Selected()) return;
+    var parsed=window.Ark512.parse(ark512Imported),nativeRgba=window.Ark512.preview(parsed.codes,720,480),rgba=new Uint8ClampedArray(nativeRgba.length);
+    for(var i=0;i<parsed.codes.length;i++) rgba.set(nativeRgba.subarray(i*4,i*4+4),(parsed.codes.length-1-i)*4);
+    var canvas=document.getElementById('canvas');canvas.width=720;canvas.height=480;
+    canvas.getContext('2d').putImageData(new ImageData(rgba,720,480),0,0);
+    updateCanvasScale();
+}
+async function importArk512Film(input) {
+    var file=input.files[0]; if(!file)return;
+    cancelArk512Preview();
+    var generation=ark512Generation;
+    try {
+        var bytes=new Uint8Array(await file.arrayBuffer()), parsed=window.Ark512.parse(bytes);
+        if(generation!==ark512Generation) return;
+        document.getElementById('ditherType').value='ark512I006';
+        originalImage=null;ark512Result=bytes.slice();ark512Imported=bytes.slice();
+        syncAdjustSliders();sync8bppAvailability();restoreArk512Imported();
+        document.getElementById('fileName').value=file.name;
+        document.getElementById('ark512Status').textContent='已导入 ABC9 实验文件（保留原始16bit码）；仅作相机相对模拟，上传须设备明确宣告支持';
+    } catch(error) { document.getElementById('ark512Status').textContent=error.message; }
+    input.value='';
+}
+
 // 全局变量
 var currentImageData = null;
 var isDitheringEnabled = false;
@@ -71,6 +165,32 @@ function syncAdjustSliders() {
     }
 }
 
+// Source controls use same-screen relative references and require the Ark screen.
+function getSourceFitProfile() {
+    if (typeof is8bppAvailable !== 'function' || !is8bppAvailable()) return null;
+    var type = document.getElementById('ditherType').value;
+    if (type === 'colorQualMeasured' || type === 'colorQualCalibrated') {
+        var palette = CF_PROFILES[type].palette;
+        return FrameFilmSourceFit.measured(palette[3], palette[15]);
+    }
+    return FrameFilmSourceFit.profiles[type === 'colorFast55' ? 'fast' : type === 'colorQual' ? 'legacyQual' : 'native6'];
+}
+function syncSourceFitControls() {
+    var profile = getSourceFitProfile();
+    var type = document.getElementById('ditherType').value;
+    syncArk512Controls();
+    if(type === 'ark512I006') return;
+    var sz = type === 'szEnhanced' || type === 'atkinsonSzCalib';
+    document.getElementById('rangeFit').disabled = !profile || sz;
+    document.getElementById('warmChroma').disabled = !profile;
+}
+function applyCurrentSourceFit(imageData) {
+    var type = document.getElementById('ditherType').value;
+    return FrameFilmSourceFit.apply(imageData,
+        type === 'szEnhanced' || type === 'atkinsonSzCalib' ? 0 : Number(document.getElementById('rangeFit').value),
+        Number(document.getElementById('warmChroma').value), getSourceFitProfile());
+}
+
 // 8bpp 索引色（ColorFast 55 色 / ColorQual 46 色）当前**只对通行证版（ARK）开放**，
 // 判据见 is8bppAvailable()（屏幕 720×480 + 机型 FRAMEFILMARK）；
 // 不支持时禁用这两个选项并回退到 Floyd-Steinberg。
@@ -90,6 +210,7 @@ function sync8bppAvailability() {
         select.value = 'floydSteinberg';
         syncAdjustSliders();
     }
+    syncSourceFitControls();
     var hint = document.getElementById('bpp8Hint');
     var profile = CF_PROFILES[select.value];
     if (hint) {
@@ -101,7 +222,18 @@ function sync8bppAvailability() {
 }
 
 function initConvertTool() {
+    // Imported ABC9 files preserve their original codes.
+    document.getElementById('ark512ContinuousTone').addEventListener('change', function() {
+        if (ark512Imported) return;
+        updateImage();
+    });
     // 事件监听器
+    ['rangeFit', 'warmChroma'].forEach(function(id) {
+        document.getElementById(id).addEventListener('input', function() {
+            document.getElementById(id + 'Value').textContent = this.value;
+            debounceUpdateImage();
+        });
+    });
     document.getElementById('imageFile').addEventListener('change', handleFileUpload);
     document.getElementById('ditherStrength').addEventListener('input', function() {
         document.getElementById('ditherStrengthValue').textContent = this.value;
@@ -131,7 +263,8 @@ function initConvertTool() {
     // 鼠标滚轮缩放功能
     const canvas = document.getElementById('canvas');
     canvas.addEventListener('wheel', function(e) {
-        if (!isDitheringEnabled) {
+        if(!originalImage) return;
+        if (!isDitheringEnabled || isArk512Selected()) {
             e.preventDefault();
             const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
             const newScale = Math.max(0.05, Math.min(10, scale * scaleFactor));
@@ -142,8 +275,8 @@ function initConvertTool() {
             const mouseY = e.clientY - rect.top;
             
             // 调整偏移量，使缩放以鼠标位置为中心
-            var relativeX = mouseX / getCanvasWidth();
-            var relativeY = mouseY / getCanvasHeight();
+            var relativeX = mouseX / getFilmCanvasWidth();
+            var relativeY = mouseY / getFilmCanvasHeight();
             
             const oldWidth = originalImage.width * scale;
             const oldHeight = originalImage.height * scale;
@@ -160,7 +293,8 @@ function initConvertTool() {
     
     // 鼠标拖动功能
     canvas.addEventListener('mousedown', function(e) {
-        if (!isDitheringEnabled) {
+        if(!originalImage) return;
+        if (!isDitheringEnabled || isArk512Selected()) {
             isDragging = true;
             startX = e.clientX;
             startY = e.clientY;
@@ -170,7 +304,7 @@ function initConvertTool() {
     });
 
     canvas.addEventListener('mousemove', function(e) {
-        if (isDragging && !isDitheringEnabled) {
+        if (isDragging && (!isDitheringEnabled || isArk512Selected())) {
             // 计算鼠标移动距离
             const deltaX = e.clientX - startX;
             const deltaY = e.clientY - startY;
@@ -197,7 +331,8 @@ function initConvertTool() {
     let isPinching = false;
 
     canvas.addEventListener('touchstart', function(e) {
-        if (!isDitheringEnabled) {
+        if(!originalImage) return;
+        if (!isDitheringEnabled || isArk512Selected()) {
             if (e.touches.length === 1) {
                 isDragging = true;
                 startX = e.touches[0].clientX;
@@ -218,7 +353,8 @@ function initConvertTool() {
     });
 
     canvas.addEventListener('touchmove', function(e) {
-        if (isDitheringEnabled) return;
+        if(!originalImage) return;
+        if (isDitheringEnabled && !isArk512Selected()) return;
         
         if (e.touches.length === 1 && isDragging) {
             // 单指拖动
@@ -244,8 +380,8 @@ function initConvertTool() {
             const centerX = (touch1.clientX + touch2.clientX) / 2;
             const centerY = (touch1.clientY + touch2.clientY) / 2;
             const rect = canvas.getBoundingClientRect();
-            var relativeX = (centerX - rect.left) / getCanvasWidth();
-            var relativeY = (centerY - rect.top) / getCanvasHeight();
+            var relativeX = (centerX - rect.left) / getFilmCanvasWidth();
+            var relativeY = (centerY - rect.top) / getFilmCanvasHeight();
             
             const oldWidth = originalImage.width * scale;
             const oldHeight = originalImage.height * scale;
@@ -338,11 +474,13 @@ function handleFileUpload(event) {
     reader.onload = function (e) {
         const img = new Image();
         img.onload = function () {
+            ark512Imported = null;
+            syncArk512Controls();
             originalImage = img;
 
             var canvas = document.getElementById('canvas');
-            var canvasWidth = getCanvasWidth();
-            var canvasHeight = getCanvasHeight();
+            var canvasWidth = getFilmCanvasWidth();
+            var canvasHeight = getFilmCanvasHeight();
 
             var imgWidth = img.width;
             var imgHeight = img.height;
@@ -387,6 +525,8 @@ function toggleDither() {
 }
 
 function resetImage() {
+    cancelArk512Preview();
+    ark512Imported = null;
     currentImageData = null;
     originalImage = null;
     uploadedFileName = 'output';
@@ -399,17 +539,19 @@ function resetImage() {
     startY = 0;
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, getCanvasWidth(), getCanvasHeight());
+    ctx.clearRect(0, 0, getFilmCanvasWidth(), getFilmCanvasHeight());
     document.getElementById('imageResult').innerHTML = '';
     document.getElementById('fileName').value = 'output.film';
+    syncSourceFitControls();
 }
 
 function rotateCanvas() {
+    if(!originalImage) return;
     canvasRotation = (canvasRotation + 1) % 2;
 
     var canvas = document.getElementById('canvas');
-    var canvasWidth = getCanvasWidth();
-    var canvasHeight = getCanvasHeight();
+    var canvasWidth = getFilmCanvasWidth();
+    var canvasHeight = getFilmCanvasHeight();
     var effectiveWidth, effectiveHeight;
     if (canvasRotation === 0) {
         effectiveWidth = canvasWidth;
@@ -439,6 +581,9 @@ function rotateCanvas() {
 let _rafId = null;
 let _debounceTimer = null;
 function debounceUpdateImage() {
+    if (ark512Imported && isArk512Selected()) return;
+    cancelArk512Preview();
+    ark512Imported = null;
     if (_debounceTimer) clearTimeout(_debounceTimer);
     _debounceTimer = setTimeout(function() {
         updateImage();
@@ -448,8 +593,8 @@ function debounceUpdateImage() {
 function resetZoom() {
     if (!originalImage) return;
     var canvas = document.getElementById('canvas');
-    var canvasWidth = getCanvasWidth();
-    var canvasHeight = getCanvasHeight();
+    var canvasWidth = getFilmCanvasWidth();
+    var canvasHeight = getFilmCanvasHeight();
     var effectiveWidth = canvasRotation === 1 ? canvasHeight : canvasWidth;
     var effectiveHeight = canvasRotation === 1 ? canvasWidth : canvasHeight;
     const scaleX = effectiveWidth / originalImage.width;
@@ -461,11 +606,14 @@ function resetZoom() {
 }
 
 function updateImage() {
+    if(ark512Imported && isArk512Selected()) { restoreArk512Imported(); return; }
+    cancelArk512Preview();
+    ark512Imported = null;
     if (!originalImage) return;
 
     var canvas = document.getElementById('canvas');
-    var canvasWidth = getCanvasWidth();
-    var canvasHeight = getCanvasHeight();
+    var canvasWidth = getFilmCanvasWidth();
+    var canvasHeight = getFilmCanvasHeight();
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
     var ctx = canvas.getContext('2d');
@@ -501,6 +649,9 @@ function updateImage() {
     let drawX = (effectiveWidth - imgWidth) / 2 + offsetX;
     let drawY = (effectiveHeight - imgHeight) / 2 + offsetY;
 
+    // Browser's high-quality resampler is retained for interactive crop/zoom.
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     // 绘制图像
     ctx.drawImage(
         originalImage,
@@ -528,6 +679,13 @@ function updateImage() {
     // 应用饱和度调整
     const saturationFactor = parseFloat(document.getElementById('saturation').value);
     adjustSaturation(imageData, saturationFactor);
+    if(isArk512Selected()) {
+        ctx.putImageData(imageData,0,0);
+        updateCanvasScale();
+        updateArk512Preview(imageData,ctx);
+        return;
+    }
+    applyCurrentSourceFit(imageData);
 
     // 根据状态应用抖动或显示原始图像
     // 8bpp 索引色算法始终要出量化结果，关闭抖动时按最近色取整（预览与打包一致）
@@ -2024,13 +2182,17 @@ function generateFilmHeader8bpp(profile) {
 
 // 按当前算法打包完整 .film：ColorFast / ColorQual 走 8bpp，其余走 v1 4bpp 六色
 function buildCurrentFilmFile() {
+    if(isArk512Selected()) {
+        if(!ark512Result) throw new Error('请等待 I006 模拟预览完成；取消后请调整图片重新计算');
+        return ark512Result.slice();
+    }
     if (!originalImage) {
         throw new Error('请先上传图片');
     }
 
     var canvas = document.getElementById('canvas');
     var ctx = canvas.getContext('2d');
-    var imageData = ctx.getImageData(0, 0, getCanvasWidth(), getCanvasHeight());
+    var imageData = ctx.getImageData(0, 0, getFilmCanvasWidth(), getFilmCanvasHeight());
 
     var profile = getActive8bppProfile();
     var header;
@@ -2107,7 +2269,7 @@ function ditherImage(imageData) {
                     currentImageData.width,
                     currentImageData.height
                 );
-                return window.szEnhancedDither(rawImageData);
+                return window.szEnhancedDither(applyCurrentSourceFit(rawImageData));
             }
             return window.szEnhancedDither(imageData);
         default:
@@ -2282,7 +2444,7 @@ function autoConfigureDither() {
     const optimalParams = getOptimalDitherParameters(imageAnalysis);
     applyDitherParameters(optimalParams);
 
-    if (!isDitheringEnabled) {
+    if (!isDitheringEnabled || isArk512Selected()) {
         toggleDither();
     } else {
         updateImage();
@@ -2299,8 +2461,8 @@ function convertImage() {
 
     try {
         const canvas = document.getElementById('canvas');
-        const canvasWidth = getCanvasWidth();
-        const canvasHeight = getCanvasHeight();
+        const canvasWidth = getFilmCanvasWidth();
+        const canvasHeight = getFilmCanvasHeight();
 
         const ctx = canvas.getContext('2d');
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
@@ -2319,7 +2481,7 @@ function convertImage() {
 }
 
 function downloadFilmFile() {
-    if (!originalImage) {
+    if (!originalImage && !ark512Imported) {
         document.getElementById('imageResult').innerHTML = '<div class="error">请先上传图片</div>';
         return;
     }
@@ -2336,7 +2498,7 @@ function downloadFilmFile() {
     downloadFile(filmFile, fileName);
 
     var profile = getActive8bppProfile();
-    var formatText = profile ? profile.label + '，8bpp' : '6 色 4bpp（Format 0x00）';
+    var formatText = isArk512Selected() ? 'I006 模拟 · ABC9 实验 16bitLE（不是已验证的512种稳定实色）' : profile ? profile.label + '，8bpp' : '6 色 4bpp（Format 0x00）';
     document.getElementById('imageResult').innerHTML = '<div class="success">下载完成！</div>' +
         '<p class="info">' + formatText + '，共 ' + filmFile.length + ' 字节</p>';
 }
@@ -2351,9 +2513,9 @@ function updateCanvasScale() {
         var containerHeight = container.clientHeight;
         if (containerWidth === 0 || containerHeight === 0) continue;
         // 竖屏设备（Max）画布本身竖屏，无需旋转；横向设备画布旋转 90° 后竖屏显示
-        var portrait = getCanvasHeight() > getCanvasWidth();
-        var rotatedWidth = portrait ? getCanvasWidth() : getCanvasHeight();
-        var rotatedHeight = portrait ? getCanvasHeight() : getCanvasWidth();
+        var portrait = canvas.height > canvas.width;
+        var rotatedWidth = portrait ? canvas.width : canvas.height;
+        var rotatedHeight = portrait ? canvas.height : canvas.width;
         var scaleVal = Math.min(containerWidth / rotatedWidth, containerHeight / rotatedHeight);
         canvas.style.transform = portrait
             ? 'translate(-50%, -50%) scale(' + scaleVal + ')'

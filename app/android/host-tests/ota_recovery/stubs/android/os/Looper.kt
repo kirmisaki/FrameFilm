@@ -11,16 +11,24 @@ class Looper private constructor() {
 class Handler(@Suppress("UNUSED_PARAMETER") looper: Looper) {
     companion object {
         val delayed = ArrayDeque<Runnable>()
+        private val delays = mutableMapOf<Runnable, Long>()
+        fun runWithDelay(delayMillis: Long): Boolean {
+            val next = delayed.firstOrNull { delays[it] == delayMillis } ?: return false
+            delayed.remove(next)
+            delays.remove(next)
+            next.run()
+            return true
+        }
         fun runNext(): Boolean {
             val next = delayed.removeFirstOrNull() ?: return false
             next.run()
             return true
         }
-        fun clear() = delayed.clear()
+        fun clear() { delayed.clear(); delays.clear() }
     }
     fun post(action: Runnable): Boolean { action.run(); return true }
     fun postDelayed(action: Runnable, @Suppress("UNUSED_PARAMETER") delayMillis: Long): Boolean {
-        delayed.addLast(action); return true
+        delayed.addLast(action); delays[action] = delayMillis; return true
     }
-    fun removeCallbacks(action: Runnable) { delayed.remove(action) }
+    fun removeCallbacks(action: Runnable) { delayed.remove(action); delays.remove(action) }
 }

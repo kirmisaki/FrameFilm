@@ -4,6 +4,8 @@
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "hal_wifi.h"
+#include <stdio.h>
+#include "esp_mac.h"
 
 static bool s_netif_ready;
 static bool s_initialized;
@@ -131,3 +133,82 @@ void hal_wifi_disconnect(void)
 
 bool hal_wifi_initialized(void) { return s_initialized; }
 bool hal_wifi_connected(void) { return s_connected; }
+
+#ifdef ARK_AP_FILE_BENCH
+esp_err_t hal_wifi_ap_file_bench_start(const char *password, char *ssid, size_t ssid_size)
+{
+    /* Reuse existing STA netif/event-loop initialization; create AP netif only once. */
+    static esp_netif_t *ap_netif;
+    esp_err_t err = hal_wifi_init(true);
+    if(err != ESP_OK) return err;
+    err = esp_wifi_stop();
+    if(err != ESP_OK) return err;
+    s_connected = false;
+    if(ap_netif == NULL) ap_netif = esp_netif_create_default_wifi_ap();
+    if(ap_netif == NULL) return ESP_ERR_NO_MEM;
+    /* The default AP netif already provides 192.168.4.1 and DHCP. */
+    uint8_t mac[6];
+    err = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+    if(err != ESP_OK) return err;
+    snprintf(ssid, ssid_size, "ARK-FILE-%02X%02X%02X", mac[3], mac[4], mac[5]);
+    wifi_config_t config = {0};
+    strlcpy((char *)config.ap.ssid, ssid, sizeof(config.ap.ssid));
+    config.ap.ssid_len = strlen((char *)config.ap.ssid);
+    strlcpy((char *)config.ap.password, password, sizeof(config.ap.password));
+    config.ap.channel = 1;
+    config.ap.max_connection = 1;
+    config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    config.ap.pmf_cfg.capable = true;
+    err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    if(err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_AP);
+    if(err == ESP_OK) err = esp_wifi_set_config(WIFI_IF_AP, &config);
+    if(err == ESP_OK) err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+    return err == ESP_OK ? esp_wifi_start() : err;
+}
+#endif
+
+/* One netif is retained for reuse, like the existing default STA netif. */
+static esp_netif_t *s_direct_ap_netif;
+
+esp_err_t hal_wifi_softap_identity(char *ssid, size_t size)
+{
+    if(!ssid || size < 24) return ESP_ERR_INVALID_ARG;
+    uint8_t mac[6];
+    esp_err_t err = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+    if(err == ESP_OK) snprintf(ssid, size, "ARK-TRANSFER-%02X%02X%02X", mac[3], mac[4], mac[5]);
+    return err;
+}
+
+esp_err_t hal_wifi_softap_start(const char *ssid, const char *password)
+{
+    if(!ssid || !password || strlen(ssid) > 32 || strlen(password) < 8 || strlen(password) > 63)
+        return ESP_ERR_INVALID_ARG;
+    esp_err_t err = hal_wifi_init(true);
+    if(err != ESP_OK) return err;
+    err = esp_wifi_stop();
+    if(err != ESP_OK) return err;
+    s_connected = false;
+    if(!s_direct_ap_netif) s_direct_ap_netif = esp_netif_create_default_wifi_ap();
+    if(!s_direct_ap_netif) return ESP_ERR_NO_MEM;
+    wifi_config_t config = {0};
+    strlcpy((char *)config.ap.ssid, ssid, sizeof(config.ap.ssid));
+    config.ap.ssid_len = strlen(ssid);
+    strlcpy((char *)config.ap.password, password, sizeof(config.ap.password));
+    config.ap.channel = 1;
+    config.ap.max_connection = 1;
+    config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    config.ap.pmf_cfg.capable = true;
+    err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    if(err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_AP);
+    if(err == ESP_OK) err = esp_wifi_set_config(WIFI_IF_AP, &config);
+    if(err == ESP_OK) err = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+    return err == ESP_OK ? esp_wifi_start() : err;
+}
+
+esp_err_t hal_wifi_softap_stop(void)
+{
+    if(!s_initialized) return ESP_ERR_INVALID_STATE;
+    esp_err_t err = esp_wifi_stop();
+    if(err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_STA);
+    return err == ESP_OK ? esp_wifi_start() : err;
+}

@@ -1351,6 +1351,14 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
         frameSize = EPD_WIDTH * EPD_HEIGHT;
         break;
 
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    case 0x7F:  // Experimental ABC9 input, never a public film2 format.
+        if (header->frameCount != 1 || header->screenWidth != EPD_WIDTH ||
+            header->screenHeight != EPD_HEIGHT || memcmp(header->reserved, "ABC9", 4) != 0)
+            return ESP_ERR_INVALID_ARG;
+        frameSize = EPD_WIDTH * EPD_HEIGHT * 2u;
+        break;
+#endif
     default:
         sys_loge(EPD_TAG, "Unknown film format: 0x%02X", header->format);
         return ESP_ERR_INVALID_VERSION;
@@ -1601,6 +1609,23 @@ static void epd_spectra_write_plane(const uint8_t *index8, uint8_t plane)
     EPD_PROFILE_STAGE_END(RAM);
 }
 
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+/* RAM-only writer: epd_spectra_fill() also refreshes and must NOT be used here. */
+static void epd_spectra_write_constant(uint8_t code)
+{
+    EPD_PROFILE_STAGE_BEGIN(RAM);
+    uint8_t line[EPD_INPUT_LINE];
+    memset(line, (uint8_t)((code << 4) | code), sizeof(line));
+    EPD_W21_WriteCMD(DTM1);
+    epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
+    for (int row = 0; row < EPD_HEIGHT; row++)
+    {
+        EPD_W21_WriteDATA_Bulk(line, EPD_INPUT_LINE);
+    }
+    EPD_PROFILE_STAGE_END(RAM);
+}
+#endif
+
 // 彩色多相位刷新：mode 0 = ColorFast(2 相), 1 = ColorQual(3 相)
 static void epd_spectra_display_color(const uint8_t *index8, uint8_t mode)
 {
@@ -1608,6 +1633,11 @@ static void epd_spectra_display_color(const uint8_t *index8, uint8_t mode)
     // ColorQual 仅在 mono(2)/fast-color(3) 之后（state >= 2）才清理
     bool need_clear = (mode == 0) ? (m_spectra_state != 1)
                                   : (m_spectra_state >= 2);
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+    /* Same starting operation for all diagnostic modes, including mode 0.
+     * This adds one clear REF to the original three Qual REFs, for four total. */
+    if (mode == 1) need_clear = true;
+#endif
     if (need_clear)
     {
         epd_spectra_full_clear();
@@ -1635,6 +1665,19 @@ static void epd_spectra_display_color(const uint8_t *index8, uint8_t mode)
         epd_spectra_refresh(true, false);
 
         epd_spectra_wave(qual_phase2);
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+        const uint8_t diag_mode = index8[0] >> 3;
+        if (diag_mode == 1)
+        {
+            epd_spectra_write_plane(index8, 0);
+        }
+        else if (diag_mode == 2)
+        {
+            epd_spectra_write_constant(index8[0] & 7);
+        }
+        /* Mode 1 controls the extra 172800-byte transfer slot of mode 2.
+         * Mode 0 retains RAM reuse; complete refresh timing is not identical. */
+#endif
         epd_spectra_refresh(false, false);   // 复用同一控制器 RAM，不重传图
 
         epd_spectra_wave(qual_phase3);
@@ -1794,6 +1837,11 @@ void hal_epd_display_film(const unsigned char *filmData)
     // 按 Format 判别 v1/v2 编码方式并分派到对应驱动路径
     switch (header.format)
     {
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    case 0x7F:
+        hal_epd_display_abc9(pixelData, header.fileSize);
+        return;
+#endif
     case 0x01:  // v2 MonoFast：1bpp 位图，走黑白快刷
         sys_logi(EPD_TAG, "Film v2 MonoFast");
         hal_epd_display_mono(pixelData);
@@ -2047,11 +2095,81 @@ void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode)
         return;
     }
 
+#ifdef CONFIG_ARK_EPD_ABC_DIAG
+    if (mode == 1)
+    {
+        const uint8_t diag_mode = index8Data[0] >> 3;
+        if (diag_mode > 2)
+        {
+            sys_loge(EPD_TAG, "ABC diagnostic rejected native marker 0x%02X", index8Data[0]);
+            EPD_PROFILE_ERROR(ESP_ERR_INVALID_ARG);
+            EPD_PROFILE_END();
+            return;
+        }
+        sys_logi(EPD_TAG, "ABC_DIAG mode=%u B=%u clear=1 qual_ref=3 extra_ram=%u",
+                 diag_mode, index8Data[0] & 7, diag_mode == 0 ? 0u : 172800u);
+    }
+#endif
     epd_spectra_init();
     epd_spectra_display_color(index8Data, mode);
     EPD_PROFILE_END();
     sys_logi(EPD_TAG, "Display 8bpp mode=%u completed", mode);
 }
+
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+static void epd_abc9_write_plane(const uint8_t *pixels, uint8_t shift)
+{
+    EPD_PROFILE_STAGE_BEGIN(RAM);
+    uint8_t line[EPD_INPUT_LINE];
+    EPD_W21_WriteCMD(DTM1);
+    epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
+    for (int row = 0; row < EPD_HEIGHT; row++)
+    {
+        for (int x = 0; x < EPD_WIDTH; x += 2)
+        {
+            uint16_t a = pixels[0] | ((uint16_t)pixels[1] << 8);
+            uint16_t b = pixels[2] | ((uint16_t)pixels[3] << 8);
+            line[x / 2] = (uint8_t)((((a >> shift) & 7) << 4) | ((b >> shift) & 7));
+            pixels += 4;
+        }
+        EPD_W21_WriteDATA_Bulk(line, EPD_INPUT_LINE);
+    }
+    EPD_PROFILE_STAGE_END(RAM);
+}
+
+esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size)
+{
+    if (pixels == NULL || size != EPD_WIDTH * EPD_HEIGHT * 2u)
+        return ESP_ERR_INVALID_ARG;
+    /* Check all high bits BEFORE display_init/full_clear/any REF. */
+    for (uint32_t i = 1; i < size; i += 2)
+    {
+        if (pixels[i] & 0xFE)
+        {
+            sys_loge(EPD_TAG, "ABC9 rejected pixel %lu: high bits set", (unsigned long)(i / 2));
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    EPD_PROFILE_BEGIN("abc9_lab");
+    hal_epd_display_init();
+    epd_spectra_init();
+    epd_spectra_full_clear();
+    epd_spectra_wave(qual_phase1);
+    epd_abc9_write_plane(pixels, 6);
+    epd_spectra_refresh(true, false);
+    epd_spectra_wave(qual_phase2);
+    epd_abc9_write_plane(pixels, 3);
+    epd_spectra_refresh(false, false);
+    epd_spectra_wave(qual_phase3);
+    epd_abc9_write_plane(pixels, 0);
+    epd_spectra_refresh(false, true);
+    m_spectra_state = 0;
+    hal_epd_pwroff();
+    EPD_PROFILE_END();
+    sys_logi(EPD_TAG, "ABC9 lab complete clear=1 qual_ref=3 RAM=A/B/C");
+    return ESP_OK;
+}
+#endif
 
 void hal_epd_display_mono(const unsigned char *mono_bitmap)
 {

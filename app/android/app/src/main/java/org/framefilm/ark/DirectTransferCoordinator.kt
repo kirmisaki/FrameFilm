@@ -5,8 +5,10 @@ import android.os.Handler
 import android.os.Looper
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.Inet4Address
+import java.util.concurrent.TimeoutException
 
-/** One transfer attempt. The BLE connection belongs to ArkSession; this owns only its P2P group. */
+/** One transfer attempt. ArkSession owns BLE; this owns its temporary Wi-Fi request and HTTP server. */
 class DirectTransferCoordinator(
     context: Context,
     private val ble: ArkBleController,
@@ -16,6 +18,7 @@ class DirectTransferCoordinator(
     private val firmware: ArkFirmware? = null,
     private val reconnect: (() -> Unit)? = null,
     private val targetPath: String? = null,
+    private val legacyHardwareTarget: String? = null,
 ) {
     interface Listener { fun onSnapshot(snapshot: TransferSnapshot) }
 
@@ -23,42 +26,38 @@ class DirectTransferCoordinator(
     private val getterChannels = intArrayOf(0x31, 0x33, 0x35, 0x37)
     private val before = mutableListOf<ByteArray>()
     private val after = mutableListOf<ByteArray>()
+    private var useAp = false
+    private var capabilitiesChecked = false
+    private var apPrepareSubmitted = false
+    private var apSession: ArkApSession? = null
+    private var plannedBlePause = false
+    private var apStartedAt = 0L
+    private var apStopDeadline = 0L
+    private var apNetworkLost = false
+    private var cancelRequested = false
+    private var apMonitor: Runnable? = null
+    private val ap = ArkApNetworkController(context, object : ArkApNetworkController.Listener {
+        override fun onReady(address: Inet4Address) {
+            if (!active || stopping) return
+            val session = apSession ?: return
+            startHttpSession(session.ssid, session.passphrase, address)
+        }
+        override fun onLost() {
+            if (!active) return
+            apNetworkLost = true
+            if (!startSubmitted) stop("Ark 热点连接已断开")
+            else monitorApTransfer()
+        }
+        override fun onError(message: String) {
+            if (active && !stopping) stop(message)
+        }
+    })
     private val p2p: ArkP2pController = ArkP2pController(context, object : ArkP2pController.Listener {
         override fun onGroupReady(frequencyMhz: Int) {
             if (active && !stopping) emit("connecting", if (frequencyMhz > 0) "2.4GHz GO 已就绪（${frequencyMhz}MHz）" else "直连组已就绪，Android 9 由系统选择频段")
         }
         override fun onSessionReady(session: ArkP2pController.Session) {
-            if (!active || stopping) return
-            try {
-                server = FilmHttpServer(file, fileName, session.ownerAddress,
-                    firmware = firmware != null, generic = targetPath != null).also { it.start() }
-                val payload = ByteArrayOutputStream().apply {
-                    firmware?.let { image ->
-                        for (shift in intArrayOf(24, 16, 8, 0)) write((image.size shr shift).toInt() and 255)
-                        write(ArkFirmware.bytes(image.fileSha256))
-                    }
-                    write(session.ssid.toByteArray(Charsets.US_ASCII)); write(0)
-                    write(session.passphrase.toByteArray(Charsets.US_ASCII)); write(0)
-                    write(server!!.url.toByteArray(Charsets.US_ASCII)); write(0)
-                    targetPath?.let { write(it.toByteArray(Charsets.UTF_8)); write(0) }
-                }.toByteArray()
-                if (payload.size > 192) { stop("直传参数超过 BLE 单包上限"); return }
-                // Saving already routes film files by frame count. Do not enter the image
-                // app here: entering it would replay the previous image before upload.
-                startSubmitted = true
-                val channel = when { targetPath != null -> 0x5A; firmware != null -> 0x57; else -> 0x50 }
-                ble.command(channel, payload, 8_000) { reply ->
-                    if (!active || stopping) return@command
-                    val code = reply.getOrElse { stop(it.message ?: "直传启动失败"); return@command }
-                    if (code.size != 1 || code[0].toInt() != 0) {
-                        startSubmitted = false
-                        stop("Ark 拒绝直传（代码 ${code.firstOrNull()?.toInt()?.and(0xff) ?: -1}）")
-                    } else {
-                        emit("connecting", "Ark 已接受直传；文件 ${server!!.size} 字节")
-                        poll()
-                    }
-                }
-            } catch (error: Exception) { stop("手机 HTTP 服务启动失败：${error.message}") }
+            startHttpSession(session.ssid, session.passphrase, session.ownerAddress)
         }
         override fun onState(state: String) {
             if (active && !stopping) emit("connecting", "Wi-Fi Direct：$state")
@@ -89,7 +88,47 @@ class DirectTransferCoordinator(
     private var reconnectTask: Runnable? = null
     val needsConfirmation: Boolean get() = awaitingConfirmation
     val isActive: Boolean get() = active || cleaning
-    val cleanupConfirmed: Boolean get() = p2pClean && (!startSubmitted || terminal)
+    val expectsBleResume: Boolean get() = useAp && plannedBlePause && active && !applied
+    private val deviceSessionSubmitted: Boolean get() = startSubmitted || apPrepareSubmitted
+    val cleanupConfirmed: Boolean get() = p2pClean && (!deviceSessionSubmitted || terminal)
+
+    private fun startHttpSession(ssid: String, password: String, address: Inet4Address) {
+        if (!active || stopping) return
+        try {
+            val http = FilmHttpServer(file, fileName, address, firmware = firmware != null,
+                generic = targetPath != null).also { server = it; it.start() }
+            val payload = ByteArrayOutputStream().apply {
+                firmware?.let { image ->
+                    for (shift in intArrayOf(24, 16, 8, 0)) write((image.size shr shift).toInt() and 255)
+                    write(ArkFirmware.bytes(image.fileSha256))
+                }
+                write(ssid.toByteArray(Charsets.US_ASCII)); write(0)
+                write(password.toByteArray(Charsets.US_ASCII)); write(0)
+                write(http.url.toByteArray(Charsets.US_ASCII)); write(0)
+                targetPath?.let { write(it.toByteArray(Charsets.UTF_8)); write(0) }
+            }.toByteArray()
+            if (payload.size > 192) { stop("直传参数超过 BLE 单包上限"); return }
+            startSubmitted = true
+            plannedBlePause = useAp
+            apStartedAt = System.currentTimeMillis()
+            val channel = when { targetPath != null -> 0x5A; firmware != null -> 0x57; else -> 0x50 }
+            ble.command(channel, payload, 8_000) { reply ->
+                if (!active || stopping) return@command
+                val code = reply.getOrElse {
+                    if (expectsBleResume && !ble.isReady) { monitorApTransfer(); return@command }
+                    stop(it.message ?: "直传启动失败"); return@command
+                }
+                if (code.size != 1 || code[0].toInt() != 0) {
+                    startSubmitted = false
+                    plannedBlePause = false
+                    stop("Ark 拒绝直传（代码 ${code.firstOrNull()?.toInt()?.and(0xff) ?: -1}）")
+                } else {
+                    emit("connecting", "Ark 已接受直传；文件 ${http.size} 字节")
+                    if (useAp) scheduleApMonitor() else poll()
+                }
+            }
+        } catch (error: Exception) { stop("手机 HTTP 服务启动失败：${error.message}") }
+    }
 
     fun start() = onMain {
         if (active || cleaning) return@onMain
@@ -106,35 +145,114 @@ class DirectTransferCoordinator(
             .also { main.postDelayed(it, timeoutMs) }
         emit("preparing", "核对 Ark 及原有 Wi-Fi 配置")
         if (firmware != null) {
-            emit("validating", "核对 Wi-Fi OTA 能力与目标分区")
-            ble.command(0x56) { result ->
-                if (!active || stopping) return@command
-                val info = runCatching { ArkBuildInfo.parse(result.getOrThrow()) }.getOrElse {
-                    stop("设备不支持 Wi-Fi OTA；请先使用已有 BLE OTA 升级固件：${it.message}"); return@command
-                }
-                if (info.project != firmware.project || firmware.size > info.otaMax) {
-                    stop("固件目标或大小不匹配 OTA 分区（${info.otaMax} 字节）"); return@command
-                }
-                if (info.elfSha256 == firmware?.elfSha256) {
-                    terminal = true
-                    finish("done", "设备已运行相同构建，无需升级", true)
-                } else prepareNetwork()
+            emit("validating", "读取实际硬件身份并核对 OTA 目标")
+            if(firmware.hardware == null) {
+                stop("固件缺少 FFARKHW1 硬件目标描述，不能自动升级")
+                return@onMain
             }
+            checkFirmwareCapability()
         } else if (targetPath != null) checkFileCapability()
+        else if (Abc9Preview.isFilm(file)) checkFileCapability(abc9 = true)
         else prepareNetwork()
     }
 
-    private fun checkFileCapability() {
+    private fun checkFirmwareCapability() {
         ble.command(0x59) { result ->
             if (!active || stopping) return@command
-            val data = result.getOrElse { stop("无法确认设备支持通用 Wi-Fi 文件传输：${it.message}"); return@command }
-            if (data.size != 5 || (data[0].toInt() and 0xff) != 1 || (data[4].toInt() and 0x02) == 0) {
-                stop("设备固件不支持通用 Wi-Fi 文件传输，请先升级 Ark 固件")
+            val data = result.getOrNull()
+            val error = result.exceptionOrNull()
+            // Old firmware does not reply to unknown channels. A write failure or
+            // disconnect is not evidence of an old firmware version.
+            if (!ble.isReady || (error != null && error !is TimeoutException)) {
+                stop("读取设备能力失败：${error?.message ?: "Ark 蓝牙已断开"}"); return@command
+            }
+            if (data != null && (data.size != 5 || data[0] != 1.toByte())) {
+                stop("设备能力响应无效，不能确认硬件身份能力"); return@command
+            }
+            capabilitiesChecked = true
+            useAp = ArkApNetworkController.supported && data != null && data[4].toInt() and 0x10 != 0
+            val declaresHardware = data != null && data[4].toInt() and 0x40 != 0
+            val legacyNfcPossible = data != null && (data[4].toInt() and 0x50) == 0x10
+            checkFirmwareHardware(declaresHardware, legacyNfcPossible)
+        }
+    }
+
+    private fun checkFirmwareHardware(declaresHardware: Boolean, legacyNfcPossible: Boolean) {
+        ble.command(0x5D) { result ->
+            if (!active || stopping) return@command
+            val image = checkNotNull(firmware)
+            val error = result.exceptionOrNull()
+            if (!ble.isReady) {
+                stop("读取硬件身份时 Ark 蓝牙已断开"); return@command
+            }
+            if (error != null && (declaresHardware || error !is TimeoutException)) {
+                stop("无法读取设备硬件身份：${error.message}"); return@command
+            }
+            // Old upstream NFC uses 0x5D for card data and rejects our empty request with PARAM.
+            val legacyNfcReply = legacyNfcPossible && result.getOrNull()?.contentEquals(byteArrayOf(2)) == true
+            if (error != null || legacyNfcReply) {
+                val selected = legacyHardwareTarget
+                if (selected == null) {
+                    stop("旧固件不提供硬件身份；请手动选择并确认实际硬件型号后重试"); return@command
+                }
+                runCatching { image.requireTarget(selected) }.getOrElse {
+                    stop(it.message ?: "手动硬件目标无效"); return@command
+                }
+            } else {
+                runCatching { ArkHardware.parse(result.getOrThrow()).requireMatches(image) }.getOrElse {
+                    stop("设备硬件身份无效或目标不匹配：${it.message}"); return@command
+                }
+            }
+            checkFirmwareBuild()
+        }
+    }
+
+    private fun checkFirmwareBuild() {
+        val image = checkNotNull(firmware)
+        emit("validating", "核对 Wi-Fi OTA 能力与目标分区")
+        ble.command(0x56) { result ->
+            if (!active || stopping) return@command
+            val info = runCatching { ArkBuildInfo.parse(result.getOrThrow()) }.getOrElse {
+                stop("设备不支持 BUILD_INFO；请先完成一次对应型号的识别升级：${it.message}"); return@command
+            }
+            if (info.project != image.project || image.size > info.otaMax) {
+                stop("固件目标或大小不匹配 OTA 分区（${info.otaMax} 字节）"); return@command
+            }
+            if (info.elfSha256 == image.elfSha256) {
+                terminal = true
+                finish("done", "设备已运行相同构建，无需升级", true)
             } else prepareNetwork()
         }
     }
 
+    private fun checkFileCapability(abc9: Boolean = false) {
+        ble.command(0x59) { result ->
+            if (!active || stopping) return@command
+            val feature = if (abc9) "ABC9 实验512色预览" else "通用 Wi-Fi 文件传输"
+            val data = result.getOrElse { stop("无法确认设备支持$feature：${it.message}"); return@command }
+            val supported = if (abc9) Abc9Preview.supported(data) else
+                data.size == 5 && data[0] == 1.toByte() && data[4].toInt() and 0x02 != 0
+            if (!supported) {
+                stop("设备固件不支持$feature，请先升级 Ark 固件")
+            } else {
+                capabilitiesChecked = true
+                useAp = ArkApNetworkController.supported && data[4].toInt() and 0x10 != 0
+                prepareNetwork()
+            }
+        }
+    }
+
     private fun prepareNetwork() {
+        if (!capabilitiesChecked && ArkApNetworkController.supported) {
+            ble.command(0x59) { result ->
+                if (!active || stopping) return@command
+                capabilitiesChecked = true
+                val data = result.getOrNull()
+                useAp = data?.size == 5 && data[0] == 1.toByte() && data[4].toInt() and 0x10 != 0
+                prepareNetwork()
+            }
+            return
+        }
         ble.command(0x42) { result ->
             if (!active || stopping) return@command
             val data = result.getOrElse { stop(it.message ?: "读取屏幕参数失败"); return@command }
@@ -144,11 +262,92 @@ class DirectTransferCoordinator(
                 stop("设备不是预期 Ark 720×480 面板")
             } else snapshot(0, before) {
                 if (active && !stopping) {
-                    emit("connecting", "创建 2.4GHz 直连组")
-                    p2p.createGroup2Ghz()
+                    if (useAp) prepareArkAp()
+                    else prepareP2p()
                 }
             }
         }
+    }
+
+    private fun prepareP2p() {
+        emit("connecting", "创建 2.4GHz 直连组")
+        p2p.createGroup2Ghz()
+    }
+
+    private fun prepareArkAp() {
+        apPrepareSubmitted = true
+        emit("connecting", "准备 Ark 热点；随后由系统请求连接")
+        ble.command(0x5C, waitMs = 12_000) { result ->
+            if (!active) return@command
+            if (stopping) { cancelApSession(); return@command }
+            val data = result.getOrElse { stop("无法确认 Ark 热点准备结果：${it.message}"); return@command }
+            if (data.contentEquals(byteArrayOf(2))) {
+                // Older upstream NFC builds reject the empty request as an invalid card begin.
+                apPrepareSubmitted = false
+                useAp = false
+                prepareP2p()
+                return@command
+            }
+            if (data.isNotEmpty() && data[0] != 0.toByte()) {
+                apPrepareSubmitted = false
+                stop("Ark 未接受热点准备（代码 ${data[0].toInt() and 255}）")
+                return@command
+            }
+            val session = runCatching { ArkApSession.parse(data) }.getOrElse {
+                stop(it.message ?: "Ark 热点参数无效"); return@command
+            }
+            apSession = session
+            ap.connect(session)
+        }
+    }
+
+    private fun scheduleApMonitor() {
+        apMonitor?.let(main::removeCallbacks)
+        apMonitor = Runnable { apMonitor = null; monitorApTransfer() }
+            .also { main.postDelayed(it, 800) }
+    }
+
+    private fun monitorApTransfer() {
+        if (!active || !useAp || applied || terminal) return
+        if (stopping && apStopDeadline != 0L && System.currentTimeMillis() >= apStopDeadline) {
+            resultMessage += "；设备恢复终态未确认，请重连同一 Ark 确认"
+            cleanup()
+            return
+        }
+        if (ble.isReady) {
+            if (!ble.isBusy) {
+                if (stopping) cancelApSession() else poll()
+                return
+            }
+        } else {
+            received = server?.writtenBytes ?: received
+            if (!stopping) emit("downloading", if (received >= total)
+                "手机已发送 $received/$total 字节，等待设备保存确认与蓝牙恢复"
+                else "手机已发送 $received/$total 字节，设备保存结果尚待确认")
+            val quietStartup = received == 0L && System.currentTimeMillis() - apStartedAt >= 8_000
+            if (stopping || apNetworkLost || server?.transferFinished == true || quietStartup)
+                scheduleApReconnect()
+        }
+        scheduleApMonitor()
+    }
+
+    private fun scheduleApReconnect() {
+        if (reconnectTask != null || ble.isReady || ble.isConnecting) return
+        reconnectTask = Runnable {
+            reconnectTask = null
+            if (expectsBleResume && !ble.isReady && !ble.isConnecting) reconnect?.invoke()
+        }.also { main.postDelayed(it, 3_000) }
+    }
+
+    private fun cancelApSession() {
+        if (!active || !stopping) return
+        if (!ble.isReady || ble.isBusy) { scheduleApMonitor(); return }
+        // Query first: a late cancellation cannot undo an already committed file.
+        poll()
+    }
+
+    private fun closeNetwork(callback: (Boolean) -> Unit) {
+        if (useAp) callback(ap.close()) else p2p.close(callback)
     }
 
     private fun onMain(block: () -> Unit) {
@@ -175,10 +374,15 @@ class DirectTransferCoordinator(
     }
 
     private fun poll() {
-        if (!active || stopping || terminal) return
+        if (!active || (stopping && !useAp) || terminal) return
+        if (useAp && (!ble.isReady || ble.isBusy)) { scheduleApMonitor(); return }
         ble.command(0x51) { result ->
-            if (!active || stopping) return@command
-            val bytes = result.getOrElse { stop(it.message ?: "读取直传状态失败"); return@command }
+            if (!active || (stopping && !useAp)) return@command
+            val bytes = result.getOrElse {
+                if (expectsBleResume && !ble.isReady) { scheduleApMonitor(); return@command }
+                if (useAp && stopping) { scheduleApMonitor(); return@command }
+                stop(it.message ?: "读取直传状态失败"); return@command
+            }
             if (bytes.size != 11) { stop("直传状态长度错误"); return@command }
             val state = bytes[0].toInt() and 0xff
             val error = bytes[2].toInt() and 0xff
@@ -188,6 +392,15 @@ class DirectTransferCoordinator(
             if (reportedTotal > 0) total = reportedTotal
             val phase = when (state) { 1 -> "connecting"; 2 -> "downloading"; 3 -> "restoring"; else -> "downloading" }
             emit(phase, "Ark 状态 $state，${bytes[1].toInt() and 0xff}%，$received/$total 字节")
+            if (useAp && stopping && state !in 4..6) {
+                if (state == 0) {
+                    terminal = true
+                    finish(if (cancelRequested) "cancelled" else "error", resultMessage, false)
+                } else {
+                    ble.command(0x52) { scheduleApMonitor() }
+                }
+                return@command
+            }
             if (state == 7 && firmware != null) {
                 if (received != firmware.size || reportedTotal != firmware.size) {
                     stop("OTA 校验后的字节数不符"); return@command
@@ -215,21 +428,31 @@ class DirectTransferCoordinator(
                         9 -> "OTA READY 等待超时"
                         else -> "设备未完成传输"
                     }
-                    stop("$reason（状态 $state，错误 $error）")
+                    if (useAp && stopping) finish(if (cancelRequested) "cancelled" else "error",
+                        "$resultMessage；$reason（状态 $state，错误 $error）", false)
+                    else stop("$reason（状态 $state，错误 $error）")
                     return@command
                 }
-                if (firmware != null) { stop("OTA 未进入 READY，不能确认升级"); return@command }
-                val expected = server?.size ?: -1L
+                if (firmware != null) {
+                    if (useAp && stopping) finish("error", "OTA 未进入 READY，不能确认升级", false)
+                    else stop("OTA 未进入 READY，不能确认升级")
+                    return@command
+                }
+                val expected = file.length()
                 if (received != expected || reportedTotal != expected) {
-                    stop("传输字节数不符：$received/$reportedTotal，预期 $expected")
+                    if (useAp && stopping) finish("error", "传输字节数不符：$received/$reportedTotal，预期 $expected", false)
+                    else stop("传输字节数不符：$received/$reportedTotal，预期 $expected")
                     return@command
                 }
+                if (useAp && stopping) stopping = false
                 snapshot(0, after) {
                     if (before.size != after.size || before.indices.any { !before[it].contentEquals(after[it]) })
                         stop("原有 Wi-Fi 配置前后不一致")
-                    else finish("done", "Ark 已保存 $received 字节，原有 Wi-Fi 配置未变", true)
+                    else finish("done", if (cancelRequested)
+                        "取消请求到达前 Ark 已保存 $received 字节，文件未撤销，原有 Wi-Fi 配置未变"
+                        else "Ark 已保存 $received 字节，原有 Wi-Fi 配置未变", true)
                 }
-            } else main.postDelayed({ poll() }, 800)
+            } else if (useAp) scheduleApMonitor() else main.postDelayed({ poll() }, 800)
         }
     }
 
@@ -238,6 +461,8 @@ class DirectTransferCoordinator(
     fun onBleDisconnected() = onMain {
         if (applied && awaitingConfirmation) {
             if (active) { emit("rebooting", "Ark 重启中，等待同一设备重连"); scheduleReconnect() }
+        } else if (expectsBleResume) {
+            scheduleApMonitor()
         } else if (active && !stopping) stop("Ark 蓝牙断开；需重连后确认固件恢复终态")
     }
 
@@ -247,12 +472,12 @@ class DirectTransferCoordinator(
         server?.close()
         server = null
         cleaning = true
-        p2p.close { clean ->
+        closeNetwork { clean ->
             cleaning = false
             p2pClean = clean
-            if (!active) return@close
-            if (stopping) { cleanup(); return@close }
-            if (!clean) { stop("手机直连组清理未确认，未提交升级"); return@close }
+            if (!active) return@closeNetwork
+            if (stopping) { cleanup(); return@closeNetwork }
+            if (!clean) { stop("手机直连网络清理未确认，未提交升级"); return@closeNetwork }
             // From this point a lost reply may still mean activation succeeded. Never cancel/reflash.
             applied = true
             awaitingConfirmation = true
@@ -277,6 +502,13 @@ class DirectTransferCoordinator(
     }
 
     fun onBleReady() = onMain {
+        if (expectsBleResume) {
+            reconnectTask?.let(main::removeCallbacks)
+            reconnectTask = null
+            emit("restoring", "Ark 蓝牙已恢复，核对设备保存终态")
+            if (ble.isBusy) scheduleApMonitor() else poll()
+            return@onMain
+        }
         if (!awaitingConfirmation || !active) return@onMain
         reconnectTask?.let(main::removeCallbacks)
         reconnectTask = null
@@ -327,7 +559,19 @@ class DirectTransferCoordinator(
         resultPhase = if (cancelled) "cancelled" else "error"
         resultMessage = message
         resultSuccess = false
+        cancelRequested = cancelled
         if (applied) { unconfirmed(message); return }
+        if (useAp && deviceSessionSubmitted && !terminal) {
+            // Closing the serving socket interrupts the pull; retain the Wi-Fi request until
+            // the restored BLE link confirms whether abort or commit actually won.
+            runCatching { server?.close() }
+            apStopDeadline = System.currentTimeMillis() + 60_000
+            emit("cancelling", "$message；等待 Ark 清理并恢复蓝牙确认")
+            if (ble.isReady && !ble.isBusy && !startSubmitted) {
+                ble.command(0x52) { scheduleApMonitor() }
+            } else scheduleApMonitor()
+            return
+        }
         if (startSubmitted && !terminal && ble.isReady) {
             emit("cancelling", "请求 Ark 取消并等待 Wi-Fi 恢复")
             requestCancel(System.currentTimeMillis() + 40_000)
@@ -364,12 +608,16 @@ class DirectTransferCoordinator(
         if (!active || cleaning) return
         cleaning = true
         active = false
+        apMonitor?.let(main::removeCallbacks)
+        apMonitor = null
+        reconnectTask?.let(main::removeCallbacks)
+        reconnectTask = null
         deadline?.let(main::removeCallbacks)
         deadline = null
-        emit("cleanup", "关闭临时 HTTP 服务并释放手机直连组")
+        emit("cleanup", if (useAp) "关闭临时 HTTP 服务并释放热点连接请求" else "关闭临时 HTTP 服务并释放手机直连组")
         server?.close()
         server = null
-        p2p.close { clean ->
+        closeNetwork { clean ->
             cleaning = false
             p2pClean = clean
             val complete = cleanupConfirmed
@@ -377,7 +625,7 @@ class DirectTransferCoordinator(
             val phase = if (!complete) "error" else resultPhase
             val detail = when {
                 !clean -> "; 手机直连组清理未确认：${cleanupError ?: "原因未报告"}"
-                startSubmitted && !terminal -> "; Ark 恢复终态未确认"
+                deviceSessionSubmitted && !terminal -> "; Ark 恢复终态未确认"
                 else -> ""
             }
             emit(phase, resultMessage + detail, canRetry = !success && file.isFile,
@@ -389,16 +637,16 @@ class DirectTransferCoordinator(
     fun ensureSettled(callback: (Boolean, String) -> Unit) = onMain {
         if (isActive) { callback(false, "上一轮仍在进行"); return@onMain }
         fun settleGroup() {
-            if (p2pClean && !p2p.hasPendingCleanup) { callback(true, "上一轮已清理"); return }
-            p2p.close { clean ->
+            if (p2pClean && (useAp || !p2p.hasPendingCleanup)) { callback(true, "上一轮已清理"); return }
+            closeNetwork { clean ->
                 p2pClean = clean
                 callback(clean, if (clean) "上一轮直连组已释放" else "上一轮直连组仍未清理")
             }
         }
-        if (!startSubmitted || terminal) { settleGroup(); return@onMain }
+        if (!deviceSessionSubmitted || terminal) { settleGroup(); return@onMain }
         if (!ble.isReady) {
             // The firmware state is unknown, but the phone-owned group can still be released.
-            p2p.close { clean ->
+            closeNetwork { clean ->
                 p2pClean = clean
                 callback(false, "请先重连 Ark，再确认上一轮 Wi-Fi 已恢复")
             }

@@ -5,10 +5,16 @@ import java.io.RandomAccessFile
 import java.security.MessageDigest
 
 data class ArkFirmware(val version: String, val project: String, val elfSha256: String,
-                       val fileSha256: String, val size: Long) {
+                       val fileSha256: String, val size: Long, val hardware: ArkHardware? = null) {
+    fun requireTarget(expectedTarget: String) {
+        require(ArkHardware.knownTarget(expectedTarget)) { "缺少明确硬件目标，不能猜测型号" }
+        require(hardware?.targetId == expectedTarget) {
+            "下载镜像的实际硬件目标 ${hardware?.targetId ?: "未描述"} 与所选 $expectedTarget 不匹配"
+        }
+    }
     companion object {
         fun inspect(file: File): ArkFirmware {
-            require(file.length() in 288..(4L * 1024 * 1024)) { "固件大小无效" }
+            require(file.length() in 288..FirmwareDownloader.MAX_SIZE) { "固件大小无效" }
             val header = ByteArray(288)
             RandomAccessFile(file, "r").use { it.readFully(header) }
             fun u8(at: Int) = header[at].toInt() and 255
@@ -82,7 +88,12 @@ data class ArkFirmware(val version: String, val project: String, val elfSha256: 
                     digest.update(buffer, 0, count)
                 }
             }
-            return ArkFirmware(version, project, hex(elf), hex(digest.digest()), file.length())
+            val hardware = if (le32(28) >= 320 && file.length() >= 352) {
+                val descriptor = ByteArray(64)
+                RandomAccessFile(file, "r").use { it.seek(288); it.readFully(descriptor) }
+                ArkHardware.fromDescriptor(descriptor)
+            } else null
+            return ArkFirmware(version, project, hex(elf), hex(digest.digest()), file.length(), hardware)
         }
         fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
         fun bytes(hex: String): ByteArray = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
@@ -102,6 +113,71 @@ data class ArkBuildInfo(val otaMax: Long, val elfSha256: String, val version: St
             return ArkBuildInfo(max, ArkFirmware.hex(data.copyOfRange(5, 37)),
                 data.copyOfRange(37, versionEnd).toString(Charsets.UTF_8),
                 data.copyOfRange(versionEnd + 1, projectEnd).toString(Charsets.UTF_8))
+        }
+    }
+}
+
+/** Physical identity is queried from the connected board, never inferred from its name/version. */
+data class ArkHardware(val schemaVersion: Int, val chipId: Int, val chipRevision: Int,
+                       val flashBytes: Long, val psramBytes: Long, val psramBus: String,
+                       val targetId: String) {
+    fun snapshot(): Map<String, Any> = mapOf("schemaVersion" to schemaVersion,
+        "chipId" to chipId, "chipRevision" to chipRevision, "flashBytes" to flashBytes,
+        "psramBytes" to psramBytes, "psramBus" to psramBus, "targetId" to targetId)
+
+    fun requireMatches(image: ArkFirmware) {
+        val target = requireNotNull(image.hardware) {
+            "固件缺少硬件目标描述，无法确认兼容性；请选择带 FFARKHW1 描述的对应型号镜像"
+        }
+        require(knownTarget(targetId) && knownTarget(target.targetId)) { "硬件型号尚未识别，不能自动升级；请先完成一次型号识别升级" }
+        require(chipId == target.chipId && flashBytes == target.flashBytes &&
+            psramBytes == target.psramBytes && psramBus == target.psramBus && targetId == target.targetId) {
+            "固件硬件目标不匹配：设备 $targetId（$flashBytes/$psramBytes/$psramBus），镜像 ${target.targetId}（${target.flashBytes}/${target.psramBytes}/${target.psramBus}）"
+        }
+    }
+
+    companion object {
+        const val N4R2 = "ark-esp32s3-n4r2"
+        const val N16R8 = "ark-esp32s3-n16r8"
+        fun knownTarget(id: String) = id == N4R2 || id == N16R8
+        private fun bus(code: Int) = when(code) { 1 -> "quad"; 2 -> "octal"; else -> "unknown" }
+        private fun ascii(data: ByteArray, start: Int, end: Int): String {
+            val nul = (start until end).firstOrNull { data[it] == 0.toByte() }
+                ?: error("硬件 targetId 缺少终止符")
+            require((start until nul).all { data[it].toInt() in 0x21..0x7e } && nul > start &&
+                (nul until end).all { data[it] == 0.toByte() }) { "硬件 targetId 格式无效" }
+            return data.copyOfRange(start, nul).toString(Charsets.US_ASCII)
+        }
+        private fun validateTarget(hardware: ArkHardware) {
+            val memory = when(hardware.targetId) {
+                N4R2 -> Triple(4L*1024*1024, 2L*1024*1024, "quad")
+                N16R8 -> Triple(16L*1024*1024, 8L*1024*1024, "octal")
+                else -> error("未知固件硬件目标：${hardware.targetId}")
+            }
+            require(hardware.chipId == 9 && hardware.flashBytes == memory.first &&
+                hardware.psramBytes == memory.second && hardware.psramBus == memory.third) {
+                "硬件 targetId 与 Flash / PSRAM / 总线描述不一致"
+            }
+        }
+        fun parse(data: ByteArray): ArkHardware {
+            require(data.size in 16..46 && data[0] == 1.toByte()) { "设备缺少硬件身份；请先完成一次对应型号的识别升级，图片功能仍可使用" }
+            fun u8(i:Int)=data[i].toInt() and 255
+            fun be16(i:Int)=(u8(i) shl 8) or u8(i+1)
+            fun be32(i:Int)=(0..3).fold(0L){v,n->(v shl 8) or u8(i+n).toLong()}
+            return ArkHardware(1,be16(1),be16(3),be32(5),be32(9),bus(u8(13)),ascii(data,14,data.size)).also {
+                if(knownTarget(it.targetId)) validateTarget(it)
+            }
+        }
+        fun fromDescriptor(data: ByteArray): ArkHardware? {
+            require(data.size == 64)
+            if(!data.copyOfRange(0,8).contentEquals("FFARKHW1".toByteArray(Charsets.US_ASCII))) return null
+            fun u8(i:Int)=data[i].toInt() and 255
+            fun le16(i:Int)=u8(i) or (u8(i+1) shl 8)
+            fun le32(i:Int)=(0..3).fold(0L){v,n->v or (u8(i+n).toLong() shl (8*n))}
+            require(u8(8)==1 && u8(9)==64 && (21..23).all{u8(it)==0} && (56..63).all{u8(it)==0}) {
+                "固件硬件 descriptor 版本、长度或保留字段无效"
+            }
+            return ArkHardware(1,le16(10),0,le32(12),le32(16),bus(u8(20)),ascii(data,24,56)).also(::validateTarget)
         }
     }
 }

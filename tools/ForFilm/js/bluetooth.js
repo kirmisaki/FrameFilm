@@ -248,6 +248,7 @@ async function processQueue() {
 // 依赖调用方已把 device/server/characteristic 准备好
 async function onDeviceConnected(deviceName) {
     clearConnectionTimers();
+    if(window.Ark512) window.Ark512.resetCapabilities();
     const initEpoch = connectionEpoch;
     // 根据设备名称检测设备类型（USB 无名称时，随后会由屏幕参数查询纠正）
     var upperName = (deviceName || '').toUpperCase();
@@ -300,6 +301,7 @@ async function onDeviceConnected(deviceName) {
     scheduleConnectionTask(1000, () => {
         debugLog('开始发送初始化命令...');
         sendBleScreenResolutionGet();
+        if(window.Ark512) sendBleCmd(0x59).catch(function(error){console.info("ABC9 能力未确认", error.message);});
         sendBlePwrRead();
     });
 
@@ -405,6 +407,7 @@ function initBluetooth() {
 }
 
 function onDisconnected(event) {
+    if(window.Ark512) window.Ark512.resetCapabilities();
     clearConnectionTimers();
     stopDownloadPoll();
     stopWifiStatusPoll();
@@ -469,7 +472,7 @@ function uploadToDevice() {
         return;
     }
 
-    if (!originalImage) {
+    if (!originalImage && !(typeof ark512Imported !== "undefined" && ark512Imported)) {
         showMessage('请先上传图片', 'error');
         return;
     }
@@ -496,6 +499,8 @@ function assertFilmTransferIdle() {
 }
 
 async function uploadFilmFileViaBle(fileName, fileData) {
+    try { if(window.Ark512) window.Ark512.assertUpload(fileData); }
+    catch(error) { showMessage(error.message,'error'); return; }
     var expectedSize = getFilmFileExpectedSize(fileData);
 
     if (fileData.length !== expectedSize) {
@@ -504,6 +509,7 @@ async function uploadFilmFileViaBle(fileName, fileData) {
     }
 
     assertFilmTransferIdle();
+    if(window.Ark512 && window.Ark512.isExperimental(fileData)) ark512ExperimentalFiles.add(fileName);
 
     if (currentDeviceType === 'FRAMEFILMARK' && window.ArkDevice) {
         lastArkFilmUpload = { fileName, fileData: fileData.slice() };
@@ -789,14 +795,19 @@ async function uploadOtaFileViaBle(fileData) {
         return;
     }
 
-    if (currentDeviceType === 'FRAMEFILMARK' && window.ArkDevice) {
-        const error = validateArkOtaImage(fileData);
-        if (error) { showMessage(error, 'error'); return; }
+    if (currentDeviceType === 'FRAMEFILMARK') {
+        if (!window.ArkOta || !window.ArkDevice || fileData.length < 352) {
+            showMessage('请选择带硬件标识的 Ark OTA 应用镜像', 'error');
+            return;
+        }
         const transferContainer = document.getElementById('ota-transfer-container');
         if (transferContainer) transferContainer.style.display = 'block';
-        let stopIssued = false;
+        let started = false, stopIssued = false;
         try {
             await window.ArkDevice.run('Ark OTA', async ctx => {
+                updateOtaTransferStatus('正在核对设备和固件…', 0);
+                const image = await window.ArkOta.prepare(ctx, fileData);
+                started = true;
                 updateOtaTransferStatus('初始化固件分区...', 0);
                 await ctx.send(BLE_FILM_TRANS_CH_OTA_LEN, arkU32(fileData.length));
                 // OTA_LEN 会同步擦除整分区。只有 BLE 任务处理完之后才能开始传数据。
@@ -818,15 +829,19 @@ async function uploadOtaFileViaBle(fileData) {
                     const processed = await ctx.request(BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET, new Uint8Array(), 15000);
                     if (processed.length !== 5) throw new Error('OTA 末尾处理屏障响应无效');
                 }
+                window.ArkOta.expectBoot(image);
                 stopIssued = true;
                 await ctx.send(BLE_FILM_TRANS_CH_OTA_STOP, new Uint8Array());
             });
-            updateOtaTransferStatus('已发送，待设备重启与版本核验', 100);
-            showMessage('OTA 数据已发送，待设备重启与版本核验', 'info');
+            updateOtaTransferStatus('已发送，重连后检查构建指纹', 100);
+            showMessage('设备重启后请重连并点击「检查更新」，核对构建指纹。', 'info');
         } catch (error) {
-            if (stopIssued && (!device || !device.gatt || !device.gatt.connected)) {
-                updateOtaTransferStatus('结束命令阶段设备已断开，待重启与版本核验', 100);
-                showMessage('OTA 结束阶段设备已断开；可能正在重启。请核验版本后再操作，不会自动重试。', 'info');
+            if (!started) {
+                updateOtaTransferStatus(error.message, 0);
+                showMessage(error.message, 'warning');
+            } else if (stopIssued && (!device || !device.gatt || !device.gatt.connected)) {
+                updateOtaTransferStatus('结束阶段已断开，重连后检查构建指纹', 100);
+                showMessage('设备可能正在重启。请重连并点击「检查更新」，核对构建指纹。', 'info');
             } else {
                 updateOtaTransferStatus('OTA 已停止，需人工检查设备状态', 0);
                 showMessage('OTA 中断: ' + error.message + '。请人工检查设备状态后恢复；不会自动续发或重试。', 'error');
@@ -883,18 +898,11 @@ function arkU32(value) {
     return new Uint8Array([(value >>> 24) & 255, (value >>> 16) & 255, (value >>> 8) & 255, value & 255]);
 }
 
-function validateArkOtaImage(data) {
-    if (!(data instanceof Uint8Array) || data.length < 288 || data.length > 1900 * 1024)
-        return '请选择不超过 1900 KiB 的完整 Ark 固件 .bin';
-    // ESP-IDF image header(24) + first segment header(8) + esp_app_desc magic.
-    if (data[0] !== 0xE9 || data[1] < 1 || data[1] > 16 ||
-        data[12] !== 9 || data[13] !== 0 ||
-        data[32] !== 0x32 || data[33] !== 0x54 || data[34] !== 0xCD || data[35] !== 0xAB)
-        return '文件不是 ESP32-S3 app 固件镜像';
-    return null;
-}
-
 function selectOtaFile() {
+    if (currentDeviceType === 'FRAMEFILMARK' && window.ArkOta) {
+        window.ArkOta.choose(false);
+        return;
+    }
     const fileInput = document.getElementById('ota-file-input');
     if (fileInput) {
         fileInput.click();
@@ -904,6 +912,11 @@ function selectOtaFile() {
 function handleOtaFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
+    if (currentDeviceType === 'FRAMEFILMARK' && window.ArkOta) {
+        event.target.value = '';
+        void window.ArkOta.importFile(file);
+        return;
+    }
 
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -1559,6 +1572,9 @@ async function setupBluetoothListener() {
         const data = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
         console.log('收到蓝牙数据:', Array.from(data).map(b => b.toString(16)).join(' '));
 
+        if(window.Ark512 && data[0]===BLE_CMD_HEAD && data[1]===0x59 && data.length===data[2]+4 && calculateChecksum(data,data.length-1)===data[data.length-1]) {
+            window.Ark512.setCapabilities(data.slice(3,-1));
+        }
         if (window.ArkDevice && window.ArkDevice.notification(data)) return;
 
         const cmdType = data[1];
@@ -1878,7 +1894,13 @@ function sendBleFileDelete(fileId) {
     });
 }
 
+var ark512ExperimentalFiles = new Set();
 function sendBleFileDisplay(fileId) {
+    var known = (window.fileListBuffer || []).find(function(file){return file.id === fileId;});
+    if(known && ark512ExperimentalFiles.has(known.filename) && window.Ark512 && !window.Ark512.supported()) {
+        var reason='设备未宣告 ABC9 实验播放能力（0x59 bit5），无法播放此实验 film';
+        showMessage(reason,'error'); return Promise.reject(new Error(reason));
+    }
     return new Promise((resolve, reject) => {
         if (!device || !server || !characteristic) {
             showMessage('请先连接设备', 'error');

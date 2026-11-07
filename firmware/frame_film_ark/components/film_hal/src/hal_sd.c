@@ -152,7 +152,7 @@ static void sd_check_task(void *arg)
                 sd_unmount();
             }
 
-            vTaskDelay(100);
+            vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
 }

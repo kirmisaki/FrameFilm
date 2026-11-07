@@ -54,6 +54,7 @@
 #include "service_param.h"
 #include "service_time.h"
 #include "service_wifi.h"
+#include "freertos/semphr.h"
 #include "service_monitor.h"
 
 #include "hal_api.h"
@@ -116,6 +117,8 @@ static volatile uint8_t m_ble_link_epoch = 0;
 static volatile uint8_t m_ble_abort_pending = 0;
 static atomic_bool m_ble_sleep_stop_sent = false;
 static atomic_bool m_ble_sleep_done = false;
+static atomic_bool m_wifi_ble_paused = false;
+static SemaphoreHandle_t m_wifi_ble_mutex;
 static uint8_t m_ota_trans_state = BLE_OTA_TRANS_IDLE;
 static uint32_t m_ota_trans_file_size = 0;
 static uint32_t m_ota_trans_received = 0;
@@ -140,7 +143,10 @@ static const char *ble_name_suffix_or_default(void);
 
 void service_ble_transfer_disconnected(void)
 {
-    service_wifi_direct_cancel();
+#ifndef ARK_AP_FILE_BENCH
+    if(!service_ble_wifi_paused()) service_wifi_direct_cancel();
+#endif
+    /* The autonomous AP diagnostic deliberately disconnects BLE; TCP owns its lifetime. */
     m_ble_link_epoch++;
     m_ble_abort_pending = 1;
     if(m_ble_msg_hdl)
@@ -298,6 +304,7 @@ void service_ble_init(void)
         return;
     }
 
+    if(!m_wifi_ble_mutex) m_wifi_ble_mutex = xSemaphoreCreateMutex();
     // 初始化ble服务
     service_ble_gatt_server_init();
     service_ble_gatts_cmd_register_cb(service_ble_msg_gatts_cmd_send);
@@ -325,6 +332,14 @@ void service_ble_init(void)
 void service_ble_apply_enable(uint8_t on)
 {
     g_service_param.ble.ble_enable = on ? 1 : 0;
+    if(service_ble_wifi_paused()) {
+        /* The transfer owner restores the desired switch, without racing the host. */
+        wifi_direct_status_t status;
+        service_wifi_direct_get_status(&status);
+        if(on && (!service_wifi_direct_busy() || status.state == WIFI_DIRECT_READY))
+            (void)service_ble_wifi_resume();
+        return;
+    }
 
     if(on)
     {
@@ -356,6 +371,65 @@ void service_ble_apply_enable(uint8_t on)
 
     sys_logi(BEL_SERVICE_TAG, "BLE %s", on ? "ON" : "OFF");
 }
+
+bool service_ble_wifi_paused(void)
+{
+    return atomic_load(&m_wifi_ble_paused);
+}
+
+bool service_ble_wifi_pause(void)
+{
+    if(!m_wifi_ble_mutex || xSemaphoreTake(m_wifi_ble_mutex, pdMS_TO_TICKS(5000)) != pdTRUE)
+        return false;
+    if(atomic_exchange(&m_wifi_ble_paused, true)) {
+        xSemaphoreGive(m_wifi_ble_mutex);
+        return true;
+    }
+    if(m_ble_up) {
+        m_ble_up = 0;
+        service_ble_gatt_server_uninit();
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    int err = service_ble_gatt_wifi_pause();
+    xSemaphoreGive(m_wifi_ble_mutex);
+    sys_logi(BEL_SERVICE_TAG, "WiFi planned BLE pause result=%d", err);
+    return err == ESP_OK;
+}
+
+bool service_ble_wifi_resume(void)
+{
+    if(!m_wifi_ble_mutex || xSemaphoreTake(m_wifi_ble_mutex, pdMS_TO_TICKS(5000)) != pdTRUE)
+        return false;
+    if(!atomic_load(&m_wifi_ble_paused) || !g_service_param.ble.ble_enable) {
+        xSemaphoreGive(m_wifi_ble_mutex);
+        return true;
+    }
+    int err = service_ble_gatt_wifi_resume();
+    if(err == ESP_OK && g_service_param.ble.ble_enable) {
+        m_ble_up = 1;
+        atomic_store(&m_wifi_ble_paused, false);
+    } else if(err == ESP_OK) {
+        service_ble_gatt_server_uninit();
+        err = service_ble_gatt_wifi_pause();
+    }
+    xSemaphoreGive(m_wifi_ble_mutex);
+    sys_logi(BEL_SERVICE_TAG, "WiFi BLE restore result=%d", err);
+    return err == ESP_OK;
+}
+
+#ifdef ARK_AP_FILE_BENCH
+bool service_ble_ap_file_bench_stop(void)
+{
+    if(!service_ble_prepare_sleep()) return false;
+    if(m_ble_up) {
+        service_ble_gatts_dev_disconnect();
+        service_ble_gatt_server_uninit();
+        m_ble_up = 0;
+    }
+    /* No parameter change or save: this shutdown lasts only until the normal reboot. */
+    return service_ble_gatt_ap_file_bench_deinit() == ESP_OK;
+}
+#endif
 
 /**
  * [service_ble_msg_send ble事件msg发送]
@@ -558,8 +632,9 @@ static void ble_task_handle(void *pvParameters)
     }
 }
 
-static bool ble_cmd_conflicts_with_direct(uint8_t ch)
+static bool ble_cmd_conflicts_with_direct(const ble_cmd_t *cmd)
 {
+    uint8_t ch = cmd->ch;
     switch(ch)
     {
     case BLE_FILM_TRANS_CH_FILE_NAME:
@@ -582,6 +657,7 @@ static bool ble_cmd_conflicts_with_direct(uint8_t ch)
 #if (SYS_NFC_ENABLE == 1)
     case BLE_FILM_TRANS_CH_NFC_CARD_BEGIN:
     case BLE_FILM_TRANS_CH_NFC_CARD_DATA:
+        return cmd->len != 0;
     case BLE_FILM_TRANS_CH_NFC_CARD_COMMIT:
     case BLE_FILM_TRANS_CH_NFC_WALLET_CTRL:
     case BLE_FILM_TRANS_CH_NFC_COVER_BEGIN:
@@ -731,6 +807,31 @@ reply:
     service_ble_send_resp(BLE_FILM_TRANS_CH_PROFILE_READ, out, (uint8_t)(9 + actual));
 }
 
+static void ble_cmd_publish_app(const ble_cmd_t *cmd)
+{
+    /* payload: [0]=ch, [1..]=命令数据，值语义拷贝，app 侧在自身任务执行 */
+    uint8_t evt[SYS_EVENT_PAYLOAD_MAX];
+    uint8_t n = cmd->len;
+    if(cmd->ch == BLE_FILM_TRANS_CH_CTRL_APP_SWITCH && n > SYS_EVENT_PAYLOAD_MAX - 1)
+    {
+        uint8_t response[2] = {cmd->pdata[0], 1};
+        service_ble_send_resp(cmd->ch, response, sizeof(response));
+        return;
+    }
+    if(n > SYS_EVENT_PAYLOAD_MAX - 1)
+    {
+        sys_logw(BEL_SERVICE_TAG, "app cmd 0x%02X len=%u exceeds event payload %u, truncate",
+                 cmd->ch, (unsigned)cmd->len, (unsigned)(SYS_EVENT_PAYLOAD_MAX - 1));
+        n = SYS_EVENT_PAYLOAD_MAX - 1;
+    }
+    evt[0] = cmd->ch;
+    if(n > 0 && cmd->pdata != NULL)
+    {
+        memcpy(&evt[1], cmd->pdata, n);
+    }
+    sys_event_publish(SYS_EVT_BLE_APP_CMD, evt, (uint16_t)(n + 1));
+}
+
 static void ble_cmd_process(ble_cmd_t *cmd)
 {
     if(cmd == NULL)
@@ -747,7 +848,11 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         return;
     }
 
-    if(service_wifi_direct_busy() && ble_cmd_conflicts_with_direct(cmd->ch))
+    bool ap_start = service_wifi_softap_waiting() &&
+                    (cmd->ch == BLE_FILM_TRANS_CH_DIRECT_START ||
+                     cmd->ch == BLE_FILM_TRANS_CH_DIRECT_FILE_START ||
+                     cmd->ch == BLE_FILM_TRANS_CH_DIRECT_OTA_START);
+    if(service_wifi_direct_busy() && !ap_start && ble_cmd_conflicts_with_direct(cmd))
     {
         const uint8_t busy = 1;
         service_ble_send_resp(cmd->ch, &busy, 1);
@@ -756,16 +861,42 @@ static void ble_cmd_process(ble_cmd_t *cmd)
 
     switch(cmd->ch)
     {
+        case BLE_FILM_TRANS_CH_DIRECT_AP_PREPARE:
+        {
+#if (SYS_NFC_ENABLE == 1)
+            /* 0x5C/0x5D: empty requests are SoftAP/hardware, NFC carries data. */
+            if(cmd->len != 0)
+            {
+                ble_cmd_publish_app(cmd);
+                break;
+            }
+#endif
+            uint8_t out[1 + 33 + 64 + 16] = {2};
+            char ssid[33], password[64];
+            if(cmd->len == 0) {
+                bool legacy_busy = (m_film_trans_state > BLE_FILM_TRANS_IDLE && m_film_trans_state < BLE_FILM_TRANS_STOPPED) ||
+                                   (m_ota_trans_state > BLE_OTA_TRANS_IDLE && m_ota_trans_state < BLE_OTA_TRANS_STOPPED);
+                out[0] = legacy_busy ? 1 : service_wifi_softap_prepare(ssid, password);
+            }
+            size_t length = 1;
+            if(out[0] == 0) {
+                memcpy(out + length, ssid, strlen(ssid) + 1); length += strlen(ssid) + 1;
+                memcpy(out + length, password, strlen(password) + 1); length += strlen(password) + 1;
+                memcpy(out + length, "192.168.4.1", sizeof("192.168.4.1")); length += sizeof("192.168.4.1");
+            }
+            service_ble_send_resp(cmd->ch, out, length);
+            break;
+        }
         case BLE_FILM_TRANS_CH_CAPABILITIES_GET:
         {
             if(cmd->len != 0) break;
-            const uint8_t capabilities[5] = {1, 0, 0, 0,
-#if (SYS_NFC_ENABLE == 1)
-                0x1F
-#else
-                0x0F
+            uint8_t capabilities[5] = {1, 0, 0, 0, 0x5F};
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+            capabilities[4] |= 0x20;  /* Experimental ABC9 playback. */
 #endif
-            };
+#if (SYS_NFC_ENABLE == 1)
+            capabilities[4] |= 0x80;
+#endif
             service_ble_send_resp(cmd->ch, capabilities, sizeof(capabilities));
             break;
         }
@@ -810,6 +941,30 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                 }
             }
             service_ble_send_resp(cmd->ch, response, length);
+            break;
+        }
+        case BLE_FILM_TRANS_CH_HARDWARE_INFO_GET:
+        {
+            if(cmd->len != 0)
+            {
+#if (SYS_NFC_ENABLE == 1)
+                ble_cmd_publish_app(cmd);
+#endif
+                break;
+            }
+            HalHardwareInfo_t info;
+            hal_hardware_get_info(&info);
+            uint8_t data[14 + 32] = {1};
+            data[1] = (uint8_t)(info.chip_id >> 8); data[2] = (uint8_t)info.chip_id;
+            data[3] = (uint8_t)(info.chip_revision >> 8); data[4] = (uint8_t)info.chip_revision;
+            for(unsigned i = 0; i < 4; ++i) {
+                data[5 + i] = (uint8_t)(info.flash_bytes >> (24 - i * 8));
+                data[9 + i] = (uint8_t)(info.psram_bytes >> (24 - i * 8));
+            }
+            data[13] = info.psram_bus;
+            size_t target_len = strlen(info.target_id);
+            memcpy(data + 14, info.target_id, target_len);
+            service_ble_send_resp(cmd->ch, data, (uint8_t)(15 + target_len));
             break;
         }
         case BLE_FILM_TRANS_CH_BUILD_INFO_GET:
@@ -1563,8 +1718,6 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_APP_ANIM_PARAM :
         case BLE_FILM_TRANS_CH_APP_ANIM_PARAM_GET :
 #if (SYS_NFC_ENABLE == 1)
-        case BLE_FILM_TRANS_CH_NFC_CARD_BEGIN :
-        case BLE_FILM_TRANS_CH_NFC_CARD_DATA :
         case BLE_FILM_TRANS_CH_NFC_CARD_COMMIT :
         case BLE_FILM_TRANS_CH_NFC_WALLET_CTRL :
         case BLE_FILM_TRANS_CH_NFC_COVER_BEGIN :
@@ -1572,27 +1725,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_NFC_COVER_COMMIT :
 #endif
         {
-            /* payload: [0]=ch, [1..]=命令数据，值语义拷贝，app 侧在自身任务执行 */
-            uint8_t evt[SYS_EVENT_PAYLOAD_MAX];
-            uint8_t n = cmd->len;
-            if(cmd->ch == BLE_FILM_TRANS_CH_CTRL_APP_SWITCH && n > SYS_EVENT_PAYLOAD_MAX - 1)
-            {
-                uint8_t response[2] = {cmd->pdata[0], 1};
-                service_ble_send_resp(cmd->ch, response, sizeof(response));
-                break;
-            }
-            if(n > SYS_EVENT_PAYLOAD_MAX - 1)
-            {
-                sys_logw(BEL_SERVICE_TAG, "app cmd 0x%02X len=%u exceeds event payload %u, truncate",
-                         cmd->ch, (unsigned)cmd->len, (unsigned)(SYS_EVENT_PAYLOAD_MAX - 1));
-                n = SYS_EVENT_PAYLOAD_MAX - 1;
-            }
-            evt[0] = cmd->ch;
-            if(n > 0 && cmd->pdata != NULL)
-            {
-                memcpy(&evt[1], cmd->pdata, n);
-            }
-            sys_event_publish(SYS_EVT_BLE_APP_CMD, evt, (uint16_t)(n + 1));
+            ble_cmd_publish_app(cmd);
             break;
         }
         case BLE_FILM_TRANS_CH_CTRL_APP_CURRENT_GET : // 查询当前 app

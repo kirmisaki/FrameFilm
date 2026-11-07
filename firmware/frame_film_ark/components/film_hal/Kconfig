@@ -17,7 +17,37 @@ menu "Ark hardware"
 
 endmenu
 
-menu "Ark EPD diagnostics"
+menu "Ark EPD experimental preview and diagnostics"
+
+    config ARK_EPD_ABC_PREVIEW
+        bool "Enable experimental ABC9 512-color preview playback"
+        default y
+        help
+            Accept the existing experimental Format 0x7F ABC9 container:
+            exactly one 720x480 frame of little-endian uint16 pixels 0..511.
+            Bits 8..6=A, 5..3=B, 2..0=C drive the original three Qual phases
+            after the same full clear. LUTs, voltages and refreshes are unchanged.
+            Advertise this playback capability in Ark BLE 0x59 bit5.
+            This does not enable diagnostic markers, pattern generation or
+            other lab modes, and does not define a public film format.
+
+    config ARK_EPD_ABC_DIAG
+        bool "Enable experimental ColorQual A/B/C RAM diagnostic"
+        default n
+        help
+            Laboratory firmware only. Interpret the first native Format2 body
+            byte as (diagnostic_mode << 3) | B. Modes: 0=reuse A, 1=rewrite A,
+            2=write constant B before the second Qual refresh. Reject modes >2.
+            Always full-clear before the original three Qual refreshes. LUTs,
+            registers and REF count are identical between diagnostic modes;
+            modes 1/2 add one RAM transfer slot, so total timing is NOT fixed.
+            Ordinary Format2 pictures are not suitable diagnostic inputs.
+            Also accept private lab Format 0x7F, reserved bytes 12..15 ABC9,
+            exactly one 720x480 frame of little-endian uint16 pixels 0..511.
+            Bits 8..6=A, 5..3=B, 2..0=C drive the original three Qual phases
+            with a RAM-only write per phase, after the same full clear.
+            Invalid high bits are rejected before any clear or refresh.
+            No new public film format or BLE command is introduced.
 
     config ARK_EPD_PROFILE
         bool "Enable per-frame driver timing"

@@ -121,7 +121,17 @@ void main() {
       PreviewScenario.transferFailure,
     );
     await tester.tap(find.text('Film').last);
-    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('pick-film')),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('workbench-content')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.byKey(const Key('pick-film')), findsOneWidget);
     expect(find.text(PreviewDeviceGateway.warning), findsOneWidget);
     await tester.tap(find.byKey(const Key('reset-preview')));

@@ -98,6 +98,14 @@ extern uint8_t service_wifi_download_get_progress(void);
 extern wifi_download_state_t service_wifi_download_get_state(void);
 
 extern void service_wifi_heartbeat_start(void);
+#ifdef ARK_AP_FILE_BENCH
+extern bool service_wifi_ap_file_bench_prepare(void);
+extern void service_wifi_ap_file_bench_start(void);
+#endif
+
+/* Reserve a RAM-only AP session, then submit the existing direct-start payload. */
+extern uint8_t service_wifi_softap_prepare(char ssid[33], char password[64]);
+extern bool service_wifi_softap_waiting(void);
 
 /* Temporary RAM-only WiFi session. No network parameters are persisted. */
 extern uint8_t service_wifi_direct_start(const char *ssid, const char *password, const char *url);

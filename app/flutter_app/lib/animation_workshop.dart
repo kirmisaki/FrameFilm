@@ -1009,7 +1009,9 @@ class _AnimationWorkshopState extends State<AnimationWorkshop> {
           initialValue: _format,
           decoration: const InputDecoration(labelText: '输出格式'),
           items: [
-            for (final f in FrameFormat.values)
+            for (final f in FrameFormat.values.where(
+              (f) => f != FrameFormat.abc512,
+            ))
               DropdownMenuItem(value: f, child: Text(_formatName(f))),
           ],
           onChanged: editable

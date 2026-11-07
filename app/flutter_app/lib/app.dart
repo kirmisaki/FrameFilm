@@ -36,26 +36,39 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
   GitHubFirmwareRelease? onlineFirmware;
   bool checkingReleases = false;
   String? releaseMessage;
+  int releaseQuery = 0;
   Future<void> checkReleases() async {
+    final query = ++releaseQuery;
+    final connection = device.connectionSession;
     setState(() {
       checkingReleases = true;
       releaseMessage = null;
       onlineFirmware = null;
     });
+    final hardware = device.firmwareTarget;
     try {
-      final release = await releases.latest();
-      if (mounted) {
+      final release = await releases.latest(hardware: hardware);
+      if (mounted &&
+          device.snapshot.connected &&
+          query == releaseQuery &&
+          connection == device.connectionSession &&
+          hardware != null &&
+          device.firmwareTarget?.matches(hardware) == true) {
         setState(() {
           onlineFirmware = release;
-          releaseMessage = release == null
-              ? '暂无包含 frame_film_ark.bin 的正式发布。'
-              : null;
+          releaseMessage = release == null ? '暂无正式发布。' : null;
         });
       }
     } catch (error) {
-      if (mounted) setState(() => releaseMessage = '发布查询失败：$error');
+      if (mounted &&
+          query == releaseQuery &&
+          connection == device.connectionSession) {
+        setState(() => releaseMessage = '发布查询失败：$error');
+      }
     } finally {
-      if (mounted) setState(() => checkingReleases = false);
+      if (mounted && query == releaseQuery) {
+        setState(() => checkingReleases = false);
+      }
     }
   }
 
@@ -81,6 +94,8 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
   final wakeInterval = TextEditingController();
   bool? autoSleepDraft, timedWakeDraft;
   DeviceSnapshot settingsSnapshot = const DeviceSnapshot();
+  int firmwareConnection = -1;
+  String? firmwareTargetId;
 
   static const destinations = [
     ('连接', Icons.bluetooth_rounded),
@@ -199,6 +214,15 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
       if (snapshot.wakeMinutes != settingsSnapshot.wakeMinutes) {
         wakeInterval.text = snapshot.wakeMinutes?.toString() ?? '';
       }
+    }
+    if (firmwareConnection != device.connectionSession ||
+        firmwareTargetId != device.firmwareTarget?.targetId) {
+      firmwareConnection = device.connectionSession;
+      firmwareTargetId = device.firmwareTarget?.targetId;
+      releaseQuery++;
+      checkingReleases = false;
+      onlineFirmware = null;
+      releaseMessage = null;
     }
     settingsSnapshot = snapshot;
     syncThemePresentation();
@@ -400,6 +424,10 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
                         DropdownMenuItem(
                           value: PreviewScenario.sameBuild,
                           child: Text('相同构建（跳过升级）'),
+                        ),
+                        DropdownMenuItem(
+                          value: PreviewScenario.legacyFirmware,
+                          child: Text('旧固件首次升级（手动选型）'),
                         ),
                       ],
                       onChanged: (value) {
@@ -672,8 +700,10 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             ? '演示中的扫描、文件选择、传输及升级均为模拟。Film 页体验直传，设置页体验 OTA。'
             : '原生连接与文件传输\n扫描、连接和读取由 Android 蓝牙服务提供。film 文件直传请进入 Film 页。',
       ),
-      const SizedBox(height: 20),
-      connectionInfoPanel(context),
+      if (snapshot.connected) ...[
+        const SizedBox(height: 20),
+        connectionInfoPanel(context),
+      ],
     ];
   }
 
@@ -696,6 +726,8 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
       FrameEditor(
         controller: frameEditor,
         canImportFilm: device.canImportFilm,
+        abc9PreviewSupported:
+            device.snapshot.connected && device.snapshot.abc9PreviewSupported,
         canSend: device.canImportFilm && device.snapshot.connected,
         onImportFilm: importFrame,
         onSendFilm: sendFrame,
@@ -904,8 +936,15 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
                   available &&
                       hasFile &&
                       snapshot.connected &&
+                      (!firmware ||
+                          snapshot.importedFirmware?.matchesHardware(
+                                device.firmwareTarget,
+                              ) ==
+                              true) &&
                       transfer.canRetry
-                  ? () => device.command('retryTransfer')
+                  ? () => firmware
+                        ? startFirmware(context, retry: true)
+                        : device.command('retryTransfer')
                   : null,
               child: Text(firmware ? '重试升级' : '重试传输'),
             ),
@@ -916,9 +955,56 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     return embedded ? content : panel(context, child: content);
   }
 
+  Future<void> startFirmware(BuildContext context, {bool retry = false}) async {
+    final target = device.firmwareTarget;
+    final file = device.snapshot.importedFirmware;
+    final connection = device.connectionSession;
+    if (target == null || file?.matchesHardware(target) != true) return;
+    final legacy = device.snapshot.hardware?.trusted != true;
+    if (legacy) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('确认首次升级的实物配置'),
+          content: Text(
+            '旧固件无法自动验证硬件型号。请根据主控模块标识、购买记录或板卡提供方确认，实物为 ${target.label}。\n\n'
+            '${target.flashBytes ~/ 1048576} MB Flash / ${target.psramBytes ~/ 1048576} MB ${target.psramBus == 'octal' ? 'Octal' : 'Quad'} PSRAM\n'
+            '固件：${file!.name}\n\n'
+            '选错配置可能导致设备无法启动，需要通过 USB 重新烧录恢复。型号不确定时请取消并核实。每次重试都需重新确认。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              key: const Key('confirm-legacy-firmware'),
+              onPressed: () => Navigator.pop(context, true),
+              child: Text('实物是 ${target.label.replaceFirst('Ark ', '')}，继续升级'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    if (connection != device.connectionSession ||
+        device.firmwareTarget?.matches(target) != true ||
+        device.snapshot.importedFirmware?.fileSha256 != file!.fileSha256 ||
+        device.snapshot.importedFirmware?.elfSha256 != file.elfSha256) {
+      return;
+    }
+    await device.command(
+      retry ? 'retryTransfer' : 'startFirmwareTransfer',
+      legacy ? {'legacyHardwareTarget': target.targetId} : null,
+    );
+  }
+
   Widget firmwarePanel(BuildContext context) {
     final snapshot = device.snapshot;
     final file = snapshot.importedFirmware;
+    final hardware = device.firmwareTarget;
+    final trustedHardware = snapshot.connected && hardware != null;
+    final compatibleFile = file?.matchesHardware(hardware) == true;
     final transfer = snapshot.transfer;
     final supported = device.gateway.supported;
     final editable =
@@ -936,6 +1022,40 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('固件升级', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            snapshot.hardware?.trusted == true
+                ? '为 ${hardware!.label.replaceFirst('Ark ', '')} 查找兼容固件'
+                : device.canSelectLegacyHardware
+                ? '旧固件尚未识别硬件，请根据实物配置手动选择，默认不选。'
+                : HardwareIdentity.unavailableMessage,
+          ),
+          if (device.canSelectLegacyHardware) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              children: [
+                for (final target in [
+                  HardwareIdentity.n4r2,
+                  HardwareIdentity.n16r8,
+                ])
+                  ChoiceChip(
+                    key: Key('legacy-${target.targetId}'),
+                    label: Text(target.label.replaceFirst('Ark ', '')),
+                    selected:
+                        device.legacyHardwareTarget?.targetId ==
+                        target.targetId,
+                    onSelected: editable
+                        ? (_) => device.selectLegacyHardware(target.targetId)
+                        : null,
+                  ),
+              ],
+            ),
+            const Text('仅用于旧固件首次升级。按主控模块标识、购买记录或板卡提供方确认；不要凭设备名、屏幕或版本猜测。'),
+            if (hardware != null)
+              Text(
+                '手动选择：${hardware.label} · ${hardware.flashBytes ~/ 1048576} MB Flash / ${hardware.psramBytes ~/ 1048576} MB ${hardware.psramBus == 'octal' ? 'Octal' : 'Quad'} PSRAM（未自动验证）',
+              ),
+          ],
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -943,14 +1063,18 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             children: [
               OutlinedButton(
                 key: const Key('check-github'),
-                onPressed: checkingReleases ? null : checkReleases,
+                onPressed: checkingReleases || !trustedHardware
+                    ? null
+                    : checkReleases,
                 child: Text(checkingReleases ? '正在查询…' : '检查 GitHub 发布'),
               ),
               if (device.gateway is PreviewDeviceGateway)
                 OutlinedButton(
                   key: const Key('demo-online-firmware'),
                   onPressed: () => setState(() {
-                    onlineFirmware = GitHubFirmwareRelease.demo;
+                    onlineFirmware = trustedHardware
+                        ? GitHubFirmwareRelease.demoFor(hardware)
+                        : null;
                     releaseMessage = null;
                   }),
                   child: const Text('演示在线固件'),
@@ -960,20 +1084,21 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
           if (releaseMessage != null) Text(releaseMessage!),
           if (onlineFirmware case final release?) ...[
             Text('${release.name} · ${release.tag}'),
+            Text('已选固件：${release.asset} · ${release.hardware.label}'),
             Text('发布于 ${release.publishedAt.toLocal()} · ${release.size} 字节'),
-            Text(
-              release.sha256 == null
-                  ? '发布未提供有效 SHA-256；下载后检查镜像自身完整性。'
-                  : '下载后核对 GitHub 资产 SHA-256 与镜像完整性。',
-            ),
+            Text('下载后核对清单 SHA-256、ELF 构建指纹及设备型号。'),
             const Text('发布版本仅供展示；升级以 ELF 构建指纹判定。下载完成只导入，仍需点击“检查并升级”。'),
             OutlinedButton(
               key: const Key('download-firmware'),
-              onPressed: editable
-                  ? () => device.command(
-                      'downloadFirmware',
-                      release.downloadArguments,
-                    )
+              onPressed:
+                  editable &&
+                      trustedHardware &&
+                      hardware.matches(release.hardware)
+                  ? () => device.command('downloadFirmware', {
+                      ...release.downloadArguments,
+                      if (device.canSelectLegacyHardware)
+                        'legacyHardwareTarget': hardware.targetId,
+                    })
                   : null,
               child: const Text('下载并校验'),
             ),
@@ -1008,6 +1133,9 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             Text('${file.size} 字节 · ${file.project}'),
             Text('构建指纹：${shortBuild(file.elfSha256)}'),
             Text('固件版本：${file.version}'),
+            Text('固件目标：${file.targetId ?? '未识别，请使用带目标元信息的固件'}'),
+            if (trustedHardware && !compatibleFile)
+              const Text('固件与当前设备型号不匹配，请重新选择。'),
           ],
           if (snapshot.importing)
             const Padding(
@@ -1032,9 +1160,10 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
                 onPressed:
                     editable &&
                         file != null &&
-                        snapshot.connected &&
+                        trustedHardware &&
+                        compatibleFile &&
                         !(transfer.kind == 'firmware' && transfer.canRetry)
-                    ? () => device.command('startFirmwareTransfer')
+                    ? () => startFirmware(context)
                     : null,
                 icon: const Icon(Icons.system_update_alt),
                 label: const Text('检查并升级'),
@@ -1382,33 +1511,44 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
       children: [
         Text('连接信息', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 16),
-        Text(
-          device.snapshot.connected ? device.snapshot.name ?? '已连接设备' : '未连接设备',
+        Wrap(
+          spacing: 24,
+          runSpacing: 16,
+          children: [
+            if (device.snapshot.hardware?.trusted == true) ...[
+              information('主控', 'ESP32-S3'),
+              information(
+                '硬件配置',
+                device.snapshot.hardware!.label.replaceFirst('Ark ', ''),
+              ),
+              information(
+                'Flash',
+                '${device.snapshot.hardware!.flashBytes ~/ 1048576} MB',
+              ),
+              information(
+                'PSRAM',
+                '${device.snapshot.hardware!.psramBytes ~/ 1048576} MB · ${device.snapshot.hardware!.psramBus == 'octal' ? 'Octal' : 'Quad'}',
+              ),
+            ] else
+              information('硬件配置', '尚未读取 / 旧固件不支持'),
+          ],
         ),
-        const SizedBox(height: 8),
-        Text(
-          device.gateway.supported
-              ? device.snapshot.message
-              : '当前平台无蓝牙连接能力，仅供界面预览',
+        const Divider(height: 32),
+        DeviceStorageSummary(
+          controller: device,
+          embedded: true,
+          onBrowseDirectory: (directory) {
+            navigate(5);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && page == 5 && scrollControllers[5].hasClients) {
+                scrollControllers[5].jumpTo(0);
+              }
+            });
+            unawaited(
+              device.command('setDeviceFileDirectory', {'appId': directory}),
+            );
+          },
         ),
-        if (device.snapshot.connected) ...[
-          const Divider(height: 32),
-          DeviceStorageSummary(
-            controller: device,
-            embedded: true,
-            onBrowseDirectory: (directory) {
-              navigate(5);
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && page == 5 && scrollControllers[5].hasClients) {
-                  scrollControllers[5].jumpTo(0);
-                }
-              });
-              unawaited(
-                device.command('setDeviceFileDirectory', {'appId': directory}),
-              );
-            },
-          ),
-        ],
       ],
     ),
   );

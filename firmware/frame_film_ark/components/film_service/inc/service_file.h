@@ -60,6 +60,9 @@ typedef enum {
     MSG_FILE_SAVE_DATA,       // 保存文件数据
     MSG_FILE_SAVE_STOP,       // 停止保存文件
     MSG_FILE_SAVE_ABORT,      // 撤销当前上传
+#ifdef ARK_TRANSFER_BENCH
+    MSG_FILE_BENCH_SD,
+#endif
 } file_msg_type_t;
 
 typedef struct {
@@ -208,6 +211,9 @@ extern int service_file_save_start_to(file_save_owner_t owner, const char *rel_p
 extern int service_file_save_stop(file_save_owner_t owner, uint8_t auto_load);
 /** 撤销本 owner 的上传会话；不会撤销其他来源。 */
 extern int service_file_save_abort(file_save_owner_t owner);
+#ifdef ARK_TRANSFER_BENCH
+extern int service_file_benchmark_sd(uint32_t bytes);
+#endif
 
 /**
  * @brief 加载指定文件

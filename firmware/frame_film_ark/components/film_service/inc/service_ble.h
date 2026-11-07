@@ -105,9 +105,11 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_BUILD_INFO_GET (0x56)
 #define BLE_FILM_TRANS_CH_DIRECT_OTA_START (0x57)
 #define BLE_FILM_TRANS_CH_DIRECT_OTA_APPLY (0x58)
-#define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open
+#define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open, bit4=SoftAP, bit5=ABC9 preview, bit6=hardware identity, bit7=NFC wallet
 #define BLE_FILM_TRANS_CH_STORAGE_CATALOG (0x5B) // Ark read-only storage/catalog
 #define BLE_FILM_TRANS_CH_DIRECT_FILE_START (0x5A) // SSID\0PASSWORD\0URL\0相对路径\0
+#define BLE_FILM_TRANS_CH_DIRECT_AP_PREPARE (0x5C) // Empty request; NFC_CARD_BEGIN uses a payload
+#define BLE_FILM_TRANS_CH_HARDWARE_INFO_GET (0x5D) // Empty request; NFC_CARD_DATA uses a payload
 #define BLE_DIRECT_START_DATA_MAX                         (192)
 
 /* NFC 卡包（仅 n16r8）：建卡 0x5C~0x5E、管理 0x5F、封面 0x60~0x62 */
@@ -213,6 +215,13 @@ extern void service_ble_msg_gatts_cmd_send( uint8_t const *p_data, uint16_t len 
 extern void service_ble_transfer_disconnected(void); // GATT 回调中仅标记，不阻塞
 /* 入睡屏障：拒收新命令，等待 BLE 任务取消并关闭其文件写入。 */
 extern bool service_ble_prepare_sleep(void);
+/* Transfer-only stack shutdown. Does not change the saved BLE setting. */
+extern bool service_ble_wifi_pause(void);
+extern bool service_ble_wifi_resume(void);
+extern bool service_ble_wifi_paused(void);
+#ifdef ARK_AP_FILE_BENCH
+extern bool service_ble_ap_file_bench_stop(void);
+#endif
 extern void service_ble_msg_gatts_data_send( uint8_t const *p_data, uint16_t len, uint8_t ch);
 
 /**

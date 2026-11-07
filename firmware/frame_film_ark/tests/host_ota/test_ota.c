@@ -5,6 +5,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdio.h>
+#include "../../components/film_hal/inc/hal_hardware.h"
 typedef int esp_err_t;
 typedef int esp_ota_handle_t;
 typedef struct { uint32_t address, size; } esp_partition_t;
@@ -21,6 +22,10 @@ typedef struct { unsigned sum; } mbedtls_sha256_context;
 #define ESP_CHIP_ID_ESP32S3 9
 static esp_partition_t part = {4096, 1024}, run = {0, 1024};
 static int aborted, activated, chip = 9;
+static bool hardware_matches = true, hardware_missing;
+bool hal_hardware_descriptor_matches(const ArkHardwareDescriptor_t *image) {
+    (void)image; return hardware_matches;
+}
 static char project[32] = "frame_film_ark";
 static const esp_partition_t *esp_ota_get_next_update_partition(void *p) { (void)p; return &part; }
 static const esp_partition_t *esp_ota_get_running_partition(void) { return &run; }
@@ -30,7 +35,12 @@ static int esp_ota_write(int h, const void *p, size_t n) { (void)h; (void)p; (vo
 static int esp_ota_end(int h) { (void)h; return 0; }
 static int esp_ota_set_boot_partition(const esp_partition_t *p) { (void)p; activated++; return 0; }
 static int esp_partition_read(const esp_partition_t *p, int off, void *out, size_t n) {
-    (void)p; (void)off; (void)n; ((esp_image_header_t *)out)->chip_id = chip; return 0;
+    (void)p;
+    if(off == ARK_HARDWARE_DESCRIPTOR_OFFSET) {
+        if(hardware_missing) return ESP_FAIL;
+        memset(out, 0, n); return ESP_OK;
+    }
+    ((esp_image_header_t *)out)->chip_id = chip; return 0;
 }
 static int esp_ota_get_partition_description(const esp_partition_t *p, esp_app_desc_t *d) {
     (void)p; memcpy(d->project_name, project, 32); return 0;
@@ -78,6 +88,16 @@ int main(void) {
     assert(service_ota_direct_finish() == ESP_ERR_INVALID_CRC);
     service_ota_direct_abort();
     assert(aborted == 2 && activated == 1);
-    puts("PASS: staged OTA length/digest/target/abort/activate boundaries");
+    hardware_matches = false;
+    assert(service_ota_direct_begin(3, sha) == 0 && service_ota_direct_write(data, 3) == 0);
+    assert(service_ota_direct_finish() == ESP_ERR_INVALID_ARG);
+    assert(service_ota_direct_activate() == ESP_ERR_INVALID_STATE && activated == 1);
+    service_ota_direct_abort();
+    hardware_matches = true; hardware_missing = true;
+    assert(service_ota_direct_begin(3, sha) == 0 && service_ota_direct_write(data, 3) == 0);
+    assert(service_ota_direct_finish() == ESP_ERR_INVALID_ARG);
+    assert(service_ota_direct_activate() == ESP_ERR_INVALID_STATE && activated == 1);
+    service_ota_direct_abort();
+    puts("PASS: OTA length/digest/target/abort/activate and hardware descriptor rejection");
     return 0;
 }

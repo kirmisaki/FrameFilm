@@ -145,13 +145,89 @@ static void test_sleep_defers_when_wakeup_source_unavailable(void)
     assert(sleep_count == 1);
 }
 
+static void test_auto_sleep_timeout_thresholds(void)
+{
+    const uint32_t seconds[] = {30, 120, 1800};
+
+    for (unsigned i = 0; i < sizeof(seconds) / sizeof(seconds[0]); ++i)
+    {
+        reset_case();
+        g_service_param.sleep.sleep_mode = 1;
+        m_monitor_state.sleep_counter = MONITOR_AUTO_SLEEP_TICK_COUNT - 1;
+        service_monitor_set_auto_sleep_timeout(seconds[i]);
+        const uint32_t expected_ticks = seconds[i] * 5u;
+        assert(m_monitor_state.wakeup_ticks == expected_ticks);
+        assert(m_monitor_state.sleep_counter == 0);
+
+        for (uint32_t tick = 1; tick < expected_ticks; ++tick)
+            monitor_auto_sleep_manage_event();
+        assert(m_monitor_state.sleep_counter == expected_ticks - 1);
+        assert(!service_monitor_sleep_pending());
+        assert_no_teardown();
+
+        monitor_auto_sleep_manage_event();
+        assert(service_monitor_sleep_pending());
+        assert(app_prepare_count == 1);
+        assert_no_teardown(); /* The app stop barrier still applies at timeout. */
+    }
+}
+
+static void test_auto_sleep_timeout_clamps(void)
+{
+    const struct
+    {
+        uint32_t requested;
+        uint32_t effective;
+    } cases[] = {
+        {0, 10},
+        {9, 10},
+        {10, 10},
+        {3600, 3600},
+        {3601, 3600},
+        {UINT32_MAX, 3600},
+    };
+
+    reset_case();
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i)
+    {
+        m_monitor_state.sleep_counter = 123;
+        service_monitor_set_auto_sleep_timeout(cases[i].requested);
+        assert(m_monitor_state.wakeup_ticks == cases[i].effective * 5u);
+        assert(m_monitor_state.sleep_counter == 0);
+        assert(!service_monitor_sleep_pending());
+        assert_no_teardown();
+    }
+}
+
+static void test_timeout_change_keeps_auto_sleep_disabled(void)
+{
+    reset_case();
+    g_service_param.sleep.sleep_mode = 1;
+    service_monitor_set_auto_sleep_timeout(30);
+    monitor_auto_sleep_manage_event();
+    assert(m_monitor_state.sleep_counter == 1);
+
+    g_service_param.sleep.sleep_mode = 0;
+    service_monitor_set_auto_sleep_timeout(120);
+    assert(m_monitor_state.sleep_counter == 0);
+    for (uint32_t tick = 0; tick < 120u * 5u + 100u; ++tick)
+        monitor_auto_sleep_manage_event();
+    assert(m_monitor_state.sleep_counter == 0);
+    assert(!service_monitor_sleep_pending());
+    assert(app_prepare_count == 0);
+    assert_no_teardown();
+}
+
 int main(void)
 {
     test_disabled_auto_sleep();
+    test_auto_sleep_timeout_thresholds();
+    test_auto_sleep_timeout_clamps();
+    test_timeout_change_keeps_auto_sleep_disabled();
     test_manual_sleep_waits_for_transfer_and_release();
     test_auto_sleep_requires_both_barriers();
     test_sleep_defers_when_wakeup_source_unavailable();
-    puts("host_sleep: 4 tests passed");
+    puts("host_sleep: 7 tests passed");
     return 0;
 }
 

@@ -47,6 +47,7 @@
 #include "sys_event.h"
 #include "sys_com.h"
 #include "service_ota.h"
+#include "hal_hardware.h"
 
 /*********************************************************************
  * MACROS
@@ -89,6 +90,7 @@ static uint8_t m_ota_init = 0;
  * LOCAL FUNCTIONS
  */
 static void ota_internal_init(void);
+static esp_err_t ota_validate_target_partition(const esp_partition_t *part);
 
 /*********************************************************************
  * GLOBAL FUNCTIONS
@@ -254,6 +256,14 @@ void service_ota_stop(void)
         return;
     }
 
+    err = ota_validate_target_partition(m_ota_state.update_partition);
+    if(err != ESP_OK)
+    {
+        sys_loge(OTA_TAG, "OTA hardware target mismatch or missing descriptor; current image retained");
+        m_ota_state.state = OTA_STATE_FAILED;
+        sys_reboot();
+        return;
+    }
     err = esp_ota_set_boot_partition(m_ota_state.update_partition);
     if(err != ESP_OK)
     {
@@ -271,6 +281,22 @@ void service_ota_stop(void)
 }
 
 /* Staged WiFi OTA. Boot rollback is not enabled. */
+/* Shared final gate for legacy BLE and staged HTTP OTA, before boot selection. */
+static esp_err_t ota_validate_target_partition(const esp_partition_t *part)
+{
+    esp_image_header_t header;
+    esp_app_desc_t desc;
+    ArkHardwareDescriptor_t hardware;
+    if(esp_partition_read(part, 0, &header, sizeof(header)) != ESP_OK ||
+       header.chip_id != ESP_CHIP_ID_ESP32S3 ||
+       esp_ota_get_partition_description(part, &desc) != ESP_OK ||
+       strncmp(desc.project_name, "frame_film_ark", sizeof(desc.project_name)) ||
+       esp_partition_read(part, ARK_HARDWARE_DESCRIPTOR_OFFSET, &hardware, sizeof(hardware)) != ESP_OK ||
+       !hal_hardware_descriptor_matches(&hardware))
+        return ESP_ERR_INVALID_ARG;
+    return ESP_OK;
+}
+
 static struct
 {
     esp_ota_handle_t handle;
@@ -345,13 +371,8 @@ esp_err_t service_ota_direct_finish(void)
     direct_ota.writing = false;
     if(e != ESP_OK)
         return e;
-    esp_image_header_t header;
-    esp_app_desc_t desc;
-    if(esp_partition_read(direct_ota.part, 0, &header, sizeof(header)) != ESP_OK ||
-       header.chip_id != ESP_CHIP_ID_ESP32S3 ||
-       esp_ota_get_partition_description(direct_ota.part, &desc) != ESP_OK ||
-       strncmp(desc.project_name, "frame_film_ark", sizeof(desc.project_name)))
-        return ESP_ERR_INVALID_ARG;
+    e = ota_validate_target_partition(direct_ota.part);
+    if(e != ESP_OK) return e;
     direct_ota.ready = true;
     sys_logi(OTA_TAG, "WiFi OTA verified: %lu bytes, awaiting activation",
              (unsigned long)direct_ota.received);
