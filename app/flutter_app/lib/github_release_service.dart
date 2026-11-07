@@ -72,7 +72,7 @@ class GitHubReleaseService {
     }
     final data = await _get(
       Uri.https('api.github.com', '/repos/Rafael-Ikaros/FrameFilm/releases', {
-        'per_page': '20',
+        'per_page': '100',
       }),
     );
     final release = _latestFormal(data);
@@ -92,6 +92,8 @@ class GitHubReleaseService {
           (r) =>
               r['draft'] != true &&
               r['prerelease'] != true &&
+              // 经典固件（frame-film-v*）与 Ark 共用仓库，不能抢选 Ark 固件源。
+              r['tag_name']?.toString().startsWith('frame-film-') != true &&
               DateTime.tryParse(r['published_at']?.toString() ?? '') != null,
         )
         .toList();

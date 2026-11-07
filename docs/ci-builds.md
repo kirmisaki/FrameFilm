@@ -62,6 +62,15 @@ OTA Artifact 各含一份 `frame_film_ark.bin` 应用镜像。完整镜像含 bo
 - 两个规格的固件不能互刷；编译成功不代表对应屏幕已实机验证。
 - STD / Max 机型当前只做本机构建预设（见 `firmware/frame_film/CMakePresets.json` 与 `build.ps1`），不进入 CI 矩阵。
 
+### 经典固件正式发布
+
+普通 push / PR 只构建，不发 Release。正式发布有两种触发方式：
+
+- 推送 tag `frame-film-v<版本>`（例如 `frame-film-v2026.11.07.1`），从 tag 源码构建。
+- Actions → FrameFilm builds → Run workflow，选择 `main` 并填写 `release_version`（同样的版本格式）。
+
+矩阵全部成功后，`release` job 会先校验 12 个组合齐全、应用镜像头（ESP32-S3 / `frame_film` 工程 / ELF 指纹 / OTA 槽容量）以及完整镜像在 `0x30000` 与 OTA 应用逐字节一致，再生成 `framefilm-classic-firmware.json`（记录硬件规格、屏幕面板 ID、尺寸、大小与 SHA-256）。Release 附件为每个组合的 `*-ota.bin`、`*-flash.bin` 和清单；Notes 内嵌同一份清单，ForFilm 可直接从 Release body 读取，无需额外请求。Release 使用 `--latest=false`，不占用仓库 Latest 标记，也不会被 Ark 客户端按发布时间误选。
+
 ## 验证范围
 
 首次远端运行：[Ark builds #37736539292](https://github.com/Rafael-ban/FrameFilm/actions/runs/37736539292)，源码提交 `f9614d3`。已验证 Flutter APK 编译、运行资源检查、APK 上传，以及 ESP-IDF 5.5.2 Ark 固件编译、大小报告、合并镜像与产物上传；两份构建日志也已上传。编译成功和 APK 资源检查通过不代表设备最终文件提交、相机、屏幕刷新或 OTA 已经实测。

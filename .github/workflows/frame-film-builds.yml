@@ -3,6 +3,7 @@ name: FrameFilm classic firmware
 on:
   push:
     branches: [main]
+    tags: ['frame-film-v*']
     paths:
       - 'firmware/frame_film/**'
       - '.github/workflows/frame-film-builds.yml'
@@ -12,6 +13,12 @@ on:
       - 'firmware/frame_film/**'
       - '.github/workflows/frame-film-builds.yml'
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: '正式发布版本（如 2026.11.07.1）；留空只构建'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -131,3 +138,108 @@ jobs:
           path: |
             firmware/frame_film/ci-logs/
             firmware/frame_film/build/log/
+
+  release:
+    name: Publish FrameFilm Pro release
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/frame-film-v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_version != '' && github.ref == 'refs/heads/main')
+    needs: pro
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download Pro build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: frame-film-pro-*
+          path: release-input
+      - name: Resolve release version
+        id: version
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = 'push' ]; then
+            version="${REF_NAME#frame-film-v}"
+          else
+            version="$INPUT_VERSION"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid release version: $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=frame-film-v$version" >> "$GITHUB_OUTPUT"
+      - name: Check classic firmware manifest contracts
+        run: python3 -m unittest discover -s tools/ci -p test_classic_firmware_manifest.py -v
+      - name: Generate release assets and manifest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/classic_firmware_manifest.py \
+            --input release-input --output release-firmware \
+            --version "$VERSION" --model pro
+      - name: Write release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "FrameFilm Pro 经典固件 · $VERSION"
+            echo
+            echo "Source commit: $(git rev-parse HEAD)"
+            echo
+            echo "串口整片烧录：按硬件规格与屏幕选择对应的 \`*-flash.bin\`，从 0x0 写入。"
+            echo "BLE OTA：使用对应的 \`*-ota.bin\` 应用镜像。"
+            echo
+            echo "<!-- framefilm-classic-firmware:v1"
+            cat release-firmware/framefilm-classic-firmware.json
+            echo "-->"
+          } > release-notes.md
+      - name: Publish FrameFilm Pro release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          EVENT: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets=(release-firmware/*.bin release-firmware/*.json)
+          for asset in "${assets[@]}"; do
+            test -s "$asset" || { echo "::error::Missing $asset"; exit 1; }
+          done
+          status=$(curl -sS -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$GH_REPO/releases/tags/$TAG")
+          case "$status" in
+            200)
+              gh release upload "$TAG" "${assets[@]}" --repo "$GH_REPO" --clobber
+              gh release edit "$TAG" --repo "$GH_REPO" \
+                --title "FrameFilm Pro $VERSION" --notes-file release-notes.md
+              ;;
+            404)
+              if [ "$EVENT" = 'push' ]; then
+                gh release create "$TAG" "${assets[@]}" --repo "$GH_REPO" \
+                  --title "FrameFilm Pro $VERSION" --notes-file release-notes.md --latest=false
+              else
+                gh release create "$TAG" "${assets[@]}" --repo "$GH_REPO" \
+                  --target "$GITHUB_SHA" \
+                  --title "FrameFilm Pro $VERSION" --notes-file release-notes.md --latest=false
+              fi
+              ;;
+            *)
+              echo "::error::GitHub release lookup failed: HTTP $status"
+              exit 1
+              ;;
+          esac

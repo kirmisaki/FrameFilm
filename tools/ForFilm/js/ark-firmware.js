@@ -113,12 +113,14 @@
     function latestFormal(releases) {
         if (!Array.isArray(releases)) throw new Error('GitHub 发布列表格式无效');
         return releases.filter(item => item && item.draft !== true && item.prerelease !== true &&
-            typeof item.tag_name === 'string' && item.tag_name && Number.isFinite(Date.parse(item.published_at)))
+            typeof item.tag_name === 'string' && item.tag_name &&
+            !item.tag_name.startsWith('frame-film-') &&
+            Number.isFinite(Date.parse(item.published_at)))
             .sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at))[0] || null;
     }
 
     async function latest() {
-        const response = await fetch(api + '?per_page=20', { signal: AbortSignal.timeout(20000) });
+        const response = await fetch(api + '?per_page=100', { signal: AbortSignal.timeout(20000) });
         if (!response.ok) throw new Error('GitHub 发布查询失败（HTTP ' + response.status + '）');
         const release = latestFormal(await response.json());
         if (!release) throw new Error('暂无正式固件发布');

@@ -85,7 +85,8 @@ function fwSetProgress(pct) {
 }
 
 function fwSetControlsEnabled(enabled) {
-    ['fw-select-btn', 'fw-clear-btn', 'fw-online-target', 'fw-online-check', 'fw-online-import'].forEach(function (id) {
+    ['fw-select-btn', 'fw-clear-btn', 'fw-online-family', 'fw-online-target', 'fw-online-screen',
+     'fw-online-check', 'fw-online-import'].forEach(function (id) {
         const el = document.getElementById(id);
         if (el) el.disabled = !enabled;
     });
@@ -95,7 +96,7 @@ function fwSetControlsEnabled(enabled) {
         if (el) el.disabled = !canFlash;
     });
     const merged = document.getElementById('fw-merged-image');
-    if (merged) merged.disabled = !enabled || fwFiles.some(item => item.onlineTarget);
+    if (merged) merged.disabled = !enabled || fwFiles.some(item => item.onlineFlash);
 }
 
 /* ------------------------------------------------------------------ 文件管理 */
@@ -133,7 +134,7 @@ function fwMergedImageChecked() {
 
 /** 选中文件真正使用的偏移（考虑“合并镜像”） */
 function fwAddressOf(item) {
-    if (item.onlineTarget) return FW_ADDR_BOOTLOADER;
+    if (item.onlineFlash) return FW_ADDR_BOOTLOADER;
     if (fwMergedImageChecked() && fwFiles.length === 1) return 0x0;
     return item.address;
 }
@@ -253,14 +254,72 @@ function resetOnlineFlash() {
     link.hidden = true;
     link.removeAttribute('href');
     document.getElementById('fw-online-import').hidden = true;
-    if (fwFiles.some(item => item.onlineTarget)) clearFirmwareFiles();
+    if (fwFiles.some(item => item.onlineFlash)) clearFirmwareFiles();
     fwOnlineStatus('');
 }
 
+/** 当前选择的设备家族：Ark 通行证版 / FrameFilm 经典 Pro */
+function fwOnlineFamily() {
+    const el = document.getElementById('fw-online-family');
+    return el && el.value === 'classic' ? 'classic' : 'ark';
+}
+
+/** 按设备家族重建硬件规格下拉；经典固件再显示屏幕面板 */
+function fwSyncOnlineOptions() {
+    const family = fwOnlineFamily();
+    const target = document.getElementById('fw-online-target');
+    if (!target) return;
+    const previous = target.value;
+    const options = family === 'classic'
+        ? ClassicFirmware.variants.map(item => ({ value: item.variant, label: item.label }))
+        : ArkFirmware.targets.map(item => ({ value: item.targetId, label: item.label }));
+    target.innerHTML = '';
+    options.forEach(function (item) {
+        const option = document.createElement('option');
+        option.value = item.value;
+        option.textContent = item.label;
+        target.appendChild(option);
+    });
+    if (options.some(item => item.value === previous)) target.value = previous;
+
+    const screen = document.getElementById('fw-online-screen');
+    if (screen && !screen.options.length) {
+        ClassicFirmware.screens.forEach(function (item) {
+            const option = document.createElement('option');
+            option.value = item.screen;
+            option.textContent = item.label;
+            screen.appendChild(option);
+        });
+        screen.value = 'e6-3.68-792x528';
+    }
+    const wrap = document.getElementById('fw-online-screen-wrap');
+    if (wrap) wrap.hidden = family !== 'classic';
+    resetOnlineFlash();
+}
+
+/** 连接设备后预选家族/屏幕：只能推断型号与面板，Flash/PSRAM 仍由用户确认 */
+function fwSyncOnlineDevice() {
+    const family = document.getElementById('fw-online-family');
+    const type = window.currentDeviceType;
+    if (!family || !type) return;
+    if (type === 'FRAMEFILMARK') {
+        family.value = 'ark';
+    } else if (/^FRAMEFILM(?:STD|PRO|MAX)?$/.test(type)) {
+        family.value = 'classic';
+    } else {
+        return;
+    }
+    fwSyncOnlineOptions();
+    const screen = document.getElementById('fw-online-screen');
+    const panel = typeof window.currentPanelId === 'number' ? ClassicFirmware.screenOf(window.currentPanelId) : null;
+    if (family.value === 'classic' && screen && panel) screen.value = panel.screen;
+}
+
 async function fwStageOnline(bytes, item) {
-    await ArkFirmware.verifyFlash(bytes, item);
+    if (item.family === 'classic') await ClassicFirmware.verifyFlash(bytes, item);
+    else await ArkFirmware.verifyFlash(bytes, item);
     const file = new File([bytes], item.name);
-    fwFiles = [{ file, name: item.name, size: bytes.length, onlineTarget: item.targetId }];
+    fwFiles = [{ file, name: item.name, size: bytes.length, onlineFlash: item }];
     fwMergedDetected = true;
     document.getElementById('fw-merged-image').checked = true;
     fwRenderFileList();
@@ -269,6 +328,11 @@ async function fwStageOnline(bytes, item) {
 
 async function getOnlineFlash() {
     if (fwBusy) return;
+    if (fwOnlineFamily() === 'classic') return fwGetClassicOnline();
+    return fwGetArkOnline();
+}
+
+async function fwGetArkOnline() {
     const hardware = ArkFirmware.target(document.getElementById('fw-online-target').value);
     if (!hardware) { fwOnlineStatus('请按设备实物选择硬件规格。'); return; }
     resetOnlineFlash();
@@ -287,6 +351,37 @@ async function getOnlineFlash() {
             link.hidden = false;
             document.getElementById('fw-online-import').hidden = false;
             fwOnlineStatus(item.tag + ' · ' + hardware.label + ' · 下载后导入该完整镜像。');
+        }
+    } catch (error) {
+        fwOnlineStatus('获取失败：' + error.message);
+    } finally {
+        fwBusy = false;
+        fwSetControlsEnabled(true);
+    }
+}
+
+async function fwGetClassicOnline() {
+    const expected = ClassicFirmware.target(
+        document.getElementById('fw-online-target').value,
+        document.getElementById('fw-online-screen').value);
+    if (!expected) { fwOnlineStatus('请按设备实物选择硬件规格与屏幕面板。'); return; }
+    resetOnlineFlash();
+    fwBusy = true;
+    fwSetControlsEnabled(false);
+    fwOnlineStatus('正在查找 ' + expected.label + ' 的完整镜像…');
+    try {
+        const release = await ClassicFirmware.latest();
+        const item = ClassicFirmware.selectFlash(release, await ClassicFirmware.readManifest(release), expected);
+        fwOnlineCandidate = item;
+        try {
+            await fwStageOnline(await ClassicFirmware.download(item), item);
+        } catch (error) {
+            if (!(error instanceof ClassicFirmware.DownloadUnavailable)) throw error;
+            const link = document.getElementById('fw-online-link');
+            link.href = item.url;
+            link.hidden = false;
+            document.getElementById('fw-online-import').hidden = false;
+            fwOnlineStatus(item.tag + ' · ' + expected.label + ' · 下载后导入该完整镜像。');
         }
     } catch (error) {
         fwOnlineStatus('获取失败：' + error.message);
@@ -515,9 +610,9 @@ async function startSerialFlash() {
     /* 手动勾了“合并镜像”但内容不像合并镜像：确认框里再提醒一次 */
     const riskyMerged = fwMergedImageChecked() && fwFiles.length === 1 && fwMergedDetected === false;
 
-    const onlineTarget = ArkFirmware.target(fwFiles[0].onlineTarget);
+    const onlineFlash = fwFiles[0].onlineFlash;
     const tip = '即将向设备写入固件：\n\n' + plan +
-        (onlineTarget ? '\n\n请确认实物为 ' + onlineTarget.label + '，包括 PSRAM 规格。' : '') +
+        (onlineFlash ? '\n\n请确认实物为 ' + onlineFlash.label + '，包括 PSRAM 规格。' : '') +
         '\n\n共 ' + fwFormatBytes(totalSize) + (eraseAll ? '（先整片擦除 Flash）' : '') +
         (riskyMerged ? '\n\n注意：该文件在 0x8000 处没有分区表，却按“合并镜像”从 0x0 写入；若不是合并镜像会覆盖 bootloader。' : '') +
         '\n\n期间请勿断开 USB、勿断电。bootloader / 分区表写坏后需要重新烧录才能恢复。\n\n继续？';
@@ -535,13 +630,13 @@ async function startSerialFlash() {
     try {
         conn = await fwConnectLoader();
 
-        if (onlineTarget) {
+        if (onlineFlash) {
             const flashSize = await conn.loader.detectFlashSize();
-            const expectedSize = (onlineTarget.flashBytes / (1024 * 1024)) + 'MB';
+            const expectedSize = (onlineFlash.flashBytes / (1024 * 1024)) + 'MB';
             if (!/ESP32-S3\b/i.test(conn.chip || '') || flashSize !== expectedSize) {
                 await fwHardReset(conn.transport);
                 throw new Error('串口检测到 ' + conn.chip + ' / ' + (flashSize || 'Flash 未知') +
-                    '，与 ' + onlineTarget.label + ' 所需的 ESP32-S3 / ' + expectedSize + ' 不匹配');
+                    '，与 ' + onlineFlash.label + ' 所需的 ESP32-S3 / ' + expectedSize + ' 不匹配');
             }
         } else if (!/S3/i.test(conn.chip || '')) {
             if (!confirm('检测到的芯片是「' + conn.chip + '」，但本仓库固件都是 ESP32-S3。\n\n确定继续烧写？')) {
@@ -614,4 +709,5 @@ async function startSerialFlash() {
     }
     fwSetControlsEnabled(true);
     fwRenderFileList();
+    fwSyncOnlineOptions();
 })();

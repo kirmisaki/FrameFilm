@@ -1221,12 +1221,17 @@
                     </div>
                     <div class="switch-row__hint">用 USB 串口直接写设备 Flash（等价命令行 <code>idf.py flash</code>）：比蓝牙 OTA 快得多，且能刷 bootloader 与分区表。刷完设备会复位，需要重新连接蓝牙。</div>
                     <div class="action-controls">
-                        <label class="fw-option">Ark 硬件规格
-                            <select id="fw-online-target" onchange="resetOnlineFlash()">
-                                <option value="">按实物选择</option>
-                                <option value="ark-esp32s3-n4r2">N4R2 · 4 MB Flash / 2 MB PSRAM</option>
-                                <option value="ark-esp32s3-n16r8">N16R8 · 16 MB Flash / 8 MB PSRAM</option>
+                        <label class="fw-option">设备机型
+                            <select id="fw-online-family" onchange="fwSyncOnlineOptions()">
+                                <option value="ark">FrameFilm Ark（通行证版）</option>
+                                <option value="classic">FrameFilm Pro（经典）</option>
                             </select>
+                        </label>
+                        <label class="fw-option">硬件规格
+                            <select id="fw-online-target" onchange="resetOnlineFlash()"></select>
+                        </label>
+                        <label class="fw-option" id="fw-online-screen-wrap" hidden>屏幕面板
+                            <select id="fw-online-screen" onchange="resetOnlineFlash()"></select>
                         </label>
                         <button class="secondary-button" id="fw-online-check" type="button" onclick="getOnlineFlash()">联网获取完整固件</button>
                     </div>
@@ -1343,6 +1348,7 @@
 <script src="js/bluetooth.js?rev=ark-ota-1"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
 <script src="js/ark-firmware.js"></script>
+<script src="js/classic-firmware.js?rev=classic-1"></script>
 <script src="js/ark-ota.js?rev=ark-ota-2"></script>
 <script src="js/usb.js"></script>
 <script src="js/keyboard.js"></script>
@@ -1358,7 +1364,7 @@
 <script src="js/animation.js?v=ark-state-2"></script>
 <!-- 串口烧录：esptool-js（内嵌，官方 bundle 转经典脚本，挂 window.ESPTOOL）+ 本仓库的烧录流程 -->
 <script src="js/esptool-js.js"></script>
-<script src="js/serial-flash.js?rev=ark-online-1"></script>
+<script src="js/serial-flash.js?rev=classic-online-1"></script>
 <script src="js/main.js"></script>
 <script src="js/ark-theme.js?v=prts-3"></script>
 <script src="js/ark-controls.js?v=ark-state-1"></script>

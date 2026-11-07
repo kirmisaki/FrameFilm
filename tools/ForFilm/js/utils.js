@@ -41,6 +41,7 @@ var DEVICE_CONFIGS = {
 };
 
 var currentDeviceType = 'FRAMEFILM';
+var currentPanelId = 0;
 
 function getDeviceConfig() {
     return DEVICE_CONFIGS[currentDeviceType] || DEVICE_CONFIGS['FRAMEFILM'];
@@ -141,6 +142,10 @@ function onDeviceTypeChanged() {
     if (typeof arkThemeSync === 'function') {
         arkThemeSync();
     }
+    // 串口在线固件：按已连接机型/面板预选家族与屏幕（Flash/PSRAM 仍需人工确认）
+    if (typeof fwSyncOnlineDevice === 'function') {
+        fwSyncOnlineDevice();
+    }
 }
 
 // 屏幕面板 ID → 机型 + 像素排布（与固件 EPD_PANEL_ID 对应）
@@ -167,6 +172,7 @@ function applyScreenParams(panelId, width, height) {
         console.warn('[ForFilm] 未知屏幕面板 ID: 0x' + panelId.toString(16));
         return false;
     }
+    currentPanelId = panelId;
     // 面板 ID 不足以区分机型：0x02（3.70" 720×480）在 Pro 与通行证版（ARK）上是同一块屏。
     // 名字已判定为 ARK 时以名字为准，只更新尺寸/排布，不覆盖机型。
     if (currentDeviceType !== 'FRAMEFILMARK' && currentDeviceType !== 'FRAMEFILMC3') {
