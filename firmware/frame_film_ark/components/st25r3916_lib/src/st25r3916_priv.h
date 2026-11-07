@@ -35,6 +35,7 @@ struct st25r_dev {
     struct {
         bool running;
         TaskHandle_t task;
+        SemaphoreHandle_t irq_sem; /* IRQ 唤醒用：芯片拉高 IRQ 脚时唤醒模拟任务 */
         volatile bool stop;
         bool external_step; /* no internal task, st25r_picc_update() drives it */
         st25r_card_t card;

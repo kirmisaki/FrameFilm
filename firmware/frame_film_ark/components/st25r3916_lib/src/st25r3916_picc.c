@@ -16,6 +16,7 @@
 
 #include <string.h>
 
+#include "esp_intr_alloc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 
@@ -479,18 +480,39 @@ esp_err_t st25r_picc_configure(st25r_handle_t h, const st25r_card_t *card)
 /* ------------------------------------------------------------------------- */
 /* Task and public API                                                       */
 /* ------------------------------------------------------------------------- */
+/* IRQ 脚是电平信号（高有效），上升沿唤醒模拟任务即可，不用轮询占 CPU。 */
+static void IRAM_ATTR picc_irq_isr(void *arg)
+{
+    st25r_handle_t h = (st25r_handle_t)arg;
+    BaseType_t woken = pdFALSE;
+    if (h->emu.irq_sem) {
+        xSemaphoreGiveFromISR(h->emu.irq_sem, &woken);
+    }
+    if (woken == pdTRUE) {
+        portYIELD_FROM_ISR();
+    }
+}
+
 static void picc_task(void *arg)
 {
     st25r_handle_t h = (st25r_handle_t)arg;
-    uint32_t spin = 0;
-    while (!h->emu.stop) {
+    for (;;) {
+        if (h->emu.stop) {
+            break;
+        }
         (void)st25r_picc_update(h);
-        /* 读卡器（尤其 M1 认证）在 SELECT 之后只看几十~几百微秒的响应窗口，
-           OFF/IDLE 时不能按 1ms tick 睡过去；持续轮询并周期性让出 CPU。 */
-        if ((++spin & 0x3FFu) == 0u) {
-            vTaskDelay(1);
+        if (h->emu.stop) {
+            break;
+        }
+        /* 电平信号：还有未处理的中断就立刻再跑一轮（任务处理期间可能又来了新帧） */
+        if (h->cfg.pin_irq != GPIO_NUM_NC && st25r_irq_asserted(h)) {
+            continue;
+        }
+        if (h->emu.irq_sem) {
+            /* 阻塞等芯片拉高 IRQ；1s 超时只是兜底（ISR 漏边沿/未装时仍能自愈） */
+            (void)xSemaphoreTake(h->emu.irq_sem, pdMS_TO_TICKS(1000));
         } else {
-            vTaskDelay(0);
+            vTaskDelay(1); /* 没有 IRQ 线或 ISR 安装失败：退回轮询 */
         }
     }
     h->emu.task = NULL;
@@ -523,6 +545,20 @@ esp_err_t st25r_picc_begin(st25r_handle_t h, const st25r_picc_config_t *cfg)
 
     h->emu.running = true;
     if (!h->emu.external_step) {
+        /* IRQ 上升沿唤醒模拟任务；ISR 服务可能被 EPD/SD 装过，重复安装会返回
+           ESP_ERR_INVALID_STATE，这里直接忽略。 */
+        if (h->cfg.pin_irq != GPIO_NUM_NC) {
+            h->emu.irq_sem = xSemaphoreCreateBinary();
+            if (h->emu.irq_sem) {
+                (void)gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+                if (gpio_set_intr_type(h->cfg.pin_irq, GPIO_INTR_POSEDGE) != ESP_OK ||
+                    gpio_isr_handler_add(h->cfg.pin_irq, picc_irq_isr, h) != ESP_OK) {
+                    vSemaphoreDelete(h->emu.irq_sem);
+                    h->emu.irq_sem = NULL; /* 退回轮询 */
+                }
+            }
+        }
+
         const uint32_t stack = cfg->task_stack_size ? cfg->task_stack_size : 4096;
         BaseType_t ok;
         if (cfg->task_core == tskNO_AFFINITY) {
@@ -532,6 +568,11 @@ esp_err_t st25r_picc_begin(st25r_handle_t h, const st25r_picc_config_t *cfg)
                                          cfg->task_core);
         }
         if (ok != pdPASS) {
+            if (h->emu.irq_sem) {
+                gpio_isr_handler_remove(h->cfg.pin_irq);
+                vSemaphoreDelete(h->emu.irq_sem);
+                h->emu.irq_sem = NULL;
+            }
             h->emu.running = false;
             return ESP_ERR_NO_MEM;
         }
@@ -550,11 +591,19 @@ esp_err_t st25r_picc_end(st25r_handle_t h)
         return ESP_OK;
     }
     h->emu.stop = true;
+    if (h->emu.irq_sem) {
+        xSemaphoreGive(h->emu.irq_sem); /* 任务可能正阻塞在 IRQ 等待上 */
+    }
     if (h->emu.task) {
         const int64_t start = esp_timer_get_time();
         while (h->emu.task && (esp_timer_get_time() - start) < 1000000) {
             vTaskDelay(1);
         }
+    }
+    if (h->emu.irq_sem) {
+        gpio_isr_handler_remove(h->cfg.pin_irq);
+        vSemaphoreDelete(h->emu.irq_sem);
+        h->emu.irq_sem = NULL;
     }
     st25r_lock(h);
     st25r_field_off(h);
