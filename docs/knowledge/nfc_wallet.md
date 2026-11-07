@@ -14,7 +14,7 @@
 |---|---|
 | 功能开关 | `sys_cfg.h` 的 `SYS_NFC_ENABLE` 由 `CONFIG_ARK_HAS_NFC` 派生（仅 n16r8 为 1） |
 | 适用硬件 | **NFC 仅 n16r8（4 键）**；n4r2（3 键）没有 NFC，不编译、不注册卡包、不进菜单 |
-| 库落地 | 整目录复制到 `firmware/frame_film_ark/components/st25r3916_lib/`，原样使用、不在库里改业务 |
+| 库落地 | 整目录复制到 `firmware/frame_film_ark/components/film_libs/st25r3916_lib/`，原样使用、不在库里改业务 |
 | 总线 | **SPI3_HOST**（SPI2 已被 EPD 占用），mode 1，10 MHz |
 | 引脚 | SCLK=GPIO10、MOSI=GPIO19、MISO=GPIO9、CS=GPIO20、IRQ=GPIO7（与 nfc_test 完全一致） |
 | 按键变体 | n16r8 4 键 + NFC：GPIO18 返回键，双击确认进入读卡页；n4r2 3 键无 NFC，保持双击返回 |
@@ -94,7 +94,7 @@
 │   hal_nfc.c/.h                    库封装 + 读卡任务 + 模拟任务  │
 │   hal_pwr.c/.h                    唤醒原因 + IRQ 入睡门闸      │
 ├─────────────────────────────────────────────────────────────┤
-│ st25r3916_lib（第三方，原样）                                 │
+│ film_libs/st25r3916_lib（第三方，原样）                       │
 │   st25r3916_nfc.h / st25r3916_*.c                            │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -104,12 +104,13 @@
 
 ### 3.2 库放哪里
 
-**推荐**：`firmware/frame_film_ark/components/st25r3916_lib/`（整目录原样复制）。
+**推荐**：`firmware/frame_film_ark/components/film_libs/st25r3916_lib/`（整目录原样复制）。
 
 理由：
 
-- IDF 自动扫描 `components/` 的一级子目录，目录名即组件名，与其 `CMakeLists.txt` 一致，零改动；
+- 第三方库集中放在 `components/film_libs/`，顶层 `CMakeLists.txt` 把它注册进 `EXTRA_COMPONENT_DIRS`；目录名即组件名，与其 `CMakeLists.txt` 一致；
 - `film_hal` 只需在 `REQUIRES` 里加 `st25r3916_lib`，`#include "st25r3916_nfc.h"` 即可；
+- 注意链接顺序：`EXTRA_COMPONENT_DIRS` 里的组件会排在项目组件之前，普通静态链接可能先于 `film_hal` 被处理而丢符号，因此该库在 `CONFIG_ARK_HAS_NFC` 下用 `WHOLE_ARCHIVE` 链接；
 - `assets/lib/st25r3916_lib` 保留为上游参考，升级时整目录覆盖，不把业务代码写进库。
 
 不建议：
@@ -121,7 +122,7 @@
 **关于「开关关闭时完全不编译」**：
 
 - 我方源码（`hal_nfc.c`、`app_wallet*.c`）用 CMake 读取 `sys_cfg.h` 条件加入 `srcs`，关闭时这些文件**不参与编译**（见 §4.4）。
-- 第三方库仍在 `components/` 下，IDF 会编译其 4 个 `.c`，但 `film_hal` 不 REQUIRE 它、也没有任何符号引用，静态库中未引用的目标文件**不会链接进镜像**，Flash 占用为 0。
+- 第三方库仍在 `components/film_libs/` 下，IDF 会编译其 4 个 `.c`，但 `film_hal` 不 REQUIRE 它、也没有任何符号引用，静态库中未引用的目标文件**不会链接进镜像**，Flash 占用为 0。
 - 若要求「连第三方库都不要编译」，把目录移到 `firmware/frame_film_ark/ext_components/st25r3916_lib/`，在顶层 `CMakeLists.txt` 按同一宏条件 `list(APPEND EXTRA_COMPONENT_DIRS ...)` 即可（本方案默认不做，保持目录惯例）。
 
 ---
@@ -1106,7 +1107,7 @@ n16r8 硬件多一个 **GPIO18 返回键**，并且只有 n16r8 有 NFC；n4r2 �
 ### 新增
 
 ```text
-firmware/frame_film_ark/components/st25r3916_lib/          整目录复制（供应商库）
+firmware/frame_film_ark/components/film_libs/st25r3916_lib/ 整目录复制（供应商库）
 firmware/frame_film_ark/components/film_hal/inc/hal_nfc.h
 firmware/frame_film_ark/components/film_hal/src/hal_nfc.c
 firmware/frame_film_ark/components/film_app/apps/wallet/app_wallet.h
