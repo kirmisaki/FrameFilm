@@ -642,7 +642,6 @@ static bool ble_cmd_conflicts_with_direct(const ble_cmd_t *cmd)
 #if (SYS_NFC_ENABLE == 1)
     case BLE_FILM_TRANS_CH_NFC_CARD_BEGIN:
     case BLE_FILM_TRANS_CH_NFC_CARD_DATA:
-        return cmd->len != 0;
     case BLE_FILM_TRANS_CH_NFC_CARD_COMMIT:
     case BLE_FILM_TRANS_CH_NFC_WALLET_CTRL:
     case BLE_FILM_TRANS_CH_NFC_COVER_BEGIN:
@@ -848,21 +847,13 @@ static void ble_cmd_process(ble_cmd_t *cmd)
     {
         case BLE_FILM_TRANS_CH_DIRECT_AP_PREPARE:
         {
-#if (SYS_NFC_ENABLE == 1)
-            /* 0x5C/0x5D: empty requests are SoftAP/hardware, NFC carries data. */
-            if(cmd->len != 0)
-            {
-                ble_cmd_publish_app(cmd);
-                break;
-            }
-#endif
+            /* 纯空请求；带 DATA 属于错误用法，直接忽略（不回包） */
+            if(cmd->len != 0) break;
             uint8_t out[1 + 33 + 64 + 16] = {2};
             char ssid[33], password[64];
-            if(cmd->len == 0) {
-                bool legacy_busy = (m_film_trans_state > BLE_FILM_TRANS_IDLE && m_film_trans_state < BLE_FILM_TRANS_STOPPED) ||
-                                   (m_ota_trans_state > BLE_OTA_TRANS_IDLE && m_ota_trans_state < BLE_OTA_TRANS_STOPPED);
-                out[0] = legacy_busy ? 1 : service_wifi_softap_prepare(ssid, password);
-            }
+            bool legacy_busy = (m_film_trans_state > BLE_FILM_TRANS_IDLE && m_film_trans_state < BLE_FILM_TRANS_STOPPED) ||
+                               (m_ota_trans_state > BLE_OTA_TRANS_IDLE && m_ota_trans_state < BLE_OTA_TRANS_STOPPED);
+            out[0] = legacy_busy ? 1 : service_wifi_softap_prepare(ssid, password);
             size_t length = 1;
             if(out[0] == 0) {
                 memcpy(out + length, ssid, strlen(ssid) + 1); length += strlen(ssid) + 1;
@@ -930,13 +921,8 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_HARDWARE_INFO_GET:
         {
-            if(cmd->len != 0)
-            {
-#if (SYS_NFC_ENABLE == 1)
-                ble_cmd_publish_app(cmd);
-#endif
-                break;
-            }
+            /* 纯空请求；带 DATA 属于错误用法，直接忽略（不回包） */
+            if(cmd->len != 0) break;
             SysHwInfo_t info;
             sys_hw_get_info(&info);
             uint8_t data[14 + 32] = {1};
@@ -1693,8 +1679,8 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             }
             break;
         }
-        // app 相关通道（0x4B 切 app / 0x45~0x4A 参数通道）：BLE 层不解析语义，整包上浮给 app 层，
-        // 由 app_manager 按 ch 归属路由（0x4B 走切换逻辑，0x45~0x4A 走目标 app 的参数读写）
+        // app 相关通道（0x4B 切 app / 0x45~0x4A 参数通道 / 0x63~0x69 NFC 卡包）：BLE 层不解析语义，
+        // 整包上浮给 app 层，由 app_manager 按 ch 归属路由（0x4B 走切换逻辑，0x45~0x4A 走目标 app 的参数读写）
         case BLE_FILM_TRANS_CH_CTRL_APP_SWITCH :
         case BLE_FILM_TRANS_CH_APP_IMAGE_PARAM :
         case BLE_FILM_TRANS_CH_APP_IMAGE_PARAM_GET :
@@ -1703,6 +1689,8 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_APP_ANIM_PARAM :
         case BLE_FILM_TRANS_CH_APP_ANIM_PARAM_GET :
 #if (SYS_NFC_ENABLE == 1)
+        case BLE_FILM_TRANS_CH_NFC_CARD_BEGIN :
+        case BLE_FILM_TRANS_CH_NFC_CARD_DATA :
         case BLE_FILM_TRANS_CH_NFC_CARD_COMMIT :
         case BLE_FILM_TRANS_CH_NFC_WALLET_CTRL :
         case BLE_FILM_TRANS_CH_NFC_COVER_BEGIN :

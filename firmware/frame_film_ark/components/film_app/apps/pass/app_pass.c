@@ -254,8 +254,8 @@ static void pass_show_result(pass_load_result_t result)
             lv_area_t area;
             /* Resolve the final flex layout before caching the native overlay
                position. The empty panel must not take part in this layout. */
-            lv_obj_add_flag(m_empty_panel, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_remove_flag(m_card_img, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_hidden(m_empty_panel, true);
+            lv_obj_set_hidden(m_card_img, false);
 #ifdef ARK_UI_SIMULATOR
             lv_image_set_src(m_card_img, &next->dsc);
 #else
@@ -300,16 +300,16 @@ static void pass_show_result(pass_load_result_t result)
 
     if(m_active != NULL)
     {
-        lv_obj_add_flag(m_empty_panel, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(m_card_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_hidden(m_empty_panel, true);
+        lv_obj_set_hidden(m_card_img, false);
         lv_label_set_text(m_result_note, result == PASS_LOAD_OK ? "" : app_text("读取失败，保留当前通行证", "Read failed; showing current pass"));
     }
     else
     {
         lv_label_set_text(m_empty_note, result == PASS_LOAD_MISSING ?
                           app_text("尚未配置资料", "No profile configured") : app_text("资料读取失败", "Profile read failed"));
-        lv_obj_add_flag(m_card_img, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(m_empty_panel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_hidden(m_card_img, true);
+        lv_obj_set_hidden(m_empty_panel, false);
         lv_label_set_text(m_result_note, app_text("请用网页上传资料后刷新", "Upload profile on web, then reload"));
     }
 }

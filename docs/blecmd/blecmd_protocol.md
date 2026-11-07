@@ -6,7 +6,7 @@
 - [2. 协议框架](#2-协议框架)
 - [3. 通道定义](#3-通道定义)
 - [4. 命令详解](#4-命令详解)
-- Ark 扩展：[临时 WiFi 直传](#411-ark-临时-wifi-直传)、[通行证资料](#412-ark-通行证资料读取0x53)、[设备名称](#413-ark-设备名称0x54--0x55)、[WiFi OTA](#414-ark-wifi-ota0x560x58)、[SoftAP 直传](#418-ark-softap-文件直传0x5c)、[NFC 卡包](#420-nfc-卡包0x5c-0x62仅-n16r8)
+- Ark 扩展：[临时 WiFi 直传](#411-ark-临时-wifi-直传)、[通行证资料](#412-ark-通行证资料读取0x53)、[设备名称](#413-ark-设备名称0x54--0x55)、[WiFi OTA](#414-ark-wifi-ota0x560x58)、[SoftAP 直传](#418-ark-softap-文件直传0x5c)、[NFC 卡包](#420-nfc-卡包0x63-0x69仅-n16r8)
 - [5. 校验和计算](#5-校验和计算)
 - [6. C 语言示例](#6-c-语言示例)
 - [7. 版本历史](#7-版本历史)
@@ -333,19 +333,19 @@
 |---|---|---|---|
 | 0x5D | HARDWARE_INFO_GET | 空 | schema(u8=1)、chipId(u16 BE)、chipRevision(u16 BE)、physicalFlashBytes(u32 BE)、psramBytes(u32 BE)、psramBus(u8)、targetId(ASCII NUL) |
 
-### 3.19 NFC 卡包通道（0x5C ~ 0x62，仅 n16r8）
+### 3.19 NFC 卡包通道（0x63 ~ 0x69，仅 n16r8）
 
-仅 `frame_film_ark` 的 **n16r8** 变体（`CONFIG_ARK_HAS_NFC`）实现，卡库保存在 SD 卡（`wallet.bin`，封面 `cover_<id>.bin`）。n4r2 不处理 NFC 操作，经典固件不实现该功能。字段与状态码见 [§4.20](#420-nfc-卡包0x5c-0x62仅-n16r8)。
+仅 `frame_film_ark` 的 **n16r8** 变体（`CONFIG_ARK_HAS_NFC`）实现，卡库保存在 SD 卡（`wallet.bin`，封面 `cover_<id>.bin`）。n4r2 不处理 NFC 操作，经典固件不实现该功能。字段与状态码见 [§4.20](#420-nfc-卡包0x63-0x69仅-n16r8)。
 
 | 通道 | 名称 | 请求 DATA | 同通道响应 DATA |
 |---|---|---|---|
-| 0x5C | NFC_CARD_BEGIN | `kind(1) mode(1) uid_len(1) sak(1) atqa(2) uid(uid_len) name_len(1) name( name_len ) total(2) crc32(4)` | 成功 `0, 0, 180`（3B）；失败 1B 状态 |
-| 0x5D | NFC_CARD_DATA | `offset(2, BE) + chunk(≤180)` | `status, received(2, BE)`（3B） |
-| 0x5E | NFC_CARD_COMMIT | 空 | `status, id, count, current, uid_len, uid...` |
-| 0x5F | NFC_WALLET_CTRL | `op(1) [+参数]` | 见 §4.18.4 |
-| 0x60 | NFC_COVER_BEGIN | `id(1) fmt(1) w(2) h(2) total(2) crc32(4)` | 成功 `0, 0, 180`；失败 1B |
-| 0x61 | NFC_COVER_DATA | `offset(2, BE) + chunk(≤180)` | `status, received(2, BE)`（3B） |
-| 0x62 | NFC_COVER_COMMIT | 空 | `status, id, 1`（3B） |
+| 0x63 | NFC_CARD_BEGIN | `kind(1) mode(1) uid_len(1) sak(1) atqa(2) uid(uid_len) name_len(1) name( name_len ) total(2) crc32(4)` | 成功 `0, 0, 180`（3B）；失败 1B 状态 |
+| 0x64 | NFC_CARD_DATA | `offset(2, BE) + chunk(≤180)` | `status, received(2, BE)`（3B） |
+| 0x65 | NFC_CARD_COMMIT | 空 | `status, id, count, current, uid_len, uid...` |
+| 0x66 | NFC_WALLET_CTRL | `op(1) [+参数]` | 见 §4.20.4 |
+| 0x67 | NFC_COVER_BEGIN | `id(1) fmt(1) w(2) h(2) total(2) crc32(4)` | 成功 `0, 0, 180`；失败 1B |
+| 0x68 | NFC_COVER_DATA | `offset(2, BE) + chunk(≤180)` | `status, received(2, BE)`（3B） |
+| 0x69 | NFC_COVER_COMMIT | 空 | `status, id, 1`（3B） |
 
 状态码：`0` OK / `1` BUSY / `2` PARAM / `3` NOSD / `4` NOTFOUND / `5` NOMEM / `6` SAVE / `7` EMU_FAIL。
 
@@ -1597,11 +1597,11 @@ App应按设备targetId选择发布产物，并校验下载/导入镜像内的de
 
 旧设备首次获得0x5D需要一次明确型号的升级；新客户端不得根据版本3.2.5、广播名、同款屏幕或0x56的ELF指纹猜硬件型号。缺少可信硬件信息时保留其他功能，禁止自动推荐/推送未知目标。OTA app.bin不会迁移Flash分区表，n16r8镜像不自动将1900K OTA槽变为4096K；容量仍以0x56返回的实际OTA槽上限为准。
 
-### 4.20 NFC 卡包（0x5C ~ 0x62，仅 n16r8）
+### 4.20 NFC 卡包（0x63 ~ 0x69，仅 n16r8）
 
 > 通道概览见 §3.19。仅 `frame_film_ark` 的 n16r8 变体实现；需要 SD 卡，卡库为 `wallet.bin`，封面为 `cover_<id>.bin`。设备端通过 ST25R3916 复制/模拟卡片，手机端只负责建卡、管理、下发封面。
 
-合并后的固件使用 0x59 bit7 宣告 NFC。早期上游固件使用 bit4，客户端需用 0x5F 的只读列表确认，避免把历史 SoftAP 固件误识别为 NFC。0x5C/0x5D 的空请求分别用于 SoftAP 准备和硬件查询，有 DATA 的请求在 N16R8 上进入 NFC 建卡和写数据。
+NFC 使用独立通道段 **0x63 ~ 0x69**，与 SoftAP 准备 0x5C、硬件身份查询 0x5D 完全分离，不再按 payload 长度判别语义。`0x59` bit7 宣告 NFC 卡包；旧固件（0x5C/0x5D 复用式通道）不宣告 bit7。
 
 #### 4.20.1 卡片类型与内容长度
 
@@ -1618,7 +1618,7 @@ App应按设备targetId选择发布产物，并校验下载/导入镜像内的de
 `mode`：`0` 完整内容、`1` 仅 UID（只对 NTAG 有效）、`2` M1 块镜像（只对 kind≥4 有效）。
 NTAG 的 `uid_len` 必须为 7、`sak=0x00`、ATQA=`0x0044`；M1 的 `uid_len` 必须为 4，kind=0 时 `sak` 取 `0x08/0x18/0x38`。
 
-#### 4.20.2 NFC_CARD_BEGIN (0x5C) - 开始建卡
+#### 4.20.2 NFC_CARD_BEGIN (0x63) - 开始建卡
 
 ```
 +------+------+------+-----+------+-----+----------+---------+-------+-------+--------+-----+
@@ -1627,14 +1627,14 @@ NTAG 的 `uid_len` 必须为 7、`sak=0x00`、ATQA=`0x0044`；M1 的 `uid_len` �
                                                                         crc32(4) 在 total 之后
 ```
 
-成功回 `status=0, 0, 180`（3B，180 为单包建议分片上限）；失败只回 1B 状态码。设备为该会话分配缓冲区，随后用 0x5D 按 `offset` 递增上传内容，最后 0x5E 提交。
+成功回 `status=0, 0, 180`（3B，180 为单包建议分片上限）；失败只回 1B 状态码。设备为该会话分配缓冲区，随后用 0x64 按 `offset` 递增上传内容，最后 0x65 提交。
 
-#### 4.20.3 NFC_CARD_DATA / NFC_CARD_COMMIT（0x5D / 0x5E）
+#### 4.20.3 NFC_CARD_DATA / NFC_CARD_COMMIT（0x64 / 0x65）
 
-- `0x5D`：`offset(2, BE) + chunk`，`offset` 必须等于设备已收到的字节数，`chunk ≤ 180`；回 `status, received(2, BE)`。
-- `0x5E`：无 DATA。设备校验 CRC32 后落盘并**自动选中新卡**，若当前正在卡包 app 内则立即切换模拟。成功回 `status, id, count, current, uid_len, uid...`。
+- `0x64`：`offset(2, BE) + chunk`，`offset` 必须等于设备已收到的字节数，`chunk ≤ 180`；回 `status, received(2, BE)`。
+- `0x65`：无 DATA。设备校验 CRC32 后落盘并**自动选中新卡**，若当前正在卡包 app 内则立即切换模拟。成功回 `status, id, count, current, uid_len, uid...`。
 
-#### 4.20.4 NFC_WALLET_CTRL (0x5F) - 卡库管理
+#### 4.20.4 NFC_WALLET_CTRL (0x66) - 卡库管理
 
 | op | 名称 | 请求 | 响应 |
 |---|---|---|---|
@@ -1648,11 +1648,11 @@ NTAG 的 `uid_len` 必须为 7、`sak=0x00`、ATQA=`0x0044`；M1 的 `uid_len` �
 
 LIST 单条记录：`id, kind, uid_len, sak, atqa(2), uid(7), flags, name_len, name`。
 
-#### 4.20.5 封面（0x60 ~ 0x62）
+#### 4.20.5 封面（0x67 ~ 0x69）
 
-- `0x60`：`id, fmt(=1 表示 1bpp), w(2)=440, h(2)=200, total(2)=11000, crc32(4)`；成功回 `0, 0, 180`。
-- `0x61`：`offset(2, BE) + chunk(≤180)`，与卡片内容上传相同。
-- `0x62`：无 DATA，校验 CRC 后写 `cover_<id>.bin`，成功回 `status, id, 1`。
+- `0x67`：`id, fmt(=1 表示 1bpp), w(2)=440, h(2)=200, total(2)=11000, crc32(4)`；成功回 `0, 0, 180`。
+- `0x68`：`offset(2, BE) + chunk(≤180)`，与卡片内容上传相同。
+- `0x69`：无 DATA，校验 CRC 后写 `cover_<id>.bin`，成功回 `status, id, 1`。
 
 封面为 440×200 单色位图，每行 55 字节、MSB 在左（1=黑）。设备端不显示卡号，封面区只显示图片或默认卡面。
 
@@ -1816,6 +1816,7 @@ int parse_response(uint8_t* in_buf, int in_len, uint8_t* out_ch, uint8_t* out_da
 
 | 版本 | 日期 | 描述 |
 |------|------|------|
+| 1.19 | 2026-11-07 | NFC 卡包通道由 0x5C~0x62 迁移到 0x63~0x69；0x5C/0x5D 恢复为 SoftAP 准备/硬件身份单一语义，不再按 payload 长度判别；Web 客户端同步 |
 | 1.18 | 2026-10-29 | Ark 新增 SoftAP 直传准备命令 0x5C 与 0x59 bit4；记录 Android 10+ 新拓扑、BLE 暂停/恢复确认及旧 P2P 兼容边界；两轮传图与恢复已验收，中途取消重试、OTA 和通行证仍待实机验收 |
 | 1.17 | 2026-10-16 | Ark 新增 0x5A 通用 WiFi 文件上传；0x59 bit1 宣告能力，复用 0x51/0x52 状态与取消 |
 | 1.16 | 2026-10-16 | 合并上游参数布局 v6 后保留 Ark 0x59 能力查询及彩色 FFUI v2 通行证；升级迁移 v5 系统参数与原独立蓝牙名 |

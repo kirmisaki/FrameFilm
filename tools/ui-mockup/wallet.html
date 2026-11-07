@@ -332,13 +332,13 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
   <table>
     <tr><th>原型元素</th><th>固件落点</th></tr>
     <tr><td>卡片板 / 封面 / 列表</td><td><code>apps/wallet/app_wallet.c</code> + <code>wallet_snapshot_t</code>；封面走 <code>APP_UI_MSG_WALLET_COVER</code>（L8 所有权移交）</td></tr>
-    <tr><td>上位机管理</td><td><code>0x5F</code> 的 SELECT / RENAME / DELETE / CLEAR_COVER；封面 <code>0x60~0x62</code></td></tr>
+    <tr><td>上位机管理</td><td><code>0x66</code> 的 SELECT / RENAME / DELETE / CLEAR_COVER；封面 <code>0x67~0x69</code></td></tr>
     <tr><td>读卡面板 / 结果四行</td><td>扫描任务结果 → <code>SYS_EVT_NFC_SCAN_DONE</code> → app_task 持有 pending，等「复制卡」再落盘</td></tr>
     <tr><td>模拟/读卡切换</td><td><code>app_entry_t.on_double</code> → <code>WALLET_CMD_READ</code>（进入即扫描）</td></tr>
     <tr><td>「复制卡」按钮</td><td><code>WALLET_CMD_ACTION</code> → 提交 pending 结果到 wallet.bin</td></tr>
     <tr><td>切卡</td><td><code>hal_nfc_emu_stop()</code> + <code>hal_nfc_emu_start()</code></td></tr>
     <tr><td>BACK</td><td><code>INPUT_PRESS_BACK</code> + <code>app_entry_t.on_back</code></td></tr>
-    <tr><td>BLE 远程建卡结果</td><td><code>0x5C~0x5E</code> → COMMIT → 新卡设为 current → 重启模拟</td></tr>
+    <tr><td>BLE 远程建卡结果</td><td><code>0x63~0x65</code> → COMMIT → 新卡设为 current → 重启模拟</td></tr>
   </table>
   <div class="note" style="margin-top:14px">
     完整协议与休眠/唤醒时序见 <a href="../docs/knowledge/nfc_wallet.md">docs/knowledge/nfc_wallet.md</a>。

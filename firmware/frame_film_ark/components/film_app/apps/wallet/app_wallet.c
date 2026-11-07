@@ -224,12 +224,6 @@ static void wallet_free_card(wallet_card_t *c)
     heap_caps_free(c);
 }
 
-static bool wallet_kind_is_m1(uint8_t kind)
-{
-    return kind == HAL_NFC_KIND_M1_UID || kind == HAL_NFC_KIND_M1_1K ||
-           kind == HAL_NFC_KIND_M1_2K || kind == HAL_NFC_KIND_M1_4K;
-}
-
 static void wallet_card_to_hal(const wallet_card_t *c, hal_nfc_card_t *h)
 {
     memset(h, 0, sizeof(*h));
@@ -866,8 +860,8 @@ static void wallet_ui_apply_snapshot(void)
 {
     if(m_snap.mode == WALLET_MODE_EMU)
     {
-        lv_obj_remove_flag(m_emu_page, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(m_copy_page, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_hidden(m_emu_page, false);
+        lv_obj_set_hidden(m_copy_page, true);
 
         if(m_snap.count > 0)
         {
@@ -881,10 +875,10 @@ static void wallet_ui_apply_snapshot(void)
                 int idx = i;
                 if(idx >= m_snap.count)
                 {
-                    lv_obj_add_flag(m_row_obj[i], LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_set_hidden(m_row_obj[i], true);
                     continue;
                 }
-                lv_obj_remove_flag(m_row_obj[i], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_hidden(m_row_obj[i], false);
                 wallet_card_t *c = wallet_store_get(idx);
                 if(c == NULL) continue;
                 lv_label_set_text_fmt(m_row_idx[i], "%02u", (unsigned)(idx + 1));
@@ -908,19 +902,19 @@ static void wallet_ui_apply_snapshot(void)
             }
             if(m_snap.has_cover)
             {
-                lv_obj_add_flag(m_default_panel, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_hidden(m_default_panel, true);
             }
             else
             {
-                lv_obj_add_flag(m_cover_img, LV_OBJ_FLAG_HIDDEN);
-                lv_obj_remove_flag(m_default_panel, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_hidden(m_cover_img, true);
+                lv_obj_set_hidden(m_default_panel, false);
                 lv_label_set_text(m_default_type, m_snap.type);
             }
         }
         else
         {
-            lv_obj_add_flag(m_cover_img, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_remove_flag(m_default_panel, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_hidden(m_cover_img, true);
+            lv_obj_set_hidden(m_default_panel, false);
             lv_label_set_text(m_default_type, app_text("无卡片", "NO CARD"));
             lv_label_set_text(m_idx_label, "--");
             lv_label_set_text(m_name_label, app_text("卡包", "WALLET"));
@@ -928,7 +922,7 @@ static void wallet_ui_apply_snapshot(void)
             lv_label_set_text(m_count_label, app_text("0 张卡片", "0 CARDS"));
             for(int i = 0; i < WALLET_UI_MAX_ROWS; i++)
             {
-                lv_obj_add_flag(m_row_obj[i], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_hidden(m_row_obj[i], true);
             }
         }
         lv_label_set_text(m_status_label, m_snap.status);
@@ -940,8 +934,8 @@ static void wallet_ui_apply_snapshot(void)
     }
 
     /* COPY */
-    lv_obj_add_flag(m_emu_page, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(m_copy_page, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(m_emu_page, true);
+    lv_obj_set_hidden(m_copy_page, false);
     const char *hint = app_text("单击取消  返回退出  长按休眠",
                                 "ENTER CANCEL  BACK EXIT  HOLD SLEEP");
     if(m_snap.scan == WALLET_SCAN_DONE)
@@ -998,13 +992,13 @@ static void wallet_ui_apply_snapshot(void)
         lv_label_set_text(m_copy_meta[3], m_snap.copy_format == HAL_NFC_DATA_NONE ?
                           app_text("内容   仅卡号", "DATA   UID ONLY") :
                           app_text("内容   已读取整片镜像", "DATA   IMAGE READ"));
-        lv_obj_remove_flag(m_copy_cta, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(m_copy_action, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_hidden(m_copy_cta, false);
+        lv_obj_set_hidden(m_copy_action, true);
     }
     else
     {
-        lv_obj_add_flag(m_copy_cta, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(m_copy_action, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_hidden(m_copy_cta, true);
+        lv_obj_set_hidden(m_copy_action, false);
         for(int i = 0; i < 4; i++) lv_label_set_text(m_copy_meta[i], "");
     }
 }
@@ -1020,7 +1014,7 @@ static void wallet_ui_clear_cover(void)
         heap_caps_free(m_cover);
         m_cover = NULL;
     }
-    if(m_cover_img != NULL) lv_obj_add_flag(m_cover_img, LV_OBJ_FLAG_HIDDEN);
+    if(m_cover_img != NULL) lv_obj_set_hidden(m_cover_img, true);
 }
 
 static void wallet_ui_on_msg(uint32_t cmd, const void *data, uint8_t len)
@@ -1047,13 +1041,13 @@ static void wallet_ui_on_msg(uint32_t cmd, const void *data, uint8_t len)
         if(m_cover != NULL)
         {
             lv_image_set_src(m_cover_img, &m_cover->dsc);
-            lv_obj_remove_flag(m_cover_img, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(m_default_panel, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_hidden(m_cover_img, false);
+            lv_obj_set_hidden(m_default_panel, true);
         }
         else
         {
-            lv_obj_add_flag(m_cover_img, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_remove_flag(m_default_panel, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_hidden(m_cover_img, true);
+            lv_obj_set_hidden(m_default_panel, false);
         }
         return;
     }
@@ -1100,7 +1094,7 @@ static void wallet_ui_create(lv_obj_t *root)
 
     m_cover_img = lv_image_create(m_emu_page);
     lv_obj_set_size(m_cover_img, WALLET_COVER_W, WALLET_COVER_H);
-    lv_obj_add_flag(m_cover_img, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(m_cover_img, true);
 
     m_default_panel = wallet_black_box(m_emu_page, WALLET_COVER_W, WALLET_COVER_H);
     lv_obj_set_flex_flow(m_default_panel, LV_FLEX_FLOW_COLUMN);
@@ -1166,7 +1160,7 @@ static void wallet_ui_create(lv_obj_t *root)
     lv_obj_set_scrollable(m_copy_page, false);
     lv_obj_set_size(m_copy_page, LV_PCT(100), LV_PCT(100));
     lv_obj_set_flex_flow(m_copy_page, LV_FLEX_FLOW_COLUMN);
-    lv_obj_add_flag(m_copy_page, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(m_copy_page, true);
 
     lv_obj_t *panel = lv_obj_create(m_copy_page);
     lv_obj_remove_style_all(panel);
@@ -1196,7 +1190,7 @@ static void wallet_ui_create(lv_obj_t *root)
     lv_obj_set_style_pad_column(m_copy_cta, 18, LV_PART_MAIN);
     wallet_label(m_copy_cta, app_font_body(), lv_color_white(),
                  app_text("复制卡         ENTER", "COPY CARD  ENTER"));
-    lv_obj_add_flag(m_copy_cta, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(m_copy_cta, true);
 
     wallet_ui_apply_snapshot();
     app_shell_start_tick(&m_shell, NULL);

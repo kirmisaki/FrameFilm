@@ -108,18 +108,19 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open, bit4=SoftAP, bit5=ABC9 preview, bit6=hardware identity, bit7=NFC wallet
 #define BLE_FILM_TRANS_CH_STORAGE_CATALOG (0x5B) // Ark read-only storage/catalog
 #define BLE_FILM_TRANS_CH_DIRECT_FILE_START (0x5A) // SSID\0PASSWORD\0URL\0相对路径\0
-#define BLE_FILM_TRANS_CH_DIRECT_AP_PREPARE (0x5C) // Empty request; NFC_CARD_BEGIN uses a payload
-#define BLE_FILM_TRANS_CH_HARDWARE_INFO_GET (0x5D) // Empty request; NFC_CARD_DATA uses a payload
+#define BLE_FILM_TRANS_CH_DIRECT_AP_PREPARE (0x5C) // 空请求：准备 SoftAP
+#define BLE_FILM_TRANS_CH_HARDWARE_INFO_GET (0x5D) // 空请求：查询硬件身份
 #define BLE_DIRECT_START_DATA_MAX                         (192)
 
-/* NFC 卡包（仅 n16r8）：建卡 0x5C~0x5E、管理 0x5F、封面 0x60~0x62 */
-#define BLE_FILM_TRANS_CH_NFC_CARD_BEGIN                  (0x5C)
-#define BLE_FILM_TRANS_CH_NFC_CARD_DATA                   (0x5D)
-#define BLE_FILM_TRANS_CH_NFC_CARD_COMMIT                 (0x5E)
-#define BLE_FILM_TRANS_CH_NFC_WALLET_CTRL                 (0x5F)
-#define BLE_FILM_TRANS_CH_NFC_COVER_BEGIN                 (0x60)
-#define BLE_FILM_TRANS_CH_NFC_COVER_DATA                  (0x61)
-#define BLE_FILM_TRANS_CH_NFC_COVER_COMMIT                (0x62)
+/* NFC 卡包（仅 n16r8）：建卡 0x63~0x65、管理 0x66、封面 0x67~0x69。
+   独立成段，不再与 SoftAP(0x5C)/硬件身份(0x5D) 共用通道、按 payload 长度判别。 */
+#define BLE_FILM_TRANS_CH_NFC_CARD_BEGIN                  (0x63)
+#define BLE_FILM_TRANS_CH_NFC_CARD_DATA                   (0x64)
+#define BLE_FILM_TRANS_CH_NFC_CARD_COMMIT                 (0x65)
+#define BLE_FILM_TRANS_CH_NFC_WALLET_CTRL                 (0x66)
+#define BLE_FILM_TRANS_CH_NFC_COVER_BEGIN                 (0x67)
+#define BLE_FILM_TRANS_CH_NFC_COVER_DATA                  (0x68)
+#define BLE_FILM_TRANS_CH_NFC_COVER_COMMIT                (0x69)
 #define BLE_NFC_CHUNK_MAX                                 (180)
 
 /* 蓝牙设备名 = 编译期前缀 "FRAMEFILMARK-" (13B) + 可配置后缀 (1..16B)，完整名上限 29B

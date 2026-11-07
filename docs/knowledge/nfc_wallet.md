@@ -26,9 +26,9 @@
 | 读卡页 | 进入即自动扫描；读到卡后底部显示「复制卡」按钮，按 ENTER 才写入卡包 |
 | 休眠唤醒 | 休眠前自动以当前卡进入模拟并武装 IRQ（EXT1）；贴卡唤醒后**跳过开机画面直接进卡包** |
 | 存储 | `/sdcard/app/nfc/wallet.bin`（单文件、带 CRC、临时文件原子替换） |
-| 远程建卡 | BLE `0x5C~0x5F`：BEGIN（元数据+CRC）→ DATA×N（≤180 B/包）→ COMMIT；写入设备卡包，不写实体卡 |
-| 卡封面 | 每张卡可选 1-bit 封面（FFUI 1bpp，440×200），BLE `0x60~0x62` 上传；封面区不显示 UID |
-| 远程管理 | `0x5F WALLET_CTRL`：列表 / 查询 / 选中 / **重命名** / 删除 / **清除封面**；`0x59` 能力位 bit4 宣告 |
+| 远程建卡 | BLE `0x63~0x66`：BEGIN（元数据+CRC）→ DATA×N（≤180 B/包）→ COMMIT；写入设备卡包，不写实体卡 |
+| 卡封面 | 每张卡可选 1-bit 封面（FFUI 1bpp，440×200），BLE `0x67~0x69` 上传；封面区不显示 UID |
+| 远程管理 | `0x66 WALLET_CTRL`：列表 / 查询 / 选中 / **重命名** / 删除 / **清除封面**；`0x59` 能力位 bit7 宣告 |
 | 新增服务层 | 不新增 `service_nfc`：BLE 命令经现有 `SYS_EVT_BLE_APP_CMD` 上浮到 app_task，由卡包模块落盘与回包 |
 
 ---
@@ -763,23 +763,23 @@ typedef struct {
 
 > 本期 Web 端**只提供 NTAG 建卡**（NTAG213/215/216，NDEF 文本或整片镜像）；M1 远程建卡协议保留，但 Web 不放入口。M1 UID 卡仍可通过本机读卡复制。
 
-- 能力位：`0x59 CAPABILITIES_GET` 的 flags 增加 **bit4 = NFC wallet remote provisioning**，仅在 `SYS_NFC_ENABLE=1` 时置位（flags 由 `0x0000000F` 变为 `0x0000001F`）。
+- 能力位：`0x59 CAPABILITIES_GET` 的 flags 增加 **bit7 = NFC wallet remote provisioning**，仅在 `SYS_NFC_ENABLE=1` 时置位。
 - 旧固件该位为 0，客户端据此隐藏入口或提示升级。
 - 安全提示：BLE 建卡等价于允许连接端指定任意 UID，属于克隆能力。本期沿用现有 BLE 连接权限（无额外认证），客户端必须做一次用户确认；后续如需收紧，可在 BEGIN 增加一次性 token 或要求设备端物理确认。
 
 ### 11.2 通道分配
 
-`0x5A` / `0x5B` 已被通用 WiFi 文件上传与只读目录占用；`0x5C~0x5F` 为卡包与建卡，`0x60~0x62` 为封面上传：
+`0x5A` / `0x5B` 已被通用 WiFi 文件上传与只读目录占用；NFC 独立使用 `0x63~0x66`（卡包与建卡）与 `0x67~0x69`（封面上传），**不再与 0x5C SoftAP 准备 / 0x5D 硬件身份查询共用通道**：
 
 | CH | 名称 | 方向 | 用途 |
 |---|---|---|---|
-| 0x5C | NFC_CARD_BEGIN | 下行 | 开始建卡会话：元数据 + 内容长度 + CRC |
-| 0x5D | NFC_CARD_DATA | 下行 | 追加内容块：offset + bytes |
-| 0x5E | NFC_CARD_COMMIT | 下行 | 提交落盘，返回卡 id |
-| 0x5F | NFC_WALLET_CTRL | 双向 | op 多路复用：列表 / 查询 / 选中 / 重命名 / 删除 / 清除封面 / 统计 |
-| 0x60 | NFC_COVER_BEGIN | 下行 | 开始封面会话：card_id + 格式 + 尺寸 + 长度 + CRC |
-| 0x61 | NFC_COVER_DATA | 下行 | 封面分块：offset + bytes |
-| 0x62 | NFC_COVER_COMMIT | 下行 | 提交封面并更新卡记录 |
+| 0x63 | NFC_CARD_BEGIN | 下行 | 开始建卡会话：元数据 + 内容长度 + CRC |
+| 0x64 | NFC_CARD_DATA | 下行 | 追加内容块：offset + bytes |
+| 0x65 | NFC_CARD_COMMIT | 下行 | 提交落盘，返回卡 id |
+| 0x66 | NFC_WALLET_CTRL | 双向 | op 多路复用：列表 / 查询 / 选中 / 重命名 / 删除 / 清除封面 / 统计 |
+| 0x67 | NFC_COVER_BEGIN | 下行 | 开始封面会话：card_id + 格式 + 尺寸 + 长度 + CRC |
+| 0x68 | NFC_COVER_DATA | 下行 | 封面分块：offset + bytes |
+| 0x69 | NFC_COVER_COMMIT | 下行 | 提交封面并更新卡记录 |
 
 不复用 `0x45~0x4A`：那组是 TLV 文本参数通道，与 `param_ch + 1` 的查询约定绑定；建卡是二进制分块会话，语义不同。
 
@@ -801,7 +801,7 @@ BEGIN ──► DATA(offset=0) ──► DATA(offset=n) ──► ... ──► 
 
 多字节整数一律 **大端**；ATQA 例外，按空中顺序原样 2 字节（M1 1K = `04 00`，NTAG = `44 00`）。
 
-#### 11.4.1 `0x5C` NFC_CARD_BEGIN（下行）
+#### 11.4.1 `0x63` NFC_CARD_BEGIN（下行）
 
 | 偏移 | 长度 | 字段 | 说明 |
 |---|---|---|---|
@@ -833,7 +833,7 @@ BEGIN ──► DATA(offset=0) ──► DATA(offset=n) ──► ... ──► 
 | status | 1 | 见 §11.5 状态码 |
 | chunk_max | 2 | 建议单包最大内容字节数，固定 180 |
 
-#### 11.4.2 `0x5D` NFC_CARD_DATA（下行）
+#### 11.4.2 `0x64` NFC_CARD_DATA（下行）
 
 | 偏移 | 长度 | 字段 | 说明 |
 |---|---|---|---|
@@ -842,7 +842,7 @@ BEGIN ──► DATA(offset=0) ──► DATA(offset=n) ──► ... ──► 
 
 响应：`status(1) + received(2 BE)`。客户端据此续传/重试；`received` 始终是设备当前已收长度。
 
-#### 11.4.3 `0x5E` NFC_CARD_COMMIT（下行）
+#### 11.4.3 `0x65` NFC_CARD_COMMIT（下行）
 
 无 payload。设备校验 `received == total` 且 CRC 一致后：
 
@@ -861,7 +861,7 @@ BEGIN ──► DATA(offset=0) ──► DATA(offset=n) ──► ... ──► 
 | uid_len | 1 | 4 / 7 |
 | uid | uid_len | UID |
 
-#### 11.4.4 `0x5F` NFC_WALLET_CTRL（双向）
+#### 11.4.4 `0x66` NFC_WALLET_CTRL（双向）
 
 请求：`op(1) + args`。
 
@@ -890,11 +890,11 @@ id(1) kind(1) uid_len(1) sak(1) atqa(2) uid(7) flags(1) name_len(1) name(name_le
 - `CLEAR_COVER`：删除封面文件并把 `has_cover` 清零；当前卡时页面立即回退默认板。
 - `GET` 不含内存镜像与封面内容，只给类型/身份/名称/镜像长度/封面长度，避免远程导出整卡。
 
-#### 11.4.5 `0x60~0x62` 卡封面（下行）
+#### 11.4.5 `0x67~0x69` 卡封面（下行）
 
 封面固定为 **FFUI 1bpp、440×200、payload 11,000 B**；设备不缩放、不接受其它尺寸。
 
-`0x60 NFC_COVER_BEGIN`：
+`0x67 NFC_COVER_BEGIN`：
 
 | 偏移 | 长度 | 字段 | 说明 |
 |---|---|---|---|
@@ -907,9 +907,9 @@ id(1) kind(1) uid_len(1) sak(1) atqa(2) uid(7) flags(1) name_len(1) name(name_le
 
 响应：`status(1) + chunk_max(2 BE)`（chunk_max = 180）。
 
-`0x61 NFC_COVER_DATA`：`offset(2 BE) + data(1..180)`；响应 `status(1) + received(2 BE)`。
+`0x68 NFC_COVER_DATA`：`offset(2 BE) + data(1..180)`；响应 `status(1) + received(2 BE)`。
 
-`0x62 NFC_COVER_COMMIT`：无 payload。设备校验长度/CRC 后：
+`0x69 NFC_COVER_COMMIT`：无 payload。设备校验长度/CRC 后：
 
 1. 写 `cover_<id>.tmp` → `cover_<id>.bin`；
 2. 更新 wallet.bin 的 `has_cover/cover_len/cover_crc32`；
@@ -956,17 +956,17 @@ NTAG 卡把 `kind` 改为 1/2/3、`uid_len=7`、`sak=0x00`、`atqa=44 00`，再�
 
 | 文件 | 改动 |
 |---|---|
-| `components/film_service/inc/service_ble.h` | 新增 `0x5C~0x62` 通道宏与 `BLE_NFC_CHUNK_MAX (180)` |
+| `components/film_service/inc/service_ble.h` | 新增 `0x63~0x69` 通道宏与 `BLE_NFC_CHUNK_MAX (180)` |
 | `components/film_service/src/service_ble.c` | 七个 case 归为一组：校验长度 → 以 `[ch, data...]` 发布 `SYS_EVT_BLE_APP_CMD`；不在此解析语义、不回包 |
-| `components/film_app/core/app_manager.c` | 在 `SYS_EVT_BLE_APP_CMD` 分支里把 `0x5C~0x62` 转给 `app_wallet_on_ble_cmd()`（`SYS_NFC_ENABLE` 守卫） |
+| `components/film_app/core/app_manager.c` | 在 `SYS_EVT_BLE_APP_CMD` 分支里把 `0x63~0x69` 转给 `app_wallet_on_ble_cmd()`（`SYS_NFC_ENABLE` 守卫） |
 | `components/film_app/apps/wallet/app_wallet.c` | 新增 `app_wallet_on_ble_cmd()`：建卡/封面两种会话、CRC、超时回收、回包；封面加载与 `APP_UI_MSG_WALLET_COVER` |
 | `components/film_app/apps/wallet/app_wallet_store.c` | 新增 `upsert_remote` / `list` / `select` / `delete` / `rename` / `cover_set` / `cover_clear` / `cover_load`；NDEF Text 构建；记录 `data_format/data_ver` |
-| `components/film_service/src/service_ble.c` | `0x59` flags 在 `SYS_NFC_ENABLE` 时置 bit4 |
+| `components/film_service/src/service_ble.c` | `0x59` flags 在 `SYS_NFC_ENABLE` 时置 bit7 |
 
 实现要点：
 
 - `service_ble_send_resp(ch, ...)` 可从 app_task 调用（app 参数通道已是同一用法）。
-- `ble_cmd_conflicts_with_direct()` 需要把 `0x5C~0x62` 加入：WiFi 直传期间直接回 `1`（忙），避免两路同时写 SD。入睡流程中 BLE 层已统一拦截，不回包，客户端按超时处理。
+- `ble_cmd_conflicts_with_direct()` 需要把 `0x63~0x69` 加入：WiFi 直传期间直接回 `1`（忙），避免两路同时写 SD。入睡流程中 BLE 层已统一拦截，不回包，客户端按超时处理。
 - `SYS_EVENT_PAYLOAD_MAX = 192`，事件里还要放 1 字节 ch，因此命令数据上限 191；DATA 的 `offset(2)` 之后最多 189，协议取 **180** 留余量。
 - 建卡会话缓冲按 `HAL_NFC_MAX_CARD_BYTES(4096)` 分配；COMMIT 保存 `data_format/data_ver`。格式 2（M1 块镜像）先入库，模拟暂按 `M1_UID` 降级。
 - CRC 用 `esp_rom_crc32_le(0xFFFFFFFF, data, len) ^ 0xFFFFFFFF`，与 zlib `crc32` 对齐。
@@ -984,22 +984,22 @@ NTAG 卡把 `kind` 改为 1/2/3、`uid_len=7`、`sak=0x00`、`atqa=44 00`，再�
 
 | 端 | 文件 | 改动 |
 |---|---|---|
-| Web | `tools/ForFilm/js/bluetooth.js` | 增加 `0x5C~0x62` 常量；复用现有包/校验/通知等待逻辑 |
+| Web | `tools/ForFilm/js/bluetooth.js` | 增加 `0x63~0x69` 常量；复用现有包/校验/通知等待逻辑 |
 | Web | `tools/ForFilm/js/nfc-wallet.js`（新增） | 封装 `walletInfo/list/create/select/rename/delete/clearCover/uploadCover`；分块发送与重试；图片→440×200 1bpp |
 | Web | `tools/ForFilm/index.html` + 样式 | **底部导航新增「卡包」独立 tab**，进入后是卡包页：列表（封面缩略图）、创建、重命名、删除、选中、上传/清除封面 |
 | Web | 卡包页表单 | 本期只提供 NTAG213/215/216 + NDEF 文本/整片镜像；不提供 M1 建卡入口 |
 | 小程序 | `tools/wechart/miniprogram/utils/ble-utils.js` | 同步常量与 `BLE_NFC_CHUNK_MAX` |
 | 小程序 | 新增卡包页面（建议 `pkgCreate` 下） | 同上管理界面；封面用 canvas 二值化后分包 |
-| 两端 | 能力判断 | 先读 `0x59`，bit4 为 0 则不显示入口 |
+| 两端 | 能力判断 | 先读 `0x59`，bit7 为 0 则不显示入口 |
 
 客户端流程：
 
-1. `0x59` 检查 bit4；
-2. `0x5F op=0` 拉列表（按 `start` 续读；用 `flags.bit0` 判断是否有封面）；
+1. `0x59` 检查 bit7；
+2. `0x66 op=0` 拉列表（按 `start` 续读；用 `flags.bit0` 判断是否有封面）；
 3. 用户填表：类型、UID（十六进制，M1 4 字节 / NTAG 7 字节）、名称、NTAG 内容（NDEF 文本或整片镜像）；
-4. `0x5C BEGIN` → 按 180 B 分包 `0x5D`（每包等回包，超时重发同 offset，最多 2 次）→ `0x5E COMMIT`；
-5. 可选封面：把图片缩放到 440×200、二值化为 1bpp（建议阈值 128，照片可用有序抖动），按 FFUI payload 计算 CRC → `0x60/0x61/0x62` 上传；封面失败不影响已创建的卡；
-6. 管理：`0x5F op=1` 选中、`op=5` 重命名、`op=2` 删除、`op=6` 清除封面；
+4. `0x63 BEGIN` → 按 180 B 分包 `0x64`（每包等回包，超时重发同 offset，最多 2 次）→ `0x65 COMMIT`；
+5. 可选封面：把图片缩放到 440×200、二值化为 1bpp（建议阈值 128，照片可用有序抖动），按 FFUI payload 计算 CRC → `0x67/0x68/0x69` 上传；封面失败不影响已创建的卡；
+6. 管理：`0x66 op=1` 选中、`op=5` 重命名、`op=2` 删除、`op=6` 清除封面；
 7. 每次成功后用返回的 `card_id/current` 与列表刷新界面。
 
 > 客户端不要用「发完即认为成功」：DATA 与 COMMIT 都有明确回包，必须逐包确认；`received` 可用于断点续传。
@@ -1007,9 +1007,9 @@ NTAG 卡把 `kind` 改为 1/2/3、`uid_len=7`、`sak=0x00`、`atqa=44 00`，再�
 
 ### 11.8 兼容性
 
-- 旧 Ark 固件：`0x59` 无 bit4 → 客户端隐藏入口；直接发 `0x5C`/`0x60` 会落进 `default:` 被忽略，无回包。
-- `frame_film` / `frame_film_dock`：不使用 `0x5C~0x62`，收到按未知通道忽略；客户端先做能力判断。
-- 协议文档需同步：`docs/blecmd/blecmd_protocol.md` 新增 §3.17 / §4.18，并更新 0x59 flags 表与变更记录。
+- 旧 Ark 固件：`0x59` 无 bit7 → 客户端隐藏入口；直接发 `0x63`/`0x67` 会落进 `default:` 被忽略，无回包。旧 NFC 固件使用的 0x5C/0x5D/0x5E/0x5F/0x60/0x61/0x62 已废弃，新客户端不再兼容。
+- `frame_film` / `frame_film_dock`：不使用 `0x63~0x69`，收到按未知通道忽略；客户端先做能力判断。
+- 协议文档需同步：`docs/blecmd/blecmd_protocol.md` 的 §3.19 / §4.20 与 0x59 flags 表。
 
 ---
 
@@ -1057,9 +1057,9 @@ NTAG 卡把 `kind` 改为 1/2/3、`uid_len=7`、`sak=0x00`、`atqa=44 00`，再�
 
 - `docs/blecmd/blecmd_protocol.md`：
   - §3.6 / §4.7 的 app_id 表追加 `0x07 卡包 wallet`，并把「FULL 注册 7 个 app」更新为 8 个；
-  - 新增 §3.17 / §4.18：`0x5C~0x62` NFC 卡包 / 建卡 / 封面通道；
-  - 更新 §3.15 / §4.15 的 `0x59` flags 表（新增 bit4）与变更记录；
-- `docs/knowledge/ble_commands.md`、`AGENTS.md` 的命令范围说明同步补充 `0x5C~0x62`；
+  - 新增 §3.19 / §4.20：`0x63~0x69` NFC 卡包 / 建卡 / 封面通道；
+  - 更新 §3.15 / §4.15 的 `0x59` flags 表（新增 bit7）与变更记录；
+- `docs/knowledge/ble_commands.md`、`AGENTS.md` 的命令范围说明同步补充 `0x63~0x69`；
 - 本文档作为 NFC 设计基线。
 
 ### 12.5 按键与 n16r8 四键变体
@@ -1135,8 +1135,8 @@ components/film_hal/inc/hal_pwr.h              唤醒原因 API
 components/film_hal/src/hal_pwr.c              唤醒原因 + IRQ 门闸
 components/film_hal/src/hal_init.c             hal_nfc_init()
 components/film_service/src/service_monitor.c  入睡武装 / 不 deinit
-components/film_service/inc/service_ble.h      0x5C~0x5F 通道宏
-components/film_service/src/service_ble.c      通道上浮 / 0x59 bit4
+components/film_service/inc/service_ble.h      0x63~0x69 通道宏
+components/film_service/src/service_ble.c      通道上浮 / 0x59 bit7
 components/film_app/CMakeLists.txt             条件编译 wallet
 components/film_app/inc/app_interface.h        APP_ID_WALLET / 菜单数
 components/film_app/core/app_manager.c         菜单表 / 离开卡包 / 入睡 standby
@@ -1157,7 +1157,7 @@ assets/fonts/source-han-sans/*.otf             Source Han Sans CN Bold/Medium（
 tools/ForFilm/js/bluetooth.js                  通道常量
 tools/ForFilm/index.html / 样式                卡包面板
 tools/wechart/miniprogram/utils/ble-utils.js   通道常量
-docs/blecmd/blecmd_protocol.md                 app_id 表 / 0x5C~0x62 / 0x59 bit4
+docs/blecmd/blecmd_protocol.md                 app_id 表 / 0x63~0x69 / 0x59 bit7
 docs/knowledge/ble_commands.md                 命令速查
 AGENTS.md                                      命令范围说明
 ```
@@ -1172,8 +1172,8 @@ AGENTS.md                                      命令范围说明
 | P1 读卡与存储 | 扫描任务、NTAG 整片读取、M1 身份、wallet.bin 读写 | 读 NTAG215 后 PC 解析 dump 与手机读到的内容一致 |
 | P2 模拟与切卡 | `hal_nfc_emu_*`、卡包页面、快照协议 | 手机识别模拟卡；切卡后 UID 变化；重启后当前卡保留 |
 | P3 框架接入 | app id/菜单/设置/开机候选 | 主菜单 7 项（中英）；`0x4B` 可切到 0x07；START APP 可选卡包 |
-| P3.5 BLE 远程建卡 | `0x5C~0x5F` 通道、会话/CRC/落盘、0x59 bit4、Web/小程序端 | 手机建 M1/NTAG 卡成功；列表/选中/重命名/删除可用；旧固件入口隐藏 |
-| P3.6 封面与管理 | `0x60~0x62` 封面通道、重命名/删除/清除封面、封面加载与 UI 移交 | 上传 440×200 封面后设备显示；封面区无 UID；改名/删除立即刷新 |
+| P3.5 BLE 远程建卡 | `0x63~0x66` 通道、会话/CRC/落盘、0x59 bit7、Web/小程序端 | 手机建 M1/NTAG 卡成功；列表/选中/重命名/删除可用；旧固件入口隐藏 |
+| P3.6 封面与管理 | `0x67~0x69` 封面通道、重命名/删除/清除封面、封面加载与 UI 移交 | 上传 440×200 封面后设备显示；封面区无 UID；改名/删除立即刷新 |
 | P4 休眠唤醒 | standby、EXT1 武装、唤醒路由、IRQ 门闸 | 贴卡唤醒直接进卡包；按键/定时唤醒不受影响；不贴卡不误唤醒 |
 | P5 打磨与文档 | 图标/字库、协议文档、功耗实测、异常路径 | 功耗数据归档；无卡/无 SD/无 NFC 三条降级路径可用 |
 
@@ -1222,7 +1222,7 @@ AGENTS.md                                      命令范围说明
 
 ### BLE 远程建卡与管理
 
-- [ ] `0x59` flags bit4 在 NFC 编译开启时为 1，关闭时为 0。
+- [ ] `0x59` flags bit7 在 NFC 编译开启时为 1，关闭时为 0。
 - [ ] 创建 M1 卡：BEGIN → COMMIT 无 DATA 也成功；手机识别同 UID。
 - [ ] 创建 NTAG215 NDEF 文本卡：分包 3 包以上，CRC 校验通过，手机读到文本。
 - [ ] 创建 NTAG 整片镜像卡：页 0~3 由设备重建，页 4 起与下发一致。
@@ -1239,7 +1239,7 @@ AGENTS.md                                      命令范围说明
 - [ ] 封面尺寸/格式/CRC 错误被拒绝，旧封面保持不变。
 - [ ] 替换封面与清除封面都能立即刷新当前卡页面。
 - [ ] 建卡时设备正在模拟：COMMIT 后新卡成为当前并重启模拟。
-- [ ] 旧固件（无 bit4）客户端不显示入口；`frame_film`/dock 不受影响。
+- [ ] 旧固件（无 bit7）客户端不显示入口；`frame_film`/dock 不受影响。
 
 ### 按键变体（n4r2 / n16r8）
 
@@ -1264,7 +1264,7 @@ AGENTS.md                                      命令范围说明
 | 切卡时读卡器仍在场 | `emu_stop/start` 期间身份短暂失效 | 状态行提示重新贴卡；`emu_set_card` 不适用于换 NTAG 型号 |
 | wallet.bin 掉电损坏 | FAT 写入中断 | tmp + bak + CRC；校验失败按空卡包处理，不阻塞启动 |
 | app7 NVS 冲突 | 卡包若声明 state 会写 `app7`，覆盖开机行为 | 卡包不声明 state；当前下标存 wallet.bin |
-| 远程建卡 = 克隆能力 | 任意连接端可指定 UID/NDEF，缺少额外认证 | 客户端二次确认；0x59 bit4 能力位；后续可加 token/物理确认 |
+| 远程建卡 = 克隆能力 | 任意连接端可指定 UID/NDEF，缺少额外认证 | 客户端二次确认；0x59 bit7 能力位；后续可加 token/物理确认 |
 | 分块传输中断 | 924 B 需要 6 包以上，BLE 断连/丢包会半途而废 | 单会话 + 60 s 超时；offset/received 支持重发；COMMIT 前 CRC 校验 |
 | 封面占 PSRAM | 单张 1bpp 展开成 L8 约 88 KB；16 张同时驻留会挤爆 n4r2 | 只保留当前卡一张，切卡/离开释放；封面文件本身仅 11 KB |
 | 封面上传包数多 | 11,000 B ≈ 62 包，弱信号下耗时较长 | 逐包 ACK + 重发；封面失败不回滚已建好的卡；独立 60 s 会话超时 |
@@ -1281,5 +1281,5 @@ AGENTS.md                                      命令范围说明
 
 1. 卡包是否需要在「模拟模式」下常驻模拟（离开卡包后继续模拟）？本方案选择「离开即停，仅休眠期间保持」。
 2. 读卡成功后是否自动保存？本方案改为**不自动保存**：读到后只显示结果，按「复制卡」才写入卡包。
-3. 本机是否也要删除卡片？BLE 端已支持删除（`0x5F op=2`）；本机三按键暂不提供，如需要建议加「管理模式」第三态。
+3. 本机是否也要删除卡片？BLE 端已支持删除（`0x66 op=2`）；本机三按键暂不提供，如需要建议加「管理模式」第三态。
 4. BLE 建卡是否需要额外认证？本方案仅要求客户端二次确认，沿用现有 BLE 连接权限。

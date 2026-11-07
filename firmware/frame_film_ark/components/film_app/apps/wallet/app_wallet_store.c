@@ -416,7 +416,6 @@ int wallet_store_upsert(const wallet_card_t *card, int *out_idx)
     }
 
     wallet_card_t *dst = &m_cards[idx];
-    uint8_t keep_id = dst->id;
     uint8_t keep_flags = dst->flags;
     uint16_t keep_cover_len = dst->cover_len;
     uint32_t keep_cover_crc = dst->cover_crc32;

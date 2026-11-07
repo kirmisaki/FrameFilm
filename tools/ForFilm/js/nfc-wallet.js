@@ -1,16 +1,16 @@
 /* ForFilm · NFC 卡包（仅 Ark n16r8）
- * 协议：0x5C~0x5E 建卡，0x5F 管理，0x60~0x62 封面。
+ * 协议：0x63~0x65 建卡，0x66 管理，0x67~0x69 封面。
  */
 (function () {
     'use strict';
 
-    var CH_CARD_BEGIN = 0x5C;
-    var CH_CARD_DATA = 0x5D;
-    var CH_CARD_COMMIT = 0x5E;
-    var CH_WALLET_CTRL = 0x5F;
-    var CH_COVER_BEGIN = 0x60;
-    var CH_COVER_DATA = 0x61;
-    var CH_COVER_COMMIT = 0x62;
+    var CH_CARD_BEGIN = 0x63;
+    var CH_CARD_DATA = 0x64;
+    var CH_CARD_COMMIT = 0x65;
+    var CH_WALLET_CTRL = 0x66;
+    var CH_COVER_BEGIN = 0x67;
+    var CH_COVER_DATA = 0x68;
+    var CH_COVER_COMMIT = 0x69;
     var CHUNK = 180;
     var COVER_W = 440;
     var COVER_H = 200;
@@ -85,15 +85,7 @@
         if (!window.ArkDevice) return Promise.reject(new Error('ArkDevice 未加载'));
         return window.ArkDevice.run(label, async function (ctx) {
             var caps = await ctx.request(0x59, new Uint8Array(), 2500).catch(function () { return null; });
-            if (caps && caps.length === 5 && caps[0] === 1) {
-                if ((caps[4] & 0x80) !== 0) return fn(ctx);
-                // Old NFC and old SoftAP both used bit4. Only probe the wallet's read command.
-                if ((caps[4] & 0x50) === 0x10) {
-                    var list = await ctx.request(CH_WALLET_CTRL, new Uint8Array([0]), 2500)
-                        .catch(function () { return null; });
-                    if (list && list.length >= 5 && list[0] === 0) return fn(ctx);
-                }
-            }
+            if (caps && caps.length === 5 && caps[0] === 1 && (caps[4] & 0x80) !== 0) return fn(ctx);
             throw new Error('此固件未确认支持 NFC 卡包（需 N16R8）');
         });
     }
