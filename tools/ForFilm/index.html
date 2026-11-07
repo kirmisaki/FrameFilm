@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm</title>
-    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=wallet-cover-1">
+    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=wallet-cover-2">
     <link rel="stylesheet" href="css/keyboard.css">
     <!-- ARK 通行证版皮肤：默认不生效，连上 FRAMEFILMARK 后由 js/ark-theme.js 激活 -->
     <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=prts-4">
@@ -894,27 +894,41 @@
         </div>
 
         <!-- ================= Ark NFC 卡包 ================= -->
-        <div id="wallet-page" class="page">
-            <div class="card">
-                <div class="card__title">NFC 卡包（n16r8）</div>
+        <div id="wallet-page" class="page wallet-page">
+            <section class="card wallet-panel wallet-panel--list">
+                <div class="card__title">
+                    <span class="ic-wrap ic-wrap--sky"><svg class="ic" viewBox="0 0 24 24"><use href="#i-scan"/></svg></span>
+                    NFC 卡包
+                    <span class="spacer"></span>
+                    <button type="button" class="icon-button" id="wallet-refresh" data-ark-connected disabled title="刷新卡包">
+                        <svg class="ic" viewBox="0 0 24 24"><use href="#i-refresh"/></svg>
+                    </button>
+                </div>
                 <p id="wallet-connection" class="field-hint" role="status">连接 Ark 后读取设备卡包。</p>
-                <div class="btn-row">
+                <div class="btn-row wallet-connect-row">
                     <button type="button" class="secondary-button" id="wallet-connect">前往设备连接</button>
-                    <button type="button" class="secondary-button" id="wallet-refresh" data-ark-connected disabled>刷新卡包</button>
                 </div>
                 <div id="wallet-list" class="wallet-list"></div>
-                <hr>
-                <div class="field">
-                    <label for="wallet-kind">类型</label>
-                    <select id="wallet-kind">
-                        <option value="1">NTAG213</option>
-                        <option value="2" selected>NTAG215</option>
-                        <option value="3">NTAG216</option>
-                    </select>
+            </section>
+
+            <section class="card wallet-panel wallet-panel--create">
+                <div class="card__title">
+                    <span class="ic-wrap ic-wrap--lemon"><svg class="ic" viewBox="0 0 24 24"><use href="#i-upload"/></svg></span>
+                    创建新卡
                 </div>
-                <div class="field">
-                    <label for="wallet-uid">UID（14 位十六进制）</label>
-                    <input id="wallet-uid" type="text" maxlength="14" placeholder="04A01122334455">
+                <div class="wallet-form-row">
+                    <div class="field">
+                        <label for="wallet-kind">类型</label>
+                        <select id="wallet-kind">
+                            <option value="1">NTAG213</option>
+                            <option value="2" selected>NTAG215</option>
+                            <option value="3">NTAG216</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="wallet-uid">UID（14 位十六进制）</label>
+                        <input id="wallet-uid" type="text" maxlength="14" placeholder="04A01122334455">
+                    </div>
                 </div>
                 <div class="field">
                     <label for="wallet-name">卡片名称</label>
@@ -922,41 +936,25 @@
                 </div>
                 <div class="field">
                     <label for="wallet-ndef">NDEF 文本</label>
-                    <textarea id="wallet-ndef" rows="3" maxlength="500" placeholder="Hello FrameFilm"></textarea>
+                    <textarea id="wallet-ndef" rows="2" maxlength="500" placeholder="Hello FrameFilm"></textarea>
                 </div>
                 <div class="field">
-                    <label>封面（可选，440×200 1-bit）</label>
-                    <div class="wallet-cover" id="wallet-cover-editor">
-                        <div class="wallet-cover-preview" id="wallet-cover-preview" title="拖动移动 · 滚轮 / 双指缩放">
-                            <canvas id="wallet-cover-canvas" width="440" height="200"></canvas>
-                            <span class="wallet-cover-empty" id="wallet-cover-empty">导入图片后可在这里预览 1-bit 效果</span>
+                    <label>封面（可选）</label>
+                    <div class="wallet-cover-summary">
+                        <div class="wallet-cover-thumb" id="wallet-cover-thumb" hidden>
+                            <canvas id="wallet-cover-thumb-canvas" width="440" height="200"></canvas>
                         </div>
-                        <div class="btn-row wallet-cover-actions">
-                            <button type="button" class="secondary-button" id="wallet-cover-import">导入图片</button>
-                            <button type="button" class="secondary-button" id="wallet-cover-rotate" disabled>旋转 90°</button>
-                            <button type="button" class="secondary-button" id="wallet-cover-fit" disabled>适应画幅</button>
-                            <button type="button" class="secondary-button" id="wallet-cover-clear" disabled>清除</button>
-                        </div>
-                        <input id="wallet-cover-file" type="file" accept="image/*" hidden>
-                        <div class="wallet-cover-controls">
-                            <label for="wallet-cover-threshold">阈值 <b id="wallet-cover-threshold-val">128</b></label>
-                            <input id="wallet-cover-threshold" type="range" min="1" max="254" step="1" value="128" disabled>
-                            <label class="wallet-cover-dither"><input id="wallet-cover-dither" type="checkbox" disabled> 抖动</label>
-                        </div>
-                        <div class="field-hint" id="wallet-cover-hint">导入图片后可预览 1-bit 效果；拖动/缩放只影响封面构图</div>
-                        <div class="wallet-cover-target" id="wallet-cover-target" hidden>
-                            <span class="field-hint" id="wallet-cover-target-text"></span>
-                            <div class="btn-row">
-                                <button type="button" class="primary-button" id="wallet-cover-upload" disabled>上传封面到这张卡</button>
-                                <button type="button" class="secondary-button" id="wallet-cover-cancel">取消</button>
-                            </div>
+                        <div class="wallet-cover-summary__actions">
+                            <button type="button" class="secondary-button" id="wallet-cover-edit">添加封面</button>
+                            <button type="button" class="secondary-button wallet-cover-remove" id="wallet-cover-remove" hidden>移除封面</button>
                         </div>
                     </div>
+                    <p class="field-hint" id="wallet-cover-summary-hint">440×200 1-bit · 封面可选，不选也能创建。</p>
                 </div>
                 <div class="btn-row">
                     <button type="button" class="primary-button" id="wallet-create" data-ark-connected disabled>创建 NTAG 卡</button>
                 </div>
-            </div>
+            </section>
         </div>
 
         <!-- ================= 设置 ================= -->
@@ -1333,6 +1331,46 @@
     </nav>
 </div>
 
+<!-- 卡包封面编辑器（新建卡与已有卡共用） -->
+<dialog id="wallet-cover-dialog" class="wallet-cover-dialog">
+    <div class="wallet-cover-dialog__head">
+        <span class="ic-wrap ic-wrap--sky"><svg class="ic" viewBox="0 0 24 24"><use href="#i-image"/></svg></span>
+        <div>
+            <strong id="wallet-cover-dialog-title">封面编辑器</strong>
+            <p class="field-hint" id="wallet-cover-dialog-sub">440×200 · 1-bit</p>
+        </div>
+        <button type="button" class="icon-button" id="wallet-cover-close" title="关闭">
+            <svg class="ic" viewBox="0 0 24 24"><use href="#i-close"/></svg>
+        </button>
+    </div>
+    <div class="wallet-cover">
+        <div class="wallet-cover-preview" id="wallet-cover-preview" title="拖动移动 · 滚轮 / 双指缩放">
+            <canvas id="wallet-cover-canvas" width="440" height="200"></canvas>
+            <span class="wallet-cover-empty" id="wallet-cover-empty">导入图片后可在这里预览 1-bit 效果</span>
+        </div>
+        <input id="wallet-cover-file" type="file" accept="image/*" hidden>
+        <div class="btn-row wallet-cover-actions">
+            <button type="button" class="secondary-button" id="wallet-cover-import">导入图片</button>
+            <button type="button" class="secondary-button" id="wallet-cover-rotate" disabled>旋转 90°</button>
+            <button type="button" class="secondary-button" id="wallet-cover-mode" disabled>铺满画幅</button>
+            <button type="button" class="secondary-button" id="wallet-cover-fit" disabled>重置</button>
+            <button type="button" class="secondary-button" id="wallet-cover-clear" disabled>清除</button>
+        </div>
+        <div class="wallet-cover-controls">
+            <label for="wallet-cover-threshold">阈值 <b id="wallet-cover-threshold-val">128</b></label>
+            <input id="wallet-cover-threshold" type="range" min="1" max="254" step="1" value="128" disabled>
+            <label class="wallet-cover-dither"><input id="wallet-cover-dither" type="checkbox" disabled> 抖动</label>
+        </div>
+        <div class="field-hint" id="wallet-cover-hint">导入图片后可预览 1-bit 效果；拖动/缩放只影响封面构图</div>
+    </div>
+    <div class="wallet-cover-dialog__foot">
+        <button type="button" class="secondary-button" id="wallet-cover-cancel">取消</button>
+        <button type="button" class="primary-button" id="wallet-cover-upload" disabled>完成</button>
+    </div>
+</dialog>
+
+<div id="wallet-toast" class="wallet-toast" role="status" aria-live="polite"></div>
+
 <!-- 键值设置弹窗 -->
 <div id="keyboard-modal" class="kb-modal">
     <div class="kb-modal-mask" onclick="closeKeyboardSetting()"></div>
@@ -1383,7 +1421,7 @@
 <script src="js/convert.js?v=e4panel-2"></script>
 <script src="js/frame.js?v=ark-state-2"></script>
 <script src="js/frame-nav.js"></script>
-<script src="js/nfc-wallet.js?v=nfc-3"></script>
+<script src="js/nfc-wallet.js?v=nfc-4"></script>
 <script src="js/batch.js?v=fix-1"></script>
 <script src="js/gif-decoder.js"></script>
 <script src="js/animation.js?v=ark-state-2"></script>

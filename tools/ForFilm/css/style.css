@@ -1374,19 +1374,334 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
     }
 }
 
-/* NFC wallet */
-.wallet-rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}
-.wallet-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(127,127,127,.35);border-radius:10px}
-.wallet-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.wallet-cover{display:flex;flex-direction:column;gap:10px;margin-top:8px}
-.wallet-cover-preview{position:relative;width:100%;max-width:440px;aspect-ratio:440/200;background:#fff;border:1px solid rgba(127,127,127,.35);border-radius:10px;overflow:hidden;touch-action:none;cursor:grab;user-select:none}
-.wallet-cover-preview:active{cursor:grabbing}
-.wallet-cover-preview canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
-.wallet-cover-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;text-align:center;color:rgba(127,127,127,.9);font-size:13px;pointer-events:none}
-.wallet-cover-empty[hidden]{display:none}
-.wallet-cover-actions{flex-wrap:wrap}
-.wallet-cover-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.wallet-cover-controls input[type="range"]{flex:1;min-width:160px}
-.wallet-cover-dither{display:inline-flex;align-items:center;gap:6px}
-.wallet-cover-target{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid rgba(127,127,127,.35);border-radius:10px}
-.wallet-cover-target[hidden]{display:none}
+/* ============================================================
+   NFC 卡包
+   ============================================================ */
+
+.wallet-connect-row { margin: 10px 0 0; }
+
+/* 表单：类型 + UID 同排，其余各占一行 */
+.wallet-form-row {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: 10px;
+}
+
+.wallet-form-row .field { margin-bottom: var(--sp-3); }
+
+/* 卡列表：一行卡片，右侧四个操作按钮不换行 */
+.wallet-list { margin-top: 12px; }
+
+.wallet-rows { display: flex; flex-direction: column; gap: 6px; }
+
+.wallet-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: var(--cream-2);
+    border: 2px solid var(--ink);
+    border-radius: 12px;
+}
+
+.wallet-row.is-current {
+    background: var(--lemon);
+    box-shadow: 2px 2px 0 var(--ink);
+}
+
+.wallet-row__body { min-width: 0; }
+
+.wallet-row__name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.wallet-row__badge {
+    flex: 0 0 auto;
+    padding: 1px 7px;
+    font-family: var(--font-num);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .4px;
+    color: var(--paper);
+    background: var(--ink);
+    border-radius: 999px;
+}
+
+.wallet-row__meta {
+    margin-top: 1px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.35;
+    color: var(--ink-soft);
+    overflow-wrap: anywhere;
+}
+
+.wallet-row-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+}
+
+.wallet-row-actions .secondary-button {
+    width: auto;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 5px 9px;
+    gap: 0;
+    font-size: 12px;
+    line-height: 1.2;
+    border-width: 2px;
+    border-radius: 9px;
+    box-shadow: 2px 2px 0 var(--ink);
+}
+
+.wallet-row-actions .secondary-button:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 var(--ink);
+}
+
+.wallet-row-actions .secondary-button:active {
+    transform: translate(2px, 2px);
+    box-shadow: 0 0 0 var(--ink);
+}
+
+.wallet-row-actions .secondary-button.is-current { background: var(--mint); }
+
+/* 新建卡：封面缩略图 + 添加/移除 */
+.wallet-cover-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.wallet-cover-thumb {
+    flex: 0 0 auto;
+    width: 132px;
+    aspect-ratio: 440 / 200;
+    overflow: hidden;
+    background: #fff;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    box-shadow: 2px 2px 0 var(--ink);
+}
+
+.wallet-cover-thumb[hidden] { display: none; }
+
+.wallet-cover-thumb canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+}
+
+.wallet-cover-summary__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+}
+
+.wallet-cover-summary__actions .secondary-button {
+    width: auto;
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 13px;
+    border-radius: 10px;
+}
+
+.wallet-cover-summary__actions .wallet-cover-remove {
+    background: var(--paper);
+    font-size: 12px;
+}
+
+/* 封面编辑器（dialog） */
+.wallet-cover-dialog {
+    width: min(560px, 94vw);
+    max-height: 92vh;
+    padding: 20px;
+    overflow: auto;
+    color: var(--ink);
+    background: var(--paper);
+    border: var(--line) solid var(--ink);
+    border-radius: var(--r);
+    box-shadow: var(--sh-3);
+}
+
+.wallet-cover-dialog[open] {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.wallet-cover-dialog::backdrop { background: rgba(18, 16, 14, .48); }
+
+.wallet-cover-dialog__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.wallet-cover-dialog__head strong {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 16px;
+    line-height: 1.3;
+}
+
+.wallet-cover-dialog__head .field-hint { margin-top: 2px; }
+.wallet-cover-dialog__head .icon-button { margin-left: auto; }
+
+.wallet-cover-dialog__foot { display: flex; gap: 10px; }
+.wallet-cover-dialog__foot > * { flex: 1; margin: 0; }
+
+.wallet-cover { display: flex; flex-direction: column; gap: 10px; }
+
+.wallet-cover-preview {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 440 / 200;
+    overflow: hidden;
+    background: #fff;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+}
+
+.wallet-cover-preview:active { cursor: grabbing; }
+
+.wallet-cover-preview canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+}
+
+.wallet-cover-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-align: center;
+    pointer-events: none;
+}
+
+.wallet-cover-empty[hidden] { display: none; }
+
+.wallet-cover-actions { flex-wrap: wrap; }
+
+.wallet-cover-actions > * {
+    flex: 1 1 84px;
+    margin: 0;
+    padding: 8px 10px;
+    font-size: 13px;
+}
+
+.wallet-cover-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.wallet-cover-controls input[type="range"] { flex: 1; min-width: 150px; }
+
+.wallet-cover-dither { display: inline-flex; align-items: center; gap: 6px; }
+
+/* 轻量提示（上传 / 创建结果） */
+.wallet-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 26px;
+    z-index: 60;
+    max-width: min(460px, 88vw);
+    padding: 10px 20px;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    text-align: center;
+    background: var(--lemon);
+    border: var(--line) solid var(--ink);
+    border-radius: 999px;
+    box-shadow: var(--sh-2);
+    opacity: 0;
+    transform: translate(-50%, 14px);
+    pointer-events: none;
+    transition: opacity .18s var(--ease-out), transform .22s var(--ease-bounce);
+}
+
+.wallet-toast.is-show { opacity: 1; transform: translate(-50%, 0); }
+.wallet-toast.is-error { background: var(--coral); }
+
+/* Ark 皮肤下保持紧凑：主题默认给按钮 min-height:44px，会把卡行撑高 */
+body.theme-ark .wallet-row {
+    background: var(--ark-bg);
+    border: 1px solid var(--ark-line);
+}
+
+body.theme-ark .wallet-row.is-current {
+    background: var(--ark-bg-3);
+    box-shadow: inset 3px 0 var(--ark-accent);
+}
+
+body.theme-ark .wallet-row-actions .secondary-button {
+    min-height: 0;
+    padding: 4px 8px;
+    font-size: 11.5px;
+    letter-spacing: 0;
+}
+
+body.theme-ark .wallet-toast {
+    color: var(--ark-ink);
+    background: var(--ark-bg-3);
+    border-color: var(--ark-accent);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body.theme-ark .wallet-toast.is-error {
+    color: var(--ark-red);
+    border-color: var(--ark-red);
+}
+
+/* 窄屏：进一步压缩卡行与表单，保证四个操作按钮仍在一行 */
+@media (max-width: 520px) {
+    .wallet-row { gap: 6px; padding: 6px 8px; }
+    .wallet-row__name { font-size: 13px; }
+    .wallet-row-actions { gap: 3px; }
+    .wallet-row-actions .secondary-button { padding: 4px 7px; font-size: 11.5px; }
+    .wallet-form-row { grid-template-columns: 90px minmax(0, 1fr); gap: 8px; }
+}
+
+/* 桌面：左侧卡列表 / 右侧创建新卡 */
+@media (min-width: 900px) {
+    #wallet-page.active {
+        column-count: initial;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
+        column-gap: 26px;
+        align-items: start;
+    }
+
+    #wallet-page.active > .wallet-panel { margin-bottom: 24px; }
+
+    #wallet-page.active > .wallet-panel--create {
+        grid-column: 2;
+        grid-row: 1;
+    }
+}

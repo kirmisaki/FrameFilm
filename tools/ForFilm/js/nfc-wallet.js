@@ -81,6 +81,22 @@
         if (el) el.textContent = text;
     }
 
+    /* 轻量结果提示：不受卡包列表状态文本影响 */
+    var m_toastTimer = 0;
+
+    function walletToast(text, isError) {
+        var el = $('wallet-toast');
+        if (!el) return;
+        el.textContent = text;
+        el.classList.toggle('is-error', !!isError);
+        el.classList.add('is-show');
+        if (m_toastTimer) clearTimeout(m_toastTimer);
+        m_toastTimer = setTimeout(function () {
+            el.classList.remove('is-show');
+            m_toastTimer = 0;
+        }, 3200);
+    }
+
     function run(label, fn) {
         if (!window.ArkDevice) return Promise.reject(new Error('ArkDevice 未加载'));
         return window.ArkDevice.run(label, async function (ctx) {
@@ -130,12 +146,15 @@
         var html = '<div class="wallet-rows">';
         for (var i = 0; i < m_cards.length; i++) {
             var c = m_cards[i];
-            var active = i === m_current ? ' style="font-weight:700"' : '';
-            html += '<div class="wallet-row"' + active + '>' +
-                '<div><strong>' + esc(c.name || 'CARD') + '</strong>' +
-                '<div class="field-hint">' + esc(kindName(c.kind)) + ' · ' + uidText(c.uid, c.uidLen) + '</div></div>' +
+            var cur = i === m_current;
+            html += '<div class="wallet-row' + (cur ? ' is-current' : '') + '">' +
+                '<div class="wallet-row__body">' +
+                '<div class="wallet-row__name">' + esc(c.name || 'CARD') +
+                (cur ? '<span class="wallet-row__badge">当前</span>' : '') + '</div>' +
+                '<div class="wallet-row__meta">' + esc(kindName(c.kind)) + ' · ' + uidText(c.uid, c.uidLen) + '</div>' +
+                '</div>' +
                 '<div class="wallet-row-actions">' +
-                '<button type="button" class="secondary-button" data-wallet-select="' + c.id + '">选中</button>' +
+                '<button type="button" class="secondary-button' + (cur ? ' is-current' : '') + '" data-wallet-select="' + c.id + '">选中</button>' +
                 '<button type="button" class="secondary-button" data-wallet-rename="' + c.id + '">改名</button>' +
                 '<button type="button" class="secondary-button" data-wallet-delete="' + c.id + '">删除</button>' +
                 '<button type="button" class="secondary-button" data-wallet-cover="' + c.id + '">封面</button>' +
@@ -178,8 +197,9 @@
             await run('选中卡', async function (ctx) {
                 await walletCtrl(ctx, [0x01, id]);
             });
+            walletToast('已切换当前卡');
             await refresh();
-        } catch (e) { setConnection('选中失败：' + e.message); }
+        } catch (e) { setConnection('选中失败：' + e.message); walletToast('选中失败：' + e.message, true); }
     }
 
     async function deleteCard(id) {
@@ -188,8 +208,9 @@
             await run('删除卡', async function (ctx) {
                 await walletCtrl(ctx, [0x02, id]);
             });
+            walletToast('已删除卡片');
             await refresh();
-        } catch (e) { setConnection('删除失败：' + e.message); }
+        } catch (e) { setConnection('删除失败：' + e.message); walletToast('删除失败：' + e.message, true); }
     }
 
     async function renameCard(id) {
@@ -207,8 +228,9 @@
                 for (var j = 0; j < bytes.length; j++) payload.push(bytes[j]);
                 await walletCtrl(ctx, payload);
             });
+            walletToast('卡片已改名');
             await refresh();
-        } catch (e) { setConnection('重命名失败：' + e.message); }
+        } catch (e) { setConnection('重命名失败：' + e.message); walletToast('重命名失败：' + e.message, true); }
     }
 
     /* ---------- 封面编辑器：导入图片 → 1-bit 预览 / 调整 ---------- */
@@ -223,8 +245,11 @@
     var m_coverOffY = 0;
     var m_coverThreshold = 128;
     var m_coverDither = false;
+    var m_coverFitMode = 'cover';   /* cover = 铺满画幅，contain = 完整显示 */
     var m_coverPayload = null;
     var m_coverTargetId = 0;
+    var m_coverDialogMode = 'create';   /* create = 新卡封面草稿，target = 改已有卡封面 */
+    var m_coverSnapshot = null;
     var m_coverPointers = {};
     var m_coverDrag = null;
     var m_coverPinch = null;
@@ -242,27 +267,101 @@
         m_coverScale = 1;
         m_coverOffX = 0;
         m_coverOffY = 0;
+        m_coverFitMode = 'cover';
+    }
+
+    function coverSyncMode() {
+        var btn = $('wallet-cover-mode');
+        if (!btn) return;
+        btn.textContent = m_coverFitMode === 'cover' ? '铺满画幅' : '完整显示';
+        btn.title = m_coverFitMode === 'cover'
+            ? '当前铺满画幅（会裁掉超出部分），点击改为完整显示'
+            : '当前完整显示（会留白），点击改为铺满画幅';
+    }
+
+    function coverSyncSummary() {
+        var has = !!m_coverPayload;
+        var thumb = $('wallet-cover-thumb');
+        var editBtn = $('wallet-cover-edit');
+        var removeBtn = $('wallet-cover-remove');
+        var hint = $('wallet-cover-summary-hint');
+        if (thumb) thumb.hidden = !has;
+        if (editBtn) editBtn.textContent = has ? '编辑封面' : '添加封面';
+        if (removeBtn) removeBtn.hidden = !has;
+        if (hint) {
+            hint.textContent = has
+                ? '封面已就绪，创建卡片时一起上传。'
+                : '440×200 1-bit · 封面可选，不选也能创建。';
+        }
+        if (!has) return;
+        var thumbCanvas = $('wallet-cover-thumb-canvas');
+        var canvas = $('wallet-cover-canvas');
+        if (thumbCanvas && canvas) {
+            thumbCanvas.getContext('2d').drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+        }
     }
 
     function coverSyncControls() {
         var has = !!m_coverImage;
-        ['wallet-cover-rotate', 'wallet-cover-fit', 'wallet-cover-clear',
+        ['wallet-cover-rotate', 'wallet-cover-mode', 'wallet-cover-fit', 'wallet-cover-clear',
          'wallet-cover-threshold', 'wallet-cover-dither'].forEach(function (id) {
             var el = $(id);
             if (el) el.disabled = !has;
         });
-        var upload = $('wallet-cover-upload');
-        if (upload) upload.disabled = !has || !connected();
+        var confirm = $('wallet-cover-upload');
+        if (confirm) {
+            confirm.disabled = !has || (m_coverDialogMode === 'target' && !connected());
+            confirm.textContent = m_coverDialogMode === 'target' ? '上传封面' : '完成';
+        }
         var hint = $('wallet-cover-hint');
         if (hint) {
             hint.textContent = has
-                ? '拖动移动 · 滚轮 / 双指缩放 · 旋转调整构图；预览即上传的 1-bit 结果'
-                : '导入图片后可预览 1-bit 效果；拖动/缩放只影响封面构图';
+                ? '拖动移动 · 滚轮 / 双指缩放 · 旋转调整构图；预览即最终上传的 1-bit 结果'
+                : '导入图片后可预览 1-bit 效果；默认铺满画幅，可切到完整显示';
         }
+        coverSyncMode();
     }
 
-    /* 把源图按“适应画幅 + 用户缩放/位移/旋转”画到 440×200，再按阈值（可选 Bayer
-       抖动）量化成 1bpp。画布直接显示量化结果，保证预览与上传内容完全一致。 */
+    /* 打开弹窗前记下新建卡的封面草稿，取消/上传后回滚，互不影响 */
+    function coverSnapshotCapture() {
+        return {
+            image: m_coverImage,
+            rot: m_coverRot,
+            scale: m_coverScale,
+            offX: m_coverOffX,
+            offY: m_coverOffY,
+            threshold: m_coverThreshold,
+            dither: m_coverDither,
+            fitMode: m_coverFitMode,
+            payload: m_coverPayload,
+            targetId: m_coverTargetId
+        };
+    }
+
+    function coverSnapshotRestore(s) {
+        if (!s) return;
+        m_coverImage = s.image;
+        m_coverRot = s.rot;
+        m_coverScale = s.scale;
+        m_coverOffX = s.offX;
+        m_coverOffY = s.offY;
+        m_coverThreshold = s.threshold;
+        m_coverDither = s.dither;
+        m_coverFitMode = s.fitMode;
+        m_coverPayload = s.payload;
+        m_coverTargetId = s.targetId;
+        var th = $('wallet-cover-threshold');
+        if (th) th.value = m_coverThreshold;
+        var thv = $('wallet-cover-threshold-val');
+        if (thv) thv.textContent = m_coverThreshold;
+        var dither = $('wallet-cover-dither');
+        if (dither) dither.checked = m_coverDither;
+        coverRender();
+        coverSyncControls();
+    }
+
+    /* 把源图按“铺满/完整显示 + 用户缩放/位移/旋转”画到 440×200，再按阈值（可选
+       Bayer 抖动）量化成 1bpp。画布直接显示量化结果，保证预览与上传内容一致。 */
     function coverRender() {
         var canvas = $('wallet-cover-canvas');
         if (!canvas) return;
@@ -273,6 +372,7 @@
             ctx.fillRect(0, 0, COVER_W, COVER_H);
             m_coverPayload = null;
             if (empty) empty.hidden = false;
+            coverSyncSummary();
             return;
         }
         if (empty) empty.hidden = true;
@@ -285,7 +385,9 @@
         var rot = ((m_coverRot % 4) + 4) % 4;
         var rw = (rot % 2 === 0) ? m_coverImage.width : m_coverImage.height;
         var rh = (rot % 2 === 0) ? m_coverImage.height : m_coverImage.width;
-        var fit = Math.min(COVER_W / rw, COVER_H / rh);
+        var fit = m_coverFitMode === 'cover'
+            ? Math.max(COVER_W / rw, COVER_H / rh)
+            : Math.min(COVER_W / rw, COVER_H / rh);
         var s = fit * coverClampScale(m_coverScale);
         work.save();
         work.translate(COVER_W / 2 + m_coverOffX, COVER_H / 2 + m_coverOffY);
@@ -319,6 +421,7 @@
         }
         ctx.putImageData(out, 0, 0);
         m_coverPayload = payload;
+        coverSyncSummary();
     }
 
     function coverLoad(file) {
@@ -331,12 +434,12 @@
                 coverReset();
                 coverRender();
                 coverSyncControls();
-                setConnection('封面已导入，可拖动/缩放并调整阈值');
+                walletToast('封面已导入，可拖动 / 缩放调整构图');
             };
-            img.onerror = function () { setConnection('封面图片读取失败'); };
+            img.onerror = function () { walletToast('封面图片读取失败', true); };
             img.src = ev.target.result;
         };
-        reader.onerror = function () { setConnection('封面图片读取失败'); };
+        reader.onerror = function () { walletToast('封面图片读取失败', true); };
         reader.readAsDataURL(file);
     }
 
@@ -348,29 +451,49 @@
         coverSyncControls();
     }
 
-    function coverSetTarget(id) {
-        m_coverTargetId = id;
-        var box = $('wallet-cover-target');
-        var text = $('wallet-cover-target-text');
-        if (id) {
-            var name = 'CARD';
-            for (var i = 0; i < m_cards.length; i++) {
-                if (m_cards[i].id === id) name = m_cards[i].name || name;
-            }
-            if (text) text.textContent = '正在为「' + name + '」设置封面';
-            if (box) box.hidden = false;
-            var editor = $('wallet-cover-editor');
-            if (editor) editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else if (box) {
-            box.hidden = true;
+    function coverCardName(id) {
+        for (var i = 0; i < m_cards.length; i++) {
+            if (m_cards[i].id === id) return m_cards[i].name || 'CARD';
         }
+        return 'CARD';
+    }
+
+    /* 新卡封面与已有卡换封面共用同一个弹窗；mode 决定确认按钮语义 */
+    function coverOpenDialog(mode, id) {
+        var dlg = $('wallet-cover-dialog');
+        if (!dlg) return;
+        m_coverSnapshot = coverSnapshotCapture();
+        m_coverDialogMode = mode;
+        m_coverTargetId = 0;
+        var title = $('wallet-cover-dialog-title');
+        var sub = $('wallet-cover-dialog-sub');
+        if (mode === 'target') {
+            m_coverTargetId = id;
+            /* 设备上的旧封面读不回来，每次从空白开始 */
+            m_coverImage = null;
+            m_coverPayload = null;
+            coverReset();
+            if (title) title.textContent = '「' + coverCardName(id) + '」的封面';
+            if (sub) sub.textContent = '导入图片并上传后，会覆盖设备上这张卡的封面';
+        } else {
+            if (title) title.textContent = '新卡封面';
+            if (sub) sub.textContent = '440×200 · 1-bit · 创建卡片时一起上传';
+        }
+        if (!dlg.open) dlg.showModal();
+        coverRender();
         coverSyncControls();
+    }
+
+    function coverCloseDialog() {
+        var dlg = $('wallet-cover-dialog');
+        if (dlg && dlg.open) dlg.close();
     }
 
     async function coverUploadTarget() {
         if (!m_coverTargetId) return;
-        if (!m_coverPayload) { setConnection('请先导入封面图片'); return; }
+        if (!m_coverPayload) { walletToast('请先导入封面图片', true); return; }
         var id = m_coverTargetId;
+        var name = coverCardName(id);
         var payload = m_coverPayload;
         try {
             await run('上传封面', async function (ctx) {
@@ -378,10 +501,27 @@
                     setConnection('正在上传封面… ' + pct + '%');
                 });
             });
-            setConnection('封面已上传');
-            coverSetTarget(0);
+            /* 成功后恢复新建卡封面草稿，避免把这张卡的封面带到新卡 */
+            var snap = m_coverSnapshot;
+            m_coverSnapshot = null;
+            m_coverTargetId = 0;
+            coverCloseDialog();
+            coverSnapshotRestore(snap);
+            walletToast('封面已上传到「' + name + '」');
             await refresh();
-        } catch (e) { setConnection('封面上传失败：' + e.message); }
+        } catch (e) {
+            walletToast('封面上传失败：' + e.message, true);
+            setConnection('封面上传失败：' + e.message);
+        }
+    }
+
+    function coverConfirm() {
+        if (m_coverDialogMode === 'target') { coverUploadTarget(); return; }
+        if (!m_coverPayload) { walletToast('请先导入封面图片', true); return; }
+        m_coverSnapshot = null;
+        coverCloseDialog();
+        coverSyncSummary();
+        walletToast('封面已就绪，创建卡片时一起上传');
     }
 
     function coverPoint(ev) {
@@ -415,11 +555,19 @@
             m_coverRot = (m_coverRot + 1) % 4;
             coverRender();
         });
+        var modeBtn = $('wallet-cover-mode');
+        if (modeBtn) modeBtn.addEventListener('click', function () {
+            if (!m_coverImage) return;
+            m_coverFitMode = m_coverFitMode === 'cover' ? 'contain' : 'cover';
+            coverRender();
+            coverSyncMode();
+        });
         var fitBtn = $('wallet-cover-fit');
         if (fitBtn) fitBtn.addEventListener('click', function () {
             if (!m_coverImage) return;
             coverReset();
             coverRender();
+            coverSyncMode();
         });
         var clearBtn = $('wallet-cover-clear');
         if (clearBtn) clearBtn.addEventListener('click', coverClear);
@@ -435,10 +583,27 @@
             m_coverDither = this.checked;
             coverRender();
         });
-        var uploadBtn = $('wallet-cover-upload');
-        if (uploadBtn) uploadBtn.addEventListener('click', coverUploadTarget);
+        var confirmBtn = $('wallet-cover-upload');
+        if (confirmBtn) confirmBtn.addEventListener('click', coverConfirm);
         var cancelBtn = $('wallet-cover-cancel');
-        if (cancelBtn) cancelBtn.addEventListener('click', function () { coverSetTarget(0); });
+        if (cancelBtn) cancelBtn.addEventListener('click', coverCloseDialog);
+        var closeBtn = $('wallet-cover-close');
+        if (closeBtn) closeBtn.addEventListener('click', coverCloseDialog);
+        var editBtn = $('wallet-cover-edit');
+        if (editBtn) editBtn.addEventListener('click', function () { coverOpenDialog('create', 0); });
+        var removeBtn = $('wallet-cover-remove');
+        if (removeBtn) removeBtn.addEventListener('click', function () { coverClear(); });
+
+        /* 关闭弹窗（取消 / Esc）时回滚到打开前的草稿 */
+        var dialog = $('wallet-cover-dialog');
+        if (dialog) dialog.addEventListener('close', function () {
+            m_coverTargetId = 0;
+            var snap = m_coverSnapshot;
+            m_coverSnapshot = null;
+            coverSnapshotRestore(snap);
+            coverSyncControls();
+            coverSyncSummary();
+        });
 
         if (!canvas) return;
         canvas.addEventListener('pointerdown', function (e) {
@@ -575,10 +740,12 @@
                     });
                 });
             }
-            setConnection('创建成功 · 已选中新卡');
+            coverClear();
+            walletToast('创建成功 · 已选中新卡');
             await refresh();
         } catch (e) {
             setConnection('创建失败：' + e.message);
+            walletToast('创建失败：' + e.message, true);
         }
     }
 
@@ -617,7 +784,7 @@
     }
 
     function editCardCover(id) {
-        coverSetTarget(id);
+        coverOpenDialog('target', id);
     }
 
     document.addEventListener('DOMContentLoaded', bindButtons);
