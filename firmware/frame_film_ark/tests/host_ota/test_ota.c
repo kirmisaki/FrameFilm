@@ -5,7 +5,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdio.h>
-#include "../../components/film_hal/inc/hal_hardware.h"
+#include "../../components/film_sys/inc/sys_hw.h"
 typedef int esp_err_t;
 typedef int esp_ota_handle_t;
 typedef struct { uint32_t address, size; } esp_partition_t;
@@ -23,7 +23,7 @@ typedef struct { unsigned sum; } mbedtls_sha256_context;
 static esp_partition_t part = {4096, 1024}, run = {0, 1024};
 static int aborted, activated, chip = 9;
 static bool hardware_matches = true, hardware_missing;
-bool hal_hardware_descriptor_matches(const ArkHardwareDescriptor_t *image) {
+bool sys_hw_descriptor_matches(const SysHwDescriptor_t *image) {
     (void)image; return hardware_matches;
 }
 static char project[32] = "frame_film_ark";
@@ -36,7 +36,7 @@ static int esp_ota_end(int h) { (void)h; return 0; }
 static int esp_ota_set_boot_partition(const esp_partition_t *p) { (void)p; activated++; return 0; }
 static int esp_partition_read(const esp_partition_t *p, int off, void *out, size_t n) {
     (void)p;
-    if(off == ARK_HARDWARE_DESCRIPTOR_OFFSET) {
+    if(off == SYS_HW_DESCRIPTOR_OFFSET) {
         if(hardware_missing) return ESP_FAIL;
         memset(out, 0, n); return ESP_OK;
     }

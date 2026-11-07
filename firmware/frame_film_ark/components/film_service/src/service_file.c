@@ -33,10 +33,6 @@
 #include <errno.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#ifdef ARK_TRANSFER_BENCH
-#include <fcntl.h>
-#include <unistd.h>
-#endif
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -177,97 +173,6 @@ static void file_log_header(const char *stage, const uint8_t *hdr, size_t len)
     sys_logd(FILE_TAG, "Film header trace stage=%s owner=%u bytes=%u hex=%s",
              stage, (unsigned)m_file_state.save_owner, (unsigned)len, hex);
 }
-
-#ifdef ARK_TRANSFER_BENCH
-/* Called only on file_task, so normal saving and this diagnostic never write concurrently. */
-static int file_benchmark_sd(uint32_t bytes)
-{
-    const char *path = "/sdcard/arkbench.tmp";
-    uint64_t card_total = 0, free_bytes = 0;
-    if(!m_file_state.sd_mounted || m_file_state.save_owner ||
-       hal_sd_get_space(&card_total, &free_bytes) != 0 ||
-       free_bytes < (uint64_t)bytes + 16384u)
-    {
-        sys_logw(FILE_TAG, "BENCH SD refused: mounted=%u owner=%u free=%llu need=%lu",
-                 (unsigned)m_file_state.sd_mounted, (unsigned)m_file_state.save_owner,
-                 (unsigned long long)free_bytes, (unsigned long)bytes);
-        return -1;
-    }
-    uint8_t *source = heap_caps_malloc(16 * 1024, MALLOC_CAP_SPIRAM);
-    if(!source) return -1;
-    for(uint32_t i = 0; i < 16 * 1024; ++i) source[i] = (uint8_t)i;
-    int64_t open_start = esp_timer_get_time();
-    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
-    if(fd < 0)
-    {
-        sys_logw(FILE_TAG, "BENCH SD refused: %s exists or cannot be created (errno=%d)",
-                 path, errno);
-        heap_caps_free(source);
-        return -1;
-    }
-    FILE *fp = fdopen(fd, "wb");
-    if(!fp)
-    {
-        close(fd);
-        int delete_result = remove(path);
-        sys_loge(FILE_TAG, "BENCH SD fdopen failed; delete=%d", delete_result);
-        heap_caps_free(source);
-        return -1;
-    }
-    int result = 0;
-    if(setvbuf(fp, NULL, _IONBF, 0) != 0) result = -1;
-    int64_t open_us = esp_timer_get_time() - open_start;
-    uint32_t written = 0;
-    int64_t write_start = esp_timer_get_time();
-    while(!result && written < bytes)
-    {
-        uint32_t count = bytes - written;
-        if(count > 16 * 1024) count = 16 * 1024;
-        size_t saved = file_save_write_dma(fp, source, count, written);
-        written += saved;
-        if(saved != count || esp_timer_get_time() - write_start >= 60000000)
-            result = -1;
-    }
-    int64_t write_us = esp_timer_get_time() - write_start;
-    int64_t close_start = esp_timer_get_time();
-    if(fclose(fp) != 0) result = -1;
-    int64_t close_us = esp_timer_get_time() - close_start;
-    int verified = 0;
-    int64_t verify_start = esp_timer_get_time();
-    if(!result && written == bytes)
-    {
-        FILE *check = fopen(path, "rb");
-        if(check)
-        {
-            uint32_t offset = 0;
-            verified = 1;
-            while(offset < bytes && verified)
-            {
-                size_t want = bytes - offset;
-                if(want > sizeof(m_save_dma_buffer)) want = sizeof(m_save_dma_buffer);
-                size_t got = fread(m_save_dma_buffer, 1, want, check);
-                if(got != want) { verified = 0; break; }
-                for(size_t i = 0; i < got; ++i)
-                    if(m_save_dma_buffer[i] != (uint8_t)(offset + i))
-                    { verified = 0; break; }
-                offset += got;
-            }
-            if(fclose(check) != 0) verified = 0;
-        }
-    }
-    int64_t verify_us = esp_timer_get_time() - verify_start;
-    int delete_result = remove(path);
-    if(!verified || delete_result != 0) result = -1;
-    sys_logi(FILE_TAG, "BENCH SD only: requested=%lu written=%lu open_us=%lld"
-             " write_us=%lld close_us=%lld verify_us=%lld verified=%d"
-             " delete=%d result=%d",
-             (unsigned long)bytes, (unsigned long)written,
-             (long long)open_us, (long long)write_us, (long long)close_us,
-             (long long)verify_us, verified, delete_result, result);
-    heap_caps_free(source);
-    return result;
-}
-#endif
 
 static void file_task_handle(void *pvParameters);
 static void file_msg_send(void *p_msg, bool in_isr);
@@ -530,12 +435,6 @@ save_start_done:
                 }
                 xSemaphoreGive(m_save_done);
                 break;
-#ifdef ARK_TRANSFER_BENCH
-            case MSG_FILE_BENCH_SD:
-                m_save_result = file_benchmark_sd(msg.file_size);
-                xSemaphoreGive(m_save_done);
-                break;
-#endif
             case MSG_FILE_SAVE_DATA:
             {
                 int result = -1;
@@ -1467,15 +1366,6 @@ static int file_save_call(file_msg_t *msg)
     xSemaphoreGive(m_save_call_mutex);
     return result;
 }
-
-#ifdef ARK_TRANSFER_BENCH
-int service_file_benchmark_sd(uint32_t bytes)
-{
-    if(!bytes || !m_file_msg_hdl) return -1;
-    file_msg_t msg = {.ID = MSG_FILE_BENCH_SD, .file_size = bytes, .owner = FILE_SAVE_WIFI};
-    return file_save_call(&msg);
-}
-#endif
 
 int service_file_save_data(file_save_owner_t owner, uint8_t *pdata, uint32_t data_len)
 {

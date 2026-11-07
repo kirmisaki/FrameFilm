@@ -34,9 +34,6 @@
 #include "freertos/task.h"
 
 #include "sys_init.h"
-#ifdef ARK_AP_FILE_BENCH
-#include "service_wifi.h"
-#endif
 
 /*********************************************************************
  * MACROS
@@ -79,13 +76,7 @@
  */
 void app_main(void)
 {
-#ifdef ARK_AP_FILE_BENCH
-    if(!service_wifi_ap_file_bench_prepare()) return;
-#endif
     film_sys_init();
-#ifdef ARK_AP_FILE_BENCH
-    service_wifi_ap_file_bench_start();
-#endif
 }
 
 

@@ -2450,10 +2450,12 @@ CONFIG_ARK_INPUT_BACK_KEY=y
 # end of Ark hardware
 
 #
-# Ark EPD diagnostics
+# Ark EPD experimental preview and diagnostics
 #
+CONFIG_ARK_EPD_ABC_PREVIEW=y
+# CONFIG_ARK_EPD_ABC_DIAG is not set
 # CONFIG_ARK_EPD_PROFILE is not set
-# end of Ark EPD diagnostics
+# end of Ark EPD experimental preview and diagnostics
 
 #
 # Rotary encoders

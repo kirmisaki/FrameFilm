@@ -1087,31 +1087,6 @@ void service_ble_gatt_server_uninit(void)
     }
 }
 
-
-#ifdef ARK_AP_FILE_BENCH
-int service_ble_gatt_ap_file_bench_deinit(void)
-{
-    esp_err_t err;
-    if(esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
-        err = esp_bluedroid_disable();
-        if(err != ESP_OK) return err;
-    }
-    if(esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED) {
-        err = esp_bluedroid_deinit();
-        if(err != ESP_OK) return err;
-    }
-    if(esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
-        err = esp_bt_controller_disable();
-        if(err != ESP_OK) return err;
-    }
-    if(esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_INITED) {
-        err = esp_bt_controller_deinit();
-        if(err != ESP_OK) return err;
-    }
-    return esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
-}
-#endif
-
 int service_ble_gatt_server_reinit(void)
 {
     esp_err_t ret;

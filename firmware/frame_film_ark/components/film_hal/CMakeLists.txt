@@ -1,5 +1,4 @@
 set(srcs "src/hal_init.c"
-         "src/hal_hardware.c"
          "src/hal_button.c"
          "src/hal_bat.c"
          "src/hal_led.c"
@@ -27,7 +26,3 @@ idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS ${public_include}
                        REQUIRES ${requires}
                       )
-target_link_libraries(${COMPONENT_LIB} INTERFACE "-u ark_hardware_descriptor")
-if(ARK_AP_FILE_BENCH)
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE ARK_AP_FILE_BENCH=1)
-endif()

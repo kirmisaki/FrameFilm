@@ -219,9 +219,6 @@ extern bool service_ble_prepare_sleep(void);
 extern bool service_ble_wifi_pause(void);
 extern bool service_ble_wifi_resume(void);
 extern bool service_ble_wifi_paused(void);
-#ifdef ARK_AP_FILE_BENCH
-extern bool service_ble_ap_file_bench_stop(void);
-#endif
 extern void service_ble_msg_gatts_data_send( uint8_t const *p_data, uint16_t len, uint8_t ch);
 
 /**

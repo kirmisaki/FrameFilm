@@ -23,8 +23,5 @@ esp_err_t hal_wifi_set_power_save(wifi_ps_type_t type);
 esp_err_t hal_wifi_softap_identity(char *ssid, size_t size);
 esp_err_t hal_wifi_softap_start(const char *ssid, const char *password);
 esp_err_t hal_wifi_softap_stop(void);
-#ifdef ARK_AP_FILE_BENCH
-esp_err_t hal_wifi_ap_file_bench_start(const char *password, char *ssid, size_t ssid_size);
-#endif
 
 #endif /* __HAL_WIFI_H__ */

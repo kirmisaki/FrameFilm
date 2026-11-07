@@ -46,8 +46,8 @@
 #include "sys_log.h"
 #include "sys_event.h"
 #include "sys_com.h"
+#include "sys_hw.h"
 #include "service_ota.h"
-#include "hal_hardware.h"
 
 /*********************************************************************
  * MACROS
@@ -286,13 +286,13 @@ static esp_err_t ota_validate_target_partition(const esp_partition_t *part)
 {
     esp_image_header_t header;
     esp_app_desc_t desc;
-    ArkHardwareDescriptor_t hardware;
+    SysHwDescriptor_t hardware;
     if(esp_partition_read(part, 0, &header, sizeof(header)) != ESP_OK ||
        header.chip_id != ESP_CHIP_ID_ESP32S3 ||
        esp_ota_get_partition_description(part, &desc) != ESP_OK ||
        strncmp(desc.project_name, "frame_film_ark", sizeof(desc.project_name)) ||
-       esp_partition_read(part, ARK_HARDWARE_DESCRIPTOR_OFFSET, &hardware, sizeof(hardware)) != ESP_OK ||
-       !hal_hardware_descriptor_matches(&hardware))
+       esp_partition_read(part, SYS_HW_DESCRIPTOR_OFFSET, &hardware, sizeof(hardware)) != ESP_OK ||
+       !sys_hw_descriptor_matches(&hardware))
         return ESP_ERR_INVALID_ARG;
     return ESP_OK;
 }

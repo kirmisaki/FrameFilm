@@ -45,6 +45,7 @@
 #include "sys_cfg.h"
 #include "sys_log.h"
 #include "sys_event.h"
+#include "sys_hw.h"
 
 #include "service_ble_gatts.h"
 #include "service_ble.h"
@@ -143,10 +144,7 @@ static const char *ble_name_suffix_or_default(void);
 
 void service_ble_transfer_disconnected(void)
 {
-#ifndef ARK_AP_FILE_BENCH
     if(!service_ble_wifi_paused()) service_wifi_direct_cancel();
-#endif
-    /* The autonomous AP diagnostic deliberately disconnects BLE; TCP owns its lifetime. */
     m_ble_link_epoch++;
     m_ble_abort_pending = 1;
     if(m_ble_msg_hdl)
@@ -417,19 +415,6 @@ bool service_ble_wifi_resume(void)
     return err == ESP_OK;
 }
 
-#ifdef ARK_AP_FILE_BENCH
-bool service_ble_ap_file_bench_stop(void)
-{
-    if(!service_ble_prepare_sleep()) return false;
-    if(m_ble_up) {
-        service_ble_gatts_dev_disconnect();
-        service_ble_gatt_server_uninit();
-        m_ble_up = 0;
-    }
-    /* No parameter change or save: this shutdown lasts only until the normal reboot. */
-    return service_ble_gatt_ap_file_bench_deinit() == ESP_OK;
-}
-#endif
 
 /**
  * [service_ble_msg_send ble事件msg发送]
@@ -952,8 +937,8 @@ static void ble_cmd_process(ble_cmd_t *cmd)
 #endif
                 break;
             }
-            HalHardwareInfo_t info;
-            hal_hardware_get_info(&info);
+            SysHwInfo_t info;
+            sys_hw_get_info(&info);
             uint8_t data[14 + 32] = {1};
             data[1] = (uint8_t)(info.chip_id >> 8); data[2] = (uint8_t)info.chip_id;
             data[3] = (uint8_t)(info.chip_revision >> 8); data[4] = (uint8_t)info.chip_revision;
