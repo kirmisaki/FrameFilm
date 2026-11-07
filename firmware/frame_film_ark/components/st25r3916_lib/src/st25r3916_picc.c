@@ -482,15 +482,13 @@ esp_err_t st25r_picc_configure(st25r_handle_t h, const st25r_card_t *card)
 static void picc_task(void *arg)
 {
     st25r_handle_t h = (st25r_handle_t)arg;
+    uint32_t spin = 0;
     while (!h->emu.stop) {
         (void)st25r_picc_update(h);
-        const bool busy = (h->emu.state == ST25R_PICC_READY) || (h->emu.state == ST25R_PICC_ACTIVE);
-        if (busy) {
-            vTaskDelay(0);
-        } else if (h->cfg.pin_irq != GPIO_NUM_NC && !st25r_irq_asserted(h)) {
+        /* 读卡器（尤其 M1 认证）在 SELECT 之后只看几十~几百微秒的响应窗口，
+           OFF/IDLE 时不能按 1ms tick 睡过去；持续轮询并周期性让出 CPU。 */
+        if ((++spin & 0x3FFu) == 0u) {
             vTaskDelay(1);
-        } else if (h->cfg.pin_irq == GPIO_NUM_NC) {
-            vTaskDelay(1); /* no IRQ line: poll the chip every tick */
         } else {
             vTaskDelay(0);
         }
@@ -617,6 +615,24 @@ esp_err_t st25r_picc_transmit(st25r_handle_t h, const uint8_t *data, uint16_t le
     st25r_lock(h);
     const bool ok = st25r_cmd(h, ST25R_CMD_CLEAR_FIFO) && st25r_fifo_write(h, data, len) &&
                     st25r_tx_bytes(h, len, 0) && st25r_cmd(h, ST25R_CMD_TRANSMIT_WITH_CRC);
+    st25r_unlock(h);
+    return ok ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t st25r_picc_transmit_no_crc(st25r_handle_t h, const uint8_t *data, uint16_t len)
+{
+    if (!h || !data || !len || len > ST25R_MAX_FRAME) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!h->emu.running || h->emu.state != ST25R_PICC_ACTIVE) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    st25r_lock(h);
+    /* ISO14443-A 监听方向：芯片按字节自动补奇校验位，这里只要求不追加 CRC
+       （MIFARE 认证第一帧 Nt 就是这种帧）。 */
+    const bool ok = st25r_reg_write8(h, ST25R_REG_ISO14443A, 0x00) &&
+                    st25r_cmd(h, ST25R_CMD_CLEAR_FIFO) && st25r_fifo_write(h, data, len) &&
+                    st25r_tx_bytes(h, len, 0) && st25r_cmd(h, ST25R_CMD_TRANSMIT_WITHOUT_CRC);
     st25r_unlock(h);
     return ok ? ESP_OK : ESP_FAIL;
 }
