@@ -279,6 +279,15 @@
             : '当前完整显示：整张图都能看到，点击改为铺满裁切';
     }
 
+    /* 缩放滑杆跟着实际比例走（滚轮/双指缩放也会回写） */
+    function coverSyncZoom() {
+        var pct = Math.round(m_coverScale * 100);
+        var el = $('wallet-cover-zoom');
+        var val = $('wallet-cover-zoom-val');
+        if (el) el.value = pct;
+        if (val) val.textContent = pct + '%';
+    }
+
     function coverSyncSummary() {
         var has = !!m_coverPayload;
         var thumb = $('wallet-cover-thumb');
@@ -304,7 +313,7 @@
     function coverSyncControls() {
         var has = !!m_coverImage;
         ['wallet-cover-rotate', 'wallet-cover-mode', 'wallet-cover-fit', 'wallet-cover-clear',
-         'wallet-cover-threshold', 'wallet-cover-dither'].forEach(function (id) {
+         'wallet-cover-zoom', 'wallet-cover-threshold', 'wallet-cover-dither'].forEach(function (id) {
             var el = $(id);
             if (el) el.disabled = !has;
         });
@@ -316,10 +325,11 @@
         var hint = $('wallet-cover-hint');
         if (hint) {
             hint.textContent = has
-                ? '默认完整显示整张图；可切「铺满裁切」填满画幅（会裁掉超出部分），再拖拽/缩放微调'
+                ? '默认完整显示整张图；用「缩放」滑杆放大到铺满画幅，再拖拽微调构图'
                 : '导入图片后可预览 1-bit 效果；默认完整显示，不裁切画面';
         }
         coverSyncMode();
+        coverSyncZoom();
     }
 
     /* 打开弹窗前记下新建卡的封面草稿，取消/上传后回滚，互不影响 */
@@ -422,6 +432,7 @@
         ctx.putImageData(out, 0, 0);
         m_coverPayload = payload;
         coverSyncSummary();
+        coverSyncZoom();
     }
 
     function coverLoad(file) {
@@ -571,6 +582,12 @@
         });
         var clearBtn = $('wallet-cover-clear');
         if (clearBtn) clearBtn.addEventListener('click', coverClear);
+        var zoom = $('wallet-cover-zoom');
+        if (zoom) zoom.addEventListener('input', function () {
+            m_coverScale = coverClampScale((+this.value) / 100);
+            coverRender();
+            coverSyncZoom();
+        });
         var threshold = $('wallet-cover-threshold');
         if (threshold) threshold.addEventListener('input', function () {
             m_coverThreshold = +this.value;

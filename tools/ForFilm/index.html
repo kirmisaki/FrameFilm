@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm</title>
-    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=app-version-2">
+    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=app-version-3">
     <link rel="stylesheet" href="css/keyboard.css">
     <!-- ARK 通行证版皮肤：默认不生效，连上 FRAMEFILMARK 后由 js/ark-theme.js 激活 -->
     <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=prts-6">
@@ -1363,6 +1363,10 @@
             <button type="button" class="secondary-button" id="wallet-cover-clear" disabled>清除</button>
         </div>
         <div class="wallet-cover-controls">
+            <label for="wallet-cover-zoom">缩放 <b id="wallet-cover-zoom-val">100%</b></label>
+            <input id="wallet-cover-zoom" type="range" min="20" max="800" step="5" value="100" disabled>
+        </div>
+        <div class="wallet-cover-controls">
             <label for="wallet-cover-threshold">阈值 <b id="wallet-cover-threshold-val">128</b></label>
             <input id="wallet-cover-threshold" type="range" min="1" max="254" step="1" value="128" disabled>
             <label class="wallet-cover-dither"><input id="wallet-cover-dither" type="checkbox" disabled> 抖动</label>
@@ -1427,7 +1431,7 @@
 <script src="js/convert.js?v=e4panel-2"></script>
 <script src="js/frame.js?v=ark-state-2"></script>
 <script src="js/frame-nav.js"></script>
-<script src="js/nfc-wallet.js?v=nfc-5"></script>
+<script src="js/nfc-wallet.js?v=nfc-6"></script>
 <script src="js/batch.js?v=fix-1"></script>
 <script src="js/gif-decoder.js"></script>
 <script src="js/animation.js?v=ark-state-2"></script>

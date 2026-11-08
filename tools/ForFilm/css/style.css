@@ -1548,6 +1548,10 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
 
 /* 封面编辑器（dialog） */
 .wallet-cover-dialog {
+    /* 全局 * 重置把 UA 的 margin:auto 清掉了，这里补回来，保证弹窗在屏幕居中 */
+    position: fixed;
+    inset: 0;
+    margin: auto;
     width: min(560px, 94vw);
     max-height: 92vh;
     padding: 20px;
