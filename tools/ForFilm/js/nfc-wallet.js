@@ -262,6 +262,114 @@
         return Math.max(COVER_SCALE_MIN, Math.min(COVER_SCALE_MAX, s));
     }
 
+    /* 取图片四角的平均色当“边底色”：白底、米白底、浅灰底都能认出来。
+       四角颜色不一致（比如照片直达边缘）或颜色偏暗时返回 null，不做裁边 */
+    function coverBorderBg(d, cw, ch) {
+        var s = Math.max(2, Math.round(Math.min(cw, ch) * 0.04));
+        var corners = [[0, 0], [cw - s, 0], [0, ch - s], [cw - s, ch - s]];
+        var lo = [255, 255, 255], hi = [0, 0, 0];
+        var sum = [0, 0, 0];
+        for (var i = 0; i < corners.length; i++) {
+            var cx = corners[i][0], cy = corners[i][1];
+            var avg = [0, 0, 0], n = 0;
+            for (var y = cy; y < cy + s; y++) {
+                for (var x = cx; x < cx + s; x++) {
+                    var o = (y * cw + x) * 4;
+                    if (d[o + 3] < 12) continue;
+                    avg[0] += d[o]; avg[1] += d[o + 1]; avg[2] += d[o + 2];
+                    n++;
+                }
+            }
+            if (!n) return null;
+            avg[0] /= n; avg[1] /= n; avg[2] /= n;
+            for (var c = 0; c < 3; c++) {
+                if (avg[c] < 200) return null;      /* 角上是深色，说明图直达边缘 */
+                if (avg[c] < lo[c]) lo[c] = avg[c];
+                if (avg[c] > hi[c]) hi[c] = avg[c];
+                sum[c] += avg[c] / corners.length;
+            }
+        }
+        for (var k = 0; k < 3; k++) {
+            if (hi[k] - lo[k] > 24) return null;    /* 四角颜色差太多，不是统一底色 */
+        }
+        return sum;
+    }
+
+    /* 找出图片里真正的画面范围（忽略底色边），用于导入时自动取景。
+       逐行逐列统计非背景像素，避免 JPEG 噪点或角落杂色把包围盒撑满整张图。 */
+    function coverContentBox(img) {
+        var iw = img.width, ih = img.height;
+        if (!iw || !ih) return null;
+        var max = 480;
+        var k = Math.min(1, max / Math.max(iw, ih));
+        var cw = Math.max(1, Math.round(iw * k));
+        var ch = Math.max(1, Math.round(ih * k));
+        var c = document.createElement('canvas');
+        c.width = cw; c.height = ch;
+        var x = c.getContext('2d');
+        x.drawImage(img, 0, 0, cw, ch);
+        var d;
+        try { d = x.getImageData(0, 0, cw, ch).data; } catch (e) { return null; }
+        var border = coverBorderBg(d, cw, ch);
+        var rowHits = [], colHits = [];
+        for (var i = 0; i < ch; i++) rowHits[i] = 0;
+        for (var j = 0; j < cw; j++) colHits[j] = 0;
+        for (var y = 0; y < ch; y++) {
+            for (var px = 0; px < cw; px++) {
+                var o = (y * cw + px) * 4;
+                var bg = d[o + 3] < 12;
+                if (!bg) {
+                    if (border) {
+                        bg = Math.abs(d[o] - border[0]) <= 12 &&
+                            Math.abs(d[o + 1] - border[1]) <= 12 &&
+                            Math.abs(d[o + 2] - border[2]) <= 12;
+                    } else {
+                        bg = d[o] >= 240 && d[o + 1] >= 240 && d[o + 2] >= 240;
+                    }
+                }
+                if (bg) continue;
+                rowHits[y]++;
+                colHits[px]++;
+            }
+        }
+        var rowMin = Math.max(2, Math.round(cw * 0.01));
+        var colMin = Math.max(2, Math.round(ch * 0.01));
+        var minX = -1, minY = -1, maxX = -1, maxY = -1;
+        for (var y2 = 0; y2 < ch; y2++) {
+            if (rowHits[y2] >= rowMin) { if (minY < 0) minY = y2; maxY = y2; }
+        }
+        for (var x2 = 0; x2 < cw; x2++) {
+            if (colHits[x2] >= colMin) { if (minX < 0) minX = x2; maxX = x2; }
+        }
+        if (minX < 0 || minY < 0) return null;
+        /* 留 1 像素余量，避免把贴边的锐利轮廓切掉 */
+        minX = Math.max(0, minX - 1); minY = Math.max(0, minY - 1);
+        maxX = Math.min(cw - 1, maxX + 1); maxY = Math.min(ch - 1, maxY + 1);
+        return { x: minX / k, y: minY / k, w: (maxX - minX + 1) / k, h: (maxY - minY + 1) / k };
+    }
+
+    /* 导入时把画面（去掉白边后）铺满画布；没有明显白边就保持完整显示 */
+    function coverAutoFrame() {
+        var img = m_coverImage;
+        if (!img) return false;
+        var box = coverContentBox(img);
+        if (!box || box.w < 8 || box.h < 8) return false;
+        if (box.w >= img.width * 0.94 && box.h >= img.height * 0.94) return false;
+        var coverFit = Math.max(COVER_W / img.width, COVER_H / img.height);
+        if (!coverFit) return false;
+        /* 取较大的放大倍数：保证画布不留白（多出来的部分裁掉），再把画面中心对到画布中心。
+           多放 3% 是为了把画面边缘的抗锯齿过渡推出画布，否则缩放到 1-bit 后边上会留一条白缝 */
+        var fitBox = Math.max(COVER_W / box.w, COVER_H / box.h) * 1.03;
+        var scale = coverClampScale(fitBox / coverFit);
+        var eff = coverFit * scale;
+        /* 以“铺满”为基准缩放，缩放滑杆的 100% 即铺满画布，之后还能继续放大 */
+        m_coverFitMode = 'cover';
+        m_coverScale = scale;
+        m_coverOffX = -((box.x + box.w / 2) - img.width / 2) * eff;
+        m_coverOffY = -((box.y + box.h / 2) - img.height / 2) * eff;
+        return true;
+    }
+
     function coverReset() {
         m_coverRot = 0;
         m_coverScale = 1;
@@ -325,8 +433,8 @@
         var hint = $('wallet-cover-hint');
         if (hint) {
             hint.textContent = has
-                ? '默认完整显示整张图；用「缩放」滑杆放大到铺满画幅，再拖拽微调构图'
-                : '导入图片后可预览 1-bit 效果；默认完整显示，不裁切画面';
+                ? '导入时会自动裁掉白边并铺满画幅；可拖动 / 缩放微调，或切到「完整显示」看整张图'
+                : '导入图片后可预览 1-bit 效果；有白边会自动裁掉并铺满画布';
         }
         coverSyncMode();
         coverSyncZoom();
@@ -443,9 +551,12 @@
             img.onload = function () {
                 m_coverImage = img;
                 coverReset();
+                var framed = coverAutoFrame();
                 coverRender();
                 coverSyncControls();
-                walletToast('封面已导入，可拖动 / 缩放调整构图');
+                walletToast(framed
+                    ? '封面已导入：已自动裁掉白边并铺满画幅，可拖动 / 缩放微调'
+                    : '封面已导入，可拖动 / 缩放调整构图');
             };
             img.onerror = function () { walletToast('封面图片读取失败', true); };
             img.src = ev.target.result;
@@ -569,7 +680,11 @@
         var modeBtn = $('wallet-cover-mode');
         if (modeBtn) modeBtn.addEventListener('click', function () {
             if (!m_coverImage) return;
+            /* 切换适配方式时回到该方式的 100%，否则两种基准混在一起会放大过头 */
             m_coverFitMode = m_coverFitMode === 'cover' ? 'contain' : 'cover';
+            m_coverScale = 1;
+            m_coverOffX = 0;
+            m_coverOffY = 0;
             coverRender();
             coverSyncMode();
         });
