@@ -33,7 +33,7 @@ enum {APP_EVT_INPUT,APP_EVT_TIMER,APP_EVT_SWITCH,APP_EVT_SYS,APP_EVT_BOOT,APP_EV
 enum {APP_INPUT_CONSUMED,APP_INPUT_PASS};
 typedef int app_id_t; typedef int input_press_type_t;
 typedef struct {int type,input;uint32_t cmd;void *data;uint8_t payload[64],len;} app_event_t;
-typedef struct {int layer,tick_ms; void (*on_enter)(void);void (*on_exit)(void);void (*on_tick)(void);void (*on_event)(const app_event_t*);} app_entry_t;
+typedef struct {int layer,tick_ms,sleep_face; void (*on_enter)(void);void (*on_exit)(void);void (*on_tick)(void);void (*on_event)(const app_event_t*);} app_entry_t;
 typedef struct {int dummy;} app_ui_ops_t;
 static const app_entry_t *m_app_registry[7];
 static int m_app_running,m_current_app,m_boot_page,m_sleep_page,m_boot_ui_shown,m_boot_next_app,m_boot_evt_pending;
@@ -46,6 +46,8 @@ static void app_handle_event(const app_event_t*);
 static void app_manager_boot_end(void);
 static int app_state_save(void){return 0;}
 static int ui_core_stop_for_sleep(void){return 0;}
+static int app_sleep_keeps_screen(void){return 0;}
+static void app_sleep_present(int a,int b){(void)a;(void)b;}
 static int app_do_switch_target(int id,const char *f){(void)id;(void)f;return 0;}
 static void app_do_switch(int id){switches++;m_current_app=id;m_boot_page=0;m_app_running=1;}
 static void service_ble_send_resp(int a,void*b,int c){(void)a;(void)b;(void)c;}

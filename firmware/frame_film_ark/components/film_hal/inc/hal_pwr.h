@@ -93,6 +93,16 @@ extern void hal_pwr_enter_sleep(void);
 extern void hal_pwr_set_timer_wakeup(uint32_t minutes);
 
 /**
+ * @brief 查询已设置的定时器唤醒间隔
+ *
+ * 睡眠卡页脚要显示"会不会自动醒"，必须以实际配下去的唤醒源为准：
+ * 低电入睡不设定时唤醒，若照参数推断会显示一个不会发生的时刻。
+ *
+ * @return 唤醒间隔（分钟）；0 表示未启用定时唤醒
+ */
+extern uint32_t hal_pwr_get_timer_wakeup(void);
+
+/**
  * @brief 检查唤醒原因
  * 
  * 该函数用于检查设备是否从深度睡眠中唤醒，并返回唤醒原因。

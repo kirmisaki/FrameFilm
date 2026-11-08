@@ -140,6 +140,7 @@ static void app_do_switch(app_id_t id);
 static uint8_t app_do_switch_target(app_id_t id, const char *filename);
 static void app_menu_notice(const char *why);
 static void app_manager_sleep_from_app(void);
+static int app_sleep_keeps_screen(void);
 static int app_param_ch_route(uint8_t ch, const uint8_t *data, uint8_t len);
 static app_input_result_t app_manager_process_input(input_press_type_t key);
 static void app_input_dispatch(input_press_type_t key);
@@ -486,6 +487,14 @@ static void app_handle_event(const app_event_t *e)
         /* 休眠前以当前卡进入模拟，供 monitor 保持供电并武装 IRQ。 */
         app_wallet_sleep_prepare();
 #endif
+        /* 闲置自动休眠 / 低电入睡：按当前 app 的声明补画休眠卡。
+           手动路径已在 app_sleep_run() 里画过（was_sleep_page 为真），不重复画。
+           必须排在 ui_core_stop_for_sleep() 之前：停屏会拆掉 UI 页面，
+           卡片要在 UI 还活着时建出来；之后停屏只断电不清屏，卡留在面板上。 */
+        if(!was_sleep_page && !app_sleep_keeps_screen())
+        {
+            app_sleep_present(1, 1);
+        }
         if(ui_core_stop_for_sleep() == 0)
             atomic_store(&m_sleep_stopped, true);
         else
@@ -822,17 +831,33 @@ static uint8_t app_do_switch_target(app_id_t id, const char *filename)
 }
 
 /**
- * @brief 从 app 内进入休眠（长按确认键）：**不出示休眠卡**，屏上保持当前 app 的画面
+ * @brief 当前 app 睡下去以后是否保持画面（app_entry_t.sleep_face）
+ *
+ * 未注册 / 未声明一律按"画休眠卡"处理（枚举默认值 0）。
+ */
+static int app_sleep_keeps_screen(void)
+{
+    const app_entry_t *app = m_app_registry[m_current_app];
+    return (app != NULL) && (app->sleep_face == APP_SLEEP_FACE_KEEP);
+}
+
+/**
+ * @brief 从 app 内进入休眠（长按确认键）：睡后画面由 app 的 sleep_face 声明
+ *
+ * 图片/动图是 KEEP —— 屏上那幅内容本来就是用户要留的；其余 app 默认 CARD，
+ * 改画休眠卡。手动、闲置自动休眠、低电三条路径共用同一份声明。
  *
  * 先停当前 app 有两层原因：
  *   ① 让它停止绘制 —— 动图在按帧率不停推帧、图片可能正在翻页；
  *   ② app_stop_current() 对 UI 层是**同步**等 page_exit 完成的，停完之后不可能有
- *      半帧在途。所以这条路径不必像"画休眠卡"那样按时间兜一帧的时长（见 app_sleep.h），
- *      长按松手就能立刻断电。
+ *      半帧在途。所以"留画面"这条路径不必像"画休眠卡"那样按时间兜一帧的时长
+ *      （见 app_sleep.h），长按松手就能立刻断电。
  * 停 app 不会清屏：UI 层只是关掉输出闸门（屏上留最后一帧），DIRECT 层 on_exit 也不绘制。
  */
 static void app_manager_sleep_from_app(void)
 {
+    uint8_t show_card;
+
     /* 即使不画休眠卡，也必须冻结后续事件直到 deep sleep。 */
     m_sleep_page = 1;
 #if (SYS_NFC_ENABLE == 1)
@@ -846,7 +871,8 @@ static void app_manager_sleep_from_app(void)
     {
         app_state_save();   // 睡前的兜底落盘（幂等，与切页时同一套）
     }
-    app_sleep_run(0);
+    show_card = app_sleep_keeps_screen() ? 0 : 1;
+    app_sleep_run(show_card);
 }
 
 static app_input_result_t app_manager_process_input(input_press_type_t key)
@@ -920,7 +946,8 @@ static app_input_result_t app_manager_process_input(input_press_type_t key)
         return APP_INPUT_PASS;   // n16r8 的非卡包 app：双击无动作，返回统一走 BACK
     }
 
-    /* 长按确认键 = 手动休眠，且**不出示休眠卡**：屏上保持当前 app 的画面。
+    /* 长按确认键 = 手动休眠，睡后画面由当前 app 的 sleep_face 决定
+       （图片/动图留当前画面，其余改画休眠卡）。
        请求返回后仍冻结 app，等待 monitor 进入 deep sleep。 */
     if(key == INPUT_PRESS_LONG)
     {

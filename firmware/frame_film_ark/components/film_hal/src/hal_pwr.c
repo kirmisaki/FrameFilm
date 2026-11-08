@@ -187,6 +187,11 @@ void hal_pwr_set_timer_wakeup(uint32_t minutes)
     }
 }
 
+uint32_t hal_pwr_get_timer_wakeup(void)
+{
+    return (uint32_t)(m_timer_wakeup_us / (60ULL * 1000000ULL));
+}
+
 bool hal_pwr_check_wakeup(void)
 {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();

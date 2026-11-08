@@ -274,7 +274,7 @@ void app_sleep_set_info(uint8_t auto_on, uint16_t minutes)
     m_minutes = minutes;
 }
 
-void app_sleep_run(uint8_t show_card)
+void app_sleep_present(uint8_t show_card, uint8_t from_armed_timer)
 {
     if(show_card)
     {
@@ -285,10 +285,19 @@ void app_sleep_run(uint8_t show_card)
         }
         else
         {
-            /* 1. 参数在 app 任务侧读好（页面在 ui_task，读不到 g_service_param）。
-                  判据与 monitor 任务侧设置定时唤醒的条件必须一致，否则页脚会说谎。 */
-            app_sleep_set_info((g_service_param.sleep.sleep_auto && g_service_param.sleep.sleep_time > 0) ? 1 : 0,
-                               g_service_param.sleep.sleep_time);
+            uint32_t wake_min;
+
+            /* 1. 参数在 app 任务侧读好（页面在 ui_task，读不到这些状态）。
+                  页脚要显示"会不会自动醒"：
+                  - 自动/低电路径（from_armed_timer）直接问实际配下去的唤醒源 ——
+                    低电入睡不设定时唤醒，照参数推断会显示一个不会发生的时刻；
+                  - 手动路径（app_sleep_run）此刻 monitor 还没配唤醒源，只能按参数推。 */
+            if(from_armed_timer)
+                wake_min = hal_pwr_get_timer_wakeup();
+            else
+                wake_min = (g_service_param.sleep.sleep_auto && g_service_param.sleep.sleep_time > 0)
+                           ? g_service_param.sleep.sleep_time : 0;
+            app_sleep_set_info(wake_min > 0 ? 1 : 0, (uint16_t)wake_min);
 
             /* 2. 出示休眠卡：ui_task 建页并做全帧刷新（异步，故第 3 步按时间兜） */
             app_manager_sleep_show(app_sleep_ops());
@@ -297,6 +306,11 @@ void app_sleep_run(uint8_t show_card)
 
     /* 3. 等卡片画完（只画了卡才等）+ 唤醒条件解除 */
     sleep_wait_ready(show_card);
+}
+
+void app_sleep_run(uint8_t show_card)
+{
+    app_sleep_present(show_card, 0);
 
     /* 4. 交给 monitor 任务走上既有的低功耗路径（停心跳 → 逐个 deinit → deep sleep） */
     sys_logi(APP_SLEEP_TAG, "entering low power (card=%u)", (unsigned)show_card);

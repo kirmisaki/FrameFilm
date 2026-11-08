@@ -120,6 +120,9 @@ const app_entry_t g_app_image_entry = {
     .enter_block_reason = app_image_enter_block_reason,
     .prepare_open = app_image_prepare_open,
 
+    /* 睡后留画面：屏上这张照片本来就是用户要挂着的，不该被休眠卡盖掉 */
+    .sleep_face = APP_SLEEP_FACE_KEEP,
+
     /* 状态持久化：休眠唤醒后仍能记住播放模式 / 间隔 / 当前下标 */
     .state = &m_image,
     .state_size = (uint16_t)sizeof(m_image),

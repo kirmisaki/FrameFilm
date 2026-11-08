@@ -153,6 +153,7 @@ typedef struct {
     /* ... 既有字段 ... */
     app_layer_t layer;                  // 该 app 跑在哪一层
     const app_ui_ops_t *ui_ops;         // layer == APP_LAYER_UI 时必填
+    app_sleep_face_t sleep_face;        // 睡后画休眠卡（默认）/ 留当前画面
 } app_entry_t;
 ```
 
@@ -165,6 +166,7 @@ typedef struct {
 | `on_tick` / `tick_ms` | **不调用**（页面内部用 LVGL 定时器，见 §7.3） | 照常 |
 | `on_event` | 仍会调用，但**运行在 app_task**，禁止碰 `lv_*`；需用 `ui_core_post()` 投递 | 照常 |
 | `data_dir` / 状态持久化 / 参数通道 | 照常可用 | 照常可用 |
+| `sleep_face` | 两层一致：`APP_SLEEP_FACE_CARD`（默认，画休眠卡）/ `APP_SLEEP_FACE_KEEP`（留当前画面，图片/动图用） | 同左 |
 
 ### 5.2 UI app 侧：页面契约
 
@@ -752,7 +754,7 @@ static void clock_timer_cb(lv_timer_t *t)
     - **选中卡片左下角切角**：设计稿是 9×9 的 45° 拉削（`.chamfer-bl`）。`lv_obj_set_style_clip_corner()` 对 radius=0 的方角没有任何效果（原来那行等于没写），而 LVGL 边框宽度是全边统一的、也没有 `clip-path`；改为程序生成一张 9×9 白三角 L8 位图（`0xFF` 白 / `0x00` 黑，与 ui_assets 的 L8 约定一致），挂在**轮播容器**下用 `LV_OBJ_FLAG_IGNORE_LAYOUT` 自己定位 —— 卡片的子对象会被裁到内容区（3px 描边之内），盖不住外角
 15. **按键语义重排：长按=休眠、双击=退出 app（2026-09-19）**：✅ 已完成
     - **长按确认键 = 手动休眠**（全局，三机型一致，不看休眠模式开关）；**双击确认键 = 从 app 退回主菜单**（原长按语义）。触发点：`app_manager_process_input()`
-    - 两处只差"要不要画休眠卡"：主菜单长按 → `app_sleep_run(1)`（画卡，这帧要留到唤醒）；app 内长按 → `app_manager_sleep_from_app()` → `app_sleep_run(0)`（不画卡，屏上保持 app 画面）。**不画卡这条不需要等地板时间**：调用方先 `app_stop_current()`，它让 app 停止绘制、且对 UI 层是同步等 page_exit 完成的 → 之后不可能有半帧在途，故只等唤醒条件解除，松手即断电
+    - 睡后画面由每个 app 的 `app_entry_t.sleep_face` 声明：图片/动图 `APP_SLEEP_FACE_KEEP`（留当前画面），其余 app 与主菜单默认 `APP_SLEEP_FACE_CARD`（改画休眠卡）。手动长按、闲置自动休眠、低电三条路径统一按它裁决：主菜单长按 → `app_sleep_run(1)`；app 内长按 → `app_manager_sleep_from_app()` 按 `sleep_face` 传 0/1；自动/低电由 `APP_SLEEP_STOP_CMD` 在停屏前补画（`app_sleep_present()`）。**不画卡这条不需要等地板时间**：调用方先 `app_stop_current()`，它让 app 停止绘制、且对 UI 层是同步等 page_exit 完成的 → 之后不可能有半帧在途，故只等唤醒条件解除，松手即断电
     - 新增 `INPUT_PRESS_DOUBLE`（`hal_input.h`）：PRO/MAX 用 iot_button 的 `BUTTON_DOUBLE_CLICK`；STD 的 esp-idf-lib 只有"单击"事件，故在 `hal_encoder.c` 里用 `esp_timer` one-shot 做配对窗口（窗口内第二次 → 双击，到期 → 补发单击）
     - **⚠️ 窗口值是个坑（上机踩过）**：`BUTTON_DOUBLE_CLICK_WINDOW_MS = 350`（STD 对应的 `ENCODER_DOUBLE_CLICK_MS` 同值）。按钮库把 `short_press_time` 同时当"单击结算窗口"和"双击配对窗口"（`iot_button.c` state 2/3），而项目原来给它的是 `BUTTON_SHORT_PRESS_TIME_MS = 50`（消抖阈值），比人手的双击间隔还短 → 实测两次单击相隔 230ms 就没配上，表现为"双击按不出来"。所以确认键单独用 350，上/下键仍是 50（它们不认双击，单击保持灵敏）。代价：确认键单击下发晚一个窗口
     - 各页底部提示行同步：菜单 `... HOLD SLEEP`、时钟 `DBL ENTER EXIT   HOLD SLEEP`、设置 `UP/DOWN  ENTER TOGGLE  DBL EXIT  HOLD SLEEP`

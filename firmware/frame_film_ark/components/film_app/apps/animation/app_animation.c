@@ -132,6 +132,9 @@ const app_entry_t g_app_animation_entry = {
     .on_tick = app_animation_on_tick,
     .enter_block_reason = app_animation_enter_block_reason,
 
+    /* 睡后留画面：停在当前动图的最后一帧（双面板时才真正有意义） */
+    .sleep_face = APP_SLEEP_FACE_KEEP,
+
     /* 状态持久化：休眠唤醒后仍能记住播放模式 / 速度 / 循环间隔 / 当前文件 */
     .state = &m_anim,
     .state_size = (uint16_t)sizeof(m_anim),

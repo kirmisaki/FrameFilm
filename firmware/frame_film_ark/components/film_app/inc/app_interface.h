@@ -89,6 +89,21 @@ typedef enum {
 } app_layer_t;
 
 /**
+ * @brief 休眠后画面
+ *
+ * 每个 app 声明自己睡下去以后屏上留什么。手动长按、闲置自动休眠、低电入睡
+ * 三条路径都按此字段裁决：
+ * - CARD：改画休眠卡（默认；菜单 / 模板 / 时钟 / 设置 / 通行证 / 卡包）
+ * - KEEP：就着当前画面入睡（图片 / 动图 —— 屏上那幅内容本来就是用户要留的）
+ *
+ * 新增 app 不写即默认画卡；要改睡后表现只改自己的 app_entry_t，不用动调度器。
+ */
+typedef enum {
+    APP_SLEEP_FACE_CARD = 0,   // 画休眠卡（默认）
+    APP_SLEEP_FACE_KEEP,       // 保持当前画面
+} app_sleep_face_t;
+
+/**
  * @brief 应用事件类型
  */
 typedef enum {
@@ -189,6 +204,9 @@ typedef struct {
      *   on_event          → 仍调用，但运行在 app_task，禁止触碰 lv_*，需用 ui_core_post() 投递
      *   keys              → 仅简易切换模式（SIMPLE）用其做按键避让，声明哪些键归页面自己
      */
+
+    /* ---- 休眠后画面 ---- */
+    app_sleep_face_t sleep_face;    // 默认 APP_SLEEP_FACE_CARD（省略不写即画休眠卡）
 
     /* ---- 状态持久化（框架负责 NVS 读写，app 零 NVS 代码） ---- */
     void *state;                 // 指向 app 状态结构体；NULL 或 state_size=0 表示不持久化
