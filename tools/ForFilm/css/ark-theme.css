@@ -17,6 +17,8 @@ body.theme-ark {
 body.theme-ark .container{background:transparent}
 body.theme-ark .app-head{background:transparent;border:0;border-bottom:1px solid var(--ark-line);box-shadow:none;gap:20px;padding:24px 0;flex-wrap:wrap}
 body.theme-ark #appTitle{color:var(--ark-ink);font:600 clamp(26px,3vw,40px)/1.15 var(--ark-display);letter-spacing:.04em;margin:0}
+body.theme-ark .app-foot{color:var(--ark-ink-3);font-family:var(--ark-mono);letter-spacing:.08em;border-top:1px solid var(--ark-line);margin-top:24px;padding-top:14px}
+body.theme-ark .app-foot a:hover{color:var(--ark-ink)}
 body.theme-ark .ark-brand{display:flex;align-items:center;gap:12px;color:var(--ark-ink);font:700 11px/1.4 var(--ark-mono);letter-spacing:.12em}
 body.theme-ark .ark-brand img{width:36px;height:42px;object-fit:contain;filter:brightness(0) invert(1)}
 body.theme-ark .ark-brand small{display:block;color:var(--ark-ink-2);font-size:9px;margin-top:4px}

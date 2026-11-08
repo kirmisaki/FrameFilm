@@ -98,6 +98,29 @@ body {
     line-height: 1.25;
 }
 
+/* 页脚：网页版本 + 提交号 */
+.app-foot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    flex-wrap: wrap;
+    padding: 10px 0 2px;
+    font-family: var(--font-num);
+    font-size: 11px;
+    letter-spacing: .3px;
+    color: var(--ink-soft);
+    text-align: center;
+}
+
+.app-foot a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dashed currentColor;
+}
+
+.app-foot a:hover { color: var(--ink); }
+
 .batt-chip {
     display: flex;
     align-items: center;

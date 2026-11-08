@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm</title>
-    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=wallet-cover-2">
+    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=app-version-2">
     <link rel="stylesheet" href="css/keyboard.css">
     <!-- ARK 通行证版皮肤：默认不生效，连上 FRAMEFILMARK 后由 js/ark-theme.js 激活 -->
-    <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=prts-4">
+    <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=prts-6">
     <link rel="stylesheet" href="css/ark-login.css?v=prts-4">
     <!-- 动画工坊样式（独立页） -->
     <link rel="stylesheet" href="css/animation.css">
@@ -1296,6 +1296,12 @@
                 </div>
             </div>
         </div>
+
+        <!-- 页脚：网页版本 + 提交号（提交号由 GitHub API 自动刷新，离线时用内置回退值） -->
+        <footer class="app-foot">
+            ForFilm <span id="appVersion">v1.0.0</span> · commit
+            <a id="appCommit" href="https://github.com/kirmisaki/FrameFilm/commits/main" target="_blank" rel="noopener" title="查看仓库提交">0c4b730</a>
+        </footer>
     </div>
 
     <!-- 底部导航 -->
@@ -1421,14 +1427,14 @@
 <script src="js/convert.js?v=e4panel-2"></script>
 <script src="js/frame.js?v=ark-state-2"></script>
 <script src="js/frame-nav.js"></script>
-<script src="js/nfc-wallet.js?v=nfc-4"></script>
+<script src="js/nfc-wallet.js?v=nfc-5"></script>
 <script src="js/batch.js?v=fix-1"></script>
 <script src="js/gif-decoder.js"></script>
 <script src="js/animation.js?v=ark-state-2"></script>
 <!-- 串口烧录：esptool-js（内嵌，官方 bundle 转经典脚本，挂 window.ESPTOOL）+ 本仓库的烧录流程 -->
 <script src="js/esptool-js.js"></script>
 <script src="js/serial-flash.js?rev=classic-online-1"></script>
-<script src="js/main.js"></script>
+<script src="js/main.js?rev=app-version-2"></script>
 <script src="js/ark-theme.js?v=prts-3"></script>
 <script src="js/ark-controls.js?v=ark-state-2"></script>
 </body>

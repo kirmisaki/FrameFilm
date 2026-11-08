@@ -245,7 +245,7 @@
     var m_coverOffY = 0;
     var m_coverThreshold = 128;
     var m_coverDither = false;
-    var m_coverFitMode = 'cover';   /* cover = 铺满画幅，contain = 完整显示 */
+    var m_coverFitMode = 'contain';   /* contain = 完整显示不裁切，cover = 铺满裁切 */
     var m_coverPayload = null;
     var m_coverTargetId = 0;
     var m_coverDialogMode = 'create';   /* create = 新卡封面草稿，target = 改已有卡封面 */
@@ -267,16 +267,16 @@
         m_coverScale = 1;
         m_coverOffX = 0;
         m_coverOffY = 0;
-        m_coverFitMode = 'cover';
+        m_coverFitMode = 'contain';
     }
 
     function coverSyncMode() {
         var btn = $('wallet-cover-mode');
         if (!btn) return;
-        btn.textContent = m_coverFitMode === 'cover' ? '铺满画幅' : '完整显示';
+        btn.textContent = m_coverFitMode === 'cover' ? '铺满裁切' : '完整显示';
         btn.title = m_coverFitMode === 'cover'
-            ? '当前铺满画幅（会裁掉超出部分），点击改为完整显示'
-            : '当前完整显示（会留白），点击改为铺满画幅';
+            ? '当前铺满画幅：超出部分会被裁掉，点击改为完整显示'
+            : '当前完整显示：整张图都能看到，点击改为铺满裁切';
     }
 
     function coverSyncSummary() {
@@ -316,8 +316,8 @@
         var hint = $('wallet-cover-hint');
         if (hint) {
             hint.textContent = has
-                ? '拖动移动 · 滚轮 / 双指缩放 · 旋转调整构图；预览即最终上传的 1-bit 结果'
-                : '导入图片后可预览 1-bit 效果；默认铺满画幅，可切到完整显示';
+                ? '默认完整显示整张图；可切「铺满裁切」填满画幅（会裁掉超出部分），再拖拽/缩放微调'
+                : '导入图片后可预览 1-bit 效果；默认完整显示，不裁切画面';
         }
         coverSyncMode();
     }
