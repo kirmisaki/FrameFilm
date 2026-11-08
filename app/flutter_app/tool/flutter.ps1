@@ -10,6 +10,12 @@ if ($FlutterArguments.Count -ge 2 -and $FlutterArguments[0] -eq 'build' -and
     if ($FlutterArguments[1] -eq 'web') { $FlutterArguments += '--debug' }
     if ($FlutterArguments[1] -eq 'apk') { $FlutterArguments += '--release' }
 }
+# App updates must follow the distribution signing channel, independently of firmware.
+if ($FlutterArguments.Count -ge 2 -and $FlutterArguments[0] -eq 'build' -and
+    $FlutterArguments[1] -eq 'apk' -and $env:FRAMEFILM_APP_RELEASE_REPO -and
+    !($FlutterArguments -like '--dart-define=FRAMEFILM_APP_RELEASE_REPO=*')) {
+    $FlutterArguments += '--dart-define=FRAMEFILM_APP_RELEASE_REPO=' + $env:FRAMEFILM_APP_RELEASE_REPO
+}
 $storage = if ($env:FRAMEFILM_DEV_ROOT) { $env:FRAMEFILM_DEV_ROOT } else { 'D:\dev-tool' }
 $app = Split-Path $PSScriptRoot -Parent
 $flutter = Join-Path $storage 'FrameFilm-toolchains\flutter'
