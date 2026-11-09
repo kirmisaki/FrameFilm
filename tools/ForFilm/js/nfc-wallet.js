@@ -76,6 +76,22 @@
         return !!(window.ArkDevice && window.ArkDevice.connected());
     }
 
+    // Bit 7 is advertised only by N16R8 firmware with the current wallet protocol.
+    function hasWalletCapability(caps) {
+        return !!caps && caps.length === 5 && caps[0] === 1 && (caps[4] & 0x80) !== 0;
+    }
+
+    function setCapabilities(caps) {
+        var nav = document.querySelector('.nav-item[data-page="wallet-page"]');
+        if (!nav) return;
+        nav.hidden = !connected() || !hasWalletCapability(caps);
+        if (nav.hidden && nav.classList.contains('active')) {
+            var dialog = $('wallet-cover-dialog');
+            if (dialog && dialog.open) dialog.close();
+            document.querySelector('.nav-item[data-page="convert-page"]')?.click();
+        }
+    }
+
     function setConnection(text) {
         var el = $('wallet-connection');
         if (el) el.textContent = text;
@@ -101,7 +117,7 @@
         if (!window.ArkDevice) return Promise.reject(new Error('ArkDevice 未加载'));
         return window.ArkDevice.run(label, async function (ctx) {
             var caps = await ctx.request(0x59, new Uint8Array(), 2500).catch(function () { return null; });
-            if (caps && caps.length === 5 && caps[0] === 1 && (caps[4] & 0x80) !== 0) return fn(ctx);
+            if (hasWalletCapability(caps)) return fn(ctx);
             throw new Error('此固件未确认支持 NFC 卡包（需 N16R8）');
         });
     }
@@ -820,5 +836,5 @@
     }
 
     document.addEventListener('DOMContentLoaded', bindButtons);
-    window.NfcWallet = { refresh: refresh };
+    window.NfcWallet = { refresh: refresh, setCapabilities: setCapabilities };
 })();

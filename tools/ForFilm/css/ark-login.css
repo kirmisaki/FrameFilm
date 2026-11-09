@@ -1,5 +1,7 @@
 /* The light login scene is intentionally separate from the dark Ark workbench. */
+html:has(> body.ark-login-open) { overflow: hidden; }
 body.ark-login-open { overflow: hidden; }
+.ark-login { color-scheme: only light; }
 .ark-login { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; color: #20262a; background: #e9edef; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; overflow: auto; overscroll-behavior: contain; box-sizing: border-box; padding: max(32px, env(safe-area-inset-top)) max(4vw, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(4vw, env(safe-area-inset-left)); }
 .ark-login[open] { display: grid; grid-template-rows: auto auto minmax(min-content, 1fr) auto; }
 .ark-login::backdrop { background: #e9edef; opacity: 1; transition: opacity .25s ease; }

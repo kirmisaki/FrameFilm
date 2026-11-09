@@ -7,26 +7,26 @@
 /* 文件清单：文件名 + 大小 + 写入偏移 */
 #serial-flash-card .fw-file-list {
     margin: 10px 0 0;
-    border: var(--line, 1px) solid var(--ink, #222);
-    border-radius: var(--r-2, 10px);
-    background: var(--paper-2, #fffdf5);
+    border: var(--line) solid var(--ark-line, var(--ink));
+    border-radius: var(--r-xs);
+    background: var(--cream-2);
     overflow: hidden;
 }
 
 #serial-flash-card .fw-file-empty {
     padding: 10px 12px;
     font-size: 13px;
-    color: var(--ink-3, #8a8578);
+    color: var(--ink-soft);
 }
 
 #serial-flash-card .fw-file-row {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 10px;
     align-items: center;
     padding: 8px 12px;
     font-size: 13px;
-    border-bottom: var(--line, 1px) dashed var(--line-2, #e3ddcd);
+    border-bottom: 1px dashed color-mix(in srgb, var(--ink) 26%, transparent);
 }
 
 #serial-flash-card .fw-file-row:last-of-type {
@@ -41,7 +41,7 @@
 }
 
 #serial-flash-card .fw-file-size {
-    color: var(--ink-3, #8a8578);
+    color: var(--ink-soft);
     font-variant-numeric: tabular-nums;
 }
 
@@ -55,8 +55,8 @@
 #serial-flash-card .fw-file-total {
     padding: 7px 12px;
     font-size: 12.5px;
-    color: var(--ink-3, #8a8578);
-    background: var(--paper-3, #f6f1e4);
+    color: var(--ink-soft);
+    background: var(--cream);
 }
 
 /* 选项行：波特率 / 整片擦除 / 合并镜像 */
@@ -64,25 +64,30 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px 16px;
-    align-items: center;
+    align-items: end;
     margin-top: 10px;
     font-size: 13px;
 }
 
 #serial-flash-card .fw-option {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    white-space: nowrap;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
 }
 
-#serial-flash-card .fw-option select {
-    padding: 5px 8px;
-    border: var(--line, 1px) solid var(--ink, #222);
-    border-radius: var(--r-1, 8px);
-    background: var(--paper-2, #fffdf5);
-    color: inherit;
-    font-size: 13px;
+#serial-flash-card .fw-select-field {
+    flex: 1 1 175px;
+    min-width: 0;
+    margin: 0;
+}
+
+#serial-flash-card .action-controls:has(.fw-select-field) {
+    align-items: end;
+    margin-top: var(--sp-2);
 }
 
 /* 日志框：等比传输区窄一点，可滚动 */
@@ -91,10 +96,10 @@
     max-height: 180px;
     overflow-y: auto;
     padding: 9px 11px;
-    border: var(--line, 1px) solid var(--ink, #222);
-    border-radius: var(--r-2, 10px);
-    background: var(--ink, #222);
-    color: var(--paper-2, #f4f1e6);
+    border: var(--line) solid var(--ark-line, var(--ink));
+    border-radius: var(--r-xs);
+    background: var(--log-bg);
+    color: var(--log-ink);
     font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
     font-size: 12px;
     line-height: 1.5;

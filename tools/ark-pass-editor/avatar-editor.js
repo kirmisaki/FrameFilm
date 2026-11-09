@@ -72,11 +72,11 @@ window.PassportAvatarEditor = (() => {
   async function processed(edit,mode){return render(await image(edit.source),{...defaults,...edit.options},mode).processed;}
   async function open(edit,mode) {
     const img=await image(edit.source);let options={...defaults,...edit.options}, result;
-    const d=document.createElement('dialog');d.style.cssText='max-width:440px;width:calc(100% - 32px);max-height:90vh;overflow:auto';
-    d.innerHTML='<h2>调整头像</h2><p>左侧原图构图可拖动；右侧为设备像素</p><div style="display:flex;justify-content:center;gap:8px"><canvas data-crop width="128" height="160" style="touch-action:none;width:128px;height:160px"></canvas><img data-output width="128" height="160"></div><div><button data-rotate>旋转90度</button><button data-reset>重置调整</button></div><div data-sliders></div><label><input data-dither type="checkbox">抖动</label><select data-algorithm><option value="adaptive">自适应（自动选择算法与强度）</option><option value="floydSteinberg">Floyd-Steinberg</option><option value="atkinson">Atkinson</option><option value="bayer">Bayer 4×4</option></select><p data-adaptive-hint>自适应会根据头像自动选择抖动算法与强度。</p><p data-mono-hint>黑白头像使用 Film MonoFast：开启抖动为 Floyd-Steinberg，关闭时直接黑白量化。</p><p><button data-cancel>取消</button><button data-apply>应用头像</button></p>';
+    const d=document.createElement('dialog');d.className='avatar-edit-dialog';d.setAttribute('aria-labelledby','avatar-edit-title');
+    d.innerHTML='<h2 id="avatar-edit-title">调整头像</h2><p class="hint">左侧原图构图可拖动；右侧为设备像素</p><div class="avatar-edit-previews"><canvas data-crop width="128" height="160" aria-label="原图构图"></canvas><img data-output width="128" height="160" alt="设备像素预览"></div><div class="actions"><button class="secondary" data-rotate>旋转90度</button><button class="secondary" data-reset>重置调整</button></div><div data-sliders></div><label class="unset"><input data-dither type="checkbox">抖动</label><select data-algorithm aria-label="抖动算法"><option value="adaptive">自适应（自动选择算法与强度）</option><option value="floydSteinberg">Floyd-Steinberg</option><option value="atkinson">Atkinson</option><option value="bayer">Bayer 4×4</option></select><p class="hint" data-adaptive-hint>自适应会根据头像自动选择抖动算法与强度。</p><p class="hint" data-mono-hint>黑白头像使用 Film MonoFast：开启抖动为 Floyd-Steinberg，关闭时直接黑白量化。</p><div class="actions"><button class="secondary" data-cancel>取消</button><button class="primary" data-apply>应用头像</button></div>';
     const controls={};
     for(const [key,title,min,max] of [['zoom','缩放',.1,8],['brightness','亮度',-1,1],['rangeFit','明暗范围拟合',0,1],['warmChroma','暖色收缩',0,1],['contrast','对比度',.5,2],['saturation','饱和度',0,3],['strength','抖动强度',0,3]]){
-      const label=document.createElement('label');label.style.display='block';label.innerHTML=`${title} <output></output><input type="range" min="${min}" max="${max}" step="0.05" style="width:100%">`;
+      const label=document.createElement('label');label.innerHTML=`${title} <output></output><input type="range" min="${min}" max="${max}" step="0.05">`;
       if(key==='rangeFit'||key==='warmChroma'){label.style.display=mode==='color'?'block':'none';label.querySelector('input').disabled=!FrameFilmSourceFit.profiles.fast;}
       if(key==='strength')label.dataset.strength='';
       controls[key]=label.querySelector('input');controls[key].addEventListener('input',()=>{options[key]=Number(controls[key].value);refresh();});d.querySelector('[data-sliders]').append(label);
@@ -95,7 +95,7 @@ window.PassportAvatarEditor = (() => {
     }
     let previous=null;
     canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);previous={x:e.clientX,y:e.clientY};});
-    canvas.addEventListener('pointermove',e=>{if(!previous)return;options.x=Math.max(-1024,Math.min(1024,options.x+e.clientX-previous.x));options.y=Math.max(-1024,Math.min(1024,options.y+e.clientY-previous.y));previous={x:e.clientX,y:e.clientY};refresh();});
+    canvas.addEventListener('pointermove',e=>{if(!previous)return;const scale=canvas.width/canvas.clientWidth;options.x=Math.max(-1024,Math.min(1024,options.x+(e.clientX-previous.x)*scale));options.y=Math.max(-1024,Math.min(1024,options.y+(e.clientY-previous.y)*scale));previous={x:e.clientX,y:e.clientY};refresh();});
     for(const event of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(event,()=>previous=null);
     d.querySelector('[data-rotate]').onclick=()=>{options.turns=(options.turns+1)%4;options.x=options.y=0;refresh();};
     d.querySelector('[data-reset]').onclick=()=>{options={...defaults};refresh();};
@@ -108,9 +108,14 @@ window.PassportAvatarEditor = (() => {
       try{
         if(host===window||!window.frameElement)return;
         const rect=window.frameElement.getBoundingClientRect();
-        d.style.top=Math.max(0,-rect.top+12)+'px';
+        const narrow=host.matchMedia('(max-width: 899px)').matches;
+        const content=host.document.getElementById('page-content');
+        const nav=host.document.querySelector('.bottom-nav');
+        const top=Math.max(rect.top,narrow&&content?content.getBoundingClientRect().top:0)+12;
+        const bottom=Math.min(rect.bottom,narrow&&nav?nav.getBoundingClientRect().top:host.innerHeight)-12;
+        d.style.top=(top-rect.top)+'px';
         d.style.bottom='auto';d.style.marginTop='0';
-        d.style.maxHeight=Math.max(240,host.innerHeight-110)+'px';
+        d.style.maxHeight=Math.max(0,bottom-top)+'px';
       }catch(_){}
     }
     function lock(active){
@@ -127,7 +132,11 @@ window.PassportAvatarEditor = (() => {
         }
       }catch(_){}
     }
-    place();lock(true);
+    if(host!==window&&window.frameElement){
+      const frame=window.frameElement;
+      if(frame.getBoundingClientRect().top>host.innerHeight/2) frame.scrollIntoView({block:'start'});
+    }
+    lock(true);place();
     host.addEventListener('scroll',place,true);host.addEventListener('resize',place);
     return new Promise(resolve=>{
       const close=value=>{

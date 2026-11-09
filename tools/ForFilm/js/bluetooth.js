@@ -346,6 +346,7 @@ async function processQueue() {
 async function onDeviceConnected(deviceName) {
     clearConnectionTimers();
     if(window.Ark512) window.Ark512.resetCapabilities();
+    window.NfcWallet?.setCapabilities(null);
     const initEpoch = connectionEpoch;
     // 根据设备名称检测设备类型（USB 无名称时，随后会由屏幕参数查询纠正）
     var upperName = (deviceName || '').toUpperCase();
@@ -398,7 +399,9 @@ async function onDeviceConnected(deviceName) {
     scheduleConnectionTask(1000, () => {
         debugLog('开始发送初始化命令...');
         sendBleScreenResolutionGet();
-        if(window.Ark512) sendBleCmd(0x59).catch(function(error){console.info("ABC9 能力未确认", error.message);});
+        if (currentDeviceType === 'FRAMEFILMARK') {
+            sendBleCmd(0x59).catch(error => console.info('Ark 能力未确认', error.message));
+        }
         sendBlePwrRead();
     });
 
@@ -505,6 +508,7 @@ function initBluetooth() {
 
 function onDisconnected(event) {
     if(window.Ark512) window.Ark512.resetCapabilities();
+    window.NfcWallet?.setCapabilities(null);
     clearConnectionTimers();
     stopDownloadPoll();
     stopWifiStatusPoll();
@@ -1673,8 +1677,11 @@ async function setupBluetoothListener() {
         const data = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
         console.log('收到蓝牙数据:', Array.from(data).map(b => b.toString(16)).join(' '));
 
-        if(window.Ark512 && data[0]===BLE_CMD_HEAD && data[1]===0x59 && data.length===data[2]+4 && calculateChecksum(data,data.length-1)===data[data.length-1]) {
-            window.Ark512.setCapabilities(data.slice(3,-1));
+        if (event.target === characteristic && data[0] === BLE_CMD_HEAD && data[1] === 0x59 &&
+            data.length === data[2] + 4 && calculateChecksum(data, data.length - 1) === data[data.length - 1]) {
+            const caps = data.slice(3, -1);
+            window.Ark512?.setCapabilities(caps);
+            window.NfcWallet?.setCapabilities(caps);
         }
         if (window.ArkDevice && window.ArkDevice.notification(data)) return;
 
