@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm</title>
-    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=app-version-3">
+    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=app-version-4">
     <link rel="stylesheet" href="css/keyboard.css">
     <!-- ARK 通行证版皮肤：默认不生效，连上 FRAMEFILMARK 后由 js/ark-theme.js 激活 -->
     <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=prts-6">
@@ -1104,6 +1104,19 @@
                 </div>
             </div>
 
+            <!-- 设备终端（蓝牙实时日志 0x5E/0x5F）：仅通行证版（FRAMEFILMARK），默认隐藏，打开后实时显示 -->
+            <div id="device-log-section" class="card" style="display:none;">
+                <div class="card__title">
+                    <span class="ic-wrap ic-wrap--coral"><svg class="ic" viewBox="0 0 24 24"><use href="#i-bug"/></svg></span>
+                    设备终端
+                    <span class="spacer"></span>
+                    <button class="secondary-button" id="device-log-toggle" type="button" onclick="toggleDeviceLog()">打开日志</button>
+                    <button class="secondary-button" type="button" onclick="clearDeviceLog()">清空</button>
+                </div>
+                <div class="switch-row__hint">通过蓝牙实时查看设备运行日志（仅打开时生效，不改变设备日志级别；关闭或断开后设备恢复常规运行）</div>
+                <div id="device-log-view" class="debug-log show device-log-view"></div>
+            </div>
+
             <div class="card">
                 <div class="card__title">
                     <span class="ic-wrap ic-wrap--sun"><svg class="ic" viewBox="0 0 24 24"><use href="#i-board"/></svg></span>
@@ -1145,7 +1158,14 @@
                             <option value="ark-esp32s3-n16r8">Ark N16R8 · 16 MB Flash / 8 MB PSRAM</option>
                         </select>
                     </label>
+                    <label class="fw-option">更新通道
+                        <select id="ark-ota-channel">
+                            <option value="formal">正式发布</option>
+                            <option value="ci">CI 最新构建（开发版）</option>
+                        </select>
+                    </label>
                     <p id="ark-ota-online-status" class="field-hint" role="status"></p>
+                    <p class="field-hint">CI 最新构建取自主分支每次提交的自动构建，仅用于测试，可能未经验证。</p>
                     <div class="action-controls">
                         <a class="secondary-button" id="ark-ota-download-link" rel="noopener" target="_blank" hidden>下载匹配的 OTA 文件</a>
                         <button class="secondary-button" id="ark-ota-import-online" type="button" onclick="ArkOta.choose(true)" hidden>导入已下载 OTA</button>
@@ -1252,6 +1272,12 @@
                         </label>
                         <label class="fw-option">硬件规格
                             <select id="fw-online-target" onchange="resetOnlineFlash()"></select>
+                        </label>
+                        <label class="fw-option" id="fw-online-channel-wrap">更新通道
+                            <select id="fw-online-channel" onchange="resetOnlineFlash()">
+                                <option value="formal">正式发布</option>
+                                <option value="ci">CI 最新构建（开发版）</option>
+                            </select>
                         </label>
                         <label class="fw-option" id="fw-online-screen-wrap" hidden>屏幕面板
                             <select id="fw-online-screen" onchange="resetOnlineFlash()"></select>
@@ -1415,14 +1441,14 @@
     </div>
 </div>
 
-<script src="js/utils.js?v=prts-6"></script>
+<script src="js/utils.js?v=prts-7"></script>
 <script src="js/atkinson_enhanced_lut.js"></script>
 <script src="js/sz_enhanced.js"></script>
-<script src="js/bluetooth.js?rev=ark-ota-1"></script>
+<script src="js/bluetooth.js?rev=ark-ota-2"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
-<script src="js/ark-firmware.js?rev=flash-hardware-2"></script>
+<script src="js/ark-firmware.js?rev=flash-hardware-3"></script>
 <script src="js/classic-firmware.js?rev=classic-2"></script>
-<script src="js/ark-ota.js?rev=ark-ota-2"></script>
+<script src="js/ark-ota.js?rev=ark-ota-4"></script>
 <script src="js/usb.js"></script>
 <script src="js/keyboard.js"></script>
 <script src="js/source-fit.js"></script>
@@ -1437,7 +1463,7 @@
 <script src="js/animation.js?v=ark-state-2"></script>
 <!-- 串口烧录：esptool-js（内嵌，官方 bundle 转经典脚本，挂 window.ESPTOOL）+ 本仓库的烧录流程 -->
 <script src="js/esptool-js.js"></script>
-<script src="js/serial-flash.js?rev=flash-hardware-2"></script>
+<script src="js/serial-flash.js?rev=flash-hardware-3"></script>
 <script src="js/main.js?rev=app-version-2"></script>
 <script src="js/ark-theme.js?v=prts-3"></script>
 <script src="js/ark-controls.js?v=ark-state-2"></script>

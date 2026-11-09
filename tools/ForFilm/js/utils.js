@@ -131,6 +131,10 @@ function onDeviceTypeChanged() {
     if (typeof syncRemoteAvailability === 'function') {
         syncRemoteAvailability();
     }
+    // 设备终端（0x5E/0x5F 实时日志）仅通行证版（ARK）支持
+    if (typeof syncDeviceLogAvailability === 'function') {
+        syncDeviceLogAvailability();
+    }
     if (typeof syncArkDeviceNameAvailability === 'function') {
         syncArkDeviceNameAvailability();
     }

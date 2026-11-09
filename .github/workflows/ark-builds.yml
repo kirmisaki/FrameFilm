@@ -338,6 +338,94 @@ jobs:
             firmware/frame_film_ark/ci-logs/
             firmware/frame_film_ark/${{ matrix.variant.build_dir }}/log/
 
+  ci_release:
+    name: Publish Ark CI prerelease
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [plan, firmware]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download this run's n4r2 OTA image
+        uses: actions/download-artifact@v8
+        with:
+          name: ark-firmware-ota
+          path: ci-input/n4r2
+      - name: Download this run's n16r8 OTA image
+        uses: actions/download-artifact@v8
+        with:
+          name: ark-firmware-ota-n16r8
+          path: ci-input/n16r8
+      - name: Download this run's n4r2 complete image
+        uses: actions/download-artifact@v8
+        with:
+          name: ark-firmware-flash-n4r2
+          path: ci-input/flash-n4r2
+      - name: Download this run's n16r8 complete image
+        uses: actions/download-artifact@v8
+        with:
+          name: ark-firmware-flash-n16r8
+          path: ci-input/flash-n16r8
+      - name: Prepare CI assets
+        run: |
+          set -euo pipefail
+          python3 tools/ci/ark_firmware_manifest.py \
+            --n4r2 ci-input/n4r2/frame_film_ark.bin \
+            --n16r8 ci-input/n16r8/frame_film_ark.bin \
+            --output ci-firmware
+          cp ci-input/flash-n4r2/*.bin ci-input/flash-n16r8/*.bin ci-firmware/
+      - name: Publish rolling CI prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ark-ci-latest
+          SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'Ark CI build (development only; rebuilt on every main push).'
+            echo
+            echo "Source commit: $SHA"
+            echo "Built at: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            echo
+            echo 'OTA: use the hardware-matched frame_film_ark-n4r2.bin or frame_film_ark-n16r8.bin.'
+            echo 'USB serial: use the hardware-matched *-flash.bin as a merged image at 0x0.'
+            echo
+            echo '<!-- framefilm-ark-firmware:v1'
+            cat ci-firmware/framefilm-ark-firmware.json
+            echo '-->'
+          } > ci-notes.md
+          assets=(ci-firmware/frame_film_ark-n4r2.bin ci-firmware/frame_film_ark-n16r8.bin
+                  ci-firmware/frame_film_ark-n4r2-flash.bin ci-firmware/frame_film_ark-n16r8-flash.bin
+                  ci-firmware/framefilm-ark-firmware.json)
+          release_status="$(curl --silent --show-error --location \
+            --output "$RUNNER_TEMP/ark-ci-release.json" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$GH_REPO/releases/tags/$TAG")"
+          case "$release_status" in
+            200)
+              gh release upload "$TAG" "${assets[@]}" --repo "$GH_REPO" --clobber
+              gh release edit "$TAG" --repo "$GH_REPO" --title 'Ark CI latest' --notes-file ci-notes.md
+              ;;
+            404)
+              existing="$(git ls-remote --tags --refs origin "refs/tags/$TAG" | cut -f1)"
+              if [ -n "$existing" ]; then
+                gh release create "$TAG" "${assets[@]}" --repo "$GH_REPO" \
+                  --prerelease --latest=false \
+                  --title 'Ark CI latest' --notes-file ci-notes.md
+              else
+                gh release create "$TAG" "${assets[@]}" --repo "$GH_REPO" \
+                  --target "$SHA" --prerelease --latest=false \
+                  --title 'Ark CI latest' --notes-file ci-notes.md
+              fi
+              ;;
+            *) echo "::error::GitHub release lookup failed: HTTP $release_status"; exit 1 ;;
+          esac
+
   release:
     name: Publish Ark firmware and app
     if: needs.plan.outputs.publish == 'true'

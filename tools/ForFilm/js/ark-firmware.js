@@ -4,6 +4,7 @@
 
     const repo = 'kirmisaki/FrameFilm';
     const api = 'https://api.github.com/repos/' + repo + '/releases';
+    const ciTag = 'ark-ci-latest';
     const project = 'frame_film_ark';
     const mib = 1024 * 1024;
     const targets = ['n4r2', 'n16r8'].map((variant, i) => Object.freeze({
@@ -127,6 +128,23 @@
         return release;
     }
 
+    /* CI 最新构建：main 每次提交后由工作流覆盖更新的预发布（ark-ci-latest）。
+       它不是正式发布，latestFormal() 会自然忽略，只有显式选择通道才会用到。 */
+    async function latestCi() {
+        const response = await fetch(api + '/tags/' + ciTag, { signal: AbortSignal.timeout(20000) });
+        if (response.status === 404) throw new Error('暂无 CI 最新构建');
+        if (!response.ok) throw new Error('CI 构建查询失败（HTTP ' + response.status + '）');
+        const release = await response.json();
+        if (!release || release.draft === true || !Array.isArray(release.assets)) {
+            throw new Error('CI 构建发布格式无效');
+        }
+        return release;
+    }
+
+    async function latestFor(channel) {
+        return channel === 'ci' ? latestCi() : latest();
+    }
+
     function asset(release, name) {
         const found = Array.isArray(release.assets) ? release.assets.filter(item => item?.name === name) : [];
         if (found.length !== 1 || !Number.isSafeInteger(found[0].size) || found[0].size <= 0 ||
@@ -222,5 +240,6 @@
     }
 
     root.ArkFirmware = { targets, target, parseHardware, parseBuild, inspectApp, latestFormal, latest,
+        ciTag, latestCi, latestFor,
         readManifest, selectOta, selectFlash, download: readAsset, verifyBytes, verifyFlash, DownloadUnavailable };
 })(window);

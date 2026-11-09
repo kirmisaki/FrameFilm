@@ -55,6 +55,7 @@
 #include "service_param.h"
 #include "service_time.h"
 #include "service_wifi.h"
+#include "service_log.h"
 #include "freertos/semphr.h"
 #include "service_monitor.h"
 
@@ -144,6 +145,8 @@ static const char *ble_name_suffix_or_default(void);
 
 void service_ble_transfer_disconnected(void)
 {
+    /* 终端日志绑定当前连接：断开即关闭，卸载日志输出钩子，避免无人订阅时白跑 */
+    service_log_stream_set(0);
     if(!service_ble_wifi_paused()) service_wifi_direct_cancel();
     m_ble_link_epoch++;
     m_ble_abort_pending = 1;
@@ -1737,6 +1740,28 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             {
                 sys_logw(BEL_SERVICE_TAG, "key inject: bad payload (len=%u key=%u)",
                          (unsigned)cmd->len, (unsigned)((cmd->len > 0) ? cmd->pdata[0] : 0xFF));
+            }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_LOG_STREAM_CTRL : // 蓝牙实时日志开关/查询
+        {
+            /* payload: 1B（0=关 1=开）；空 payload 视为查询。回 1B 当前状态。
+               打开时设备按当前日志级别（不额外放开）采集日志，经 0x5F 逐帧推送；
+               关闭/断开连接后自动卸载钩子。 */
+            if(cmd->len == 1 && (cmd->pdata[0] == 0 || cmd->pdata[0] == 1))
+            {
+                service_log_stream_set(cmd->pdata[0]);
+                uint8_t state = service_log_stream_get();
+                (void)service_ble_send_resp(cmd->ch, &state, 1);
+            }
+            else if(cmd->len == 0)
+            {
+                uint8_t state = service_log_stream_get();
+                (void)service_ble_send_resp(cmd->ch, &state, 1);
+            }
+            else
+            {
+                sys_logw(BEL_SERVICE_TAG, "log stream: bad payload (len=%u)", (unsigned)cmd->len);
             }
             break;
         }

@@ -112,6 +112,12 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_HARDWARE_INFO_GET (0x5D) // 空请求：查询硬件身份
 #define BLE_DIRECT_START_DATA_MAX                         (192)
 
+/* 蓝牙实时日志（仅 Ark）：0x5E 开关/查询（1B：0=关 1=开；空 payload=查询），
+   0x5F 设备→连接端日志流（DATA 为原始日志文本，按 BLE 分块可能半行）。
+   开关关闭时设备不安装任何日志钩子，行为与之前完全一致。 */
+#define BLE_FILM_TRANS_CH_LOG_STREAM_CTRL                 (0x5E)
+#define BLE_FILM_TRANS_CH_LOG_STREAM_DATA                 (0x5F)
+
 /* NFC 卡包（仅 n16r8）：建卡 0x63~0x65、管理 0x66、封面 0x67~0x69。
    独立成段，不再与 SoftAP(0x5C)/硬件身份(0x5D) 共用通道、按 payload 长度判别。 */
 #define BLE_FILM_TRANS_CH_NFC_CARD_BEGIN                  (0x63)

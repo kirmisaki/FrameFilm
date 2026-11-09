@@ -86,7 +86,7 @@ function fwSetProgress(pct) {
 
 function fwSetControlsEnabled(enabled) {
     ['fw-select-btn', 'fw-clear-btn', 'fw-online-family', 'fw-online-target', 'fw-online-screen',
-     'fw-online-check', 'fw-online-import'].forEach(function (id) {
+     'fw-online-channel', 'fw-online-check', 'fw-online-import'].forEach(function (id) {
         const el = document.getElementById(id);
         if (el) el.disabled = !enabled;
     });
@@ -294,6 +294,8 @@ function fwSyncOnlineOptions() {
     }
     const wrap = document.getElementById('fw-online-screen-wrap');
     if (wrap) wrap.hidden = family !== 'classic';
+    const channelWrap = document.getElementById('fw-online-channel-wrap');
+    if (channelWrap) channelWrap.hidden = family !== 'ark';
     resetOnlineFlash();
 }
 
@@ -335,12 +337,13 @@ async function getOnlineFlash() {
 async function fwGetArkOnline() {
     const hardware = ArkFirmware.target(document.getElementById('fw-online-target').value);
     if (!hardware) { fwOnlineStatus('请按设备实物选择硬件规格。'); return; }
+    const ci = document.getElementById('fw-online-channel').value === 'ci';
     resetOnlineFlash();
     fwBusy = true;
     fwSetControlsEnabled(false);
-    fwOnlineStatus('正在查找 ' + hardware.label + ' 的完整镜像…');
+    fwOnlineStatus('正在查找 ' + hardware.label + (ci ? ' 的 CI 最新镜像…' : ' 的完整镜像…'));
     try {
-        const item = ArkFirmware.selectFlash(await ArkFirmware.latest(), hardware);
+        const item = ArkFirmware.selectFlash(await ArkFirmware.latestFor(ci ? 'ci' : 'formal'), hardware);
         fwOnlineCandidate = item;
         try {
             await fwStageOnline(await ArkFirmware.download(item), item);
