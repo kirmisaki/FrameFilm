@@ -11,6 +11,7 @@
     let pendingBoot = null;
     const connected = () => root.ArkDevice.connected();
     const note = message => { el('ark-ota-online-status').textContent = message; };
+    const channel = () => (el('ark-ota-channel').value === 'ci' ? 'ci' : 'formal');
 
     function clearRelease() {
         release = null;
@@ -37,6 +38,7 @@
         }
         const waiting = busy || root.ArkDevice.busy();
         el('ark-ota-check').disabled = waiting || !connected();
+        el('ark-ota-channel').disabled = waiting;
         el('ark-ota-legacy-target').disabled = waiting;
         el('ark-ota-import-online').disabled = waiting;
         el('ota-local-btn').disabled = waiting;
@@ -117,8 +119,9 @@
                 note(prefix + '旧固件未提供硬件身份。请按实物选择规格后再次检查。');
                 return;
             }
-            note(prefix + state.expected.label + ' · 正在检查 GitHub 正式发布…');
-            const current = await fw.latest();
+            note(prefix + state.expected.label + ' · 正在检查 ' +
+                (channel() === 'ci' ? 'CI 最新构建' : 'GitHub 正式发布') + '…');
+            const current = await fw.latestFor(channel());
             const item = fw.selectOta(current, await fw.readManifest(current), state.expected);
             requireSession(session);
             if (item.elfSha256 === state.build.elfSha256) {
@@ -207,6 +210,13 @@
         clearRelease();
         if (selected?.item) clearSelection();
         note('已选择硬件规格，可以重新检查更新或导入固件。');
+    });
+    el('ark-ota-channel').addEventListener('change', () => {
+        clearRelease();
+        if (selected) clearSelection();
+        note(channel() === 'ci'
+            ? '已选择 CI 最新构建（开发版），点「检查更新」获取。'
+            : '已选择正式发布，点「检查更新」获取。');
     });
     refresh();
 })(window);
