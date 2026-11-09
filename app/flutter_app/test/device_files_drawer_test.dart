@@ -35,7 +35,7 @@ DeviceSnapshot catalog({String directory = 'film'}) => DeviceSnapshot.fromMap({
 });
 
 void main() {
-  testWidgets('single selection can be cleared and refresh clears selection', (
+  testWidgets('image selection can be toggled and refresh clears selection', (
     tester,
   ) async {
     final gateway = CatalogGateway();
@@ -114,7 +114,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('device-file-8')));
     await tester.pumpAndSettle();
-    expect(checkbox(7).value, isFalse);
+    expect(checkbox(7).value, isTrue);
     expect(checkbox(8).value, isTrue);
     gateway.events.add(DeviceSnapshot.fromMap({'battery': 75}));
     await tester.pumpAndSettle();

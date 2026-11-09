@@ -4,15 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm</title>
-    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=app-version-4">
+    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=film-batch-delete-1">
     <link rel="stylesheet" href="css/keyboard.css">
     <!-- ARK 通行证版皮肤：默认不生效，连上 FRAMEFILMARK 后由 js/ark-theme.js 激活 -->
-    <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=prts-6">
-    <link rel="stylesheet" href="css/ark-login.css?v=prts-4">
+    <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=theme-coverage-2">
+    <link rel="stylesheet" href="css/ark-login.css?v=theme-coverage-2">
     <!-- 动画工坊样式（独立页） -->
-    <link rel="stylesheet" href="css/animation.css">
-    <link rel="stylesheet" href="css/serial-flash.css">
-    <link rel="stylesheet" href="css/ark-controls.css?v=prts-5">
+    <link rel="stylesheet" href="css/animation.css?v=theme-coverage-2">
+    <link rel="stylesheet" href="css/serial-flash.css?v=theme-coverage-2">
+    <link rel="stylesheet" href="css/ark-controls.css?v=theme-coverage-2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Baloo+2:wght@400..800&family=Noto+Sans+SC:wght@400..900&display=swap" rel="stylesheet">
@@ -889,7 +889,7 @@
                     <button type="button" class="secondary-button" id="ark-pass-connect">前往设备连接</button>
                     <button type="button" class="secondary-button" id="ark-pass-open" data-ark-connected disabled>在设备打开通行证</button>
                 </div>
-                <iframe id="ark-pass-editor" title="Ark 个人通行证编辑器" src="../ark-pass-editor/index.html?embedded=1&amp;v=prts-12" loading="lazy"></iframe>
+                <iframe id="ark-pass-editor" title="Ark 个人通行证编辑器" src="../ark-pass-editor/index.html?embedded=1&amp;v=theme-coverage-2" loading="lazy"></iframe>
             </div>
         </div>
 
@@ -990,12 +990,16 @@
                 <div id="film-file-list" class="file-list">
                     <div class="empty-state">暂无文件</div>
                 </div>
+                <div class="film-file-selection">
+                    <button id="film-select-all" class="secondary-button" type="button" onclick="toggleAllFilmFiles()" disabled>全选</button>
+                    <span id="film-selection-status" class="info" role="status">可勾选多张图片批量删除</span>
+                </div>
                 <div class="btn-row">
-                    <button class="secondary-button danger" onclick="deleteSelectedFile()">
+                    <button id="film-delete-files" class="secondary-button danger" type="button" onclick="deleteSelectedFiles()" disabled>
                         <svg class="ic" viewBox="0 0 24 24"><use href="#i-trash"/></svg>
-                        删除文件
+                        删除所选
                     </button>
-                    <button class="secondary-button" onclick="selectDisplayFile()">
+                    <button id="film-display-file" class="secondary-button" type="button" onclick="selectDisplayFile()" disabled>
                         <svg class="ic" viewBox="0 0 24 24"><use href="#i-check-circle"/></svg>
                         选择显示
                     </button>
@@ -1165,6 +1169,7 @@
                         </select>
                     </label>
                     <p id="ark-ota-online-status" class="field-hint" role="status"></p>
+                    <p class="field-hint">选好更新通道后点「开始升级」，网页会自动下载并校验固件。</p>
                     <p class="field-hint">CI 最新构建取自主分支每次提交的自动构建，仅用于测试，可能未经验证。</p>
                     <div class="action-controls">
                         <a class="secondary-button" id="ark-ota-download-link" rel="noopener" target="_blank" hidden>下载匹配的 OTA 文件</a>
@@ -1264,25 +1269,38 @@
                     </div>
                     <div class="switch-row__hint">用 USB 串口直接写设备 Flash（等价命令行 <code>idf.py flash</code>）：比蓝牙 OTA 快得多，且能刷 bootloader 与分区表。刷完设备会复位，需要重新连接蓝牙。</div>
                     <div class="action-controls">
-                        <label class="fw-option">设备机型
+                        <div class="field fw-select-field">
+                            <label for="fw-source">固件来源</label>
+                            <select id="fw-source" onchange="fwSyncSource()">
+                                <option value="online">联网获取</option>
+                                <option value="local">本地文件</option>
+                            </select>
+                        </div>
+                        <button class="secondary-button" id="fw-detect-btn" type="button" onclick="detectSerialDevice()">检测串口</button>
+                    </div>
+                    <div class="action-controls" id="fw-online-options">
+                        <div class="field fw-select-field">
+                            <label for="fw-online-family">设备机型</label>
                             <select id="fw-online-family" onchange="fwSyncOnlineOptions()">
                                 <option value="ark">FrameFilm Ark（通行证版）</option>
                                 <option value="classic">FrameFilm Pro（经典）</option>
                             </select>
-                        </label>
-                        <label class="fw-option">硬件规格
+                        </div>
+                        <div class="field fw-select-field">
+                            <label for="fw-online-target">硬件规格</label>
                             <select id="fw-online-target" onchange="resetOnlineFlash()"></select>
-                        </label>
-                        <label class="fw-option" id="fw-online-channel-wrap">更新通道
+                        </div>
+                        <div class="field fw-select-field" id="fw-online-channel-wrap">
+                            <label for="fw-online-channel">更新通道</label>
                             <select id="fw-online-channel" onchange="resetOnlineFlash()">
                                 <option value="formal">正式发布</option>
                                 <option value="ci">CI 最新构建（开发版）</option>
                             </select>
-                        </label>
-                        <label class="fw-option" id="fw-online-screen-wrap" hidden>屏幕面板
+                        </div>
+                        <div class="field fw-select-field" id="fw-online-screen-wrap" hidden>
+                            <label for="fw-online-screen">屏幕面板</label>
                             <select id="fw-online-screen" onchange="resetOnlineFlash()"></select>
-                        </label>
-                        <button class="secondary-button" id="fw-online-check" type="button" onclick="getOnlineFlash()">联网获取完整固件</button>
+                        </div>
                     </div>
                     <p class="field-hint" id="fw-online-status" role="status"></p>
                     <div class="action-controls">
@@ -1290,22 +1308,22 @@
                         <button class="secondary-button" id="fw-online-import" type="button" onclick="selectFirmwareFiles(true)" hidden>导入已下载镜像</button>
                     </div>
                     <input type="file" id="fw-file-input" accept=".bin" multiple style="display: none;" onchange="handleFirmwareFiles(event)">
-                    <div class="action-controls">
+                    <div class="action-controls" id="fw-local-controls" hidden>
                         <button class="secondary-button" id="fw-select-btn" type="button" onclick="selectFirmwareFiles()">选择固件文件</button>
-                        <button class="secondary-button" id="fw-detect-btn" type="button" onclick="detectSerialDevice()">检测串口</button>
                         <button class="secondary-button" id="fw-clear-btn" type="button" onclick="clearFirmwareFiles()">清空</button>
                     </div>
-                    <div id="fw-file-list" class="fw-file-list"></div>
+                    <div id="fw-file-list" class="fw-file-list" hidden></div>
                     <div class="fw-options">
-                        <label class="fw-option">波特率
+                        <div class="field fw-select-field">
+                            <label for="fw-baud">波特率</label>
                             <select id="fw-baud">
                                 <option value="115200">115200（最稳）</option>
                                 <option value="460800" selected>460800（推荐）</option>
                                 <option value="921600">921600（最快）</option>
                             </select>
-                        </label>
+                        </div>
                         <label class="fw-option"><input type="checkbox" id="fw-erase-all"> 先整片擦除</label>
-                        <label class="fw-option"><input type="checkbox" id="fw-merged-image" onchange="fwOnMergedToggle()"> 合并镜像（单文件，从 0x0 烧）</label>
+                        <label class="fw-option" id="fw-local-merged" hidden><input type="checkbox" id="fw-merged-image" onchange="fwOnMergedToggle()"> 合并镜像（单文件，从 0x0 烧）</label>
                     </div>
                     <div class="action-controls">
                         <button class="primary-button" id="fw-flash-btn" type="button" onclick="startSerialFlash()">开始烧录</button>
@@ -1352,7 +1370,7 @@
             <svg class="ic" viewBox="0 0 24 24"><use href="#i-photo"/></svg>
             <span>通行证</span>
         </a>
-        <a href="#" class="nav-item" data-page="wallet-page">
+        <a href="#" class="nav-item" data-page="wallet-page" hidden>
             <svg class="ic" viewBox="0 0 24 24"><use href="#i-photo"/></svg>
             <span>卡包</span>
         </a>
@@ -1444,11 +1462,12 @@
 <script src="js/utils.js?v=prts-7"></script>
 <script src="js/atkinson_enhanced_lut.js"></script>
 <script src="js/sz_enhanced.js"></script>
-<script src="js/bluetooth.js?rev=ark-ota-2"></script>
+<script src="js/bluetooth.js?rev=film-batch-delete-1"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
-<script src="js/ark-firmware.js?rev=flash-hardware-3"></script>
-<script src="js/classic-firmware.js?rev=classic-2"></script>
-<script src="js/ark-ota.js?rev=ark-ota-4"></script>
+<script src="js/firmware-mirror.js"></script>
+<script src="js/ark-firmware.js?rev=online-firmware-1"></script>
+<script src="js/classic-firmware.js?rev=online-firmware-1"></script>
+<script src="js/ark-ota.js?rev=ark-ota-5"></script>
 <script src="js/usb.js"></script>
 <script src="js/keyboard.js"></script>
 <script src="js/source-fit.js"></script>
@@ -1457,13 +1476,13 @@
 <script src="js/convert.js?v=e4panel-2"></script>
 <script src="js/frame.js?v=ark-state-2"></script>
 <script src="js/frame-nav.js"></script>
-<script src="js/nfc-wallet.js?v=nfc-9"></script>
+<script src="js/nfc-wallet.js?v=nfc-10"></script>
 <script src="js/batch.js?v=fix-1"></script>
 <script src="js/gif-decoder.js"></script>
 <script src="js/animation.js?v=ark-state-2"></script>
 <!-- 串口烧录：esptool-js（内嵌，官方 bundle 转经典脚本，挂 window.ESPTOOL）+ 本仓库的烧录流程 -->
 <script src="js/esptool-js.js"></script>
-<script src="js/serial-flash.js?rev=flash-hardware-3"></script>
+<script src="js/serial-flash.js?rev=online-firmware-1"></script>
 <script src="js/main.js?rev=app-version-2"></script>
 <script src="js/ark-theme.js?v=prts-3"></script>
 <script src="js/ark-controls.js?v=ark-state-2"></script>

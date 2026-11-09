@@ -12,15 +12,23 @@ h1{font-size:32px;letter-spacing:.04em;margin:22px 0 8px}h2{font-size:19px;margi
 .editor,.preview-panel{min-width:0}.section-head{border-top:1px solid var(--ink);padding-top:11px;margin-bottom:21px}.section-head span{color:var(--muted)}.actions-head{margin-top:34px}
 .fields{display:grid;grid-template-columns:1fr 1fr;gap:18px 20px}.field{min-width:0}.avatar-field,.field:last-child{grid-column:1/-1}
 label{font-weight:700;font-size:13px;display:block;margin-bottom:8px}.required{font-size:11px;font-weight:500;color:var(--muted)}
-input[type=text],textarea,input[type=file]{width:100%;font:inherit;background:#fff;color:var(--ink);border:1px solid #aaa;border-radius:0;padding:10px 12px;min-height:44px}
-textarea{resize:vertical;min-height:86px}input[type=file]{font-size:13px}.unset{font-weight:400;margin:9px 0 0;display:flex;align-items:center;gap:7px}.unset input{width:18px;height:18px;accent-color:var(--ink)}
+input[type=text],textarea,input[type=file],select{width:100%;font:inherit;background:var(--paper);color:var(--ink);border:1px solid #aaa;border-radius:0;padding:10px 12px;min-height:44px}
+select{appearance:none;cursor:pointer;padding-inline-end:38px;background-image:linear-gradient(45deg,transparent 50%,var(--ink) 50%),linear-gradient(135deg,var(--ink) 50%,transparent 50%);background-position:calc(100% - 21px) 55%,calc(100% - 15px) 55%;background-size:6px 6px;background-repeat:no-repeat}
+select option{background:var(--paper);color:var(--ink)}
+textarea{resize:vertical;min-height:86px}input[type=file]{font-size:13px}.unset{font-weight:400;margin:9px 0 0;display:flex;align-items:center;gap:7px}.unset input{width:18px;height:18px}
+input:where([type=range],[type=checkbox]){accent-color:var(--editor-input-accent,var(--ink))}
+input[type=file]::file-selector-button{margin-inline-end:8px;padding:5px 9px;font:inherit;background:var(--editor-frame-bg,var(--ground));color:var(--ink);border:var(--editor-border-width,1px) solid var(--editor-rule,var(--ink));border-radius:var(--editor-field-radius,0);cursor:pointer}
 .hint{color:var(--muted);font-size:12px;line-height:1.6;margin:9px 0}.validation{min-height:18px;color:var(--danger);font-size:12px;margin:5px 0 0}.text-button{border:0;background:none;text-decoration:underline;color:var(--ink);padding:9px 0;cursor:pointer}
 .avatar-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px}.avatar-actions .text-button{padding:9px 0}
 .preview-jump{display:none;width:100%;margin:0 0 16px}
 .actions{display:flex;gap:9px;flex-wrap:wrap}button,.file-button{font-family:inherit;font-size:13px;font-weight:700;line-height:1.25;min-height:44px;border-radius:0;border:1px solid var(--ink);padding:11px 14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;margin:0}
 .primary{background:var(--ink);color:#fff}.secondary{background:#fff;color:var(--ink)}button:hover:not(:disabled),.file-button:hover{outline:2px solid var(--ink);outline-offset:2px}button:disabled{opacity:.4;cursor:not-allowed}
-button:focus-visible,.file-button:focus-within,input:focus-visible,textarea:focus-visible{outline:3px solid #777;outline-offset:2px}.file-button input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
-.status{font-size:12px;min-height:20px;margin:12px 0;color:var(--muted)}progress{display:block;width:100%;height:8px;margin-top:16px;accent-color:var(--ink)}
+button:focus-visible,.file-button:focus-within,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--editor-focus,#777);outline-offset:2px}.file-button input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.status{font-size:12px;min-height:20px;margin:12px 0;color:var(--muted)}
+progress{appearance:none;display:block;width:100%;height:var(--progress-height,8px);margin-top:16px;border:var(--progress-border,0);border-radius:var(--progress-radius,0);background:var(--progress-track,var(--ground));overflow:hidden}
+progress::-webkit-progress-bar{background:var(--progress-track,var(--ground))}
+progress::-webkit-progress-value{background:var(--progress-value,var(--ink))}
+progress::-moz-progress-bar{background:var(--progress-value,var(--ink))}
 .device-name-panel{border-top:1px solid var(--line);margin-top:24px;padding-top:12px}.device-name-panel h3{font-size:15px;margin:0}.device-name-panel p{font-size:12px}.device-name-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.device-name-actions span{font:12px ui-monospace,Consolas,monospace}.device-name-actions input{flex:1 1 150px;width:auto}.device-name-actions button{flex:0 0 auto}
 .preview-frame{background:#e4e4e2;padding:18px;display:flex;justify-content:center;overflow:auto}.preview-frame canvas{display:block;width:100%;max-width:440px;height:auto;image-rendering:pixelated;background:#fff;box-shadow:0 2px 10px #0002}
 @media(max-width:880px){.workspace{grid-template-columns:1fr}.preview-panel{max-width:520px}}@media(max-width:560px){.masthead{padding:24px 16px}.workspace{padding:24px 16px 60px}.fields{grid-template-columns:1fr}.avatar-field,.field:last-child{grid-column:auto}h1{font-size:27px}}
@@ -31,9 +39,8 @@ body.embedded .embedded-nav{display:none}
 body.embedded .workspace{max-width:none;padding:0;gap:20px;grid-template-columns:minmax(0,1fr) minmax(220px,.8fr)}
 body.embedded .editor,body.embedded .preview-panel{background:transparent;border:0;border-radius:0;padding:0;max-width:none}
 body.embedded .section-head{border-top:0;border-bottom:1px solid var(--editor-rule,var(--line));padding:0 0 16px;margin-bottom:20px}
-body.embedded :is(input[type=text],textarea,input[type=file],button:not(.text-button),.file-button){border-radius:var(--editor-field-radius,0)}
-body.embedded :is(button,input,textarea):focus-visible{outline-color:var(--editor-accent)}
-/* Embedded light theme follows the host's toy style; the host card owns the outer chrome. */
+body.embedded :is(input[type=text],textarea,input[type=file],select,button:not(.text-button),.file-button){border-radius:var(--editor-field-radius,0)}
+/* Embedded ForFilm theme follows the host's toy style; the host card owns the outer chrome. */
 body.embedded:not(.theme-ark){--line:var(--editor-rule,#d8d8d8)}
 body.embedded:not(.theme-ark) h2{font-family:var(--editor-display);font-weight:600;letter-spacing:.02em}
 body.embedded:not(.theme-ark) .section-head span{font-family:var(--editor-font);letter-spacing:.08em;color:var(--muted)}
@@ -49,10 +56,10 @@ body.embedded:not(.theme-ark) :is(button:not(.text-button),.file-button):hover:n
 body.embedded:not(.theme-ark) :is(button:not(.text-button),.file-button):active:not(:disabled){transform:translate(3px,3px);box-shadow:0 0 0 var(--ink);outline:none}
 body.embedded:not(.theme-ark) .primary{background:var(--editor-primary-bg,#fff);color:var(--ink)}
 body.embedded:not(.theme-ark) .secondary{background:var(--paper);color:var(--ink)}
-body.embedded:not(.theme-ark) :is(input[type=text],textarea,input[type=file]){
+body.embedded:not(.theme-ark) :is(input[type=text],textarea,input[type=file],select){
  border:var(--editor-border-width,1px) solid var(--ink);
  border-radius:var(--editor-field-radius,0);
- background:var(--paper);
+ background-color:var(--paper);
  font-family:var(--editor-font)
 }
 body.embedded:not(.theme-ark) .preview-frame{
@@ -75,7 +82,7 @@ body.embedded.theme-ark{
 }
 body.embedded.theme-ark .section-head span{font:600 10px/1.4 Consolas,monospace;letter-spacing:.16em;color:var(--muted)}
 body.embedded.theme-ark h2{font-size:20px;letter-spacing:.05em;line-height:1.35;margin-top:8px}
-body.embedded.theme-ark :is(input[type=text],textarea,input[type=file]){background:var(--ark-bg);color:var(--ink);border:1px solid var(--line);min-height:44px}
+body.embedded.theme-ark :is(input[type=text],textarea,input[type=file],select){background-color:var(--ark-bg);color:var(--ink);border:1px solid var(--line);min-height:44px}
 body.embedded.theme-ark input::placeholder,body.embedded.theme-ark textarea::placeholder{color:#8e999f}
 body.embedded.theme-ark .primary{background:var(--ink);border-color:var(--ink);color:var(--ark-bg)}
 body.embedded.theme-ark :is(.secondary,.file-button){background:transparent;border-color:var(--line);color:var(--ink)}
@@ -86,11 +93,16 @@ body.embedded.theme-ark :is(button,.file-button):focus-visible,body.embedded.the
 body.embedded.theme-ark .text-button{background:none;color:var(--muted);border:0;padding-left:0}
 body.embedded.theme-ark .preview-frame{background:var(--ark-bg);border:1px solid var(--line);padding:16px}
 body.embedded.theme-ark .preview-frame canvas{background:#fff;box-shadow:none}
-body.embedded.theme-ark progress{accent-color:var(--ark-accent)}
-body.embedded.theme-ark .unset input{accent-color:var(--ark-accent)}
 body.embedded.theme-ark label{font-weight:600;letter-spacing:.03em}
 body.embedded.theme-ark .status{padding-top:12px;border-top:1px solid var(--line);line-height:1.6}
 @media(max-width:620px){body.embedded .workspace{grid-template-columns:1fr}body.embedded .preview-jump{display:inline-flex}}
 @media(max-width:560px){body.embedded .editor,body.embedded .preview-panel{padding:20px 16px}}
-@media(max-width:899px){body.embedded.theme-ark :is(input[type=text],textarea){font-size:16px}}
+.avatar-edit-dialog{max-width:440px;width:calc(100% - 24px);max-height:90vh;overflow:auto;padding:16px;background:var(--paper);color:var(--ink);border:var(--editor-border-width,1px) solid var(--editor-rule,var(--ink));border-radius:var(--editor-radius,0);box-shadow:var(--editor-shadow-hover,none)}
+.avatar-edit-dialog::backdrop{background:#0009}
+.avatar-edit-previews{display:grid;grid-template-columns:repeat(2,minmax(0,128px));justify-content:center;gap:8px}
+.avatar-edit-previews :is(canvas,img){display:block;width:100%;height:auto;background:#fff;image-rendering:pixelated}
+.avatar-edit-previews canvas{touch-action:none}
+.avatar-edit-dialog :is(.actions,[data-sliders],select){margin-top:12px}
+.avatar-edit-dialog input[type=range]{display:block;width:100%;margin:0;min-height:24px}
+@media(max-width:899px){body.embedded.theme-ark :is(input[type=text],textarea,select){font-size:16px}}
 @media(prefers-reduced-motion:reduce){body.embedded.theme-ark :is(button,.file-button){transition:none}}

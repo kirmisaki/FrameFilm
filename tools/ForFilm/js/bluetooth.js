@@ -11,11 +11,22 @@ let legacyFilmTransferActive = false;
 let boundGattDevice = null;
 let connectionEpoch = 0;
 let connectionTimers = [];
+const selectedFilmFiles = new Set();
+let filmListCapture = null;
+let filmDisplayWaiter = null;
+let filmDeleting = false;
 
 function clearConnectionTimers() {
     connectionEpoch++;
     connectionTimers.forEach(clearTimeout);
     connectionTimers = [];
+    finishFilmDisplayWaiter(new Error('设备连接已变化'));
+    filmListCapture = null;
+    filmDeleting = false;
+    selectedFilmFiles.clear();
+    window.fileListBuffer = [];
+    window.currentDisplayFileId = undefined;
+    updateFileListDisplay([]);
 }
 
 function scheduleConnectionTask(ms, callback) {
@@ -346,6 +357,7 @@ async function processQueue() {
 async function onDeviceConnected(deviceName) {
     clearConnectionTimers();
     if(window.Ark512) window.Ark512.resetCapabilities();
+    window.NfcWallet?.setCapabilities(null);
     const initEpoch = connectionEpoch;
     // 根据设备名称检测设备类型（USB 无名称时，随后会由屏幕参数查询纠正）
     var upperName = (deviceName || '').toUpperCase();
@@ -398,16 +410,14 @@ async function onDeviceConnected(deviceName) {
     scheduleConnectionTask(1000, () => {
         debugLog('开始发送初始化命令...');
         sendBleScreenResolutionGet();
-        if(window.Ark512) sendBleCmd(0x59).catch(function(error){console.info("ABC9 能力未确认", error.message);});
+        if (currentDeviceType === 'FRAMEFILMARK') {
+            sendBleCmd(0x59).catch(error => console.info('Ark 能力未确认', error.message));
+        }
         sendBlePwrRead();
     });
 
     scheduleConnectionTask(2000, () => {
-        sendBleFileList();
-    });
-
-    scheduleConnectionTask(3000, () => {
-        sendBleFileDisplayGet();
+        sendBleFileList().catch(error => console.info('文件列表未读取', error.message));
     });
 
     scheduleConnectionTask(3500, () => {
@@ -505,6 +515,7 @@ function initBluetooth() {
 
 function onDisconnected(event) {
     if(window.Ark512) window.Ark512.resetCapabilities();
+    window.NfcWallet?.setCapabilities(null);
     clearConnectionTimers();
     stopDownloadPoll();
     stopWifiStatusPoll();
@@ -894,7 +905,7 @@ async function uploadOtaFileViaBle(fileData) {
     }
 
     if (currentDeviceType === 'FRAMEFILMARK') {
-        if (!window.ArkOta || !window.ArkDevice || fileData.length < 352) {
+        if (!window.ArkOta || !window.ArkDevice || (fileData && fileData.length < 352)) {
             showMessage('请选择带硬件标识的 Ark OTA 应用镜像', 'error');
             return;
         }
@@ -904,24 +915,24 @@ async function uploadOtaFileViaBle(fileData) {
         try {
             await window.ArkDevice.run('Ark OTA', async ctx => {
                 updateOtaTransferStatus('正在核对设备和固件…', 0);
-                const image = await window.ArkOta.prepare(ctx, fileData);
+                const { bytes, image } = await window.ArkOta.prepare(ctx, fileData);
                 started = true;
                 updateOtaTransferStatus('初始化固件分区...', 0);
-                await ctx.send(BLE_FILM_TRANS_CH_OTA_LEN, arkU32(fileData.length));
+                await ctx.send(BLE_FILM_TRANS_CH_OTA_LEN, arkU32(bytes.length));
                 // OTA_LEN 会同步擦除整分区。只有 BLE 任务处理完之后才能开始传数据。
                 const ready = await ctx.request(BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET, new Uint8Array(), 15000);
                 if (ready.length !== 5) throw new Error('OTA 初始化后未收到有效的设备响应');
                 let chunks = 0;
-                for (let offset = 0; offset < fileData.length; offset += BLE_CHUNK_SIZE) {
-                    await ctx.send(BLE_FILM_TRANS_CH_OTA_DATA, fileData.slice(offset, offset + BLE_CHUNK_SIZE));
+                for (let offset = 0; offset < bytes.length; offset += BLE_CHUNK_SIZE) {
+                    await ctx.send(BLE_FILM_TRANS_CH_OTA_DATA, bytes.slice(offset, offset + BLE_CHUNK_SIZE));
                     await delay(4);
                     chunks++;
                     if (chunks % 32 === 0) {
                         const processed = await ctx.request(BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET, new Uint8Array(), 15000);
                         if (processed.length !== 5) throw new Error('OTA 数据处理屏障响应无效');
                     }
-                    const sent = Math.min(offset + BLE_CHUNK_SIZE, fileData.length);
-                    updateOtaTransferStatus(`已发送 ${sent}/${fileData.length} 字节`, Math.round(sent * 100 / fileData.length));
+                    const sent = Math.min(offset + BLE_CHUNK_SIZE, bytes.length);
+                    updateOtaTransferStatus(`已发送 ${sent}/${bytes.length} 字节`, Math.round(sent * 100 / bytes.length));
                 }
                 if (chunks % 32 !== 0) {
                     const processed = await ctx.request(BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET, new Uint8Array(), 15000);
@@ -1039,12 +1050,15 @@ function startOtaUpgrade() {
         return;
     }
 
+    if (currentDeviceType === 'FRAMEFILMARK' && window.ArkOta) {
+        return uploadOtaFileViaBle();
+    }
     if (!window.selectedOtaData) {
         showMessage('请先选择OTA升级文件', 'error');
         return;
     }
 
-    uploadOtaFileViaBle(window.selectedOtaData);
+    return uploadOtaFileViaBle(window.selectedOtaData);
 }
 
 async function sendBleCmd(cmdType, data = null) {
@@ -1662,16 +1676,21 @@ async function setupBluetoothListener() {
     if (!characteristic) return;
     if (bluetoothListenerCharacteristic === characteristic) return;
     bluetoothListenerCharacteristic = characteristic;
+    const sourceCharacteristic = characteristic;
 
     characteristic.addEventListener('characteristicvaluechanged', function(event) {
+        if (sourceCharacteristic !== characteristic) return;
         const value = event.target.value;
         if (!value || value.byteLength < 4) return;
 
         const data = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
         console.log('收到蓝牙数据:', Array.from(data).map(b => b.toString(16)).join(' '));
 
-        if(window.Ark512 && data[0]===BLE_CMD_HEAD && data[1]===0x59 && data.length===data[2]+4 && calculateChecksum(data,data.length-1)===data[data.length-1]) {
-            window.Ark512.setCapabilities(data.slice(3,-1));
+        if (event.target === characteristic && data[0] === BLE_CMD_HEAD && data[1] === 0x59 &&
+            data.length === data[2] + 4 && calculateChecksum(data, data.length - 1) === data[data.length - 1]) {
+            const caps = data.slice(3, -1);
+            window.Ark512?.setCapabilities(caps);
+            window.NfcWallet?.setCapabilities(caps);
         }
         if (window.ArkDevice && window.ArkDevice.notification(data)) return;
 
@@ -1710,24 +1729,18 @@ async function setupBluetoothListener() {
         else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_LIST && cmdLen >= 2) {
             const fileId = data[3];
             const nameLen = data[4];
-
-            if (nameLen > 0 && nameLen < 64 && 5 + nameLen <= data.length) {
-                const filenameBytes = data.slice(5, 5 + nameLen);
-                const filename = String.fromCharCode.apply(null, filenameBytes).replace(/\0.*$/, '');
-
-                console.log('FILE_LIST: id=' + fileId + ', name="' + filename + '"');
-
-                if (window.fileListBuffer === undefined) {
-                    window.fileListBuffer = [];
-                }
-                window.fileListBuffer.push({ id: fileId, filename: filename });
-
-                updateFileListDisplay(window.fileListBuffer);
+            if (!validFilmReply(data) || nameLen < 2 || nameLen !== cmdLen - 2 ||
+                data[4 + nameLen] !== 0) return;
+            const filename = new TextDecoder().decode(data.subarray(5, 4 + nameLen));
+            if (filmListCapture?.epoch === connectionEpoch) {
+                filmListCapture.duplicateIds ||= filmListCapture.rows.has(fileId);
+                filmListCapture.rows.set(fileId, { id: fileId, filename });
             }
         }
-        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_DISPLAY_GET && cmdLen === 1) {
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_DISPLAY_GET && cmdLen === 1 && validFilmReply(data)) {
             const currentId = data[3];
             updateCurrentDisplayId(currentId);
+            finishFilmDisplayWaiter(null, currentId);
         }
         else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_CTRL_SLEEPONOFF_GET && cmdLen === 1) {
             const onoff = data[3];
@@ -1944,61 +1957,77 @@ function setPhotoMode(mode) {
     if (activeButton) activeButton.classList.add('active');
 }
 
-function sendBleFileList() {
+function queueFilmFileTask(task) {
+    if (!server?.connected || !characteristic) return Promise.reject(new Error('请先连接设备'));
+    const epoch = connectionEpoch, link = characteristic;
     return new Promise((resolve, reject) => {
-        if (!device || !server || !characteristic) {
-            showMessage('请先连接设备', 'error');
-            reject(new Error('未连接设备'));
-            return;
-        }
         queueBleCmd(async () => {
-            debugLog('开始发送文件列表请求...');
-            let packet = new Uint8Array(4);
-            packet[0] = BLE_CMD_HEAD;
-            packet[1] = BLE_FILM_TRANS_CH_FILE_LIST;
-            packet[2] = 0;
-            packet[3] = calculateChecksum(packet, 3);
-
-            try {
-                await characteristic.writeValue(packet);
-                debugLog('文件列表请求已发送', 'success');
-            } catch (err) {
-                debugLog('文件列表请求失败: ' + err.message, 'error');
-                reject(err);
-                return;
-            }
-            await delay(BLE_CTRL_DELAY);
-            resolve();
+            const check = () => {
+                if (epoch !== connectionEpoch || link !== characteristic || !server?.connected) {
+                    throw new Error('设备连接已变化');
+                }
+            };
+            const write = async (channel, payload = []) => {
+                check();
+                const packet = new Uint8Array([BLE_CMD_HEAD, channel, payload.length, ...payload, 0]);
+                packet[packet.length - 1] = calculateChecksum(packet, packet.length - 1);
+                await link.writeValue(packet);
+                check();
+            };
+            try { check(); resolve(await task(write)); }
+            catch (error) { reject(error); }
         });
     });
 }
 
-function sendBleFileDelete(fileId) {
-    return new Promise((resolve, reject) => {
-        if (!device || !server || !characteristic) {
-            showMessage('请先连接设备', 'error');
-            reject(new Error('未连接设备'));
-            return;
-        }
-        queueBleCmd(async () => {
-            let packet = new Uint8Array(5);
-            packet[0] = BLE_CMD_HEAD;
-            packet[1] = BLE_FILM_TRANS_CH_FILE_DELETE;
-            packet[2] = 1;
-            packet[3] = fileId & 0xFF;
-            packet[4] = calculateChecksum(packet, 4);
+function validFilmReply(data) {
+    return data.length === data[2] + 4 && calculateChecksum(data, data.length - 1) === data[data.length - 1];
+}
 
-            try {
-                await characteristic.writeValue(packet);
-                debugLog('删除文件命令已发送', 'success');
-            } catch (err) {
-                debugLog('删除文件命令失败: ' + err.message, 'error');
-                reject(err);
-                return;
-            }
-            await delay(BLE_CTRL_DELAY);
-            resolve();
-        });
+function finishFilmDisplayWaiter(error, id) {
+    if (!filmDisplayWaiter) return;
+    const waiter = filmDisplayWaiter;
+    filmDisplayWaiter = null;
+    clearTimeout(waiter.timer);
+    if (error) waiter.reject(error);
+    else waiter.resolve(id);
+}
+
+async function readFilmDisplayId(write) {
+    const reply = new Promise((resolve, reject) => {
+        filmDisplayWaiter = { resolve, reject, timer: setTimeout(() =>
+            finishFilmDisplayWaiter(new Error('设备未返回完整文件列表，请刷新重试')), 20000) };
+    });
+    reply.catch(() => {});
+    const waiter = filmDisplayWaiter;
+    try {
+        await write(BLE_FILM_TRANS_CH_FILE_DISPLAY_GET);
+        return await reply;
+    } catch (error) {
+        if (filmDisplayWaiter === waiter) finishFilmDisplayWaiter(error);
+        throw error;
+    }
+}
+
+async function readFilmListSnapshot(write) {
+    const capture = { epoch: connectionEpoch, rows: new Map(), duplicateIds: false };
+    filmListCapture = capture;
+    try {
+        await write(BLE_FILM_TRANS_CH_FILE_LIST);
+        // 0x06 没有结束帧；设备按顺序处理命令，后发的 0x08 回包用于确认列表已收完。
+        await readFilmDisplayId(write);
+        if (capture.epoch !== connectionEpoch) throw new Error('设备连接已变化');
+        if (capture.duplicateIds) throw new Error('设备返回了重复文件编号，请分批整理 SD 卡后重试');
+        return Array.from(capture.rows.values());
+    } finally {
+        if (filmListCapture === capture) filmListCapture = null;
+    }
+}
+
+function sendBleFileList() {
+    return queueFilmFileTask(async write => {
+        window.fileListBuffer = await readFilmListSnapshot(write);
+        updateFileListDisplay(window.fileListBuffer);
     });
 }
 
@@ -2038,31 +2067,7 @@ function sendBleFileDisplay(fileId) {
 }
 
 function sendBleFileDisplayGet() {
-    return new Promise((resolve, reject) => {
-        if (!device || !server || !characteristic) {
-            showMessage('请先连接设备', 'error');
-            reject(new Error('未连接设备'));
-            return;
-        }
-        queueBleCmd(async () => {
-            let packet = new Uint8Array(4);
-            packet[0] = BLE_CMD_HEAD;
-            packet[1] = BLE_FILM_TRANS_CH_FILE_DISPLAY_GET;
-            packet[2] = 0;
-            packet[3] = calculateChecksum(packet, 3);
-
-            try {
-                await characteristic.writeValue(packet);
-                debugLog('查询显示状态已发送', 'success');
-            } catch (err) {
-                debugLog('查询显示状态失败: ' + err.message, 'error');
-                reject(err);
-                return;
-            }
-            await delay(BLE_CTRL_DELAY);
-            resolve();
-        });
-    });
+    return queueFilmFileTask(readFilmDisplayId);
 }
 
 async function sendBleCmdWithData(cmdType, value, dataLen = 4) {
@@ -2421,39 +2426,69 @@ function updateFileListDisplay(fileList) {
     const fileListEl = document.getElementById('film-file-list');
     if (!fileListEl) return;
 
-    window.selectedFileId = null;
+    const available = new Set(fileList.map(file => file.filename));
+    for (const name of selectedFilmFiles) if (!available.has(name)) selectedFilmFiles.delete(name);
 
     if (fileList.length === 0) {
         fileListEl.innerHTML = '<div class="empty-state">暂无文件</div>';
+        syncFilmFileControls();
         return;
     }
 
     let html = '';
     fileList.forEach(file => {
         const name = escapeFileText(file.filename);
-        html += `<div class="file-item" data-id="${Number(file.id)}">
-            <input type="checkbox" class="file-checkbox" data-id="${Number(file.id)}">
+        html += `<label class="file-item" data-id="${Number(file.id)}">
+            <input type="checkbox" class="file-checkbox" data-filename="${name}" aria-label="${name}">
             <span class="file-id">${Number(file.id)}</span>
             <span class="file-name" title="${name}">${name}</span>
-        </div>`;
+        </label>`;
     });
     fileListEl.innerHTML = html;
 
-    document.querySelectorAll('.file-checkbox').forEach(cb => {
-        cb.addEventListener('change', function() {
-            const id = parseInt(this.dataset.id);
-            if (this.checked) {
-                window.selectedFileId = id;
-                document.querySelectorAll('.file-checkbox').forEach(c => {
-                    if (c !== this) c.checked = false;
-                });
-            }
+    fileListEl.querySelectorAll('.file-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
+            if (cb.checked) selectedFilmFiles.add(cb.dataset.filename);
+            else selectedFilmFiles.delete(cb.dataset.filename);
+            syncFilmFileControls();
         });
     });
+    syncFilmFileControls();
 
     if (window.currentDisplayFileId !== undefined) {
         updateCurrentDisplayId(window.currentDisplayFileId);
     }
+}
+
+function syncFilmFileControls(message) {
+    const list = window.fileListBuffer || [];
+    const connected = !!server?.connected && !!characteristic;
+    document.querySelectorAll('#film-file-list .file-checkbox').forEach(cb => {
+        cb.checked = selectedFilmFiles.has(cb.dataset.filename);
+        cb.disabled = !connected || filmDeleting;
+    });
+    const all = document.getElementById('film-select-all');
+    const remove = document.getElementById('film-delete-files');
+    const display = document.getElementById('film-display-file');
+    const status = document.getElementById('film-selection-status');
+    const count = selectedFilmFiles.size;
+    if (all) {
+        all.disabled = !connected || filmDeleting || !list.length;
+        all.textContent = count && count === list.length ? '取消全选' : '全选';
+    }
+    if (remove) remove.disabled = !connected || filmDeleting || count === 0;
+    if (display) display.disabled = !connected || filmDeleting || count !== 1;
+    if (status && (message || !filmDeleting)) {
+        status.textContent = message || (count ? '已选 ' + count + ' 张' : '可勾选多张图片批量删除');
+    }
+}
+
+function toggleAllFilmFiles() {
+    if (filmDeleting) return;
+    const list = window.fileListBuffer || [];
+    if (selectedFilmFiles.size === list.length) selectedFilmFiles.clear();
+    else list.forEach(file => selectedFilmFiles.add(file.filename));
+    syncFilmFileControls();
 }
 
 function updateCurrentDisplayId(id) {
@@ -2469,62 +2504,107 @@ function updateCurrentDisplayId(id) {
 }
 
 function refreshFileList() {
-    window.fileListBuffer = [];
-    window.selectedFileId = null;
-    const fileListEl = document.getElementById('film-file-list');
-    if (fileListEl) {
-        fileListEl.innerHTML = '<div class="empty-state">正在加载...</div>';
-    }
-    sendBleFileList().then(() => {
-        setTimeout(() => {
-            sendBleFileDisplayGet();
-        }, 500);
-    }).catch(err => console.error('刷新文件列表失败:', err));
-}
-
-function deleteSelectedFile() {
-    if (window.selectedFileId === undefined || window.selectedFileId === null) {
-        showMessage('请先选择要删除的文件', 'error');
-        return;
-    }
-    if (!confirm('确定要删除选中的文件吗？')) {
-        return;
-    }
-    sendBleFileDelete(window.selectedFileId).then(() => {
-        window.selectedFileId = null;
-        showMessage('删除命令已发送', 'success');
-        setTimeout(() => {
-            refreshFileList();
-        }, 500);
+    if (filmDeleting) return;
+    syncFilmFileControls('正在读取文件列表…');
+    return sendBleFileList().catch(error => {
+        syncFilmFileControls('刷新失败：' + error.message);
+        showMessage(error.message, 'error');
     });
 }
 
+async function deleteSelectedFiles() {
+    if (filmDeleting || !selectedFilmFiles.size) return;
+    const epoch = connectionEpoch, names = [...selectedFilmFiles];
+    if (!confirm('确定从设备 SD 卡删除选中的 ' + names.length + ' 张图片吗？')) return;
+    filmDeleting = true;
+    let deleted = 0;
+    syncFilmFileControls('正在核对所选图片…');
+    const deleteFromList = async (write, checkImagePage) => {
+        await checkImagePage();
+        let files = await readFilmListSnapshot(write);
+        if (!names.every(name => files.some(file => file.filename === name))) {
+            window.fileListBuffer = files;
+            updateFileListDisplay(files);
+            throw new Error('文件列表已变化，请重新选择');
+        }
+        for (const name of names) {
+            const target = files.find(file => file.filename === name);
+            if (!target) throw new Error('文件列表已变化，请刷新后重试');
+            await checkImagePage();
+            await write(BLE_FILM_TRANS_CH_FILE_DELETE, [target.id]);
+            await delay(400);
+            await checkImagePage();
+            files = await readFilmListSnapshot(write);
+            if (files.some(file => file.filename === name)) {
+                await delay(300);
+                await checkImagePage();
+                files = await readFilmListSnapshot(write);
+            }
+            window.fileListBuffer = files;
+            updateFileListDisplay(files);
+            if (files.some(file => file.filename === name)) {
+                throw new Error('未确认删除 ' + name + '，请检查 SD 卡后重试');
+            }
+            deleted++;
+            syncFilmFileControls('已删除 ' + deleted + ' / ' + names.length + ' 张');
+        }
+    };
+    let failure = null;
+    try {
+        await queueFilmFileTask(async write => {
+            if (currentDeviceType !== 'FRAMEFILMARK' || !window.ArkDevice) {
+                return deleteFromList(write, () => {});
+            }
+            return window.ArkDevice.run('批量删除图片', ctx => deleteFromList(
+                (channel, payload = []) => ctx.send(channel, Uint8Array.from(payload)),
+                async () => {
+                    const page = await ctx.request(0x4C, new Uint8Array());
+                    if (page.length !== 1 || page[0] !== 0) {
+                        throw new Error('请在设备上打开图片应用后再删除，网页不会自动切换画面');
+                    }
+                }
+            ));
+        });
+    } catch (error) {
+        failure = error;
+    } finally {
+        if (epoch === connectionEpoch) {
+            filmDeleting = false;
+            const message = failure
+                ? '已确认删除 ' + deleted + ' / ' + names.length + ' 张；' + failure.message
+                : '已删除 ' + deleted + ' 张图片';
+            syncFilmFileControls(message);
+            showMessage(message, failure ? 'error' : 'success');
+        } else if (!server?.connected) {
+            showMessage('设备已断开，已确认删除 ' + deleted + ' / ' + names.length + ' 张；请重连后刷新', 'error');
+        }
+    }
+}
+
 function selectDisplayFile() {
-    if (window.selectedFileId === undefined || window.selectedFileId === null) {
-        showMessage('请先选择要显示的文件', 'error');
+    if (filmDeleting || selectedFilmFiles.size !== 1) {
+        showMessage('请选择一张要显示的图片', 'error');
         return;
     }
+    const selected = (window.fileListBuffer || []).find(item => selectedFilmFiles.has(item.filename));
+    if (!selected) { showMessage('文件列表已变化，请刷新后重选', 'error'); return; }
     var atomic = false;
     var work;
     if (currentDeviceType === 'FRAMEFILMARK' && window.ArkDevice) {
-        var selected = (window.fileListBuffer || []).find(function (item) {
-            return Number(item.id) === Number(window.selectedFileId);
-        });
-        if (!selected) { showMessage('文件列表已变化，请刷新后重选', 'error'); return; }
         work = window.ArkDevice.run('确认文件显示应用', async function (ctx) {
             var page = await ctx.request(0x4C, new Uint8Array());
             if (page.length !== 1) throw new Error('当前应用响应无效');
             return page[0];
         }).then(function (appId) {
-            if (appId === 3) return sendBleFileDisplay(window.selectedFileId);
+            if (appId === 3) return sendBleFileDisplay(selected.id);
             atomic = true;
             return window.ArkDevice.openImage(selected.filename);
         });
     } else {
-        work = sendBleFileDisplay(window.selectedFileId);
+        work = sendBleFileDisplay(selected.id);
     }
     return work.then(function () {
         showMessage(atomic ? '目标图片已提交，等待电子纸刷新完成' : '显示命令已发送', 'info');
-        setTimeout(function () { sendBleFileDisplayGet(); }, 500);
+        setTimeout(() => sendBleFileDisplayGet().catch(error => console.info('显示状态未读取', error.message)), 500);
     }).catch(function (error) { showMessage(error.message, 'error'); });
 }

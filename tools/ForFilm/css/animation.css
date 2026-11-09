@@ -372,8 +372,8 @@ body:not(.show-anim-tab) .nav-item[data-page="anim-page"] { display: none; }
 }
 
 .anim-stat b { font-weight: 700; }
-.anim-stat b.warn { color: #B26A00; }
-.anim-stat b.over { color: #C62828; }
+.anim-stat b.warn { color: var(--warning-ink); }
+.anim-stat b.over { color: var(--error-ink); }
 
 .anim-stat__lbl {
     font-size: 10px;
@@ -385,7 +385,7 @@ body:not(.show-anim-tab) .nav-item[data-page="anim-page"] { display: none; }
     flex: 1 0 100%;
     font-family: var(--font-body);
     font-size: 11.5px;
-    color: #C62828;
+    color: var(--error-ink);
 }
 
 .anim-result__sub {

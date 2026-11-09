@@ -34,6 +34,47 @@ class FilesGateway implements DeviceGateway {
 }
 
 void main() {
+  testWidgets('delete selected images after confirmation despite shifted IDs', (
+    tester,
+  ) async {
+    final gateway = PreviewDeviceGateway();
+    final controller = DeviceController(gateway);
+    addTearDown(() {
+      controller.dispose();
+      gateway.dispose();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: DeviceFilesPage(controller: controller)),
+      ),
+    );
+    await controller.command('connect', {'address': 'DEMO-ARK'});
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('演示画面.film'));
+    await tester.tap(find.text('风景.film'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '选择显示'))
+          .onPressed,
+      isNull,
+    );
+    final delete = find.widgetWithText(OutlinedButton, '删除 2 张');
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(controller.snapshot.files['entries'], hasLength(2));
+
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pumpAndSettle();
+    expect(controller.snapshot.files['entries'], isEmpty);
+    expect((controller.snapshot.files['storage'] as Map)['animationCount'], 1);
+    expect(find.text('已删除 2 / 2 张图片'), findsOneWidget);
+  });
+
   testWidgets(
     'delete explains inactive app and only displays with explicit consent',
     (tester) async {

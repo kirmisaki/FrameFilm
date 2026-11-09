@@ -36,6 +36,7 @@
     const ark = host.classList.contains('theme-ark');
     document.body.classList.toggle('theme-ark', ark);
     document.documentElement.classList.toggle('embedded-ark', ark);
+    document.documentElement.style.colorScheme = style.colorScheme;
     const tokens = {
       '--ink': '--ink', '--muted': '--ink-soft', '--paper': '--paper',
       '--editor-accent': '--sky', '--editor-radius': '--r',
@@ -43,16 +44,20 @@
       '--editor-font': '--font-body', '--editor-display': '--font-display',
       '--editor-border-width': '--line', '--editor-shadow': '--sh-1',
       '--editor-shadow-hover': '--sh-2', '--editor-rule': '--ink',
-      '--editor-frame-bg': '--cream-2', '--editor-primary-bg': '--lemon'
+      '--editor-frame-bg': '--cream-2', '--editor-primary-bg': '--lemon',
+      '--editor-focus': '--focus-ink', '--editor-input-accent': '--control-accent',
+      '--progress-height': '--progress-height', '--progress-radius': '--progress-radius',
+      '--progress-track': '--progress-track', '--progress-value': '--progress-value',
+      '--progress-border': '--progress-border', '--danger': '--error-ink'
     };
     if (ark) {
       Object.assign(tokens, {
         '--line': '--ark-line', '--ground': '--ark-bg',
-        '--editor-surface': '--ark-bg-2', '--editor-danger': '--ark-red',
+        '--editor-surface': '--ark-bg-2', '--danger': '--ark-red',
         '--editor-rule': '--ark-line', '--editor-frame-bg': '--ark-bg'
       });
     } else {
-      for (const token of ['--line', '--ground', '--editor-surface', '--editor-danger']) {
+      for (const token of ['--line', '--ground', '--editor-surface']) {
         document.body.style.removeProperty(token);
       }
     }

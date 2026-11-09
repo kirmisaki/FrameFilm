@@ -1,6 +1,11 @@
 /* Arknights PRTS workbench. All overrides are scoped; the original theme stays intact. */
+html:has(> body.theme-ark) {
+ --ark-bg:#151719;
+ color-scheme:only dark;
+ background-color:var(--ark-bg);
+}
 body.theme-ark {
- --ark-bg:#151719;--ark-bg-2:#222629;--ark-bg-3:#2c3135;
+ --ark-bg-2:#222629;--ark-bg-3:#2c3135;
  --ark-ink:#f0f1f2;--ark-ink-2:#adb5bb;--ark-ink-3:#8e999f;
  --ark-line:#41484d;--ark-line-2:#41484d;--ark-accent:#83afc1;--ark-red:#e58d89;
  --ark-success:#a5c5b1;--ark-warning:#d5bd8e;
@@ -11,7 +16,10 @@ body.theme-ark {
  --lemon:var(--ark-accent);--coral:var(--ark-accent);--sky:var(--ark-accent);--mint:var(--ark-accent);--sun:var(--ark-accent);
  --r:0px;--r-xs:0px;--r-sm:0px;--r-lg:0px;--sh-1:none;--sh-2:none;--sh-3:none;--line:1px;
  --font-display:var(--ark-display);--font-body:var(--ark-body);--font-num:var(--ark-mono);--font-mono:var(--ark-mono);
- color-scheme:dark;background:var(--ark-bg);color:var(--ark-ink);font-family:var(--ark-body);
+ --log-bg:var(--ark-bg);--log-ink:var(--ark-ink-2);
+ --focus-ink:var(--ark-accent);--control-accent:var(--ark-accent);
+ --progress-height:4px;--progress-radius:0px;--progress-track:var(--ark-line);--progress-value:var(--ark-accent);--progress-border:0;
+ background:var(--ark-bg);color:var(--ark-ink);font-family:var(--ark-body);
 }
 .ark-brand{display:none}
 body.theme-ark .container{background:transparent}
@@ -49,10 +57,10 @@ body.theme-ark :is(.device-info strong,.file-name,.batch-meta b,.action-header,.
 body.theme-ark :is(.info,.device-hint,.device-id,.device-resolution,.field-hint,.switch-row__hint,.empty-state,.file-size,.file-id,.batch-meta small,.batch-state,.transfer-status,.transfer-progress,.anim-hint,.anim-stat__lbl,.kb-tip,.zoom-hint-row,.no-devices,.wifi-status-row,.download-status-text){color:var(--ark-ink-2)}
 body.theme-ark :is(.device-type-badge,.value-chip,.batch-count,.anim-chip,.kb-chip,.anim-frame__no,.anim-stage__badge){background:var(--ark-ink);color:var(--ark-bg);border:0;border-radius:0;font:600 11px/1.5 var(--ark-mono);padding:4px 8px}
 body.theme-ark :is(.field label,.field--tight label,.slider-container label){font-size:12px;letter-spacing:.05em;color:var(--ark-ink-2);font-family:var(--ark-body)}
-body.theme-ark :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),select,textarea,.quote-input){background:var(--ark-bg);color:var(--ark-ink);border:1px solid var(--ark-line);border-radius:0;box-shadow:none;font-family:var(--ark-body)}
+body.theme-ark :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),select,textarea,.quote-input){background-color:var(--ark-bg);color:var(--ark-ink);border:1px solid var(--ark-line);border-radius:0;box-shadow:none;font-family:var(--ark-body)}
 body.theme-ark :is(input,select,textarea)::placeholder{color:var(--ark-ink-3)}
 body.theme-ark :is(input,select,textarea):focus{border-color:var(--ark-accent);box-shadow:none}
-body.theme-ark input[type="range"]{accent-color:var(--ark-accent)}
+body.theme-ark input[type="file"]::file-selector-button{background:var(--ark-bg-2);border:1px solid var(--ark-line)}
 body.theme-ark .slider-toggle{background:var(--ark-line);border:0;border-radius:0;box-shadow:none}
 body.theme-ark .slider-toggle::before{background:var(--ark-ink);border:0;border-radius:0;box-shadow:none}
 body.theme-ark .switch input:checked + .slider-toggle{background:var(--ark-accent)}
@@ -73,9 +81,6 @@ body.theme-ark .polaroid-frame{background:var(--ark-bg);padding:12px;border:1px 
 body.theme-ark .polaroid-frame::after{display:none}
 body.theme-ark :is(.polaroid-inner,.anim-stage-inner){background:#fff;border:1px solid var(--ark-line);border-radius:0}
 body.theme-ark :is(#frameVideo,#animVideo,.anim-draw-box,.batch-thumb){border:1px solid var(--ark-line);border-radius:0}
-body.theme-ark :is(.progress-bar,.progress-fill){border-radius:0}
-body.theme-ark .progress-bar{background:var(--ark-line);height:4px}
-body.theme-ark .progress-fill{background:var(--ark-accent)}
 body.theme-ark .batch-row[data-state="fail"]{border-color:var(--ark-red)}
 body.theme-ark :is(.mode-button.active,.kb-event-tab.active,.kb-key.active,.anim-tool.active,.anim-imgtools__all.is-on){background:var(--ark-accent);color:var(--ark-bg);border-color:var(--ark-accent);box-shadow:none;transform:none}
 body.theme-ark :is(.mode-button.active,.kb-event-tab.active,.kb-key.active,.anim-tool.active) .ic{stroke:var(--ark-bg)}
@@ -95,12 +100,10 @@ body.theme-ark .nav-item .ic{stroke:currentColor}
 body.theme-ark .nav-item.active::after{display:none}
 body.theme-ark .page.active > *,body.theme-ark .frame-tab-content.active > *{animation:none}
 /* Shared controls used by Frame, Film, animation and settings. */
-body.theme-ark select{background-image:linear-gradient(45deg,transparent 50%,var(--ark-ink) 50%),linear-gradient(135deg,var(--ark-ink) 50%,transparent 50%);background-position:calc(100% - 21px) 55%,calc(100% - 15px) 55%;background-size:6px 6px;background-repeat:no-repeat}
 body.theme-ark input[type="range"]::-webkit-slider-runnable-track{height:4px;background:var(--ark-line);border:0;border-radius:0}
 body.theme-ark input[type="range"]::-webkit-slider-thumb{width:16px;height:22px;margin-top:-9px;background:var(--ark-ink);border:1px solid var(--ark-bg);border-radius:0;box-shadow:none}
 body.theme-ark input[type="range"]::-moz-range-track{height:4px;background:var(--ark-line);border:0;border-radius:0}
 body.theme-ark input[type="range"]::-moz-range-thumb{width:16px;height:22px;background:var(--ark-ink);border:1px solid var(--ark-bg);border-radius:0;box-shadow:none}
-body.theme-ark input[type="checkbox"]{accent-color:var(--ark-accent)}
 body.theme-ark .switch-row{border-bottom-style:solid;border-bottom-width:1px}
 body.theme-ark .slider-toggle::before{top:5px}
 body.theme-ark :is(.error,.log-entry.error,.anim-stat__warn){color:var(--ark-red)}
@@ -123,10 +126,6 @@ body.theme-ark .file-list{border:1px solid var(--ark-line);border-radius:0;backg
 body.theme-ark .file-id{background:var(--ark-bg-3);color:var(--ark-ink-2);border:1px solid var(--ark-line);border-radius:0}
 body.theme-ark .action-item{padding:16px}
 body.theme-ark .panel__content{padding-top:16px}
-body.theme-ark #ark-direct-progress{height:4px;accent-color:var(--ark-accent)}
-body.theme-ark #ark-direct-progress::-webkit-progress-bar{background:var(--ark-line)}
-body.theme-ark #ark-direct-progress::-webkit-progress-value{background:var(--ark-accent)}
-body.theme-ark #ark-direct-progress::-moz-progress-bar{background:var(--ark-accent)}
 /* Animation tooling keeps its actual pixel palette and preview canvas colors. */
 body.theme-ark .anim-stat__lbl{opacity:1}
 body.theme-ark .anim-frame__tag{border-radius:0;background:var(--ark-accent);color:var(--ark-bg)}

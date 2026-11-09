@@ -6,6 +6,8 @@
    ============================================================ */
 
 :root {
+    color-scheme: only light;
+    background-color: var(--cream);
     /* —— 色板 —— */
     --cream: #FFF8E7;
     --cream-2: #FFFDF6;
@@ -17,6 +19,18 @@
     --sky: #4FB3FF;
     --mint: #3ED6A8;
     --sun: #FFD84D;
+    --error-ink: #C0392B;
+    --success-ink: #1F8A5B;
+    --warning-ink: #925900;
+    --focus-ink: #276BA8;
+    --control-accent: #276BA8;
+    --log-bg: #12100E;
+    --log-ink: #E8E3D6;
+    --progress-height: 22px;
+    --progress-radius: 999px;
+    --progress-track: var(--paper);
+    --progress-value: repeating-linear-gradient(45deg, var(--coral) 0 10px, var(--sun) 10px 20px);
+    --progress-border: 2.5px solid var(--ink);
 
     /* —— 几何 —— */
     --line: 3px;
@@ -287,7 +301,7 @@ body {
 .nav-item:focus-visible,
 .mcard:focus-visible,
 .mode-button:focus-visible,
-.detail-back:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+.detail-back:focus-visible { outline: 2px solid var(--focus-ink); outline-offset: 2px; }
 
 .primary-button:disabled,
 .secondary-button:disabled {
@@ -370,7 +384,12 @@ input[type="text"]:focus,
 input[type="password"]:focus,
 input[type="number"]:focus,
 select:focus,
-textarea:focus { box-shadow: var(--sh-1); background: var(--cream-2); }
+textarea:focus { box-shadow: var(--sh-1); background-color: var(--cream-2); }
+
+:is(input, select, textarea):focus-visible {
+    outline: 2px solid var(--focus-ink);
+    outline-offset: 2px;
+}
 
 input::placeholder,
 textarea::placeholder { color: #A9A296; }
@@ -380,6 +399,25 @@ input[type="file"] {
     font-size: 13px;
     background: var(--cream-2);
     cursor: pointer;
+}
+
+input[type="file"]::file-selector-button {
+    margin-inline-end: 8px;
+    padding: 5px 9px;
+    background: var(--paper);
+    color: var(--ink);
+    border: var(--line) solid var(--ink);
+    border-radius: var(--r-xs);
+    font: inherit;
+    cursor: pointer;
+}
+
+input:where([type="checkbox"], [type="radio"]) {
+    inline-size: 16px;
+    block-size: 16px;
+    accent-color: var(--control-accent);
+    flex: 0 0 auto;
+    vertical-align: middle;
 }
 
 select {
@@ -397,6 +435,7 @@ select {
     background-repeat: no-repeat;
 }
 
+option { background-color: var(--paper); color: var(--ink); }
 option:disabled { color: #B4ADA2; }
 
 .input-row { display: flex; gap: var(--sp-2); align-items: center; }
@@ -421,6 +460,9 @@ option:disabled { color: #B4ADA2; }
 .slider-container input[type="range"] {
     flex: 1;
     min-width: 0;
+}
+
+input[type="range"] {
     height: 28px;
     appearance: none;
     background: transparent;
@@ -453,8 +495,6 @@ input[type="range"]::-webkit-slider-thumb {
     box-shadow: 2px 2px 0 var(--ink);
 }
 
-input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
-
 /* 开关行 */
 .switch-row {
     display: flex;
@@ -462,7 +502,7 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
     justify-content: space-between;
     gap: var(--sp-3);
     padding: var(--sp-3) 0;
-    border-bottom: 2px dashed rgba(18, 16, 14, .18);
+    border-bottom: 2px dashed color-mix(in srgb, var(--ink) 18%, transparent);
 }
 
 .switch-row:last-child { border-bottom: none; }
@@ -520,7 +560,7 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
 
 .switch input:checked + .slider-toggle { background: var(--mint); }
 .switch input:checked + .slider-toggle::before { transform: translateX(26px); }
-.switch input:focus-visible + .slider-toggle { outline: 3px solid var(--sky); outline-offset: 2px; }
+.switch input:focus-visible + .slider-toggle { outline: 2px solid var(--focus-ink); outline-offset: 2px; }
 
 .value-chip {
     margin-left: 8px;
@@ -597,12 +637,12 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
     font-size: 13.5px;
     color: var(--ink-soft);
     background: var(--cream-2);
-    border: 2.5px dashed rgba(18, 16, 14, .3);
+    border: 2.5px dashed color-mix(in srgb, var(--ink) 30%, transparent);
     border-radius: var(--r-xs);
 }
 
-.error { font-size: 13.5px; font-weight: 600; color: #C0392B; }
-.success { font-size: 13.5px; font-weight: 600; color: #1F8A5B; }
+.error { font-size: 13.5px; font-weight: 600; color: var(--error-ink); }
+.success { font-size: 13.5px; font-weight: 600; color: var(--success-ink); }
 
 .message {
     font-family: var(--font-display);
@@ -615,7 +655,7 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
     display: inline-block;
     width: 18px;
     height: 18px;
-    border: 3px solid rgba(18, 16, 14, .25);
+    border: 3px solid color-mix(in srgb, var(--ink) 25%, transparent);
     border-top-color: var(--ink);
     border-radius: 50%;
     animation: spin .9s linear infinite;
@@ -1005,7 +1045,7 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
     align-items: center;
     gap: var(--sp-2);
     padding: 10px 12px;
-    border-bottom: 2px dashed rgba(18, 16, 14, .16);
+    border-bottom: 2px dashed color-mix(in srgb, var(--ink) 16%, transparent);
     cursor: pointer;
     transition: background .16s;
 }
@@ -1013,12 +1053,23 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
 .file-item:last-child { border-bottom: none; }
 .file-item:hover { background: var(--cream); }
 .file-item.displaying { background: var(--mint); }
+.file-item:has(.file-checkbox) { cursor: pointer; }
+
+.film-file-selection {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: var(--sp-2) 0;
+}
+
+.film-file-selection .secondary-button { width: auto; margin: 0; }
 
 .file-item input[type="checkbox"] {
     width: 19px;
     height: 19px;
     flex: 0 0 auto;
-    accent-color: var(--coral);
+    accent-color: var(--control-accent);
     cursor: pointer;
 }
 
@@ -1102,8 +1153,8 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
     font-family: var(--font-mono);
     font-size: 11.5px;
     line-height: 1.7;
-    color: #E8E3D6;
-    background: var(--ink);
+    color: var(--log-ink);
+    background: var(--log-bg);
     border: var(--line) solid var(--ink);
     border-radius: var(--r-xs);
 }
@@ -1144,20 +1195,25 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
     font-size: 13.5px;
 }
 
-.progress-bar {
+.progress-bar,
+progress {
     width: 100%;
-    height: 22px;
+    height: var(--progress-height);
     overflow: hidden;
-    background: var(--paper);
-    border: 2.5px solid var(--ink);
-    border-radius: 999px;
+    background: var(--progress-track);
+    border: var(--progress-border);
+    border-radius: var(--progress-radius);
 }
+
+progress { display: block; appearance: none; }
+progress::-webkit-progress-bar { background: var(--progress-track); }
+progress::-webkit-progress-value { background: var(--progress-value); }
+progress::-moz-progress-bar { background: var(--progress-value); }
 
 .progress-fill {
     width: 0%;
     height: 100%;
-    background: repeating-linear-gradient(45deg, var(--coral) 0 10px, var(--sun) 10px 20px);
-    border-right: 2.5px solid var(--ink);
+    background: var(--progress-value);
     transition: width .3s var(--ease-out);
 }
 
@@ -1240,7 +1296,8 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
 @media (min-width: 900px) {
     html, body {
         height: auto;
-        min-height: 100%;
+        min-height: 100vh;
+        min-height: 100dvh;
     }
 
     /* overflow 只能设在 html 上：body 一旦成为滚动容器，
@@ -1318,7 +1375,13 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
     /* （连接后会多出「网络配置」卡，分栏时它要跨栏，和上面两张卡排布不一致） */
     #bluetooth-page.active {
         column-count: initial;
-        max-width: 720px;
+    }
+
+    body:not(.theme-ark) .container:has(#bluetooth-page.active) {
+        --connection-width: 720px;
+    }
+    .container:has(#bluetooth-page.active) :is(#bluetooth-page, .app-head, .app-foot) {
+        max-width: var(--connection-width, none);
     }
 
     /* 左侧导航：浮起贴纸卡 */
@@ -1739,4 +1802,13 @@ body.theme-ark .wallet-toast.is-error {
         grid-column: 2;
         grid-row: 1;
     }
+}
+
+/* 左侧导航占据一栏，桌面窄窗给参数和预览各自完整的行宽。 */
+@media (900px <= width <= 1100px) {
+    .page.active { column-count: 1; }
+    #convert-page.active,
+    .frame-detail.is-open .frame-tab-content.active,
+    #wallet-page.active { display: block; }
+    .frame-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

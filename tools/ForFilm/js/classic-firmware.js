@@ -81,6 +81,8 @@
     }
 
     async function latest() {
+        const mirrored = await root.FirmwareMirror?.release('classicFormal');
+        if (mirrored) return mirrored;
         const response = await fetch(api + '?per_page=100', { signal: AbortSignal.timeout(20000) });
         if (!response.ok) throw new Error('GitHub 发布查询失败（HTTP ' + response.status + '）');
         const release = latestFormal(await response.json());
@@ -96,7 +98,7 @@
         }
         const url = 'https://github.com/' + repo + '/releases/download/' +
             encodeURIComponent(release.tag_name) + '/' + name;
-        return { ...found[0], url, tag: release.tag_name };
+        return { ...found[0], url, tag: release.tag_name, mirrored: release.mirrored === true };
     }
 
     class DownloadUnavailable extends Error {
@@ -105,6 +107,7 @@
 
     async function readAsset(item) {
         try {
+            if (item.mirrored) return await root.FirmwareMirror.download(item);
             const response = await fetch(api + '/assets/' + item.id, {
                 headers: { Accept: 'application/octet-stream' },
                 signal: AbortSignal.timeout(45000)
