@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm</title>
-    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=theme-coverage-2">
+    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=film-batch-delete-1">
     <link rel="stylesheet" href="css/keyboard.css">
     <!-- ARK 通行证版皮肤：默认不生效，连上 FRAMEFILMARK 后由 js/ark-theme.js 激活 -->
     <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=theme-coverage-2">
@@ -990,12 +990,16 @@
                 <div id="film-file-list" class="file-list">
                     <div class="empty-state">暂无文件</div>
                 </div>
+                <div class="film-file-selection">
+                    <button id="film-select-all" class="secondary-button" type="button" onclick="toggleAllFilmFiles()" disabled>全选</button>
+                    <span id="film-selection-status" class="info" role="status">可勾选多张图片批量删除</span>
+                </div>
                 <div class="btn-row">
-                    <button class="secondary-button danger" onclick="deleteSelectedFile()">
+                    <button id="film-delete-files" class="secondary-button danger" type="button" onclick="deleteSelectedFiles()" disabled>
                         <svg class="ic" viewBox="0 0 24 24"><use href="#i-trash"/></svg>
-                        删除文件
+                        删除所选
                     </button>
-                    <button class="secondary-button" onclick="selectDisplayFile()">
+                    <button id="film-display-file" class="secondary-button" type="button" onclick="selectDisplayFile()" disabled>
                         <svg class="ic" viewBox="0 0 24 24"><use href="#i-check-circle"/></svg>
                         选择显示
                     </button>
@@ -1458,7 +1462,7 @@
 <script src="js/utils.js?v=prts-7"></script>
 <script src="js/atkinson_enhanced_lut.js"></script>
 <script src="js/sz_enhanced.js"></script>
-<script src="js/bluetooth.js?rev=ark-wallet-capability-1"></script>
+<script src="js/bluetooth.js?rev=film-batch-delete-1"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
 <script src="js/firmware-mirror.js"></script>
 <script src="js/ark-firmware.js?rev=online-firmware-1"></script>

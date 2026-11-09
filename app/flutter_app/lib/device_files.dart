@@ -14,7 +14,8 @@ class DeviceFilesPage extends StatefulWidget {
 class _DeviceFilesPageState extends State<DeviceFilesPage> {
   final _scroll = ScrollController();
   String? _deviceId, _directory;
-  Map? _selection;
+  final _selectedNames = <String>{};
+  bool _deleting = false;
   List<Map> _entries = [];
   DeviceController get controller => widget.controller;
 
@@ -33,7 +34,7 @@ class _DeviceFilesPageState extends State<DeviceFilesPage> {
       controller.addListener(_catalogChanged);
       _deviceId = null;
       _directory = null;
-      _selection = null;
+      _selectedNames.clear();
       _entries = [];
       _syncCatalog();
     }
@@ -55,26 +56,20 @@ class _DeviceFilesPageState extends State<DeviceFilesPage> {
         _deviceId != snapshot.deviceId ||
         _directory != directory) {
       _entries = [];
-      _selection = null;
+      _selectedNames.clear();
       if (_scroll.hasClients) _scroll.jumpTo(0);
     }
     _deviceId = snapshot.deviceId;
     _directory = directory;
     if (!snapshot.connected) return;
     if (snapshot.files['loaded'] != true) {
-      _selection = null;
+      if (!_deleting) _selectedNames.clear();
       return;
     }
     _entries = (snapshot.files['entries'] as List? ?? const [])
         .whereType<Map>()
         .toList();
-    if (!_entries.any(
-      (entry) =>
-          entry['id'] == _selection?['id'] &&
-          entry['name'] == _selection?['name'],
-    )) {
-      _selection = null;
-    }
+    _selectedNames.retainAll(_entries.map((entry) => entry['name']));
   }
 
   void _message(String text) {
@@ -95,39 +90,58 @@ class _DeviceFilesPageState extends State<DeviceFilesPage> {
   }
 
   void _refresh() {
-    setState(() => _selection = null);
+    setState(_selectedNames.clear);
     _command('listDeviceFiles');
   }
 
   void _operate({required bool delete}) {
-    final entry = _selection;
-    if (entry == null) {
+    final entries = _entries
+        .where((entry) => _selectedNames.contains(entry['name']))
+        .toList();
+    if (entries.isEmpty) {
       _message(delete ? '请先选择要删除的文件' : '请先选择要显示的文件');
       return;
     }
     if (delete) {
-      _delete(context, entry);
+      _delete(entries);
+    } else if (entries.length != 1) {
+      _message('请选择一张要显示的图片');
     } else if (_directory == 'film' || _directory == 'animation') {
+      final entry = entries.single;
       _command('displayDeviceFile', {'id': entry['id'], 'name': entry['name']});
     } else {
       _message('请从连接页选择图片或动画目录后重试');
     }
   }
 
-  Future<void> _delete(BuildContext context, Map entry) async {
+  Future<void> _delete(List<Map> entries) async {
+    final currentController = controller;
+    final session = controller.connectionSession;
     final files = controller.snapshot.files;
+    final directory = files['directory'];
     final canDelete = files['canDelete'] == true;
-    final knownDirectory =
-        files['directory'] == 'film' || files['directory'] == 'animation';
+    final knownDirectory = directory == 'film' || directory == 'animation';
+    final batch = entries.length > 1;
+    final canDisplay = knownDirectory && !batch;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(canDelete ? '删除设备文件？' : '请先打开对应 app'),
+        title: Text(
+          canDelete
+              ? batch
+                    ? '删除 ${entries.length} 张设备图片？'
+                    : '删除设备文件？'
+              : '请先打开对应 app',
+        ),
         content: Text(
           canDelete
-              ? '“${entry['name']}”将从设备 SD 卡删除。'
-              : knownDirectory
+              ? batch
+                    ? '所选 ${entries.length} 张图片将从设备 SD 卡删除。'
+                    : '“${entries.single['name']}”将从设备 SD 卡删除。'
+              : canDisplay
               ? '设备尚未打开此目录对应的 app，暂时不能删除。“显示此文件”会切换设备画面；显示完成后，请再次点击删除。也可在设备上打开对应 app，再刷新列表。'
+              : batch
+              ? '请先在设备上打开图片 app，再刷新列表并重新选择。'
               : '请先选择图片目录或动画目录，再在设备打开对应 app 并刷新列表后删除。',
         ),
         actions: [
@@ -135,7 +149,7 @@ class _DeviceFilesPageState extends State<DeviceFilesPage> {
             onPressed: () => Navigator.pop(context, false),
             child: const Text('取消'),
           ),
-          if (canDelete || knownDirectory)
+          if (canDelete || canDisplay)
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               child: Text(canDelete ? '删除' : '显示此文件'),
@@ -143,17 +157,70 @@ class _DeviceFilesPageState extends State<DeviceFilesPage> {
         ],
       ),
     );
-    if (confirmed == true) {
+    if (!mounted || confirmed != true) return;
+    bool sameCatalog() =>
+        controller == currentController &&
+        controller.connectionSession == session &&
+        controller.snapshot.files['directory'] == directory;
+    if (!sameCatalog() || !controller.canEditSettings) {
+      _message('设备或目录已变化，请刷新后重试');
+      return;
+    }
+    if (!batch) {
+      final entry = entries.single;
       await _command(canDelete ? 'deleteDeviceFile' : 'displayDeviceFile', {
         'id': entry['id'],
         'name': entry['name'],
       });
+      return;
+    }
+    setState(() => _deleting = true);
+    var deleted = 0;
+    String? failure;
+    try {
+      for (final entry in entries) {
+        if (!mounted) return;
+        if (!sameCatalog() ||
+            !controller.canEditSettings ||
+            controller.snapshot.files['loaded'] != true ||
+            controller.snapshot.files['canDelete'] != true) {
+          failure = '设备或目录已变化，请刷新后重试';
+          break;
+        }
+        final name = entry['name'];
+        final current = _entries.where((file) => file['name'] == name);
+        if (current.length != 1) {
+          failure = '图片列表已变化，请刷新后重试';
+          break;
+        }
+        // Catalog IDs may shift after each deletion. Use the latest one by name.
+        await controller.command('deleteDeviceFile', {
+          'id': current.single['id'],
+          'name': name,
+        });
+        if (!mounted) return;
+        final error = controller.errorMessage;
+        if (error != null ||
+            !sameCatalog() ||
+            controller.snapshot.files['loaded'] != true ||
+            _entries.any((file) => file['name'] == name)) {
+          failure = error ?? '无法确认“$name”已删除，请刷新后重试';
+          break;
+        }
+        deleted++;
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+    if (mounted) {
+      final result = '已删除 $deleted / ${entries.length} 张图片';
+      _message(failure == null ? result : '$result。$failure');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final available = controller.canEditSettings;
+    final available = controller.canEditSettings && !_deleting;
     final files = controller.snapshot.files;
     final ready = available && files['loaded'] == true;
     final theme = Theme.of(context);
@@ -205,11 +272,16 @@ class _DeviceFilesPageState extends State<DeviceFilesPage> {
                       itemBuilder: (context, index) {
                         final entry = _entries[index];
                         final name = entry['name'] as String? ?? '';
-                        final selected = _selection?['id'] == entry['id'];
+                        final selected = _selectedNames.contains(name);
                         final current = files['currentId'] == entry['id'];
-                        void select() => setState(
-                          () => _selection = selected ? null : entry,
-                        );
+                        void select() => setState(() {
+                          if (_directory != 'film') _selectedNames.clear();
+                          if (selected) {
+                            _selectedNames.remove(name);
+                          } else {
+                            _selectedNames.add(name);
+                          }
+                        });
                         return Material(
                           key: ValueKey('device-file-${entry['id']}'),
                           color: current
@@ -276,13 +348,21 @@ class _DeviceFilesPageState extends State<DeviceFilesPage> {
               child: OutlinedButton.icon(
                 onPressed: available ? () => _operate(delete: true) : null,
                 icon: const Icon(Icons.delete_outline),
-                label: const Text('删除文件'),
+                label: Text(
+                  _deleting
+                      ? '正在删除…'
+                      : _selectedNames.length > 1
+                      ? '删除 ${_selectedNames.length} 张'
+                      : '删除文件',
+                ),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: available ? () => _operate(delete: false) : null,
+                onPressed: available && _selectedNames.length <= 1
+                    ? () => _operate(delete: false)
+                    : null,
                 icon: const Icon(Icons.check_circle_outline),
                 label: const Text('选择显示'),
               ),

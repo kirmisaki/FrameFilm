@@ -1053,6 +1053,17 @@ input[type="range"]::-webkit-slider-thumb {
 .file-item:last-child { border-bottom: none; }
 .file-item:hover { background: var(--cream); }
 .file-item.displaying { background: var(--mint); }
+.file-item:has(.file-checkbox) { cursor: pointer; }
+
+.film-file-selection {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: var(--sp-2) 0;
+}
+
+.film-file-selection .secondary-button { width: auto; margin: 0; }
 
 .file-item input[type="checkbox"] {
     width: 19px;
