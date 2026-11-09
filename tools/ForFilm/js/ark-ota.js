@@ -168,6 +168,7 @@
         if (!connected()) { note('请先连接 Ark，再导入 OTA 文件。'); return; }
         if (fromRelease && !item) { note('请重新检查更新后再导入附件。'); return; }
         const session = connectionEpoch;
+        let staged = false;
         busy = true;
         clearSelection();
         refresh();
@@ -176,12 +177,18 @@
             const bytes = new Uint8Array(await file.arrayBuffer());
             requireSession(session);
             await stage(bytes, item);
+            staged = true;
             note((item ? item.tag + ' · ' : '') + 'OTA 已导入，开始升级前会重新核对设备。');
         } catch (error) {
             if (session === connectionEpoch) note('导入失败：' + error.message);
         } finally {
             busy = false;
             refresh();
+        }
+        /* 导入成功后直接开始升级，省掉再点一次「开始升级」；设备已断开则保留已导入状态。 */
+        if (staged && session === connectionEpoch && connected()) {
+            note((item ? item.tag + ' · ' : '') + '正在开始升级…');
+            if (typeof root.startOtaUpgrade === 'function') root.startOtaUpgrade();
         }
     }
 

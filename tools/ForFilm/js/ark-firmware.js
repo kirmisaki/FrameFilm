@@ -224,7 +224,8 @@
         if (!digestPattern.test(item.digest || '') || item.size > expected.flashBytes) {
             throw new Error('完整镜像缺少有效的 GitHub SHA-256 或大小不匹配');
         }
-        return { ...item, targetId: expected.targetId, sha256: item.digest.slice(7).toLowerCase() };
+        return { ...item, targetId: expected.targetId, label: expected.label,
+            flashBytes: expected.flashBytes, sha256: item.digest.slice(7).toLowerCase() };
     }
 
     async function verifyFlash(bytes, item) {
