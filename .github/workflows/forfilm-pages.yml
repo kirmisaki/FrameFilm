@@ -43,7 +43,11 @@ jobs:
       - name: Verify and mirror published firmware
         env:
           GH_TOKEN: ${{ github.repository == 'kirmisaki/FrameFilm' && github.token || '' }}
-        run: python3 tools/ci/forfilm_firmware_mirror.py _site/tools/ForFilm/firmware
+        run: |
+          test -f _site/tools/ForFilm/index.html
+          # Jekyll runs in a container and leaves its output owned by root.
+          sudo install -d -o "$(id -u)" -g "$(id -g)" _site/tools/ForFilm/firmware
+          python3 tools/ci/forfilm_firmware_mirror.py _site/tools/ForFilm/firmware
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
