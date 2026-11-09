@@ -105,3 +105,10 @@ App: 0.4.1+5
 参考：[GitHub Releases API](https://docs.github.com/en/rest/releases/releases)、[gh release create](https://cli.github.com/manual/gh_release_create)。
 
 该次 CI APK 为 `0.4.0+4`，59,475,012 字节，最低 API 28，包含 arm64-v8a / armeabi-v7a / x86_64。下载后 SHA256 与 JSON 元数据一致：`1afd4547b5106d436599b7e59a13ffb93f1725f573a0007331062998ece3c13b`。本地路径为 `D:/dev-tool/FrameFilm-build/ci/37910525382/extracted/app-release/framefilm-ark-flutter.apk`。本轮本机构建因工具审批超时未执行，交付的是 CI 产物。
+
+
+### App 的签名发行渠道
+
+App 更新源与设备固件源分别处理。`FRAMEFILM_APP_RELEASE_REPO` 是 Flutter 的编译参数，默认 `kirmisaki/FrameFilm`；`ark-builds.yml` 将当前 `GITHUB_REPOSITORY` 传入，保证各仓库产出的 APK 继续查询同一签名渠道的应用发布。设备 OTA 更新仍查询官方仓库。
+
+本机使用 Rafael-Ikaros 的原发行密钥时，先设置 `$env:FRAMEFILM_APP_RELEASE_REPO='Rafael-Ikaros/FrameFilm'`，再运行 `app/flutter_app/tool/flutter.ps1 build apk --release`；脚本会传入相应 dart-define。直接调用 Flutter 时，显式增加 `--dart-define=FRAMEFILM_APP_RELEASE_REPO=Rafael-Ikaros/FrameFilm`。构建仓库配置不会更换密钥；发布者仍需继续使用原签名，避免旧用户安装失败。

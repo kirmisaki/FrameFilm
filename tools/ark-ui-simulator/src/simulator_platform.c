@@ -119,6 +119,10 @@ void service_monitor_set_auto_sleep_timeout(uint32_t sec) { (void)sec; }
 void hal_epd_mono_session_begin(void) { }
 void hal_epd_mono_session_end(void) { }
 int hal_pwr_wake_condition_met(void) { return 0; }
+uint32_t hal_pwr_get_timer_wakeup(void)
+{
+    return g_service_param.sleep.sleep_auto ? g_service_param.sleep.sleep_time : 0;
+}
 int hal_bat_get_percent(void) { return 82; }
 int hal_sd_get_status(void) { return SD_MOUNT; }
 TickType_t xTaskGetTickCount(void) { return SDL_GetTicks(); }

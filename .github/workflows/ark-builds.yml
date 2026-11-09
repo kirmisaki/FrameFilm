@@ -205,9 +205,9 @@ jobs:
           flutter --version 2>&1 | tee ../../ci-logs/flutter-version.log
           flutter pub get 2>&1 | tee ../../ci-logs/flutter-pub.log
           if [ "$SIGNED" = 'true' ]; then
-            flutter build apk --release 2>&1 | tee ../../ci-logs/flutter-build.log
+            flutter build apk --release --dart-define=FRAMEFILM_APP_RELEASE_REPO="$GITHUB_REPOSITORY" 2>&1 | tee ../../ci-logs/flutter-build.log
           else
-            flutter build apk --debug 2>&1 | tee ../../ci-logs/flutter-build.log
+            flutter build apk --debug --dart-define=FRAMEFILM_APP_RELEASE_REPO="$GITHUB_REPOSITORY" 2>&1 | tee ../../ci-logs/flutter-build.log
           fi
       - name: Check release runtime assets
         if: steps.signing.outputs.signed == 'true'

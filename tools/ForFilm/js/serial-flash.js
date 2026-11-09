@@ -614,6 +614,11 @@ async function startSerialFlash() {
     const riskyMerged = fwMergedImageChecked() && fwFiles.length === 1 && fwMergedDetected === false;
 
     const onlineFlash = fwFiles[0].onlineFlash;
+    if (onlineFlash && (!onlineFlash.label || !Number.isSafeInteger(onlineFlash.flashBytes) ||
+        onlineFlash.flashBytes <= 0)) {
+        showMessage('完整镜像缺少硬件规格，请重新获取固件', 'error');
+        return;
+    }
     const tip = '即将向设备写入固件：\n\n' + plan +
         (onlineFlash ? '\n\n请确认实物为 ' + onlineFlash.label + '，包括 PSRAM 规格。' : '') +
         '\n\n共 ' + fwFormatBytes(totalSize) + (eraseAll ? '（先整片擦除 Flash）' : '') +

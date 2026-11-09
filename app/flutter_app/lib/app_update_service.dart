@@ -26,6 +26,11 @@ class AppUpdateService {
     : _client = client ?? http.Client(),
       _ownsClient = client == null;
 
+  // 签名发行渠道独立于固件源；分发构建显式指定自己的仓库。
+  static const repository = String.fromEnvironment(
+    'FRAMEFILM_APP_RELEASE_REPO',
+    defaultValue: 'kirmisaki/FrameFilm',
+  );
   static const apkName = 'framefilm-ark-flutter.apk';
   static const metadataName = 'framefilm-ark-flutter.json';
   static const applicationId = 'org.framefilm.ark.flutter';
@@ -39,7 +44,7 @@ class AppUpdateService {
         .get(
           Uri.https(
             'api.github.com',
-            '/repos/kirmisaki/FrameFilm/releases',
+            '/repos/$repository/releases',
             {'per_page': '20'},
           ),
           headers: {'Accept': 'application/vnd.github+json'},
