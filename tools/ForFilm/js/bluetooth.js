@@ -97,6 +97,98 @@ function toggleDebugLog() {
     }
 }
 
+// ---------- 设备终端（蓝牙实时日志，仅 Ark） ----------
+let deviceLogEnabled = false;
+let deviceLogPendingText = '';
+const DEVICE_LOG_MAX_ENTRIES = 800;
+
+function syncDeviceLogAvailability() {
+    const section = document.getElementById('device-log-section');
+    if (!section) return;
+    const supported = currentDeviceType === 'FRAMEFILMARK';
+    section.style.display = supported ? '' : 'none';
+    if (!supported) applyDeviceLogState(false);
+}
+
+function applyDeviceLogState(on) {
+    deviceLogEnabled = !!on;
+    const btn = document.getElementById('device-log-toggle');
+    if (btn) btn.textContent = deviceLogEnabled ? '关闭日志' : '打开日志';
+}
+
+async function toggleDeviceLog() {
+    if (currentDeviceType !== 'FRAMEFILMARK') {
+        showMessage('该设备不支持实时日志', 'error');
+        return;
+    }
+    if (!device || !characteristic) {
+        showMessage('请先连接设备', 'error');
+        return;
+    }
+    const target = !deviceLogEnabled;
+    const btn = document.getElementById('device-log-toggle');
+    if (btn) btn.disabled = true;
+    try {
+        await sendBleCmd(BLE_FILM_TRANS_CH_LOG_STREAM_CTRL, target ? 1 : 0);
+        applyDeviceLogState(target);
+        if (target) {
+            appendDeviceLog('[终端已打开，等待设备日志...]');
+        } else {
+            deviceLogPendingText = '';
+            appendDeviceLog('[终端已关闭]');
+        }
+    } catch (error) {
+        showMessage('日志开关失败: ' + error.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function clearDeviceLog() {
+    deviceLogPendingText = '';
+    const view = document.getElementById('device-log-view');
+    if (view) view.innerHTML = '';
+}
+
+function appendDeviceLog(text) {
+    const view = document.getElementById('device-log-view');
+    if (!view || !text) return;
+    const stick = view.scrollTop + view.clientHeight >= view.scrollHeight - 24;
+    const lines = String(text).split(/\r?\n/);
+    if (lines.length && lines[lines.length - 1] === '') lines.pop();
+    for (const line of lines) {
+        if (!line) continue;
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.textContent = line;
+        view.appendChild(entry);
+    }
+    while (view.childElementCount > DEVICE_LOG_MAX_ENTRIES) {
+        view.removeChild(view.firstElementChild);
+    }
+    if (stick) view.scrollTop = view.scrollHeight;
+}
+
+// 日志流可能把一行拆成多帧：先攒到换行再上屏
+function handleDeviceLogFrame(data, cmdLen) {
+    if (data.length !== cmdLen + 4) return;
+    if (calculateChecksum(data, data.length - 1) !== data[data.length - 1]) return;
+    let text;
+    try {
+        text = new TextDecoder('utf-8').decode(data.slice(3, 3 + cmdLen));
+    } catch (e) {
+        text = String.fromCharCode.apply(null, data.slice(3, 3 + cmdLen));
+    }
+    deviceLogPendingText += text;
+    const parts = deviceLogPendingText.split('\n');
+    deviceLogPendingText = parts.pop();
+    if (deviceLogPendingText.length > 8192) {
+        appendDeviceLog(deviceLogPendingText);
+        deviceLogPendingText = '';
+    }
+    if (parts.length) appendDeviceLog(parts.join('\n'));
+}
+
 const BLE_SERVICE_UUID = '00002000-0000-1000-8000-00805f9b34fb';
 const BLE_CHARACTERISTIC_UUID = '00002001-0000-1000-8000-00805f9b34fb';
 
@@ -155,6 +247,11 @@ const BLE_FILM_TRANS_CH_CTRL_TIME_SYNC = 0x4D;
 const BLE_FILM_TRANS_CH_CTRL_KEY_INJECT = 0x4E;
 const BLE_FILM_TRANS_CH_DEVICE_NAME_GET = 0x54;
 const BLE_FILM_TRANS_CH_DEVICE_NAME_SET = 0x55;
+
+// 蓝牙实时日志（仅 Ark）：0x5E 开关/查询（1B：0=关 1=开；空=查询，设备回 1B 状态），
+// 0x5F 设备→连接端的日志流（DATA 为原始日志文本，按 192B 分块可能半行）
+const BLE_FILM_TRANS_CH_LOG_STREAM_CTRL = 0x5E;
+const BLE_FILM_TRANS_CH_LOG_STREAM_DATA = 0x5F;
 const ARK_DEVICE_NAME_PREFIX = 'FRAMEFILMARK-';
 let arkNamePending = null;
 
@@ -415,6 +512,7 @@ function onDisconnected(event) {
     if (window.ArkDevice) window.ArkDevice.disconnected();
     filmTransState = BLE_FILM_TRANS_STATE_IDLE;
     legacyFilmTransferActive = false;
+    deviceLogPendingText = '';
     setDeviceType('FRAMEFILM');
     syncPhotoModeAvailability();
     var status = document.getElementById('connection-status');
@@ -1579,6 +1677,16 @@ async function setupBluetoothListener() {
 
         const cmdType = data[1];
         const cmdLen = data[2];
+
+        // 设备终端（0x5F 日志流 / 0x5E 开关回包）
+        if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_LOG_STREAM_DATA) {
+            handleDeviceLogFrame(data, cmdLen);
+            return;
+        }
+        if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_LOG_STREAM_CTRL && cmdLen === 1) {
+            applyDeviceLogState(data[3] === 1);
+            return;
+        }
 
         if (arkNamePending && cmdType === arkNamePending.channel) {
             if (data.length !== cmdLen + 4 || data[0] !== BLE_CMD_HEAD ||

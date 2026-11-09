@@ -8,6 +8,7 @@ set(srcs "src/service_init.c"
          "src/service_file.c"
          "src/service_film.c"
          "src/service_wifi.c"
+         "src/service_log.c"
          )
 
 set(public_include "inc")

@@ -154,7 +154,7 @@ static bool m1_on_picc_event(st25r_handle_t h, st25r_picc_event_t evt, const uin
     }
     if(evt != ST25R_PICC_EVT_FRAME || data == NULL || len == 0) return false;
 
-    ESP_LOGD(HAL_NFC_TAG, "m1 frame %02X len=%u", data[0], (unsigned)len);
+    ESP_LOGI(HAL_NFC_TAG, "m1 frame %02X len=%u", data[0], (unsigned)len);
 
     if(len == 2 && (data[0] == 0x60 || data[0] == 0x61))
     {

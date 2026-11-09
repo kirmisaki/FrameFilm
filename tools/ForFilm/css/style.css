@@ -1110,6 +1110,14 @@ input[type="range"]:focus-visible { outline: 3px solid var(--sky); outline-offse
 
 .debug-log.show { display: block; }
 
+/* 设备终端：固定高度、长行折行，便于持续滚动查看 */
+.device-log-view {
+    height: 300px;
+    max-height: 300px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
 .log-entry { padding: 1px 0; border-bottom: 1px solid rgba(255, 255, 255, .1); }
 .log-entry:last-child { border-bottom: none; }
 .log-entry.error { color: #FF9A8B; }
