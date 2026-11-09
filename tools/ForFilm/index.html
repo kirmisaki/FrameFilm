@@ -1165,6 +1165,7 @@
                         </select>
                     </label>
                     <p id="ark-ota-online-status" class="field-hint" role="status"></p>
+                    <p class="field-hint">选好更新通道后点「开始升级」，网页会自动下载并校验固件。</p>
                     <p class="field-hint">CI 最新构建取自主分支每次提交的自动构建，仅用于测试，可能未经验证。</p>
                     <div class="action-controls">
                         <a class="secondary-button" id="ark-ota-download-link" rel="noopener" target="_blank" hidden>下载匹配的 OTA 文件</a>
@@ -1264,6 +1265,15 @@
                     </div>
                     <div class="switch-row__hint">用 USB 串口直接写设备 Flash（等价命令行 <code>idf.py flash</code>）：比蓝牙 OTA 快得多，且能刷 bootloader 与分区表。刷完设备会复位，需要重新连接蓝牙。</div>
                     <div class="action-controls">
+                        <label class="fw-option">固件来源
+                            <select id="fw-source" onchange="fwSyncSource()">
+                                <option value="online">联网获取</option>
+                                <option value="local">本地文件</option>
+                            </select>
+                        </label>
+                        <button class="secondary-button" id="fw-detect-btn" type="button" onclick="detectSerialDevice()">检测串口</button>
+                    </div>
+                    <div class="action-controls" id="fw-online-options">
                         <label class="fw-option">设备机型
                             <select id="fw-online-family" onchange="fwSyncOnlineOptions()">
                                 <option value="ark">FrameFilm Ark（通行证版）</option>
@@ -1282,7 +1292,6 @@
                         <label class="fw-option" id="fw-online-screen-wrap" hidden>屏幕面板
                             <select id="fw-online-screen" onchange="resetOnlineFlash()"></select>
                         </label>
-                        <button class="secondary-button" id="fw-online-check" type="button" onclick="getOnlineFlash()">联网获取完整固件</button>
                     </div>
                     <p class="field-hint" id="fw-online-status" role="status"></p>
                     <div class="action-controls">
@@ -1290,12 +1299,11 @@
                         <button class="secondary-button" id="fw-online-import" type="button" onclick="selectFirmwareFiles(true)" hidden>导入已下载镜像</button>
                     </div>
                     <input type="file" id="fw-file-input" accept=".bin" multiple style="display: none;" onchange="handleFirmwareFiles(event)">
-                    <div class="action-controls">
+                    <div class="action-controls" id="fw-local-controls" hidden>
                         <button class="secondary-button" id="fw-select-btn" type="button" onclick="selectFirmwareFiles()">选择固件文件</button>
-                        <button class="secondary-button" id="fw-detect-btn" type="button" onclick="detectSerialDevice()">检测串口</button>
                         <button class="secondary-button" id="fw-clear-btn" type="button" onclick="clearFirmwareFiles()">清空</button>
                     </div>
-                    <div id="fw-file-list" class="fw-file-list"></div>
+                    <div id="fw-file-list" class="fw-file-list" hidden></div>
                     <div class="fw-options">
                         <label class="fw-option">波特率
                             <select id="fw-baud">
@@ -1305,7 +1313,7 @@
                             </select>
                         </label>
                         <label class="fw-option"><input type="checkbox" id="fw-erase-all"> 先整片擦除</label>
-                        <label class="fw-option"><input type="checkbox" id="fw-merged-image" onchange="fwOnMergedToggle()"> 合并镜像（单文件，从 0x0 烧）</label>
+                        <label class="fw-option" id="fw-local-merged" hidden><input type="checkbox" id="fw-merged-image" onchange="fwOnMergedToggle()"> 合并镜像（单文件，从 0x0 烧）</label>
                     </div>
                     <div class="action-controls">
                         <button class="primary-button" id="fw-flash-btn" type="button" onclick="startSerialFlash()">开始烧录</button>
@@ -1444,11 +1452,12 @@
 <script src="js/utils.js?v=prts-7"></script>
 <script src="js/atkinson_enhanced_lut.js"></script>
 <script src="js/sz_enhanced.js"></script>
-<script src="js/bluetooth.js?rev=ark-ota-2"></script>
+<script src="js/bluetooth.js?rev=ark-ota-3"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
-<script src="js/ark-firmware.js?rev=flash-hardware-3"></script>
-<script src="js/classic-firmware.js?rev=classic-2"></script>
-<script src="js/ark-ota.js?rev=ark-ota-4"></script>
+<script src="js/firmware-mirror.js"></script>
+<script src="js/ark-firmware.js?rev=online-firmware-1"></script>
+<script src="js/classic-firmware.js?rev=online-firmware-1"></script>
+<script src="js/ark-ota.js?rev=ark-ota-5"></script>
 <script src="js/usb.js"></script>
 <script src="js/keyboard.js"></script>
 <script src="js/source-fit.js"></script>
@@ -1463,7 +1472,7 @@
 <script src="js/animation.js?v=ark-state-2"></script>
 <!-- 串口烧录：esptool-js（内嵌，官方 bundle 转经典脚本，挂 window.ESPTOOL）+ 本仓库的烧录流程 -->
 <script src="js/esptool-js.js"></script>
-<script src="js/serial-flash.js?rev=flash-hardware-3"></script>
+<script src="js/serial-flash.js?rev=online-firmware-1"></script>
 <script src="js/main.js?rev=app-version-2"></script>
 <script src="js/ark-theme.js?v=prts-3"></script>
 <script src="js/ark-controls.js?v=ark-state-2"></script>

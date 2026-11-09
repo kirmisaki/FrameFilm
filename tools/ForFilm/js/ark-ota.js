@@ -34,7 +34,7 @@
             if (selected) clearSelection();
             el('ark-ota-legacy').hidden = true;
             el('ark-ota-legacy-target').value = '';
-            note('连接 Ark 后读取硬件并检查更新。');
+            note('连接 Ark 后可选择更新通道并开始升级。');
         }
         const waiting = busy || root.ArkDevice.busy();
         el('ark-ota-check').disabled = waiting || !connected();
@@ -83,13 +83,23 @@
         if (item.elfSha256 === state.build.elfSha256) throw new Error('设备已运行同一构建');
     }
 
-    async function stage(bytes, item) {
-        const session = connectionEpoch;
+    async function findCandidate(state) {
+        const current = await fw.latestFor(channel());
+        return fw.selectOta(current, await fw.readManifest(current), state.expected);
+    }
+
+    async function inspectCandidate(bytes, item) {
         if (item) await fw.verifyBytes(bytes, item);
         const image = await fw.inspectApp(bytes);
         if (item && (image.targetId !== item.targetId || image.elfSha256 !== item.elfSha256)) {
             throw new Error('镜像硬件描述或 ELF 指纹与发布清单不一致');
         }
+        return image;
+    }
+
+    async function stage(bytes, item) {
+        const session = connectionEpoch;
+        const image = await inspectCandidate(bytes, item);
         requireSession(session);
         root.selectedOtaData = bytes;
         selected = { bytes, item };
@@ -121,8 +131,7 @@
             }
             note(prefix + state.expected.label + ' · 正在检查 ' +
                 (channel() === 'ci' ? 'CI 最新构建' : 'GitHub 正式发布') + '…');
-            const current = await fw.latestFor(channel());
-            const item = fw.selectOta(current, await fw.readManifest(current), state.expected);
+            const item = await findCandidate(state);
             requireSession(session);
             if (item.elfSha256 === state.build.elfSha256) {
                 note(prefix + state.expected.label + ' · 已是 ' + item.tag + ' 的构建');
@@ -130,22 +139,7 @@
             }
             checkCandidate(item, state);
             clearSelection();
-            release = item;
-            note(prefix + state.expected.label + ' · ' + item.tag + ' · 正在下载 OTA…');
-            try {
-                const bytes = await fw.download(item);
-                requireSession(session);
-                await stage(bytes, item);
-                note(item.tag + ' · OTA 已校验，点击「开始升级」。');
-            } catch (error) {
-                if (!(error instanceof fw.DownloadUnavailable)) throw error;
-                requireSession(session);
-                const link = el('ark-ota-download-link');
-                link.href = item.url;
-                link.hidden = false;
-                el('ark-ota-import-online').hidden = false;
-                note(item.tag + ' · ' + state.expected.label + ' · 下载后导入该 OTA 附件。');
-            }
+            note(prefix + state.expected.label + ' · ' + item.tag + ' · 点击「开始升级」。');
         } catch (error) {
             if (session === connectionEpoch) note('检查更新失败：' + error.message);
         } finally {
@@ -194,17 +188,46 @@
 
     async function prepare(ctx, bytes) {
         if (busy) throw new Error('请等待固件查询或导入完成');
+        const session = connectionEpoch;
         const state = await readDevice(ctx);
+        requireSession(session);
         if (!state.expected) throw new Error('请按实物选择旧设备的硬件规格');
-        const image = await fw.inspectApp(bytes);
-        checkCandidate({ ...image, size: bytes.length }, state);
-        if (selected && selected.bytes === bytes && selected.item) {
-            checkCandidate(selected.item, state);
-            await fw.verifyBytes(bytes, selected.item);
+
+        bytes = bytes ?? selected?.bytes;
+        let item = selected?.bytes === bytes ? selected?.item : null;
+        if (!bytes) {
+            clearRelease();
+            note('正在检查 ' + state.expected.label + ' 的在线固件…');
+            item = await findCandidate(state);
+            requireSession(session);
+            checkCandidate(item, state);
+            note(item.tag + ' · 正在下载 OTA…');
+            updateOtaTransferStatus('正在下载固件…', 0);
+            try {
+                bytes = await fw.download(item);
+            } catch (error) {
+                if (!(error instanceof fw.DownloadUnavailable)) throw error;
+                requireSession(session);
+                release = item;
+                const link = el('ark-ota-download-link');
+                link.href = item.url;
+                link.hidden = false;
+                el('ark-ota-import-online').hidden = false;
+                note(item.tag + ' · 在线下载暂不可用。可重试，或下载并导入该 OTA 附件。');
+                throw error;
+            }
+            requireSession(session);
+            note(item.tag + ' · 正在校验固件…');
+            updateOtaTransferStatus('正在校验固件…', 0);
         }
+
+        const image = await inspectCandidate(bytes, item);
+        checkCandidate({ ...image, size: bytes.length }, state);
+        requireSession(session);
         if (state.legacy && !confirm('旧固件无法报告硬件身份。请确认设备实物为 ' +
             state.expected.label + '，并开始 OTA 升级？')) throw new Error('已取消升级');
-        return image;
+        if (item) note(item.tag + ' · 校验通过，正在升级…');
+        return { bytes, image };
     }
 
     function expectBoot(image) {
@@ -212,18 +235,19 @@
     }
 
     root.ArkOta = { check, choose, importFile, prepare, expectBoot };
-    root.addEventListener('ark-device-state', refresh);
+    // Let the shared Ark control lock restore its saved state before refreshing OTA controls.
+    root.addEventListener('ark-device-state', () => queueMicrotask(refresh));
     el('ark-ota-legacy-target').addEventListener('change', () => {
         clearRelease();
         if (selected?.item) clearSelection();
-        note('已选择硬件规格，可以重新检查更新或导入固件。');
+        note('已选择硬件规格，可以开始在线升级或导入固件。');
     });
     el('ark-ota-channel').addEventListener('change', () => {
         clearRelease();
         if (selected) clearSelection();
         note(channel() === 'ci'
-            ? '已选择 CI 最新构建（开发版），点「检查更新」获取。'
-            : '已选择正式发布，点「检查更新」获取。');
+            ? '已选择 CI 最新构建（开发版），点「开始升级」继续。'
+            : '已选择正式发布，点「开始升级」继续。');
     });
     refresh();
 })(window);

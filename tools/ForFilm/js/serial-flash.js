@@ -33,7 +33,6 @@ const FW_ADDR_RULES = [
 
 let fwFiles = [];       // [{ file, name, size }]
 let fwBusy = false;     // 正在烧写：禁止重入
-let fwPort = null;      // 保留最近一次选中的串口（仅用于提示）
 let fwMergedDetected = null;   // 合并镜像自动判定结果：null=未判定，true/false=已判定
 let fwOnlineCandidate = null;
 let fwOnlineImport = false;
@@ -85,8 +84,8 @@ function fwSetProgress(pct) {
 }
 
 function fwSetControlsEnabled(enabled) {
-    ['fw-select-btn', 'fw-clear-btn', 'fw-online-family', 'fw-online-target', 'fw-online-screen',
-     'fw-online-channel', 'fw-online-check', 'fw-online-import'].forEach(function (id) {
+    ['fw-source', 'fw-select-btn', 'fw-clear-btn', 'fw-online-family', 'fw-online-target', 'fw-online-screen',
+     'fw-online-channel', 'fw-online-import'].forEach(function (id) {
         const el = document.getElementById(id);
         if (el) el.disabled = !enabled;
     });
@@ -137,6 +136,14 @@ function fwAddressOf(item) {
     if (item.onlineFlash) return FW_ADDR_BOOTLOADER;
     if (fwMergedImageChecked() && fwFiles.length === 1) return 0x0;
     return item.address;
+}
+
+function fwSyncSource() {
+    const online = document.getElementById('fw-source').value === 'online';
+    document.getElementById('fw-online-options').hidden = !online;
+    document.getElementById('fw-local-controls').hidden = online;
+    document.getElementById('fw-file-list').hidden = online;
+    document.getElementById('fw-local-merged').hidden = online;
 }
 
 function selectFirmwareFiles(online = false) {
@@ -301,6 +308,7 @@ function fwSyncOnlineOptions() {
 
 /** 连接设备后预选家族/屏幕：只能推断型号与面板，Flash/PSRAM 仍由用户确认 */
 function fwSyncOnlineDevice() {
+    if (fwBusy) return;
     const family = document.getElementById('fw-online-family');
     const type = window.currentDeviceType;
     if (!family || !type) return;
@@ -317,81 +325,49 @@ function fwSyncOnlineDevice() {
     if (family.value === 'classic' && screen && panel) screen.value = panel.screen;
 }
 
-async function fwStageOnline(bytes, item) {
+async function fwVerifyOnline(bytes, item) {
     if (item.family === 'classic') await ClassicFirmware.verifyFlash(bytes, item);
     else await ArkFirmware.verifyFlash(bytes, item);
+}
+
+async function fwStageOnline(bytes, item) {
+    await fwVerifyOnline(bytes, item);
     const file = new File([bytes], item.name);
     fwFiles = [{ file, name: item.name, size: bytes.length, onlineFlash: item }];
     fwMergedDetected = true;
     document.getElementById('fw-merged-image').checked = true;
+    document.getElementById('fw-source').value = 'local';
+    fwSyncSource();
     fwRenderFileList();
     fwOnlineStatus(item.tag + ' · 完整镜像已校验，写入地址 0x0。');
 }
 
-async function getOnlineFlash() {
-    if (fwBusy) return;
-    if (fwOnlineFamily() === 'classic') return fwGetClassicOnline();
-    return fwGetArkOnline();
-}
-
-async function fwGetArkOnline() {
-    const hardware = ArkFirmware.target(document.getElementById('fw-online-target').value);
-    if (!hardware) { fwOnlineStatus('请按设备实物选择硬件规格。'); return; }
-    const ci = document.getElementById('fw-online-channel').value === 'ci';
-    resetOnlineFlash();
-    fwBusy = true;
-    fwSetControlsEnabled(false);
-    fwOnlineStatus('正在查找 ' + hardware.label + (ci ? ' 的 CI 最新镜像…' : ' 的完整镜像…'));
+async function fwFetchOnline(hardware, classic, channel) {
+    const firmware = classic ? ClassicFirmware : ArkFirmware;
+    fwSetStatus('正在查找 ' + hardware.label + ' 的完整镜像…');
+    const release = classic ? await firmware.latest() : await firmware.latestFor(channel);
+    const item = classic
+        ? firmware.selectFlash(release, await firmware.readManifest(release), hardware)
+        : firmware.selectFlash(release, hardware);
+    fwOnlineCandidate = item;
+    fwSetStatus('正在下载 ' + item.tag + ' · ' + item.name + '…');
+    let bytes;
     try {
-        const item = ArkFirmware.selectFlash(await ArkFirmware.latestFor(ci ? 'ci' : 'formal'), hardware);
-        fwOnlineCandidate = item;
-        try {
-            await fwStageOnline(await ArkFirmware.download(item), item);
-        } catch (error) {
-            if (!(error instanceof ArkFirmware.DownloadUnavailable)) throw error;
+        bytes = await firmware.download(item);
+    } catch (error) {
+        if (error instanceof firmware.DownloadUnavailable) {
             const link = document.getElementById('fw-online-link');
             link.href = item.url;
             link.hidden = false;
             document.getElementById('fw-online-import').hidden = false;
-            fwOnlineStatus(item.tag + ' · ' + hardware.label + ' · 下载后导入该完整镜像。');
+            fwOnlineStatus(item.tag + ' · 联网下载失败。可以重试，或下载后导入该完整镜像。');
         }
-    } catch (error) {
-        fwOnlineStatus('获取失败：' + error.message);
-    } finally {
-        fwBusy = false;
-        fwSetControlsEnabled(true);
+        throw error;
     }
-}
-
-async function fwGetClassicOnline() {
-    const expected = ClassicFirmware.target(
-        document.getElementById('fw-online-target').value,
-        document.getElementById('fw-online-screen').value);
-    if (!expected) { fwOnlineStatus('请按设备实物选择硬件规格与屏幕面板。'); return; }
-    resetOnlineFlash();
-    fwBusy = true;
-    fwSetControlsEnabled(false);
-    fwOnlineStatus('正在查找 ' + expected.label + ' 的完整镜像…');
-    try {
-        const release = await ClassicFirmware.latest();
-        const item = ClassicFirmware.selectFlash(release, await ClassicFirmware.readManifest(release), expected);
-        fwOnlineCandidate = item;
-        try {
-            await fwStageOnline(await ClassicFirmware.download(item), item);
-        } catch (error) {
-            if (!(error instanceof ClassicFirmware.DownloadUnavailable)) throw error;
-            const link = document.getElementById('fw-online-link');
-            link.href = item.url;
-            link.hidden = false;
-            document.getElementById('fw-online-import').hidden = false;
-            fwOnlineStatus(item.tag + ' · ' + expected.label + ' · 下载后导入该完整镜像。');
-        }
-    } catch (error) {
-        fwOnlineStatus('获取失败：' + error.message);
-    } finally {
-        fwBusy = false;
-        fwSetControlsEnabled(true);
-    }
+    fwSetStatus('正在校验完整镜像…');
+    await fwVerifyOnline(bytes, item);
+    fwOnlineStatus(item.tag + ' · ' + item.label + ' · 已校验');
+    return { data: bytes, name: item.name, size: bytes.length, onlineFlash: item };
 }
 
 function fwRenderFileList() {
@@ -485,19 +461,15 @@ function fwBaudrate() {
     return v > 0 ? v : 460800;
 }
 
-/** 建立 loader（含复位与芯片识别）。成功时返回 { loader, transport } */
-async function fwConnectLoader() {
-    if (!serialFlashSupported()) {
-        throw new Error('当前浏览器不支持 Web Serial，请用 Chrome / Edge 桌面版');
-    }
-    if (!fwKernelReady()) {
-        throw new Error('烧录内核未加载（js/esptool-js.js）');
-    }
-
+function fwChoosePort() {
+    if (!serialFlashSupported()) throw new Error('当前浏览器不支持 Web Serial，请用 Chrome / Edge 桌面版');
+    if (!fwKernelReady()) throw new Error('烧录内核未加载（js/esptool-js.js）');
     fwLog('请在弹窗中选择设备的串口（CH343 / CP210x 等 USB 串口）');
-    const port = await navigator.serial.requestPort();
-    fwPort = port;
+    return navigator.serial.requestPort();
+}
 
+/** 固件准备好后才打开串口并复位进入下载模式。 */
+async function fwConnectLoader(port) {
     const transport = new window.ESPTOOL.Transport(port, true);
     const loader = new window.ESPTOOL.ESPLoader({
         transport: transport,
@@ -513,10 +485,14 @@ async function fwConnectLoader() {
 
     fwSetStatus('连接设备中…');
     fwLog('连接设备（会复位一次进入下载模式）…');
-    const chip = await loader.main();
-    fwLog('检测到芯片：' + chip);
-
-    return { loader: loader, transport: transport, chip: chip };
+    try {
+        const chip = await loader.main();
+        fwLog('检测到芯片：' + chip);
+        return { loader, transport, chip };
+    } catch (error) {
+        await fwDisconnect({ transport });
+        throw error;
+    }
 }
 
 async function fwDisconnect(conn) {
@@ -560,7 +536,7 @@ async function detectSerialDevice() {
 
     let conn = null;
     try {
-        conn = await fwConnectLoader();
+        conn = await fwConnectLoader(await fwChoosePort());
         fwSetStatus('已连接：' + conn.chip);
         fwLog('连接正常。波特率 ' + fwBaudrate() + '，可开始烧录。');
         /* loader.main() 为了握手会把设备复位进下载模式；检测完必须再复位回应用，
@@ -582,6 +558,23 @@ async function detectSerialDevice() {
 
 /* ------------------------------------------------------------------ 烧录 */
 
+function fwConfirmWrite(files, eraseAll) {
+    const onlineFlash = files[0].onlineFlash;
+    if (onlineFlash && (!onlineFlash.label || !Number.isSafeInteger(onlineFlash.flashBytes) ||
+        onlineFlash.flashBytes <= 0)) {
+        throw new Error('完整镜像缺少硬件规格，请重新获取固件');
+    }
+    const plan = files.map(item => '  ' + item.name + ' -> 0x' + fwAddressOf(item).toString(16)).join('\n');
+    const totalSize = files.reduce((sum, item) => sum + item.size, 0);
+    const riskyMerged = !onlineFlash && fwMergedImageChecked() && files.length === 1 && fwMergedDetected === false;
+    return confirm('即将向设备写入固件：\n\n' + plan +
+        (onlineFlash ? '\n\n请确认实物为 ' + onlineFlash.label + '，包括 PSRAM 规格。' : '') +
+        (onlineFlash || fwMergedImageChecked() ? '\n完整镜像会覆盖镜像范围内的分区，设备设置可能重置。' : '') +
+        '\n\n共 ' + fwFormatBytes(totalSize) + (eraseAll ? '（先整片擦除 Flash）' : '') +
+        (riskyMerged ? '\n\n注意：该文件在 0x8000 处没有分区表，却按“合并镜像”从 0x0 写入；若不是合并镜像会覆盖 bootloader。' : '') +
+        '\n\n期间请勿断开 USB、勿断电。bootloader / 分区表写坏后需要重新烧录才能恢复。\n\n继续？');
+}
+
 async function startSerialFlash() {
     if (fwBusy) return;
 
@@ -593,38 +586,38 @@ async function startSerialFlash() {
         showMessage('烧录内核未加载（js/esptool-js.js）', 'error');
         return;
     }
-    if (!fwFiles.length) {
+    const online = document.getElementById('fw-source').value === 'online';
+    if (!online && !fwFiles.length) {
         showMessage('请先选择固件文件', 'warning');
         return;
     }
-    if (fwMergedImageChecked() && fwFiles.length !== 1) {
+    if (!online && fwMergedImageChecked() && fwFiles.length !== 1) {
         showMessage('“合并镜像”只能选 1 个文件', 'error');
         return;
     }
 
-    const eraseAll = !!(document.getElementById('fw-erase-all') || {}).checked;
-    let totalSize = 0;
-    fwFiles.forEach(function (item) { totalSize += item.size; });
-
-    const plan = fwFiles.map(function (item) {
-        return '  ' + item.name + ' -> 0x' + fwAddressOf(item).toString(16);
-    }).join('\n');
-
-    /* 手动勾了“合并镜像”但内容不像合并镜像：确认框里再提醒一次 */
-    const riskyMerged = fwMergedImageChecked() && fwFiles.length === 1 && fwMergedDetected === false;
-
-    const onlineFlash = fwFiles[0].onlineFlash;
-    if (onlineFlash && (!onlineFlash.label || !Number.isSafeInteger(onlineFlash.flashBytes) ||
-        onlineFlash.flashBytes <= 0)) {
-        showMessage('完整镜像缺少硬件规格，请重新获取固件', 'error');
-        return;
+    const eraseAll = document.getElementById('fw-erase-all').checked;
+    const classic = fwOnlineFamily() === 'classic';
+    const channel = document.getElementById('fw-online-channel').value;
+    const targetId = document.getElementById('fw-online-target').value;
+    let hardware;
+    if (online) {
+        hardware = classic
+            ? ClassicFirmware.target(targetId, document.getElementById('fw-online-screen').value)
+            : ArkFirmware.target(targetId);
+        if (!hardware) {
+            showMessage('请按设备实物选择硬件规格' + (classic ? '与屏幕面板' : ''), 'warning');
+            return;
+        }
+        resetOnlineFlash();
+    } else {
+        try {
+            if (!fwConfirmWrite(fwFiles, eraseAll)) return;
+        } catch (error) {
+            showMessage(error.message, 'error');
+            return;
+        }
     }
-    const tip = '即将向设备写入固件：\n\n' + plan +
-        (onlineFlash ? '\n\n请确认实物为 ' + onlineFlash.label + '，包括 PSRAM 规格。' : '') +
-        '\n\n共 ' + fwFormatBytes(totalSize) + (eraseAll ? '（先整片擦除 Flash）' : '') +
-        (riskyMerged ? '\n\n注意：该文件在 0x8000 处没有分区表，却按“合并镜像”从 0x0 写入；若不是合并镜像会覆盖 bootloader。' : '') +
-        '\n\n期间请勿断开 USB、勿断电。bootloader / 分区表写坏后需要重新烧录才能恢复。\n\n继续？';
-    if (!confirm(tip)) return;
 
     fwBusy = true;
     fwSetControlsEnabled(false);
@@ -636,8 +629,15 @@ async function startSerialFlash() {
 
     let conn = null;
     try {
-        conn = await fwConnectLoader();
+        const port = await fwChoosePort();
+        const files = online ? [await fwFetchOnline(hardware, classic, channel)] : fwFiles;
+        if (online && !fwConfirmWrite(files, eraseAll)) {
+            fwSetStatus('已取消烧录');
+            return;
+        }
+        conn = await fwConnectLoader(port);
 
+        const onlineFlash = files[0].onlineFlash;
         if (onlineFlash) {
             const flashSize = await conn.loader.detectFlashSize();
             const expectedSize = (onlineFlash.flashBytes / (1024 * 1024)) + 'MB';
@@ -653,9 +653,8 @@ async function startSerialFlash() {
         }
 
         const fileArray = [];
-        for (let i = 0; i < fwFiles.length; i++) {
-            const item = fwFiles[i];
-            const data = new Uint8Array(await item.file.arrayBuffer());
+        for (const item of files) {
+            const data = item.data || new Uint8Array(await item.file.arrayBuffer());
             fwLog('载入 ' + item.name + '（' + fwFormatBytes(data.length) + '）-> 0x' +
                   fwAddressOf(item).toString(16));
             fileArray.push({ data: data, address: fwAddressOf(item) });
@@ -671,7 +670,7 @@ async function startSerialFlash() {
             compress: true,
             reportProgress: function (fileIndex, written, total) {
                 const pct = total ? Math.round(written * 100 / total) : 0;
-                const name = (fwFiles[fileIndex] && fwFiles[fileIndex].name) || ('区 ' + (fileIndex + 1));
+                const name = files[fileIndex]?.name || ('区 ' + (fileIndex + 1));
                 fwSetProgress(pct);
                 fwSetStatus('写入 ' + name + ' … ' + pct + '%');
             },
@@ -718,4 +717,5 @@ async function startSerialFlash() {
     fwSetControlsEnabled(true);
     fwRenderFileList();
     fwSyncOnlineOptions();
+    fwSyncSource();
 })();

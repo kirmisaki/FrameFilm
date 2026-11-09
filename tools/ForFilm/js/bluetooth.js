@@ -894,7 +894,7 @@ async function uploadOtaFileViaBle(fileData) {
     }
 
     if (currentDeviceType === 'FRAMEFILMARK') {
-        if (!window.ArkOta || !window.ArkDevice || fileData.length < 352) {
+        if (!window.ArkOta || !window.ArkDevice || (fileData && fileData.length < 352)) {
             showMessage('请选择带硬件标识的 Ark OTA 应用镜像', 'error');
             return;
         }
@@ -904,24 +904,24 @@ async function uploadOtaFileViaBle(fileData) {
         try {
             await window.ArkDevice.run('Ark OTA', async ctx => {
                 updateOtaTransferStatus('正在核对设备和固件…', 0);
-                const image = await window.ArkOta.prepare(ctx, fileData);
+                const { bytes, image } = await window.ArkOta.prepare(ctx, fileData);
                 started = true;
                 updateOtaTransferStatus('初始化固件分区...', 0);
-                await ctx.send(BLE_FILM_TRANS_CH_OTA_LEN, arkU32(fileData.length));
+                await ctx.send(BLE_FILM_TRANS_CH_OTA_LEN, arkU32(bytes.length));
                 // OTA_LEN 会同步擦除整分区。只有 BLE 任务处理完之后才能开始传数据。
                 const ready = await ctx.request(BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET, new Uint8Array(), 15000);
                 if (ready.length !== 5) throw new Error('OTA 初始化后未收到有效的设备响应');
                 let chunks = 0;
-                for (let offset = 0; offset < fileData.length; offset += BLE_CHUNK_SIZE) {
-                    await ctx.send(BLE_FILM_TRANS_CH_OTA_DATA, fileData.slice(offset, offset + BLE_CHUNK_SIZE));
+                for (let offset = 0; offset < bytes.length; offset += BLE_CHUNK_SIZE) {
+                    await ctx.send(BLE_FILM_TRANS_CH_OTA_DATA, bytes.slice(offset, offset + BLE_CHUNK_SIZE));
                     await delay(4);
                     chunks++;
                     if (chunks % 32 === 0) {
                         const processed = await ctx.request(BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET, new Uint8Array(), 15000);
                         if (processed.length !== 5) throw new Error('OTA 数据处理屏障响应无效');
                     }
-                    const sent = Math.min(offset + BLE_CHUNK_SIZE, fileData.length);
-                    updateOtaTransferStatus(`已发送 ${sent}/${fileData.length} 字节`, Math.round(sent * 100 / fileData.length));
+                    const sent = Math.min(offset + BLE_CHUNK_SIZE, bytes.length);
+                    updateOtaTransferStatus(`已发送 ${sent}/${bytes.length} 字节`, Math.round(sent * 100 / bytes.length));
                 }
                 if (chunks % 32 !== 0) {
                     const processed = await ctx.request(BLE_FILM_TRANS_CH_CTRL_SCREEN_RESOLUTION_GET, new Uint8Array(), 15000);
@@ -1039,12 +1039,15 @@ function startOtaUpgrade() {
         return;
     }
 
+    if (currentDeviceType === 'FRAMEFILMARK' && window.ArkOta) {
+        return uploadOtaFileViaBle();
+    }
     if (!window.selectedOtaData) {
         showMessage('请先选择OTA升级文件', 'error');
         return;
     }
 
-    uploadOtaFileViaBle(window.selectedOtaData);
+    return uploadOtaFileViaBle(window.selectedOtaData);
 }
 
 async function sendBleCmd(cmdType, data = null) {

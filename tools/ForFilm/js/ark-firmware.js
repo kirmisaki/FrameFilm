@@ -142,7 +142,8 @@
     }
 
     async function latestFor(channel) {
-        return channel === 'ci' ? latestCi() : latest();
+        const release = await root.FirmwareMirror?.release(channel === 'ci' ? 'arkCi' : 'arkFormal');
+        return release || (channel === 'ci' ? latestCi() : latest());
     }
 
     function asset(release, name) {
@@ -153,13 +154,14 @@
         }
         const url = 'https://github.com/' + repo + '/releases/download/' +
             encodeURIComponent(release.tag_name) + '/' + name;
-        return { ...found[0], url, tag: release.tag_name };
+        return { ...found[0], url, tag: release.tag_name, mirrored: release.mirrored === true };
     }
 
     class DownloadUnavailable extends Error {}
 
     async function readAsset(item) {
         try {
+            if (item.mirrored) return await root.FirmwareMirror.download(item);
             const response = await fetch(api + '/assets/' + item.id, {
                 headers: { Accept: 'application/octet-stream' },
                 signal: AbortSignal.timeout(45000)

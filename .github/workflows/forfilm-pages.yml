@@ -1,0 +1,62 @@
+name: ForFilm Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [Ark builds, FrameFilm classic firmware]
+    types: [completed]
+  release:
+    types: [published]
+  schedule:
+    # Forks also mirror releases made in the upstream repository.
+    - cron: '24 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forfilm-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event != 'pull_request' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check firmware packaging contracts
+        run: python3 -m unittest discover -s tools/ci -p test_forfilm_firmware_mirror.py -v
+      - uses: actions/configure-pages@v5
+      - uses: actions/jekyll-build-pages@v1
+      - name: Verify and mirror published firmware
+        env:
+          GH_TOKEN: ${{ github.repository == 'kirmisaki/FrameFilm' && github.token || '' }}
+        run: python3 tools/ci/forfilm_firmware_mirror.py _site/tools/ForFilm/firmware
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    runs-on: ubuntu-24.04
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
