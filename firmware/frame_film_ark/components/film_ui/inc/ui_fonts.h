@@ -6,4 +6,6 @@ extern const lv_font_t ui_font_14;
 extern const lv_font_t ui_font_18;
 extern const lv_font_t ui_font_24;
 extern const lv_font_t ui_font_36;
+/* User-supplied text (wallet card names): common hanzi subset, NFC builds only. */
+extern const lv_font_t ui_font_wallet_name;
 #endif

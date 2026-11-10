@@ -1109,7 +1109,8 @@ static void wallet_ui_create(lv_obj_t *root)
     lv_obj_set_style_pad_hor(bar, 14, LV_PART_MAIN);
     lv_obj_set_style_pad_column(bar, 10, LV_PART_MAIN);
     m_idx_label = wallet_label(bar, app_font_small(), lv_color_white(), "01");
-    m_name_label = wallet_label(bar, app_font_body(), lv_color_white(), app_text("卡包", "WALLET"));
+    /* 卡名是用户输入（UTF-8，可能含中文），用带常用汉字子集的字体 */
+    m_name_label = wallet_label(bar, &ui_font_wallet_name, lv_color_white(), app_text("卡包", "WALLET"));
     lv_obj_set_flex_grow(m_name_label, 1);
     m_type_label = wallet_label(bar, app_font_small(), lv_color_white(), "NTAG215");
 
@@ -1147,7 +1148,7 @@ static void wallet_ui_create(lv_obj_t *root)
         lv_obj_set_flex_align(m_row_obj[i], LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_pad_column(m_row_obj[i], 10, LV_PART_MAIN);
         m_row_idx[i] = wallet_label(m_row_obj[i], app_font_small(), lv_color_black(), "01");
-        m_row_name[i] = wallet_label(m_row_obj[i], app_font_body(), lv_color_black(), "CARD");
+        m_row_name[i] = wallet_label(m_row_obj[i], &ui_font_wallet_name, lv_color_black(), "CARD");
         lv_obj_set_flex_grow(m_row_name[i], 1);
         m_row_type[i] = wallet_label(m_row_obj[i], app_font_small(), lv_color_black(), "NTAG215");
     }

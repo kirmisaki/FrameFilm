@@ -7,6 +7,10 @@ set(srcs "src/ui_core.c"
          "src/ui_boot_typography.c" # 固定标题图形，不嵌入字体文件
          )
 
+if(CONFIG_ARK_HAS_NFC)
+    list(APPEND srcs "src/ui_fonts_wallet.c") # 由 tools/ark-font/gen_fonts.py 生成
+endif()
+
 set(public_include "inc")
 
 set(requires lvgl film_hal film_sys esp_timer)
