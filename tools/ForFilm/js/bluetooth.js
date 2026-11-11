@@ -161,6 +161,64 @@ function clearDeviceLog() {
     if (view) view.innerHTML = '';
 }
 
+// 汇总当前终端里已上屏的日志（含还没等到换行的半行）
+function collectDeviceLogText() {
+    const view = document.getElementById('device-log-view');
+    const lines = [];
+    if (view) {
+        for (const entry of view.children) lines.push(entry.textContent);
+    }
+    if (deviceLogPendingText) lines.push(deviceLogPendingText);
+    return lines.join('\n');
+}
+
+async function copyDeviceLog() {
+    const text = collectDeviceLogText();
+    if (!text) {
+        showMessage('当前没有日志可复制', 'error');
+        return;
+    }
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(area);
+            if (!ok) throw new Error('浏览器拒绝复制');
+        }
+        showMessage('日志已复制');
+    } catch (error) {
+        showMessage('复制失败: ' + error.message, 'error');
+    }
+}
+
+function exportDeviceLog() {
+    const text = collectDeviceLogText();
+    if (!text) {
+        showMessage('当前没有日志可导出', 'error');
+        return;
+    }
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const blob = new Blob([text + '\n'], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `framefilm-device-log-${stamp}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showMessage('日志已导出');
+}
+
 function appendDeviceLog(text) {
     const view = document.getElementById('device-log-view');
     if (!view || !text) return;

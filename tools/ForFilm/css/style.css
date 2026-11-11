@@ -1162,6 +1162,9 @@ input[type="range"]::-webkit-slider-thumb {
 .debug-log.show { display: block; }
 
 /* 设备终端：固定高度、长行折行，便于持续滚动查看 */
+.device-log-card__title { flex-wrap: wrap; row-gap: var(--sp-2); }
+.device-log-card__title .secondary-button { width: auto; margin: 0; padding: 8px 14px; font-size: 14px; }
+
 .device-log-view {
     height: 300px;
     max-height: 300px;
