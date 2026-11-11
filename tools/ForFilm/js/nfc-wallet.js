@@ -145,8 +145,10 @@
             var flags = rsp[pos++];
             var nameLen = rsp[pos++];
             if (pos + nameLen > rsp.length) nameLen = rsp.length - pos;
-            var name = '';
-            for (var k = 0; k < nameLen && pos < rsp.length; k++) name += String.fromCharCode(rsp[pos++]);
+            /* 固件里 name 是 UTF-8 字节（改名时同样按 UTF-8 下发），
+               逐字节 fromCharCode 会把中文拆成乱码，必须整体解码。 */
+            var name = new TextDecoder('utf-8').decode(new Uint8Array(rsp.slice(pos, pos + nameLen)));
+            pos += nameLen;
             out.push({ id: id, kind: kind, uidLen: uidLen, sak: sak, atqa: atqa, uid: uid, flags: flags, name: name });
         }
         return n;
