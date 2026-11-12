@@ -1,5 +1,7 @@
 # 帧影（FrameFilm）
 
+[中文](README.md) ｜ [English](README.en.md)
+
 <div align="center">
 
 ![FrameFilm全家福](assets/pic/framefilm.jpg)
@@ -17,7 +19,7 @@
 
 帧影（FrameFilm）是一套彩色电子纸系列产品及其配套工具。
 
-硬件包括冰箱贴（基础版 / Pro）、桌面电子相册 Max、通行证版 Ark 和充电底座 Dock。各产品均使用彩色电子纸屏幕，可断电保留画面，支持蓝牙、WiFi 或 USB 连接，接收来自手机、网页或云端服务的图片并显示。
+硬件包括冰箱贴（基础版 / Pro）、桌面电子相册 Max、通行证版 Ark 和墨水屏底座 Dock。各产品均使用彩色电子纸屏幕，可断电保留画面，支持蓝牙、WiFi 或 USB 连接，接收来自手机、网页或云端服务的图片并显示。
 
 "帧影"取"一帧一影，定格时光"之意，英文名 FrameFilm 由"帧"（frame）与"胶片"（film）组成。
 
@@ -31,9 +33,30 @@
 | 冰箱贴 Pro 版 | `firmware/frame_film`（`FRAMEFILM_PRO`） | 3.68" 792×528 | 三按键、WiFi、无线充电 |
 | 电子相册 Max 版 | `firmware/frame_film`（`FRAMEFILM_MAX`） | 7.09" 1200×1600 双面板 | 大屏电子相册、三按键、无 LED |
 | 通行证版 Ark | `firmware/frame_film_ark` | 3.70" 720×480 | 单机型；含 app 框架与 LVGL UI 层 |
-| 充电底座 Dock | `firmware/frame_film_dock` | 3.64" 760×568 | USB 复合设备：声卡 + HID 键盘 + CDC 串口 |
+| 墨水屏底座 Dock | `firmware/frame_film_dock` | 3.64" 760×568 | USB 复合设备：声卡 + HID 键盘 + CDC 串口 |
+| 小萤 FilmReader | 衍生整机（FrameFilm 主板 + CrossMux 固件） | 3.97" 800×480 四灰阶 | 黑白墨水屏阅读器；四键、SD 卡、无线充电 |
 
 > 基础版 / Pro / 电子相册 Max 三机型共用同一套固件，靠机型宏 + `sdkconfig` 编译隔离；屏幕可在 `hal_epd.h` 中按机型自由选择（见下方「可选屏幕」）。
+
+## 硬件开源工程
+
+各产品的原理图、PCB、BOM、外壳与生产文件均在立创开源平台：
+
+| 工程 | 说明 |
+|------|------|
+| [FrameFilm 标准版](https://oshwhub.com/kiritro/project_ttfkoxxv) | 冰箱贴基础版，E6 全彩 V2 |
+| [FrameFilm 星火版](https://oshwhub.com/kiritro/project_uaqmgawa) | 电路优化版：NU1680 无线充电、32pin 3.7" E6 与 24pin 1.54" E6 兼容，提供三个硬件版本 |
+| [FrameFilm Dock](https://oshwhub.com/kiritro/project_pgrmtgch) | 墨水屏底座（声卡 / HID / CDC） |
+| [小萤 FilmReader](https://oshwhub.com/kiritro/project_bppplpbn) | 3.97" 黑白墨水屏阅读器衍生整机 |
+
+**衍生模块：**
+
+| 模块 | 说明 |
+|------|------|
+| [E-Ink 彩色 E6 墨水屏驱动模块](https://oshwhub.com/kiritro/project_wlvjnmls) | 适配 3.6 / 4 / 7.3 寸微雪、佳显 E6 彩色墨水屏 |
+| [NU1680 无线充电接收模块](https://oshwhub.com/kiritro/project_tscyabux) | 5V / 1A，支持 Qi，15×10×0.8 mm，可选防倒灌，MIT 许可 |
+
+> 主板设计与固件以本仓库为准；立创工程用于打样与复刻，BOM、装配与打样参数以各自工程附件为准。
 
 ## 核心功能
 
@@ -58,6 +81,27 @@
 | `film_ui` | LVGL UI 层：页面生命周期、显示链路、资源 | — | ✅ | — |
 
 > Dock 的 BLE 与 USB 共用同一套命令解析（`film_service/src/service_cmd.c`），新增命令只需改这一处。
+
+## 可选屏幕
+
+屏幕不与机型绑定：在 `hal_epd.h` 的对应机型分支内，把目标 `EPD_SELECT_E6_*` 置 `1`、其余置 `0` 即可切换。
+
+| 屏幕 | 分辨率 | 面板 ID | 宏 | 驱动 |
+|------|--------|---------|-----|------|
+| 3.68" | 792×528 | 0x01 | `EPD_SELECT_E6_3_68_792_528` | `hal_epd_368.c` |
+| 3.70" | 720×480 | 0x02 | `EPD_SELECT_E6_3_70_720_480` | `hal_epd_370.c` |
+| 3.6" | 600×400 | 0x03 | `EPD_SELECT_E6_3_60_600_400` | `hal_epd_360.c` |
+| 1.54" | 240×240 | 0x04 | `EPD_SELECT_E6_1_54_240_240` | — |
+| 7.09" 双面板 | 1200×1600 | 0x05 | `EPD_SELECT_E6_7_09_1600_1200` | `hal_epd_709.c` |
+| 3.64" | 760×568 | 0x06 | `EPD_SELECT_E6_3_64_760_568` | `hal_epd_364.c`（Dock 默认） |
+| 3.98" | 768×552 | 0x07 | `EPD_SELECT_E6_3_98_768_552` | `hal_epd_398.c` |
+| 3.98" 四色 | 768×552 | 0x08 | `EPD_SELECT_E4_3_98_768_552` | `hal_epd_398e4.c` |
+| 3.97" 黑白 | 800×480 | — | — | FilmReader 采用 SSD1677（四灰阶），本仓库无驱动 |
+
+> `0x07`（SE0398 3.98"）为新增可选屏，默认关闭，需手动置 `1` 启用；它走 4 线 SPI + DC，仅适用于 STD / Pro 的接线（Max 无 DC 脚）。
+> `0x08`（JD79665AA 3.98" 四色）只有黑/白/黄/红，ForFilm 检测到该面板后自动按四色出图；全刷约 15 s，同样只适用于 STD / Pro 接线。
+> 3.97" 黑白屏（SSD1677）用于衍生整机「小萤 FilmReader」，运行 CrossMux 固件，本仓库三套固件均未包含其驱动，详见下方「小萤 FilmReader」。
+> 面板 ID 随 `0x42` 回包给连接端，客户端据此校正分辨率；客户端机型仍以 BLE 广播名为准。
 
 ## 硬件规格
 
@@ -112,7 +156,7 @@
 | 灯效 | WS2812（白=未连接、绿=已连接、红=低电） |
 | 电池 | 锂电池，带电量检测 |
 
-### FrameFilm Dock（充电底座）
+### FrameFilm Dock（墨水屏底座）
 
 | 参数 | 规格 |
 |------|------|
@@ -123,24 +167,28 @@
 | 交互 | 三按键（作为 PC 键盘键值发送） |
 | 通信 | 蓝牙 BLE 4.2 + USB |
 
-## 可选屏幕
+## 小萤 FilmReader（衍生整机）
 
-屏幕不与机型绑定：在 `hal_epd.h` 的对应机型分支内，把目标 `EPD_SELECT_E6_*` 置 `1`、其余置 `0` 即可切换。
+小萤 FilmReader 是基于 FrameFilm 主板制作的 **3.97 寸黑白墨水屏阅读器**，属于 FrameFilm 的衍生整机：核心电路沿用 FrameFilm 主板，主要在 PCB 拼接（panel）、外壳、前面板与整机装配上适配。它没有触摸与背光，只有四个按键，价值在于可低成本复刻、改固件与换外壳。
 
-| 屏幕 | 分辨率 | 面板 ID | 宏 | 驱动 |
-|------|--------|---------|-----|------|
-| 3.68" | 792×528 | 0x01 | `EPD_SELECT_E6_3_68_792_528` | `hal_epd_368.c` |
-| 3.70" | 720×480 | 0x02 | `EPD_SELECT_E6_3_70_720_480` | `hal_epd_370.c` |
-| 3.6" | 600×400 | 0x03 | `EPD_SELECT_E6_3_60_600_400` | `hal_epd_360.c` |
-| 1.54" | 240×240 | 0x04 | `EPD_SELECT_E6_1_54_240_240` | — |
-| 7.09" 双面板 | 1200×1600 | 0x05 | `EPD_SELECT_E6_7_09_1600_1200` | `hal_epd_709.c` |
-| 3.64" | 760×568 | 0x06 | `EPD_SELECT_E6_3_64_760_568` | `hal_epd_364.c`（Dock 默认） |
-| 3.98" | 768×552 | 0x07 | `EPD_SELECT_E6_3_98_768_552` | `hal_epd_398.c` |
-| 3.98" 四色 | 768×552 | 0x08 | `EPD_SELECT_E4_3_98_768_552` | `hal_epd_398e4.c` |
+**立创开源工程（原理图 / PCB / BOM / 外壳 / 前面板）：** <https://oshwhub.com/kiritro/project_bppplpbn>
 
-> `0x07`（SE0398 3.98"）为新增可选屏，默认关闭，需手动置 `1` 启用；它走 4 线 SPI + DC，仅适用于 STD / Pro 的接线（Max 无 DC 脚）。
-> `0x08`（JD79665AA 3.98" 四色）只有黑/白/黄/红，ForFilm 检测到该面板后自动按四色出图；全刷约 15 s，同样只适用于 STD / Pro 接线。
-> 面板 ID 随 `0x42` 回包给连接端，客户端据此校正分辨率；客户端机型仍以 BLE 广播名为准。
+| 参数 | 规格 |
+|------|------|
+| 主控芯片 | ESP32-S3（16MB Flash / 8MB PSRAM） |
+| 显示屏 | 黑白四灰阶 3.97" 800×480（SSD1677） |
+| 存储 | SD 卡（4-bit SDMMC） |
+| 交互 | 四按键：UP / DOWN / CONFIRM+PWR / BACK |
+| 充电 | MagSafe 无线充电 |
+| 其他 | 32.768 kHz RTC 晶振、WS2812 状态灯、深度休眠外设断电 |
+| 主板配置 | 沿用 FrameFilm 主板；焊点 P1 断开 / P2 断开 / P3 连接 |
+
+- **固件**：使用 [CrossMux](https://github.com/0x1abin/crossmux)，本机适配版见 [kirmisaki/crossmux](https://github.com/kirmisaki/crossmux)
+- **刷写**：用 [ForFilm Web 工具](https://kirmisaki.github.io/FrameFilm/tools/ForFilm/) 的「串口烧录」写入立创工程附件中的 `firmware.factory.bin`
+- **复刻资料**：外壳 `FilmReader外壳.3mf`、`BOM_Board_FilmReader材料清单.xlsx` 均在立创工程附件中；前面板按亚克力 0.8 mm、要背胶、普通遮光、背面印刷打样
+- **复刻交流群**：1103626779
+
+> 主板设计与 FrameFilm 共用，遵循本仓库 GPLv3 许可；阅读器固件与整机资料分别在 CrossMux 仓库与立创工程维护。
 
 ## 项目结构
 
@@ -170,7 +218,7 @@ FrameFilm/
 │   │   ├── main/              # 主程序
 │   │   └── sdkconfig_*        # 各机型配置 (std/pro/max)
 │   ├── frame_film_ark/        # 通行证版（单机型；含 app 框架与 UI 层）
-│   └── frame_film_dock/       # 充电底座（单机型；BLE + USB）
+│   └── frame_film_dock/       # 墨水屏底座（单机型；BLE + USB）
 │
 ├── app/                        # 手机 App
 │   ├── android/                # Ark Android 客户端（Kotlin 通信内核）
@@ -200,7 +248,8 @@ FrameFilm/
 │   └── film_viewer/           # film 文件查看器
 │
 ├── AGENTS.md                   # AI 开发指南
-├── README.md                   # 项目说明文档
+├── README.md                   # 项目说明文档（中文）
+├── README.en.md                # 英文说明文档
 └── LICENSE                     # 许可证
 ```
 
@@ -268,7 +317,7 @@ cd firmware/frame_film_ark   # 通行证版 FRAMEFILMARK（3.70" 720×480，三�
 idf.py build flash monitor               # 默认 n4r2：4MB Flash / Quad PSRAM
 .\build.ps1 n16r8 flash COM15            # n16r8：16MB Flash / Octal PSRAM（PowerShell）
 
-cd firmware/frame_film_dock  # 充电底座 FRAMEFILMDOCK（3.64" 760×568）
+cd firmware/frame_film_dock  # 墨水屏底座 FRAMEFILMDOCK（3.64" 760×568）
 idf.py build flash monitor
 ```
 
