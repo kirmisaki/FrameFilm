@@ -95,6 +95,11 @@ static uint32_t m_stream_cap = 0;
    动图 app 据此做流控：面板刷新远慢于推送节奏，不控就会堆请求。 */
 static volatile uint32_t m_render_pending = 0;
 
+/* 已投递但尚未落屏的整图显示请求数（见 service_film_display）。
+   图片 app 据此在上一张还在刷新时丢弃翻页按键：否则请求会堆在队列里，
+   刷完之后继续一张张翻；退出 app 时也用它等最后一张落屏再切页。 */
+static volatile uint32_t m_display_pending = 0;
+
 /*********************************************************************
  * GLOBAL VARIABLES
  */
@@ -407,6 +412,11 @@ static void film_show_frame(const uint8_t *frame, uint8_t format)
         return;
     }
 #endif
+    /* 整帧事务（init + 刷图 + 断电）必须在同一把面板锁里：
+       否则切页时 ui_task 的复位/清场会插进这几步之间，把正在刷的一帧打断，
+       双方都卡在 BUSY 等待里（见 hal_epd_lock 的说明）。锁可重入，
+       下面各 hal_epd_* 自己也会取同一把锁。 */
+    hal_epd_lock();
     hal_epd_display_init();
     switch(format)
     {
@@ -421,6 +431,7 @@ static void film_show_frame(const uint8_t *frame, uint8_t format)
         break;
     }
     hal_epd_pwroff();
+    hal_epd_unlock();
 }
 
 /**
@@ -522,6 +533,10 @@ static void film_task_handle(void *pvParameters)
             {
             case MSG_FILM_DISPLAY:
                 film_display_event(msg.file_id);
+                if(m_display_pending > 0)
+                {
+                    m_display_pending--;
+                }
                 break;
             case MSG_FILM_RENDER:
                 /* 按帧推屏 = 连续逐帧刷新的会话：打开黑白快刷会话，
@@ -586,10 +601,16 @@ static void film_render_frame_event(uint32_t file_id, uint32_t frame_idx)
 
 void service_film_display(uint32_t file_id)
 {
+    if(m_film_msg_hdl == NULL)
+    {
+        return;
+    }
+
     film_msg_t msg;
     msg.ID = MSG_FILM_DISPLAY;
     msg.file_id = file_id;
     msg.frame_idx = 0;
+    m_display_pending++;
     film_msg_send(&msg, 0);
 }
 
@@ -621,7 +642,7 @@ void service_film_render_frame(uint32_t file_id, uint32_t frame_idx)
 
 int service_film_is_busy(void)
 {
-    return (m_render_pending > 0) ? 1 : 0;
+    return (m_render_pending > 0 || m_display_pending > 0) ? 1 : 0;
 }
 
 void service_film_cancel_pending(void)
@@ -631,11 +652,19 @@ void service_film_cancel_pending(void)
         return;
     }
 
-    /* 抽干队列里所有尚未处理的请求：切走页面之后它们不该再落屏 */
+    /* 抽干队列里所有尚未处理的请求：切走页面之后它们不该再落屏。
+       丢弃的请求要同时从计数里扣掉，否则下面的等待会空等到超时。 */
     film_msg_t msg;
     while(xQueueReceive(m_film_msg_hdl, &msg, 0) == pdPASS)
     {
-        /* 丢弃 */
+        if(msg.ID == MSG_FILM_RENDER && m_render_pending > 0)
+        {
+            m_render_pending--;
+        }
+        else if(msg.ID == MSG_FILM_DISPLAY && m_display_pending > 0)
+        {
+            m_display_pending--;
+        }
     }
 
     /* 让 film_task 收掉"保持上电"的黑白快刷会话（补一次 POF）。
@@ -650,15 +679,29 @@ void service_film_cancel_pending(void)
         sys_logw(FILM_TAG, "mono end msg send error!");
     }
 
-    /* 等在途帧与断电都完成（上限 3s）：否则它们会在新页面之后落屏／断电，
-       表现为"按返回没反应 / 画面停在动图" */
+    /* 等在途帧与断电都完成（上限 15s）：否则它们会在新页面之后落屏／断电，
+       表现为"按返回没反应 / 画面停在动图"。整图首帧（尤其 v1 4bpp）
+       单次刷新可达数秒，超时按 3s 会在画面还在刷时放行切页，与 UI 层抢 SPI。 */
     uint32_t wait_count = 0;
-    while(m_render_pending > 0 && wait_count < 300)
+    while((m_render_pending > 0 || m_display_pending > 0) && wait_count < 750)
     {
         vTaskDelay(10 / portTICK_PERIOD_MS);
         wait_count++;
     }
+    if(m_render_pending > 0 || m_display_pending > 0)
+    {
+        /* 面板还在刷（大图 8bpp 可达数十秒）：HAL 的会话锁会保证后续页面
+           排在它后面，不会并发驱动；这里只提示这次的等待提前结束。 */
+        sys_logw(FILM_TAG, "cancel pending timeout %ums: render=%u display=%u",
+                 (unsigned)(wait_count * 10), (unsigned)m_render_pending,
+                 (unsigned)m_display_pending);
+    }
+    else
+    {
+        sys_logi(FILM_TAG, "cancel pending done in %ums", (unsigned)(wait_count * 10));
+    }
     m_render_pending = 0;
+    m_display_pending = 0;
 }
 
 uint32_t service_film_get_frame_count(uint32_t file_id)

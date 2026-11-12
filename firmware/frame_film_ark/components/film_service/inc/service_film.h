@@ -85,21 +85,24 @@ extern void service_film_display(uint32_t file_id);
 extern void service_film_render_frame(uint32_t file_id, uint32_t frame_idx);
 
 /**
- * @brief 是否已有按帧渲染请求排队或正在上屏
+ * @brief 是否已有显示/按帧渲染请求排队或正在上屏
  *
  * 供"按帧推屏"的 app（动图）做流控：面板刷新慢于推送节奏时，要等上一帧
  * 落屏再推下一帧，否则请求会堆积（退出后仍在刷屏，队列满还会阻塞调用任务）。
+ * 图片 app 也用它判断"上一张还在刷新"，刷新期间丢弃翻页按键。
  *
- * @return int 1:忙（应等待）, 0:空闲
+ * @return int 1:忙（应等待 / 应丢弃新的换图按键）, 0:空闲
  */
 extern int service_film_is_busy(void);
 
 /**
- * @brief 丢弃尚未处理的渲染请求，并等当前正在上屏的那一帧画完
+ * @brief 丢弃尚未处理的显示/渲染请求，并等当前正在上屏的那一帧画完
  *
- * "按帧推屏"的 app 退出时调用（见 app_entry_t.on_exit）：不丢弃的话，队列里
- * 排队的帧会在切页之后继续刷屏、把新页面覆盖掉。函数同时会结束黑白快刷会话
- * （把播放期间保持上电的面板断电），并等这一切完成才返回，上限 3s。
+ * DIRECT 层 app 退出时调用（见 app_entry_t.on_exit）：不丢弃的话，队列里
+ * 排队的请求会在切页之后继续刷屏、把新页面覆盖掉；更要紧的是正在刷新的那一帧
+ * 若不等待完成就切到 UI 层，两个任务会同时操作面板 SPI/BUSY，表现为卡死。
+ * 函数同时会结束黑白快刷会话（把播放期间保持上电的面板断电），
+ * 并等这一切完成才返回，上限 15s。
  */
 extern void service_film_cancel_pending(void);
 

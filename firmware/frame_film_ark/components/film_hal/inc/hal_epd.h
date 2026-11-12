@@ -106,6 +106,19 @@ void hal_epd_init(void);
 void hal_epd_deinit(void);
 
 /**
+ * @brief 独占面板（递归锁）
+ *
+ * 驱动内部的 SPI / GPIO / BUSY 状态不是线程安全的，两个任务同时驱动会
+ * 互相打断刷新、卡在 BUSY 等待里。以下公开绘制入口已各自在锁内执行；
+ * 需要把"多个调用"当成一个原子事务时（如 init + 刷图 + 断电），
+ * 由调用方用 hal_epd_lock()/hal_epd_unlock() 把整段包住。
+ *
+ * 锁可重入：被包住的段里再调公开入口不会自锁。等待无超时。
+ */
+void hal_epd_lock(void);
+void hal_epd_unlock(void);
+
+/**
  * @brief 初始化电子纸显示
  *
  * 此函数用于初始化电子纸显示参数，准备显示内容。

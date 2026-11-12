@@ -94,6 +94,7 @@ static const uint16_t m_image_events[] = {
  * LOCAL FUNCTIONS
  */
 static void app_image_on_enter(void);
+static void app_image_on_exit(void);
 static void app_image_on_event(const app_event_t *e);
 static void app_image_on_tick(void);
 static void app_image_param_set(const uint8_t *tlv, uint8_t len);
@@ -114,7 +115,7 @@ const app_entry_t g_app_image_entry = {
     .tick_ms = APP_IMAGE_TICK_MS,  // 定时切换以秒计时
     .events = m_image_events,
     .on_enter = app_image_on_enter,
-    .on_exit = NULL,
+    .on_exit = app_image_on_exit,
     .on_event = app_image_on_event,
     .on_tick = app_image_on_tick,
     .enter_block_reason = app_image_enter_block_reason,
@@ -254,12 +255,32 @@ static void app_image_on_enter(void)
 }
 
 /**
+ * @brief 离开图片 app：丢弃排队中的换图请求，并等正在刷新的那张落屏
+ *
+ * 不等待就直接切到主菜单（或休眠卡）的话，film_task 还在刷图，ui_task 同时
+ * 开始建页面并操作面板 —— 两个任务并发驱动 EPD（复位 / BUSY 等待交错），
+ * 表现为按键后整机卡死。切页顺序由 app_manager 保证：on_exit 先跑完才启动新层。
+ */
+static void app_image_on_exit(void)
+{
+    service_film_cancel_pending();
+}
+
+/**
  * @brief 图片 app 事件处理
  */
 static void app_image_on_event(const app_event_t *e)
 {
     if(e->type == APP_EVT_INPUT)
     {
+        /* 上一张还在上屏：此刻换图只会把请求堆进队列（刷新结束后再一张张刷），
+           所以刷新期间的换图按键直接丢掉，不参与后续处理 */
+        if(service_film_is_busy())
+        {
+            sys_logi(APP_IMAGE_TAG, "refreshing, ignore key");
+            return;
+        }
+
         uint32_t count = service_file_get_count();
         if(count == 0)
         {

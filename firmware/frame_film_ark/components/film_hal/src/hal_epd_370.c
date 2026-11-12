@@ -32,6 +32,7 @@
 #include "hal_epd.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include <string.h>
 
 #include "sys_log.h"
@@ -622,6 +623,14 @@ static uint8_t m_mono_prev[EPD_MONO_BYTES];  // 黑白快刷上一帧（bit-reve
 static bool m_panel_powered = false;         // 面板 DC/DC 是否上电（PON 后、POF 前）；硬复位/深睡会清掉
 static bool m_mono_session = false;          // 黑白快刷会话：打开时帧间保持上电（见 hal_epd_mono_session_begin）
 
+/* EPD 会话锁（递归）：驱动内部的 SPI / GPIO / BUSY 状态都不是线程安全的。
+ * 历史上这里靠"UI 层与直绘层互斥"的调度约定保证单写者，但图片刷新在途时切页
+ * （按返回/长按）会让 film_task 与 ui_task 同时操作面板 —— 复位把对方的 REF 打断，
+ * BUSY 状态错乱后双方的等待都要熬到超时（最长 120s），表现就是整机卡死。
+ * 所有公开绘制入口都在锁内执行；跨多个调用的整帧事务（如 init + 刷图 + 断电）
+ * 由调用方用 hal_epd_lock()/hal_epd_unlock() 包住。 */
+static SemaphoreHandle_t m_epd_mutex = NULL;
+
 /* Profiling owns only the two public mono/8bpp driver calls below. The existing
  * driver is serialized by its callers; internal helpers must not start a frame.
  * Stages are exclusive, including preparation passes, and retain original delays.
@@ -1175,6 +1184,39 @@ static void epd_spectra_mono_write(const uint8_t *mono_bitmap);
 static void epd_spectra_mono_display(const uint8_t *mono_bitmap, bool is_clear);
 
 /*********************************************************************
+ * EPD SESSION LOCK
+ */
+
+static void epd_lock(void)
+{
+    if(m_epd_mutex != NULL)
+    {
+        (void)xSemaphoreTakeRecursive(m_epd_mutex, portMAX_DELAY);
+    }
+}
+
+static void epd_unlock(void)
+{
+    if(m_epd_mutex != NULL)
+    {
+        (void)xSemaphoreGiveRecursive(m_epd_mutex);
+    }
+}
+
+/**
+ * @brief 独占面板：同一时刻只允许一个任务驱动 EPD（递归，可在公开入口内部再取）
+ */
+void hal_epd_lock(void)
+{
+    epd_lock();
+}
+
+void hal_epd_unlock(void)
+{
+    epd_unlock();
+}
+
+/*********************************************************************
  * HARDWARE SPI (half-duplex, 3-wire mode)
  *********************************************************************/
 
@@ -1404,6 +1446,7 @@ static void epd_display_solid(unsigned char color_byte)
     unsigned char line[EPD_INPUT_LINE];
     memset(line, color_byte, EPD_INPUT_LINE);
 
+    epd_lock();
     EPD_W21_WriteCMD(DTM1);
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     for (int row = 0; row < EPD_HEIGHT; row++)
@@ -1412,6 +1455,7 @@ static void epd_display_solid(unsigned char color_byte)
     }
 
     epd_display_refresh_seq();
+    epd_unlock();
 }
 
 /*********************************************************************
@@ -1695,6 +1739,15 @@ void hal_epd_init(void)
 {
     gpio_config_t io_conf;
 
+    if(m_epd_mutex == NULL)
+    {
+        m_epd_mutex = xSemaphoreCreateRecursiveMutex();
+        if(m_epd_mutex == NULL)
+        {
+            sys_loge(EPD_TAG, "epd session mutex create failed");
+        }
+    }
+
     // BUSY: input
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_INPUT;
@@ -1724,6 +1777,7 @@ void hal_epd_init(void)
 
 void hal_epd_display_init(void)
 {
+    epd_lock();
     reset();
     epd_try_fix_busy_polarity();
 
@@ -1733,6 +1787,7 @@ void hal_epd_display_init(void)
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
 
     sys_logi(EPD_TAG, "EPD display initialized (JD7601)");
+    epd_unlock();
 }
 
 void hal_epd_display_white(void)
@@ -1777,6 +1832,7 @@ void hal_epd_display_pic(const unsigned char *picData)
     }
 
     // 输入为每像素 1 字节的颜色表值（0x00/0xFF/0xFC/0xE0/0x03/0x1C），转换为 JD7601 面板字节
+    epd_lock();
     EPD_W21_WriteCMD(DTM1);
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     for (i = 0; i < EPD_HEIGHT; i++)
@@ -1790,17 +1846,20 @@ void hal_epd_display_pic(const unsigned char *picData)
     }
 
     epd_display_refresh_seq();
+    epd_unlock();
     sys_logi(EPD_TAG, "Display pic completed");
 }
 
 void hal_epd_display_native_4bpp(const unsigned char *pixels)
 {
     if (pixels == NULL) return;
+    epd_lock();
     EPD_W21_WriteCMD(DTM1);
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     for (unsigned i = 0; i < EPD_HEIGHT; ++i)
         EPD_W21_WriteDATA_Bulk(pixels + i * EPD_INPUT_LINE, EPD_INPUT_LINE);
     epd_display_refresh_seq();
+    epd_unlock();
 }
 
 void hal_epd_display_film(const unsigned char *filmData)
@@ -1835,26 +1894,31 @@ void hal_epd_display_film(const unsigned char *filmData)
     // 只做单帧显示：多帧文件取首帧。后续如需动画，再按 frameCount 循环展示。
 
     // 按 Format 判别 v1/v2 编码方式并分派到对应驱动路径
+    epd_lock();
     switch (header.format)
     {
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     case 0x7F:
         hal_epd_display_abc9(pixelData, header.fileSize);
+        epd_unlock();
         return;
 #endif
     case 0x01:  // v2 MonoFast：1bpp 位图，走黑白快刷
         sys_logi(EPD_TAG, "Film v2 MonoFast");
         hal_epd_display_mono(pixelData);
+        epd_unlock();
         return;
 
     case 0x02:  // v2 ColorQual：8bpp 索引，3 相刷新
         sys_logi(EPD_TAG, "Film v2 ColorQual");
         hal_epd_display_8bpp_mode(pixelData, 1);
+        epd_unlock();
         return;
 
     case 0x03:  // v2 ColorFast：8bpp 索引，2 相刷新
         sys_logi(EPD_TAG, "Film v2 ColorFast");
         hal_epd_display_8bpp_mode(pixelData, 0);
+        epd_unlock();
         return;
 
     default:    // 0x00 v1 4bpp：落入下方原有颜色转换路径
@@ -1878,11 +1942,13 @@ void hal_epd_display_film(const unsigned char *filmData)
     }
 
     epd_display_refresh_seq();
+    epd_unlock();
     sys_logi(EPD_TAG, "Film display completed");
 }
 
 void hal_epd_sleep(void)
 {
+    epd_lock();
     EPD_PROFILE_SESSION_STOP();
     /* 深睡之前先把面板 DC/DC 断掉：黑白快刷会话期间面板是保持上电的 */
     epd_spectra_power_off();
@@ -1896,16 +1962,20 @@ void hal_epd_sleep(void)
     m_panel_powered = false;
 
     sys_logi(EPD_TAG, "EPD sleep");
+    epd_unlock();
 }
 
 void hal_epd_mono_session_begin(void)
 {
+    epd_lock();
     if (!m_mono_session) EPD_PROFILE_SESSION_BEGIN();
     m_mono_session = true;
+    epd_unlock();
 }
 
 void hal_epd_mono_session_end(void)
 {
+    epd_lock();
     m_mono_session = false;
     EPD_PROFILE_SESSION_STOP();
 
@@ -1913,18 +1983,22 @@ void hal_epd_mono_session_end(void)
        已经在断电态时是空操作，可重复调用。 */
     epd_spectra_power_off();
     EPD_PROFILE_SESSION_END();
+    epd_unlock();
 }
 
 void hal_epd_pwroff(void)
 {
+    epd_lock();
     hal_epd_sleep();
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     sys_logi(EPD_TAG, "EPD power off");
+    epd_unlock();
 }
 
 void hal_epd_deinit(void)
 {
+    epd_lock();
     EPD_PROFILE_SESSION_END();
     if (m_spi_device != NULL)
     {
@@ -1949,6 +2023,7 @@ void hal_epd_deinit(void)
     m_panel_powered = false; // SPI 已释放，上电状态不再成立
 
     sys_logi(EPD_TAG, "EPD deinit, SPI and GPIOs released");
+    epd_unlock();
 }
 
 /*********************************************************************
@@ -2110,8 +2185,10 @@ void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode)
                  diag_mode, index8Data[0] & 7, diag_mode == 0 ? 0u : 172800u);
     }
 #endif
+    epd_lock();
     epd_spectra_init();
     epd_spectra_display_color(index8Data, mode);
+    epd_unlock();
     EPD_PROFILE_END();
     sys_logi(EPD_TAG, "Display 8bpp mode=%u completed", mode);
 }
@@ -2151,6 +2228,7 @@ esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size)
         }
     }
     EPD_PROFILE_BEGIN("abc9_lab");
+    epd_lock();
     hal_epd_display_init();
     epd_spectra_init();
     epd_spectra_full_clear();
@@ -2164,6 +2242,7 @@ esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size)
     epd_abc9_write_plane(pixels, 0);
     epd_spectra_refresh(false, true);
     m_spectra_state = 0;
+    epd_unlock();
     hal_epd_pwroff();
     EPD_PROFILE_END();
     sys_logi(EPD_TAG, "ABC9 lab complete clear=1 qual_ref=3 RAM=A/B/C");
@@ -2183,6 +2262,7 @@ void hal_epd_display_mono(const unsigned char *mono_bitmap)
     }
 
     // 黑白快刷会话首次调用时初始化一次，之后跨调用保持上一帧实现差分局刷
+    epd_lock();
     if (!m_mono_inited)
     {
         epd_spectra_init();
@@ -2190,6 +2270,7 @@ void hal_epd_display_mono(const unsigned char *mono_bitmap)
     }
 
     epd_spectra_mono_display(mono_bitmap, false);
+    epd_unlock();
     EPD_PROFILE_END();
     sys_logd(EPD_TAG, "Display mono (B/W fast refresh) completed");
 }

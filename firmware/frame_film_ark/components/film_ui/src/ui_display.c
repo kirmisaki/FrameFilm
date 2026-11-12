@@ -291,6 +291,9 @@ static void ui_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_m
         /* 打开黑白快刷会话：UI 连续刷新（进度条逐格 / 连点换页）帧间省掉
            每帧约 200ms 的 PON/POF。会话由 ui_task 在空闲一段时间后关闭
            （见 ui_core.c），页面退出时也会关，面板不会留在带电态。 */
+        /* 一次 flush 的多个驱动调用当作一个原子事务：期间不允许直绘层
+           （图片/动图刷新）插进来复位面板或改写 RAM。 */
+        hal_epd_lock();
         if(m_card_pixels != NULL)
         {
             hal_epd_mono_session_end();
@@ -303,6 +306,7 @@ static void ui_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_m
             hal_epd_mono_session_begin();
             hal_epd_display_mono(m_mono_buf);
         }
+        hal_epd_unlock();
         int64_t t2 = esp_timer_get_time();
 
         /* TEMP 打点：定位 UI 一帧 ~1s 花在哪（conv = I1→mono 转置 / epd = 驱动刷屏） */
