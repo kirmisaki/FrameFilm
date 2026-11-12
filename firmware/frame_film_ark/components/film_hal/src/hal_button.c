@@ -30,6 +30,7 @@
  */
 #include "sys_log.h"
 #include <string.h>
+#include <stdint.h>
 #include "iot_button.h"
 #include "driver/gpio.h"
 #include "sdkconfig.h"
@@ -87,6 +88,10 @@ typedef struct
  * LOCAL VARIABLES
  */
 static button_mgr_t m_button_mgr;
+#if CONFIG_ARK_SCREENSHOT
+/* 上键双击当前是否生效（截图开关的 HAL 侧镜像） */
+static bool m_up_double_click_on;
+#endif
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -142,6 +147,7 @@ void hal_input_init(void)
 #if CONFIG_ARK_SCREENSHOT
         /* 双击只发 DOUBLE_CLICK、不发 SINGLE_CLICK（库内部已消歧），用于全局截图 */
         iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_DOUBLE_CLICK, button_up_cb, NULL);
+        m_up_double_click_on = true;
 #endif
         m_button_mgr.buttons[0].initialized = true;
         sys_logi(BUTTON_TAG, "UP button initialized");
@@ -272,7 +278,33 @@ void hal_input_deinit(void)
     gpio_config(&io_conf);
 
     m_button_mgr.initialized = false;
+#if CONFIG_ARK_SCREENSHOT
+    m_up_double_click_on = false;
+#endif
     sys_logi(BUTTON_TAG, "button deinitialized");
+}
+
+void hal_input_set_up_double_click(bool on)
+{
+#if CONFIG_ARK_SCREENSHOT
+    button_handle_t handle = m_button_mgr.buttons[0].handle;
+
+    if (handle == NULL || m_up_double_click_on == on)
+    {
+        return;
+    }
+
+    /* 回调常驻，靠 m_up_double_click_on 在回调里拦截：运行期注销/重注册会与
+       按键定时器并发改链表，只改窗口（库内部有临界区）最稳。
+       关闭后窗口回到 50ms，双击基本不可能凑上，上键单击也不用再等 350ms。 */
+    m_up_double_click_on = on;
+    iot_button_set_param(handle, BUTTON_SHORT_PRESS_TIME_MS,
+                         (void *)(intptr_t)(on ? BUTTON_DOUBLE_CLICK_WINDOW_MS
+                                               : BUTTON_SHORT_PRESS_TIME_MS));
+    sys_logi(BUTTON_TAG, "UP double click %s", on ? "on" : "off");
+#else
+    (void)on;
+#endif
 }
 
 static void button_up_cb(void *button_handle, void *usr_data)
@@ -291,8 +323,12 @@ static void button_up_cb(void *button_handle, void *usr_data)
 #if CONFIG_ARK_SCREENSHOT
     else if (event == BUTTON_DOUBLE_CLICK)
     {
-        sys_logi(BUTTON_TAG, "UP DOUBLE PRESS");
-        trigger_callbacks(INPUT_PRESS_UP_DOUBLE);
+        /* 截图开关关闭时双击事件不生效（窗口也已收回 50ms） */
+        if (m_up_double_click_on)
+        {
+            sys_logi(BUTTON_TAG, "UP DOUBLE PRESS");
+            trigger_callbacks(INPUT_PRESS_UP_DOUBLE);
+        }
     }
 #endif
 }

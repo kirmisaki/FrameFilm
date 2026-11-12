@@ -940,7 +940,8 @@ static app_input_result_t app_manager_process_input(input_press_type_t key)
 #if CONFIG_ARK_SCREENSHOT
     if(key == INPUT_PRESS_UP_DOUBLE)
     {
-        /* 默认关闭，避免误触；关闭时仍吃掉双击，避免下发给 UI 造成未知按键 */
+        /* 截图关闭时 HAL 已不再上报双击，正常收不到这个键；留着这层判断只做兜底，
+           切换瞬间万一收到也吃掉，不下发给 UI 造成未知按键 */
         if(app_screenshot_enabled())
         {
             sys_logi(APP_MANAGER_TAG, "screenshot: UP double click");

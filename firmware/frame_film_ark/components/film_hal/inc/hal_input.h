@@ -5,6 +5,7 @@
 /*********************************************************************
  * INCLUDES
  */
+#include <stdbool.h>
 #include "sdkconfig.h"
 
 
@@ -96,6 +97,13 @@ extern int hal_input_unregister_cb(input_press_type_t type, input_callback_t cb)
  * 释放 rotary_input 资源，将编码器引脚设为高阻态
  */
 extern void hal_input_deinit(void);
+
+/**
+ * @brief 运行期开关上键双击（截图用）
+ * 关闭后不再上报双击，并把单击结算窗口恢复为 50ms，上键行为与没有截图功能时一致；
+ * 开启时恢复双击识别并把窗口放开到 350ms。未编译截图功能时为空实现。
+ */
+extern void hal_input_set_up_double_click(bool on);
 
 #ifdef __cplusplus
 }

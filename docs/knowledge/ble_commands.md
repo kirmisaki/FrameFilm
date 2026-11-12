@@ -149,6 +149,7 @@ TLV = `[TAG(1B)][LEN(1B)][VALUE(LEN B)]...`；查询通道 = 设置通道 + 1；
 | 0x61 | FILE_PATH_READ | ↓ + ↑ | dir(1)+offset(u32 BE)+count(1)+文件名 UTF-8+NUL | 分块读取，回 status+offset+total+bytes |
 
 - 上键双击截图：保存单帧 MonoFast `.film`（720×480，43200B）到 `/sdcard/screenshot`
+- 系统设置「截图」开关默认关闭；关闭时上键不再识别双击（单击恢复 50ms 结算），开启后才识别双击
 - 仅 UI 层页面可截图；图片/模板/动图为直绘层，不生成截图
 
 ## 播放模式枚举

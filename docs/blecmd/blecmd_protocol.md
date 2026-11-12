@@ -1752,7 +1752,7 @@ LIST 单条记录：`id, kind, uid_len, sak, atqa(2), uid(7), flags, name_len, n
 
 设备端 **双击上键** 截取当前画面，保存为单帧 MonoFast `.film` 到 `/sdcard/screenshot/shot_*.film`。
 该功能由 `CONFIG_ARK_SCREENSHOT` 控制：n4r2 默认关闭，n16r8 默认开启；关闭时设备不宣告 0x59 bit9，且不响应 0x61 读取。
-即使固件已编入截图（如 n16r8），设备系统设置里的「截图」开关也**默认关闭**；需要在设置页手动开启后，双击上键才会真正生成截图。
+即使固件已编入截图（如 n16r8），设备系统设置里的「截图」开关也**默认关闭**；关闭时 HAL 不再上报上键双击，并把单击结算窗口恢复为 50ms（上键单击不会为等待双击而延迟），开启后才会重新识别双击并生成截图。
 
 - 32B 文件头：`FileSize=43200`、`ScreenWidth=720`、`ScreenHeight=480`、`ColorCount=2`、`Format=0x01`、`FrameCount=1`（其余 0），多字节小端；
 - 正文 43200B：720×480、1bpp、MSB 在前、`1=黑`，与 .film Format 0x01 约定一致；
@@ -1923,6 +1923,7 @@ int parse_response(uint8_t* in_buf, int in_len, uint8_t* out_ch, uint8_t* out_da
 
 | 版本 | 日期 | 描述 |
 |------|------|------|
+| 1.21 | 2026-11-12 | Ark 截图开关关闭时同时关闭上键双击识别并恢复 50ms 单击结算窗口，上键不再为双击延迟 |
 | 1.20 | 2026-11-12 | Ark 新增 0x4F 动图按名播放、0x60 按目录/文件名删除、0x61 分块读取；0x5B 目录扩展 3（截图）；0x59 新增 bit8（文件管理）/ bit9（上键双击截图）；截图保存到 `/sdcard/screenshot` |
 | 1.19 | 2026-11-07 | NFC 卡包通道由 0x5C~0x62 迁移到 0x63~0x69；0x5C/0x5D 恢复为 SoftAP 准备/硬件身份单一语义，不再按 payload 长度判别；Web 客户端同步 |
 | 1.18 | 2026-10-29 | Ark 新增 SoftAP 直传准备命令 0x5C 与 0x59 bit4；记录 Android 10+ 新拓扑、BLE 暂停/恢复确认及旧 P2P 兼容边界；两轮传图与恢复已验收，中途取消重试、OTA 和通行证仍待实机验收 |

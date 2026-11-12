@@ -33,6 +33,7 @@
 
 #include "sys_log.h"
 #include "service_param.h"
+#include "hal_input.h"
 
 #include "app_manager.h"
 #include "app_boot_cfg.h"
@@ -128,6 +129,9 @@ void app_boot_cfg_init(void)
     }
     atomic_store(&m_language, m_cfg.language);
 
+    /* 截图关闭时上键不认双击（单击不用再等双击窗口） */
+    hal_input_set_up_double_click(m_cfg.screenshot == APP_SCREENSHOT_ON);
+
     sys_logi(APP_BOOT_CFG_TAG, "loaded: boot_page=%u start=%u language=%u shot=%u",
              (unsigned)m_cfg.boot_page, (unsigned)m_cfg.start_app,
              (unsigned)m_cfg.language, (unsigned)m_cfg.screenshot);
@@ -194,6 +198,7 @@ void app_screenshot_set(uint8_t on)
         return;
     }
     m_cfg.screenshot = v;
+    hal_input_set_up_double_click(v == APP_SCREENSHOT_ON);
     (void)service_param_app_save(SERVICE_PARAM_APP_ID_BOOT_CFG, &m_cfg,
                                 (uint16_t)sizeof(m_cfg), APP_BOOT_CFG_VER);
     sys_logi(APP_BOOT_CFG_TAG, "screenshot=%u", (unsigned)v);
