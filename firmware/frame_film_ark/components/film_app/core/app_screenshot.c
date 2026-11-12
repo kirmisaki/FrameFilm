@@ -39,7 +39,6 @@
 
 #include "sys_log.h"
 #include "hal_sd.h"
-#include "hal_epd.h"
 #include "service_file.h"
 #include "ui_conf.h"
 #include "ui_display.h"
@@ -129,8 +128,6 @@ static void shot_build_header(uint8_t *hdr, uint32_t body_size)
 
 int app_screenshot_capture(void)
 {
-    sys_logi(APP_SCREENSHOT_TAG, "capture start");
-
     if(hal_sd_get_status() != SD_MOUNT)
     {
         sys_logw(APP_SCREENSHOT_TAG, "SD not mounted");
@@ -151,17 +148,8 @@ int app_screenshot_capture(void)
     int rc = ui_display_snapshot_mono(body, UI_MONO_BYTES);
     if(rc != 0)
     {
-        /* 直绘层（图片/动图）没有 UI 帧缓冲：取驱动缓存的最近一帧 mono 画面 */
-        rc = hal_epd_snapshot_mono(body, UI_MONO_BYTES);
-        if(rc == 0)
-        {
-            sys_logi(APP_SCREENSHOT_TAG, "using last mono frame (not a UI page)");
-        }
-    }
-    if(rc != 0)
-    {
         heap_caps_free(body);
-        /* -1：没有可截图的 mono 画面（4bpp/8bpp 直绘内容或彩色卡页面） */
+        /* -1：没有 UI 页面（图片/动图等直绘层）；-2：彩色卡页面 */
         sys_logw(APP_SCREENSHOT_TAG, "snapshot unavailable (%d)", rc);
         return -3;
     }
