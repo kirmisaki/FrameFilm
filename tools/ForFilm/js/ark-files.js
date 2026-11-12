@@ -332,7 +332,8 @@
             item.addEventListener('click', function () {
                 setTimeout(function () {
                     syncShotVisibility();
-                    if (!card.hidden && !m_shotLoadedFor && !(root.ArkDevice && root.ArkDevice.busy())) {
+                    /* 每次进入设置页都重读：设备上刚截的图不会主动推送过来 */
+                    if (!card.hidden && !(root.ArkDevice && root.ArkDevice.busy())) {
                         refreshShots();
                     }
                 }, 0);

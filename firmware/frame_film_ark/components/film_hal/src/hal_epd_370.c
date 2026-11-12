@@ -35,6 +35,7 @@
 #include "freertos/semphr.h"
 #include <string.h>
 
+#include "esp_heap_caps.h"
 #include "sys_log.h"
 #include <stdint.h>
 #include "sdkconfig.h"
@@ -620,6 +621,9 @@ static bool m_ignore_busy = false;      // BUSY 极性检测失败后忽略等�
 static uint8_t m_spectra_state = 0;     // 48色状态机：0 native/qual, 1 clear, 2 mono, 3 fast-color
 static bool m_mono_inited = false;      // 黑白快刷会话是否已初始化（跨调用保持上一帧）
 static uint8_t m_mono_prev[EPD_MONO_BYTES];  // 黑白快刷上一帧（bit-reversed 存储）
+/* 最近一次 mono 显示帧（原始 1bpp，截图用）；仅 MonoFast 路径更新 */
+static uint8_t *m_last_mono = NULL;
+static bool m_last_mono_valid = false;
 static bool m_panel_powered = false;         // 面板 DC/DC 是否上电（PON 后、POF 前）；硬复位/深睡会清掉
 static bool m_mono_session = false;          // 黑白快刷会话：打开时帧间保持上电（见 hal_epd_mono_session_begin）
 
@@ -1447,6 +1451,7 @@ static void epd_display_solid(unsigned char color_byte)
     memset(line, color_byte, EPD_INPUT_LINE);
 
     epd_lock();
+    m_last_mono_valid = false;
     EPD_W21_WriteCMD(DTM1);
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     for (int row = 0; row < EPD_HEIGHT; row++)
@@ -1778,6 +1783,7 @@ void hal_epd_init(void)
 void hal_epd_display_init(void)
 {
     epd_lock();
+    m_last_mono_valid = false;   /* 硬复位后控制器帧数据已失效 */
     reset();
     epd_try_fix_busy_polarity();
 
@@ -1833,6 +1839,7 @@ void hal_epd_display_pic(const unsigned char *picData)
 
     // 输入为每像素 1 字节的颜色表值（0x00/0xFF/0xFC/0xE0/0x03/0x1C），转换为 JD7601 面板字节
     epd_lock();
+    m_last_mono_valid = false;
     EPD_W21_WriteCMD(DTM1);
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     for (i = 0; i < EPD_HEIGHT; i++)
@@ -1854,6 +1861,7 @@ void hal_epd_display_native_4bpp(const unsigned char *pixels)
 {
     if (pixels == NULL) return;
     epd_lock();
+    m_last_mono_valid = false;
     EPD_W21_WriteCMD(DTM1);
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     for (unsigned i = 0; i < EPD_HEIGHT; ++i)
@@ -1877,6 +1885,7 @@ void hal_epd_display_film(const unsigned char *filmData)
         return;
     }
 
+    m_last_mono_valid = false;
     if (film_parse_header(filmData, &header) != ESP_OK)
     {
         sys_loge(EPD_TAG, "Failed to parse film header");
@@ -2000,6 +2009,12 @@ void hal_epd_deinit(void)
 {
     epd_lock();
     EPD_PROFILE_SESSION_END();
+    if (m_last_mono != NULL)
+    {
+        heap_caps_free(m_last_mono);
+        m_last_mono = NULL;
+    }
+    m_last_mono_valid = false;
     if (m_spi_device != NULL)
     {
         spi_bus_remove_device(m_spi_device);
@@ -2186,6 +2201,7 @@ void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode)
     }
 #endif
     epd_lock();
+    m_last_mono_valid = false;
     epd_spectra_init();
     epd_spectra_display_color(index8Data, mode);
     epd_unlock();
@@ -2269,10 +2285,43 @@ void hal_epd_display_mono(const unsigned char *mono_bitmap)
         m_mono_inited = true;
     }
 
+    /* 截图缓存：只保留最近一次 mono 原始位图，UI 与直绘共用 */
+    if (m_last_mono == NULL)
+    {
+        m_last_mono = (uint8_t *)heap_caps_malloc(EPD_MONO_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (m_last_mono == NULL)
+        {
+            m_last_mono = (uint8_t *)heap_caps_malloc(EPD_MONO_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        }
+    }
+    if (m_last_mono != NULL)
+    {
+        memcpy(m_last_mono, mono_bitmap, EPD_MONO_BYTES);
+        m_last_mono_valid = true;
+    }
+
     epd_spectra_mono_display(mono_bitmap, false);
     epd_unlock();
     EPD_PROFILE_END();
     sys_logd(EPD_TAG, "Display mono (B/W fast refresh) completed");
+}
+
+int hal_epd_snapshot_mono(uint8_t *dst, uint32_t len)
+{
+    if (dst == NULL || len < EPD_MONO_BYTES)
+    {
+        return -1;
+    }
+
+    epd_lock();
+    int result = -1;
+    if (m_last_mono != NULL && m_last_mono_valid)
+    {
+        memcpy(dst, m_last_mono, EPD_MONO_BYTES);
+        result = 0;
+    }
+    epd_unlock();
+    return result;
 }
 
 uint32_t hal_epd_get_capabilities(void)

@@ -39,6 +39,7 @@
 #include "ui_fonts.h"
 #include "app_shell.h"
 #include "app_language.h"
+#include "app_typography.h"
 #include "app_menu.h"
 /*********************************************************************
  * MACROS
@@ -549,7 +550,7 @@ static void menu_ui_create(lv_obj_t *root)
 
             lv_obj_center(t);
         }
-        m_name_label = menu_label(row, app_language_get() == APP_LANGUAGE_EN ? &lv_font_montserrat_24 : &ui_font_24,
+        m_name_label = menu_label(row, app_font_menu_name(),
                                   lv_color_black(), app_text("图片", "IMAGE"));
     }
 

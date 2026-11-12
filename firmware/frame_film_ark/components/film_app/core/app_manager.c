@@ -936,6 +936,7 @@ static app_input_result_t app_manager_process_input(input_press_type_t key)
     /* 上键双击 = 全局截图：不参与 app 导航，也不受按键切换模式影响 */
     if(key == INPUT_PRESS_UP_DOUBLE)
     {
+        sys_logi(APP_MANAGER_TAG, "screenshot: UP double click");
         (void)app_screenshot_capture();
         return APP_INPUT_CONSUMED;
     }

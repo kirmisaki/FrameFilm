@@ -240,6 +240,18 @@ esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size);
 void hal_epd_display_mono(const unsigned char *mono_bitmap);
 
 /**
+ * @brief 复制最近一次 mono 显示帧（截图用）
+ *
+ * 仅当最近一次推屏走的是 MonoFast（UI 页面或 1bpp 图片/动图）时有效；
+ * 之后若显示过 4bpp/8bpp/纯色屏，缓存会失效。
+ *
+ * @param dst 目标缓冲（≥ EPD_WIDTH*EPD_HEIGHT/8）
+ * @param len 目标缓冲长度
+ * @return 0 成功；-1 无有效 mono 帧或参数无效
+ */
+int hal_epd_snapshot_mono(uint8_t *dst, uint32_t len);
+
+/**
  * @brief 打开黑白快刷会话：会话内帧与帧之间保持面板上电
  *
  * 省掉每帧约 100ms 的 PON/POF（实测一帧 197ms 与 410ms 的差别）。

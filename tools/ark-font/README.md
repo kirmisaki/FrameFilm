@@ -11,6 +11,8 @@ The firmware uses four generated, compact 1-bpp fonts in `firmware/frame_film_ar
 
 The 14 and 18 fonts collect printable ASCII and non-ASCII string literals from Ark app pages, shell, core, and content apps, including settings options and clock labels. The 24 and 36 fonts retain explicit title subsets to keep firmware size small. Regenerate after changing displayed text; the generated C file is committed so offline builds need no OTF files or Pillow.
 
+`CONFIG_ARK_UI_CJK_TITLE_FONT` controls whether the 24/36 px title subsets are referenced. n4r2 (4MB flash) turns it off: Chinese titles fall back to the always-present 18 px body font, and the clock hero keeps its own generated 60 px digits. n16r8 keeps the full title set. The linker drops the unreferenced 24/36 px glyph arrays, saving about 3 KB on n4r2.
+
 `ui_font_wallet_name` (`src/ui_fonts_wallet.c`) is the exception for user-supplied text: it adds all GB2312 level-1 characters (3755 common hanzi) at 18 px so wallet card names renamed over BLE can contain common Chinese. It is only compiled into NFC builds (`CONFIG_ARK_HAS_NFC`, i.e. n16r8); n4r2 keeps its 1900K app partition free of the extra ~210 KB.
 
 Download the official OTFs to `.output/ark/` (ignored by Git), or pass custom local paths:
