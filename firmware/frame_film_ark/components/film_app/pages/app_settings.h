@@ -22,8 +22,11 @@ extern "C" {
 #define SET_KIND_TOGGLE     (2)   // 开关：ENTER 切换
 #define SET_KIND_CYCLE      (3)   // 枚举：ENTER 在候选值间循环
 
-/* 行数：设备信息 7 行 + NFC 开关（仅 NFC 机型） + 系统参数 7 行 + app 参数 4 行 */
-#if (SYS_NFC_ENABLE == 1)
+/* 行数：设备信息 7 行 + NFC 开关（仅 NFC 机型） + 截图开关（仅支持截图的机型）
+   + 系统参数 7 行 + app 参数 4 行 */
+#if (SYS_NFC_ENABLE == 1) && CONFIG_ARK_SCREENSHOT
+#define SETTINGS_ROW_NUM    (20)
+#elif (SYS_NFC_ENABLE == 1) || CONFIG_ARK_SCREENSHOT
 #define SETTINGS_ROW_NUM    (19)
 #else
 #define SETTINGS_ROW_NUM    (18)
@@ -64,6 +67,7 @@ typedef struct {
     uint8_t boot_page_sel;  // BOOT PAGE 候选下标（0=SHOW 1=SKIP）
     uint8_t start_app_sel;  // START APP 候选下标（app_start_t）
     uint8_t language_sel;   // 0=简体中文 1=English
+    uint8_t screenshot_on;  // 上键双击截图开关 0/1（默认 0）
 
     /* app 参数（IMG PLAY / IMG INTERVAL / ANIM LOOP / ANIM SPEED）
        —— 归属 app 的参数，由 app_manager_param_get 读回、param_set 写回 */

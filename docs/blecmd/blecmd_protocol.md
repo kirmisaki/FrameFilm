@@ -1752,6 +1752,7 @@ LIST 单条记录：`id, kind, uid_len, sak, atqa(2), uid(7), flags, name_len, n
 
 设备端 **双击上键** 截取当前画面，保存为单帧 MonoFast `.film` 到 `/sdcard/screenshot/shot_*.film`。
 该功能由 `CONFIG_ARK_SCREENSHOT` 控制：n4r2 默认关闭，n16r8 默认开启；关闭时设备不宣告 0x59 bit9，且不响应 0x61 读取。
+即使固件已编入截图（如 n16r8），设备系统设置里的「截图」开关也**默认关闭**；需要在设置页手动开启后，双击上键才会真正生成截图。
 
 - 32B 文件头：`FileSize=43200`、`ScreenWidth=720`、`ScreenHeight=480`、`ColorCount=2`、`Format=0x01`、`FrameCount=1`（其余 0），多字节小端；
 - 正文 43200B：720×480、1bpp、MSB 在前、`1=黑`，与 .film Format 0x01 约定一致；

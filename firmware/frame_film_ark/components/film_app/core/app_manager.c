@@ -50,6 +50,7 @@
 #include "app_sleep.h"  /* app_sleep_run：主菜单长按 = 手动休眠 */
 #if CONFIG_ARK_SCREENSHOT
 #include "app_screenshot.h" /* 上键双击截图 */
+#include "app_boot_cfg.h"   /* 截图开关（默认关） */
 #endif
 #include "app_animation.h"  /* 动图按名播放（0x4F） */
 #if (SYS_NFC_ENABLE == 1)
@@ -939,8 +940,12 @@ static app_input_result_t app_manager_process_input(input_press_type_t key)
 #if CONFIG_ARK_SCREENSHOT
     if(key == INPUT_PRESS_UP_DOUBLE)
     {
-        sys_logi(APP_MANAGER_TAG, "screenshot: UP double click");
-        (void)app_screenshot_capture();
+        /* 默认关闭，避免误触；关闭时仍吃掉双击，避免下发给 UI 造成未知按键 */
+        if(app_screenshot_enabled())
+        {
+            sys_logi(APP_MANAGER_TAG, "screenshot: UP double click");
+            (void)app_screenshot_capture();
+        }
         return APP_INPUT_CONSUMED;
     }
 #endif

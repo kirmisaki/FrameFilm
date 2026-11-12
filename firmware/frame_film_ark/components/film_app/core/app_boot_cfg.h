@@ -18,10 +18,14 @@ extern "C" {
 /*********************************************************************
  * MACROS
  */
-/* 布局版本：v2 增加语言；读取时兼容 v1 两字节开机配置 */
-#define APP_BOOT_CFG_VER        (2)
+/* 布局版本：v2 增加语言；v3 增加截图开关；读取时兼容 v1/v2 旧布局 */
+#define APP_BOOT_CFG_VER        (3)
 #define APP_LANGUAGE_ZH_CN     (0)
 #define APP_LANGUAGE_EN        (1)
+
+/* 上键双击截图开关（默认关，防止误触） */
+#define APP_SCREENSHOT_OFF     (0)
+#define APP_SCREENSHOT_ON      (1)
 
 /* BOOT PAGE：上电是否先画开机画面（首帧顺带完成整屏清场） */
 #define APP_BOOT_PAGE_SHOW      (0)     // 显示（默认，与加此参数前的行为一致）
@@ -50,7 +54,7 @@ typedef enum {
  * 存在 service_param 的保留槽位 `app7`（见 SERVICE_PARAM_APP_ID_BOOT_CFG）：
  * 借用 app 状态那套 blob 持久化（magic/size/version 校验），app 层不写 NVS 代码。
  *
- * 为什么不做成 service_param 的字段：这两个参数只描述"上电时 app 层怎么走"，
+ * 为什么不做成 service_param 的字段：这些参数只描述"上电/app 层怎么走"，
  * 与 service 层（WiFi/BLE/休眠）无关；放 app 层也避免改 ServiceParam_Def_t
  * 布局带来的整体重置（那会连带清掉 WiFi 配网与时区）。
  */
@@ -58,6 +62,7 @@ typedef struct {
     uint8_t boot_page;      // APP_BOOT_PAGE_SHOW / SKIP
     uint8_t start_app;      // app_start_t
     uint8_t language;       // APP_LANGUAGE_ZH_CN / EN
+    uint8_t screenshot;     // APP_SCREENSHOT_OFF / ON（默认 OFF）
 } app_boot_cfg_t;
 
 /*********************************************************************
@@ -81,6 +86,14 @@ const app_boot_cfg_t *app_boot_cfg_get(void);
 void app_boot_cfg_set(uint8_t boot_page, uint8_t start_app);
 void app_language_set(uint8_t language);
 uint8_t app_language_get(void);
+
+/**
+ * @brief 上键双击截图开关（默认 OFF）
+ *
+ * 只在上键双击已编入固件（CONFIG_ARK_SCREENSHOT）时有意义。
+ */
+uint8_t app_screenshot_enabled(void);
+void app_screenshot_set(uint8_t on);
 
 /**
  * @brief 解析 START APP 得到真正要进入的 app

@@ -63,7 +63,11 @@
  */
 #define APP_SET_TAG         "app_set"
 
+#if (SYS_NFC_ENABLE == 1) && CONFIG_ARK_SCREENSHOT
+#define ROW_H               (27)     /* 20 行时压 1px，仍不顶到提示行 */
+#else
 #define ROW_H               (28)     // 行高（19 行，分节标题缩为 17px）
+#endif
 #define Y_LIST              (66)     // 列表起点（表头 + 分节标题之下）
 
 /* BATTERY 行的电量条几何：外框 62 宽（含 1px 描边），填充按内宽 60 按比例给 */
@@ -172,7 +176,7 @@ typedef struct {
 enum {
     F_BAT = 0, F_WIFI, F_BT, F_LED, F_PANEL, F_STORAGE, F_FW,
     F_SLEEP, F_AUTOWAKE, F_WIFI_ON, F_BT_ON, F_NFC, F_WAKE_SEL, F_SLEEP_TIMEOUT,
-    F_BOOT_PAGE, F_START_APP, F_LANGUAGE,
+    F_BOOT_PAGE, F_START_APP, F_LANGUAGE, F_SCREENSHOT,
     F_IMG_PLAY, F_IMG_INT, F_ANIM_LOOP, F_ANIM_SPEED,
 };
 
@@ -191,6 +195,9 @@ static const settings_row_t ROWS[SETTINGS_ROW_NUM] = {
     { 1, "开机画面",     SET_KIND_CYCLE,  F_BOOT_PAGE  },
     { 1, "启动应用",     SET_KIND_CYCLE,  F_START_APP  },
     { 1, "语言 / Language", SET_KIND_CYCLE, F_LANGUAGE },
+#if CONFIG_ARK_SCREENSHOT
+    { 1, "截图",         SET_KIND_TOGGLE, F_SCREENSHOT },
+#endif
     { 1, "自动休眠",     SET_KIND_TOGGLE, F_SLEEP      },
     { 1, "定时唤醒",     SET_KIND_TOGGLE, F_AUTOWAKE   },
     { 1, "唤醒间隔",     SET_KIND_CYCLE,  F_WAKE_SEL   },
@@ -206,7 +213,11 @@ static const char *const ROW_KEYS_EN[SETTINGS_ROW_NUM] = {
     "NFC",
 #endif
     "LED", "PANEL", "STORAGE", "FIRMWARE",
-    "BOOT PAGE", "START APP", "LANGUAGE", "SLEEP MODE", "AUTO WAKE",
+    "BOOT PAGE", "START APP", "LANGUAGE",
+#if CONFIG_ARK_SCREENSHOT
+    "SCREENSHOT",
+#endif
+    "SLEEP MODE", "AUTO WAKE",
     "WAKE INTERVAL", "SLEEP TIMEOUT", "IMG PLAY", "IMG INTERVAL", "ANIM LOOP", "ANIM SPEED"
 };
 static const char *const WAKE_EN[] = {"10 MIN", "30 MIN", "60 MIN", "2 H", "6 H", "12 H", "24 H", "48 H"};
@@ -308,6 +319,7 @@ static const char *row_text(uint8_t idx)
                                   m_snap.boot_page_sel ? "SKIP" : "SHOW");
     case F_START_APP:  return app_text(STARTAPP_OPTS[m_snap.start_app_sel % STARTAPP_OPT_NUM], START_EN[m_snap.start_app_sel % STARTAPP_OPT_NUM]);
     case F_LANGUAGE:   return m_snap.language_sel ? "English" : "简体中文";
+    case F_SCREENSHOT: return m_snap.screenshot_on ? app_text("开", "ON") : app_text("关", "OFF");
     case F_LED:        return app_text(LED_OPTS[m_snap.led_mode_sel % LED_OPT_NUM], LED_EN[m_snap.led_mode_sel % LED_OPT_NUM]);
     case F_IMG_PLAY:   return app_text(IMG_PLAY_OPTS[m_snap.img_play_sel % IMG_PLAY_OPT_NUM], m_snap.img_play_sel ? "AUTO" : "MANUAL");
     case F_IMG_INT:    return app_text(IMG_INT_OPTS[m_snap.img_interval_sel % IMG_INT_OPT_NUM], IMG_INT_EN[m_snap.img_interval_sel % IMG_INT_OPT_NUM]);
@@ -328,6 +340,7 @@ static uint8_t row_on(uint8_t idx)
 #endif
     case F_SLEEP:    return m_snap.sleep_mode;
     case F_AUTOWAKE: return m_snap.sleep_auto;
+    case F_SCREENSHOT: return m_snap.screenshot_on;
     default:         return 0;
     }
 }
@@ -515,6 +528,7 @@ static void settings_snapshot_pull(void)
     m_snap.boot_page_sel = app_boot_cfg_get()->boot_page % BOOTPAGE_OPT_NUM;
     m_snap.start_app_sel = app_boot_cfg_get()->start_app % STARTAPP_OPT_NUM;
     m_snap.language_sel = app_language_get();
+    m_snap.screenshot_on = app_screenshot_enabled();
 
     /* app 参数不在 service_param 里，走归属 app 的参数通道读回 */
     settings_app_params_pull();
@@ -634,6 +648,12 @@ static void settings_apply(uint8_t row, uint8_t value)
         if(value > APP_LANGUAGE_EN) { return; }
         app_language_set(value);
         break;
+#if CONFIG_ARK_SCREENSHOT
+    case F_SCREENSHOT:
+        if(value > 1) { return; }
+        app_screenshot_set(value);
+        break;
+#endif
 
     /* ---- app 参数：转交归属 app 的参数通道（TAG/范围由 app 自己的头文件定） ---- */
     case F_IMG_PLAY:
@@ -904,6 +924,8 @@ static void set_toggle(void)
                         req[1] = m_snap.start_app_sel; break;
     case F_LANGUAGE:    m_snap.language_sel = (uint8_t)!m_snap.language_sel;
                         req[1] = m_snap.language_sel; break;
+    case F_SCREENSHOT:  m_snap.screenshot_on = (uint8_t)!m_snap.screenshot_on;
+                        req[1] = m_snap.screenshot_on; break;
     case F_IMG_PLAY:    m_snap.img_play_sel     = (uint8_t)((m_snap.img_play_sel + 1) % IMG_PLAY_OPT_NUM);
                         req[1] = m_snap.img_play_sel;      break;
     case F_IMG_INT:     m_snap.img_interval_sel = (uint8_t)((m_snap.img_interval_sel + 1) % IMG_INT_OPT_NUM);

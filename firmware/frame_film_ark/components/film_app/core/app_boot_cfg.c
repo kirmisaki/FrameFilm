@@ -54,6 +54,7 @@ static const app_boot_cfg_t m_cfg_default = {
     .boot_page = APP_BOOT_PAGE_SHOW,
     .start_app = APP_START_MENU,
     .language = APP_LANGUAGE_ZH_CN,
+    .screenshot = APP_SCREENSHOT_OFF,
 };
 
 /*********************************************************************
@@ -81,14 +82,27 @@ static int last_app_valid(void)
 void app_boot_cfg_init(void)
 {
     uint8_t legacy[2];
+    /* v2 布局（无截图开关） */
+    struct {
+        uint8_t boot_page;
+        uint8_t start_app;
+        uint8_t language;
+    } v2;
     memcpy(&m_cfg, &m_cfg_default, sizeof(m_cfg));
 
     if(service_param_app_load(SERVICE_PARAM_APP_ID_BOOT_CFG, &m_cfg,
                               (uint16_t)sizeof(m_cfg), APP_BOOT_CFG_VER) != 0)
     {
+        if(service_param_app_load(SERVICE_PARAM_APP_ID_BOOT_CFG, &v2,
+                                  (uint16_t)sizeof(v2), 2) == 0)
+        {
+            m_cfg.boot_page = v2.boot_page;
+            m_cfg.start_app = v2.start_app;
+            m_cfg.language = v2.language;
+        }
         /* v1 was two bytes. Keep both boot choices when adding language. */
-        if(service_param_app_load(SERVICE_PARAM_APP_ID_BOOT_CFG, legacy,
-                                  sizeof(legacy), 1) == 0)
+        else if(service_param_app_load(SERVICE_PARAM_APP_ID_BOOT_CFG, legacy,
+                                       sizeof(legacy), 1) == 0)
         {
             m_cfg.boot_page = legacy[0];
             m_cfg.start_app = legacy[1];
@@ -108,10 +122,15 @@ void app_boot_cfg_init(void)
     {
         m_cfg.language = APP_LANGUAGE_ZH_CN;
     }
+    if(m_cfg.screenshot > APP_SCREENSHOT_ON)
+    {
+        m_cfg.screenshot = APP_SCREENSHOT_OFF;
+    }
     atomic_store(&m_language, m_cfg.language);
 
-    sys_logi(APP_BOOT_CFG_TAG, "loaded: boot_page=%u start=%u language=%u",
-             (unsigned)m_cfg.boot_page, (unsigned)m_cfg.start_app, (unsigned)m_cfg.language);
+    sys_logi(APP_BOOT_CFG_TAG, "loaded: boot_page=%u start=%u language=%u shot=%u",
+             (unsigned)m_cfg.boot_page, (unsigned)m_cfg.start_app,
+             (unsigned)m_cfg.language, (unsigned)m_cfg.screenshot);
 }
 
 const app_boot_cfg_t *app_boot_cfg_get(void)
@@ -156,8 +175,28 @@ void app_language_set(uint8_t language)
     atomic_store(&m_language, language);
     (void)service_param_app_save(SERVICE_PARAM_APP_ID_BOOT_CFG, &m_cfg,
                                 (uint16_t)sizeof(m_cfg), APP_BOOT_CFG_VER);
-    sys_logi(APP_BOOT_CFG_TAG, "saved: boot_page=%u start=%u language=%u",
-             (unsigned)m_cfg.boot_page, (unsigned)m_cfg.start_app, (unsigned)m_cfg.language);
+    sys_logi(APP_BOOT_CFG_TAG, "saved: boot_page=%u start=%u language=%u shot=%u",
+             (unsigned)m_cfg.boot_page, (unsigned)m_cfg.start_app,
+             (unsigned)m_cfg.language, (unsigned)m_cfg.screenshot);
+}
+
+uint8_t app_screenshot_enabled(void)
+{
+    return m_cfg.screenshot ? APP_SCREENSHOT_ON : APP_SCREENSHOT_OFF;
+}
+
+void app_screenshot_set(uint8_t on)
+{
+    uint8_t v = on ? APP_SCREENSHOT_ON : APP_SCREENSHOT_OFF;
+
+    if(m_cfg.screenshot == v)
+    {
+        return;
+    }
+    m_cfg.screenshot = v;
+    (void)service_param_app_save(SERVICE_PARAM_APP_ID_BOOT_CFG, &m_cfg,
+                                (uint16_t)sizeof(m_cfg), APP_BOOT_CFG_VER);
+    sys_logi(APP_BOOT_CFG_TAG, "screenshot=%u", (unsigned)v);
 }
 
 app_id_t app_boot_cfg_resolve_target(void)
