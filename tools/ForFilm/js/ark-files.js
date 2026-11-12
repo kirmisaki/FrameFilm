@@ -272,8 +272,8 @@
         }
     }
 
-    function downloadBlob(name, bytes) {
-        var blob = new Blob([bytes], { type: 'application/octet-stream' });
+    function downloadBlob(name, data) {
+        var blob = (data instanceof Blob) ? data : new Blob([data], { type: 'application/octet-stream' });
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url;
@@ -282,6 +282,49 @@
         a.click();
         a.remove();
         setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    }
+
+    /* 单帧 MonoFast .film（720×480，1=黑）→ 480×720 竖屏画布
+     * 设备物理帧是横屏；这里按 UI 的 90° 旋转关系还原成用户看到的竖屏方向。 */
+    function filmMonoToCanvas(bytes) {
+        if (!bytes || bytes.length < 32) throw new Error('截图文件过短');
+        var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        var w = dv.getUint16(4, true);
+        var h = dv.getUint16(6, true);
+        var format = bytes[9];
+        if (format !== 0x01) throw new Error('截图不是 MonoFast 格式');
+        var frameBytes = Math.ceil(w * h / 8);
+        if (!w || !h || bytes.length < 32 + frameBytes) throw new Error('截图数据不完整');
+
+        var body = bytes.subarray(32, 32 + frameBytes);
+        var rowBytes = Math.ceil(w / 8);
+        var canvas = document.createElement('canvas');
+        canvas.width = h;
+        canvas.height = w;
+        var ctx = canvas.getContext('2d');
+        var img = ctx.createImageData(canvas.width, canvas.height);
+        var data = img.data;
+
+        for (var sy = 0; sy < w; sy++) {          /* 逻辑 y：0..719 */
+            for (var sx = 0; sx < h; sx++) {      /* 逻辑 x：0..479 */
+                var dx = w - 1 - sy;              /* 物理 x */
+                var dy = sx;                      /* 物理 y */
+                var bit = (body[dy * rowBytes + (dx >> 3)] >> (7 - (dx & 7))) & 1;
+                var v = bit ? 0 : 255;
+                var o = (sy * canvas.width + sx) * 4;
+                data[o] = v;
+                data[o + 1] = v;
+                data[o + 2] = v;
+                data[o + 3] = 255;
+            }
+        }
+        ctx.putImageData(img, 0, 0);
+        return canvas;
+    }
+
+    function shotFormat() {
+        var el = document.getElementById('screenshot-format');
+        return el && el.value === 'jpg' ? 'jpg' : 'png';
     }
 
     async function downloadShot(index) {
@@ -296,8 +339,16 @@
                     shotStatus('正在下载 ' + name + ' · ' + pct + '%');
                 });
             });
-            downloadBlob(name, bytes);
-            shotStatus('已下载 ' + name + '（' + bytes.length + ' 字节）');
+            var ext = shotFormat();
+            var canvas = filmMonoToCanvas(bytes);
+            var blob = await new Promise(function (resolve, reject) {
+                canvas.toBlob(function (b) {
+                    if (b) resolve(b);
+                    else reject(new Error('图片编码失败'));
+                }, ext === 'jpg' ? 'image/jpeg' : 'image/png', 0.92);
+            });
+            downloadBlob(name.replace(/\.film$/i, '') + '.' + ext, blob);
+            shotStatus('已下载 ' + name + ' → ' + ext.toUpperCase() + '（' + bytes.length + ' 字节）');
         } catch (e) {
             shotStatus('下载失败：' + e.message, true);
         } finally {

@@ -116,8 +116,9 @@ const DEVICE_LOG_MAX_ENTRIES = 800;
 function syncDeviceLogAvailability() {
     const section = document.getElementById('device-log-section');
     if (!section) return;
-    const supported = currentDeviceType === 'FRAMEFILMARK';
-    section.style.display = supported ? '' : 'none';
+    /* 终端默认显示：串口不依赖蓝牙；蓝牙日志按钮由 Ark 连接状态控制 */
+    section.style.display = '';
+    const supported = currentDeviceType === 'FRAMEFILMARK' && !!device && !!characteristic;
     if (!supported) applyDeviceLogState(false);
 }
 

@@ -1045,6 +1045,10 @@
                     <span class="ic-wrap ic-wrap--coral"><svg class="ic" viewBox="0 0 24 24"><use href="#i-camera"/></svg></span>
                     截图管理
                     <span class="spacer"></span>
+                    <select id="screenshot-format" class="screenshot-format-select" title="下载图片格式">
+                        <option value="png" selected>PNG</option>
+                        <option value="jpg">JPG</option>
+                    </select>
                     <button type="button" class="icon-button" id="screenshot-refresh" title="刷新截图列表" data-ark-connected>
                         <svg class="ic" viewBox="0 0 24 24"><use href="#i-refresh"/></svg>
                     </button>
@@ -1141,13 +1145,13 @@
                 </div>
             </div>
 
-            <!-- 设备终端（蓝牙实时日志 0x5E/0x5F）：仅通行证版（FRAMEFILMARK），默认隐藏，打开后实时显示 -->
-            <div id="device-log-section" class="card" style="display:none;">
+            <!-- 设备终端：蓝牙实时日志（0x5E/0x5F，需连接 Ark）+ Web Serial 串口日志，默认显示 -->
+            <div id="device-log-section" class="card">
                 <div class="card__title device-log-card__title">
                     <span class="ic-wrap ic-wrap--coral"><svg class="ic" viewBox="0 0 24 24"><use href="#i-bug"/></svg></span>
                     设备终端
                     <span class="spacer"></span>
-                    <button class="secondary-button" id="device-log-toggle" type="button" onclick="toggleDeviceLog()">打开日志</button>
+                    <button class="secondary-button" id="device-log-toggle" type="button" onclick="toggleDeviceLog()" data-ark-connected>打开日志</button>
                     <button class="secondary-button" type="button" onclick="clearDeviceLog()">清空</button>
                     <button class="icon-button" type="button" onclick="copyDeviceLog()" title="复制日志" aria-label="复制日志">
                         <svg class="ic" viewBox="0 0 24 24"><use href="#i-copy"/></svg>
@@ -1156,7 +1160,17 @@
                         <svg class="ic" viewBox="0 0 24 24"><use href="#i-download"/></svg>
                     </button>
                 </div>
-                <div class="switch-row__hint">通过蓝牙实时查看设备运行日志（仅打开时生效，不改变设备日志级别；关闭或断开后设备恢复常规运行）</div>
+                <div class="switch-row__hint">串口：选择设备 COM 口直接读取 UART 日志；蓝牙：连接 Ark 后打开实时日志。两者共用此终端，不改变设备日志级别。</div>
+                <div class="device-log-serial">
+                    <select id="serial-log-baud" title="串口波特率">
+                        <option value="115200" selected>115200</option>
+                        <option value="230400">230400</option>
+                        <option value="460800">460800</option>
+                        <option value="921600">921600</option>
+                    </select>
+                    <button class="secondary-button" id="serial-log-toggle" type="button">连接串口</button>
+                    <span id="serial-log-status" class="field-hint">串口未连接</span>
+                </div>
                 <div id="device-log-view" class="debug-log show device-log-view"></div>
             </div>
 
@@ -1502,8 +1516,9 @@
 <script src="js/atkinson_enhanced_lut.js"></script>
 <script src="js/sz_enhanced.js"></script>
 <script src="js/bluetooth.js?rev=ark-shot-caps-1"></script>
+<script src="js/serial-log.js?rev=serial-log-1"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
-<script src="js/ark-files.js?rev=ark-files-4"></script>
+<script src="js/ark-files.js?rev=ark-files-5"></script>
 <script src="js/firmware-mirror.js"></script>
 <script src="js/ark-firmware.js?rev=online-firmware-1"></script>
 <script src="js/classic-firmware.js?rev=online-firmware-1"></script>
