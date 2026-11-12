@@ -8,15 +8,6 @@ menu "Ark hardware"
             hardware; keep this off there so the wallet app and driver
             are not built.
 
-    config ARK_UI_CJK_TITLE_FONT
-        bool "Include 24/36px CJK title fonts"
-        default y
-        help
-            Build the generated 24px/36px Chinese title glyph subsets.
-            n4r2 (4MB flash) turns this off to save about 11KB; its titles
-            fall back to the built-in Montserrat/ASCII fonts. The 14px/18px
-            Chinese UI body fonts are always included.
-
     config ARK_SCREENSHOT
         bool "Enable double-click UP screenshot"
         default y

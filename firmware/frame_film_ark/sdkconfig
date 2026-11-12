@@ -2445,7 +2445,6 @@ CONFIG_WIFI_PROV_STA_ALL_CHANNEL_SCAN=y
 # Ark hardware
 #
 # CONFIG_ARK_HAS_NFC is not set
-# CONFIG_ARK_UI_CJK_TITLE_FONT is not set
 # CONFIG_ARK_SCREENSHOT is not set
 # CONFIG_ARK_INPUT_BACK_KEY is not set
 # end of Ark hardware

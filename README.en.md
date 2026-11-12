@@ -264,7 +264,7 @@ There are three firmware projects. **Only `frame_film` requires model configurat
 The following steps configure **`frame_film` (three models)**:
 
 1. **Requirements**
-   - ESP-IDF v5.5.2 (matching the repository CI)
+   - ESP-IDF v5.5.4 (matching the repository CI)
 
 2. **Select the target model and panel**
    - Replace `sdkconfig`: copy `firmware/frame_film/sdkconfig_<model>` to `sdkconfig`

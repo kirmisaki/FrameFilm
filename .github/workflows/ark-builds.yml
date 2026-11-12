@@ -266,7 +266,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     needs: plan
-    container: espressif/idf:v5.5.2
+    container: espressif/idf:v5.5.4
     strategy:
       fail-fast: false
       matrix:

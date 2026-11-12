@@ -38,7 +38,7 @@ FrameFilm（帧影）是一款电子胶片冰箱贴设备，核心功能是通�
 - **内存**：内置 512KB SRAM，外挂 SPI PSRAM
 - **Flash**：外挂 16MB SPI Flash，QIO 模式 80MHz
 - **无线**：Wi-Fi 4 (802.11 b/g/n) + 蓝牙 5.0 (BLE)
-- **固件平台**：ESP-IDF v5.5.2
+- **固件平台**：ESP-IDF v5.5.4
 - **标准版数据手册**：`docs/datasheet/esp32-s3_datasheet_cn.pdf`
 - **Pro版数据手册**：`docs/datasheet/esp32-s3-mini-1_mini-1u_datasheet_cn.pdf`
 
@@ -473,7 +473,7 @@ hal_epd_init()       → 初始化 SE0368-C 电子纸 (SPI2 半双工三线)
 
 | 组件库                   | 版本     | 用途                      |
 | --------------------- | ------ | ----------------------- |
-| ESP-IDF               | 5.5.2  | 固件开发框架                  |
+| ESP-IDF               | 5.5.4  | 固件开发框架                  |
 | esp-idf-lib/encoder   | 3.0.2  | 旋转编码器驱动 (仅基础版)           |
 | espressif/led\_strip  | 3.0.1  | WS2812 LED 驱动           |
 | espressif/button      | —      | 按键驱动 (仅 Pro 版)           |

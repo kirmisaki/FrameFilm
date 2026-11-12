@@ -5,7 +5,7 @@
 ## 一、通用规范
 
 ### 语言与平台
-- **固件**: C (ESP-IDF v5.5.2), 文件编码 UTF-8
+- **固件**: C (ESP-IDF v5.5.4), 文件编码 UTF-8
 - **小程序**: JavaScript (ES5 兼容微信小程序), 文件编码 UTF-8
 - **Web 工具**: JavaScript (ES6), HTML/CSS, 文件编码 UTF-8
 - **文档**: Markdown (中文为主)

@@ -55,7 +55,7 @@
 - 主控芯片：ESP32-S3
 - 显示屏：彩色电子纸（E6 系列）
 - 通信模块：蓝牙 BLE
-- 开发框架：ESP-IDF v5.5.2（C 语言）
+- 开发框架：ESP-IDF v5.5.4（C 语言）
 
 ## 目录结构
 
@@ -126,7 +126,7 @@ Ark 当前以板载 SDNAND 模式运行（`hal_sd.c` 中 `SD_USE_SDNAND=1`），
 
 Ark 上传先写临时文件，完整关闭后才提交正式文件；同名替换失败保留旧内容。BLE 中断后从 `FILE_START` 重传，WiFi 与 BLE 的保存会话互斥。文件命令尚无应用层保存结果 ACK，客户端的发送进度不等于设备保存或显示结果，详见 BLE 协议 §4.2。
 
-存储专项测试：在带 C 编译器的 Linux/WSL 中，从 Ark 工程执行 `sh tests/host_storage/run.sh`。测试直接调用实际文件服务代码，使用临时目录模拟短写、关闭失败、提交失败和重启残留恢复；包含完整 MonoFast 帧、同名替换、错误文件头及跨目录静默保存。它不验证 FreeRTOS 并发、实际 BLE/WiFi 链路、SDNAND 断电行为或屏幕显示，也不代替 ESP-IDF 5.5.2 固件构建。
+存储专项测试：在带 C 编译器的 Linux/WSL 中，从 Ark 工程执行 `sh tests/host_storage/run.sh`。测试直接调用实际文件服务代码，使用临时目录模拟短写、关闭失败、提交失败和重启残留恢复；包含完整 MonoFast 帧、同名替换、错误文件头及跨目录静默保存。它不验证 FreeRTOS 并发、实际 BLE/WiFi 链路、SDNAND 断电行为或屏幕显示，也不代替 ESP-IDF 5.5.4 固件构建。
 
 ## 架构
 
@@ -153,7 +153,7 @@ film_service → film_hal → film_sys → ESP-IDF
 
 ## 构建说明
 
-使用 ESP-IDF v5.5.2 进行开发和烧录（非 PlatformIO）。
+使用 ESP-IDF v5.5.4 进行开发和烧录（非 PlatformIO）。
 
 ```bash
 # frame_film（三机型：预设或脚本切换机型与硬件规格）

@@ -1038,7 +1038,7 @@ NTAG 卡把 `kind` 改为 1/2/3、`uid_len=7`、`sak=0x00`、`atqa=44 00`，再�
 | `components/film_ui/inc/ui_defaults.h` + `src/ui_defaults.c` | 由脚本生成 `ui_def_icon_wallet` |
 | `tools/ui-assets/png/ui_icon_wallet.png` | 新增 80×80 线稿源图 |
 | `tools/ui-assets/gen_ui_assets.py` | ① 增加 wallet 资源项；② 修正 `OUT_C_INC/OUT_C_SRC` 当前指向 `firmware/frame_film/...` 的旧路径，改为 `frame_film_ark` |
-| `tools/ark-font/gen_fonts.py` + `ui_fonts.c` | 卡包新增中文文案后重跑；若空状态用 36 px hero，需把「卡包」加入 `LARGE_TEXT[36]` |
+| `tools/ark-font/gen_fonts.py` + `ui_fonts_body.c` / `ui_fonts_title.c` | 卡包新增中文文案后重跑；若空状态用 36 px hero，需把「卡包」加入 `LARGE_TEXT[36]` |
 | `assets/fonts/source-han-sans/` | 下载并保存 `SourceHanSansCN-Bold.otf` / `-Medium.otf`（OFL）；`gen_fonts.py` 默认路径改到这里，避免依赖临时 `.output/ark` |
 
 ### 12.3 事件与持久化
@@ -1152,7 +1152,7 @@ components/film_ui/src/ui_assets.c             图标槽位
 components/film_ui/inc/ui_defaults.h           生成
 components/film_ui/src/ui_defaults.c           生成
 tools/ui-assets/gen_ui_assets.py               资源项 + 路径修正
-tools/ark-font/gen_fonts.py / ui_fonts.c       字库重生成
+tools/ark-font/gen_fonts.py / ui_fonts_body.c / ui_fonts_title.c   字库重生成
 assets/fonts/source-han-sans/*.otf             Source Han Sans CN Bold/Medium（OFL）
 tools/ForFilm/js/bluetooth.js                  通道常量
 tools/ForFilm/index.html / 样式                卡包面板

@@ -264,7 +264,7 @@ FrameFilm/
 以下为 **`frame_film`（三机型）** 的配置步骤：
 
 1. **环境要求**
-   - ESP-IDF v5.5.2（与仓库 CI 保持一致）
+   - ESP-IDF v5.5.4（与仓库 CI 保持一致）
 
 2. **配置目标机型与屏幕**
    - 替换 `sdkconfig`：将 `firmware/frame_film/sdkconfig_<机型>` 复制为 `sdkconfig`

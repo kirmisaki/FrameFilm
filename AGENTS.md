@@ -8,7 +8,7 @@ FrameFilm 项目 AI 开发指南。
 
 开源彩色电子纸冰箱贴。ESP32-S3 + EPD + BLE/WiFi，手机传照片显示。
 
-- ESP-IDF v5.5.2 (C) · 微信小程序 (ES5) · Web 工具 (ES6)
+- ESP-IDF v5.5.4 (C) · 微信小程序 (ES5) · Web 工具 (ES6)
 - GPL-3.0 · Git 中文 commit: `type(scope): 描述`
 - 三套固件：`firmware/frame_film/`（冰箱贴**三机型**，旧机型维护线）、`firmware/frame_film_ark/`（通行证版，**单机型**，见下方「FrameFilm Ark」）、`firmware/frame_film_dock/`（底座，见下方「Dock 底座」）
 - **app 框架 / UI 层（`film_app` + `film_ui`）只存在于 `frame_film_ark`**：`frame_film` 是经典固件，没有这两个组件，也不实现 app 通道 BLE 命令（`0x45~0x4E`）
