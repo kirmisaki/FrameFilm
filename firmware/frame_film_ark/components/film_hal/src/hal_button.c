@@ -88,10 +88,9 @@ typedef struct
  * LOCAL VARIABLES
  */
 static button_mgr_t m_button_mgr;
-#if CONFIG_ARK_SCREENSHOT
-/* 上键双击当前是否生效（截图开关的 HAL 侧镜像） */
-static bool m_up_double_click_on;
-#endif
+/* 返回键双击当前是否生效（截图开关的 HAL 侧镜像）。
+   未编译截图（或没有返回键）时恒为 false，返回键只有单击。 */
+static bool m_back_double_click_on;
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -123,17 +122,12 @@ void hal_input_init(void)
     memset(&m_button_mgr, 0, sizeof(m_button_mgr));
 
     // 初始化上/右按键
-    /* 开启截图时上键要认双击，与确认键同理：short_press_time 兼作双击配对窗口，
-       取 50ms 时双击必被判成两次单击。n4r2 关闭截图后恢复 50ms 单击结算。 */
+    /* 上键不认双击：保持 50ms 单击结算，快速连按各自上报，不会被双击配对抗掉 */
     button_config_t up_cfg =
     {
         .type = BUTTON_TYPE_GPIO,
         .long_press_time = BUTTON_LONG_PRESS_TIME_MS,
-#if CONFIG_ARK_SCREENSHOT
-        .short_press_time = BUTTON_DOUBLE_CLICK_WINDOW_MS,
-#else
         .short_press_time = BUTTON_SHORT_PRESS_TIME_MS,
-#endif
         .gpio_button_config = {
             .gpio_num = BUTTON_PIN_UP,
             .active_level = BUTTON_ACTIVE_LEVEL,
@@ -144,11 +138,6 @@ void hal_input_init(void)
     {
         iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_SINGLE_CLICK, button_up_cb, NULL);
         iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_LONG_PRESS_START, button_up_cb, NULL);
-#if CONFIG_ARK_SCREENSHOT
-        /* 双击只发 DOUBLE_CLICK、不发 SINGLE_CLICK（库内部已消歧），用于全局截图 */
-        iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_DOUBLE_CLICK, button_up_cb, NULL);
-        m_up_double_click_on = true;
-#endif
         m_button_mgr.buttons[0].initialized = true;
         sys_logi(BUTTON_TAG, "UP button initialized");
     }
@@ -217,12 +206,17 @@ void hal_input_init(void)
     }
 
 #if CONFIG_ARK_INPUT_BACK_KEY
-    // 初始化返回按键（n16r8，仅短按）
+    // 初始化返回按键（n16r8；双击用于截图，未开启截图时只认单击）
     button_config_t back_cfg =
     {
         .type = BUTTON_TYPE_GPIO,
         .long_press_time = BUTTON_LONG_PRESS_TIME_MS,
+#if CONFIG_ARK_SCREENSHOT
+        /* 与确认键同理：short_press_time 兼作双击配对窗口，50ms 配不上双击 */
+        .short_press_time = BUTTON_DOUBLE_CLICK_WINDOW_MS,
+#else
         .short_press_time = BUTTON_SHORT_PRESS_TIME_MS,
+#endif
         .gpio_button_config = {
             .gpio_num = BUTTON_PIN_BACK,
             .active_level = BUTTON_ACTIVE_LEVEL,
@@ -232,6 +226,11 @@ void hal_input_init(void)
     if (m_button_mgr.buttons[3].handle)
     {
         iot_button_register_cb(m_button_mgr.buttons[3].handle, BUTTON_SINGLE_CLICK, button_back_cb, NULL);
+#if CONFIG_ARK_SCREENSHOT
+        /* 双击只发 DOUBLE_CLICK、不发 SINGLE_CLICK（库内部已消歧），用于全局截图 */
+        iot_button_register_cb(m_button_mgr.buttons[3].handle, BUTTON_DOUBLE_CLICK, button_back_cb, NULL);
+        m_back_double_click_on = true;
+#endif
         m_button_mgr.buttons[3].initialized = true;
         sys_logi(BUTTON_TAG, "BACK button initialized");
     }
@@ -278,32 +277,30 @@ void hal_input_deinit(void)
     gpio_config(&io_conf);
 
     m_button_mgr.initialized = false;
-#if CONFIG_ARK_SCREENSHOT
-    m_up_double_click_on = false;
-#endif
+    m_back_double_click_on = false;
     sys_logi(BUTTON_TAG, "button deinitialized");
 }
 
-void hal_input_set_up_double_click(bool on)
+void hal_input_set_back_double_click(bool on)
 {
-#if CONFIG_ARK_SCREENSHOT
-    button_handle_t handle = m_button_mgr.buttons[0].handle;
-
-    if (handle == NULL || m_up_double_click_on == on)
+    if (m_back_double_click_on == on)
     {
         return;
     }
-
-    /* 回调常驻，靠 m_up_double_click_on 在回调里拦截：运行期注销/重注册会与
+    m_back_double_click_on = on;
+#if CONFIG_ARK_INPUT_BACK_KEY && CONFIG_ARK_SCREENSHOT
+    /* 回调常驻，靠 m_back_double_click_on 在回调里拦截：运行期注销/重注册会与
        按键定时器并发改链表，只改窗口（库内部有临界区）最稳。
-       关闭后窗口回到 50ms，双击基本不可能凑上，上键单击也不用再等 350ms。 */
-    m_up_double_click_on = on;
-    iot_button_set_param(handle, BUTTON_SHORT_PRESS_TIME_MS,
-                         (void *)(intptr_t)(on ? BUTTON_DOUBLE_CLICK_WINDOW_MS
-                                               : BUTTON_SHORT_PRESS_TIME_MS));
-    sys_logi(BUTTON_TAG, "UP double click %s", on ? "on" : "off");
-#else
-    (void)on;
+       关闭后窗口回到 50ms，返回键快速连按不会被合并成双击而丢失单击。 */
+    button_handle_t handle = m_button_mgr.buttons[3].handle;
+
+    if (handle != NULL)
+    {
+        iot_button_set_param(handle, BUTTON_SHORT_PRESS_TIME_MS,
+                             (void *)(intptr_t)(on ? BUTTON_DOUBLE_CLICK_WINDOW_MS
+                                                   : BUTTON_SHORT_PRESS_TIME_MS));
+    }
+    sys_logi(BUTTON_TAG, "BACK double click %s", on ? "on" : "off");
 #endif
 }
 
@@ -320,17 +317,6 @@ static void button_up_cb(void *button_handle, void *usr_data)
         sys_logi(BUTTON_TAG, "UP LONG PRESS");
         trigger_callbacks(INPUT_PRESS_UP);
     }
-#if CONFIG_ARK_SCREENSHOT
-    else if (event == BUTTON_DOUBLE_CLICK)
-    {
-        /* 截图开关关闭时双击事件不生效（窗口也已收回 50ms） */
-        if (m_up_double_click_on)
-        {
-            sys_logi(BUTTON_TAG, "UP DOUBLE PRESS");
-            trigger_callbacks(INPUT_PRESS_UP_DOUBLE);
-        }
-    }
-#endif
 }
 
 static void button_down_cb(void *button_handle, void *usr_data)
@@ -377,6 +363,17 @@ static void button_back_cb(void *button_handle, void *usr_data)
         sys_logi(BUTTON_TAG, "BACK SHORT PRESS");
         trigger_callbacks(INPUT_PRESS_BACK);
     }
+#if CONFIG_ARK_SCREENSHOT
+    else if (event == BUTTON_DOUBLE_CLICK)
+    {
+        /* 截图开关关闭时双击事件不生效（窗口已收回 50ms） */
+        if (m_back_double_click_on)
+        {
+            sys_logi(BUTTON_TAG, "BACK DOUBLE PRESS");
+            trigger_callbacks(INPUT_PRESS_BACK_DOUBLE);
+        }
+    }
+#endif
 }
 #endif
 

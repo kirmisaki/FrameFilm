@@ -989,7 +989,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             uint8_t capabilities[5] = {1, 0, 0, 0x01, 0x5F};
             /* flags 高位字节（bit8..）：
                bit8 = 按目录/文件名的列表/删除/读取（0x5B dir3 + 0x60 + 0x61）
-               bit9 = 上键双击截图（/sdcard/screenshot），仅 ARK_SCREENSHOT 开启 */
+               bit9 = 返回键双击截图（/sdcard/screenshot），仅 ARK_SCREENSHOT 开启 */
 #if CONFIG_ARK_SCREENSHOT
             capabilities[3] |= 0x02;
 #endif

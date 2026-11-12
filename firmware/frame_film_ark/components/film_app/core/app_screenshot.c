@@ -20,7 +20,7 @@
  *
  * FileName : /film_app/core/app_screenshot.c
  * Author: Kiritro  Version: v0.1  Date: 2026/11/12
- * Description: 上键双击截图：UI mono 帧 → /sdcard/screenshot/shot_*.film
+ * Description: 返回键双击截图：UI mono 帧 → /sdcard/screenshot/shot_*.film
  * ChangeLog: Change Notes
  *
  *********************************************************************/

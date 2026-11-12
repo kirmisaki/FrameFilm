@@ -313,7 +313,7 @@
 
 | 通道 | 名称 | 请求 | 响应 |
 |---|---|---|---|
-| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit3=按文件名打开图片、bit4=Ark SoftAP 直传、bit5=实验 ABC9 512 色预览播放、bit6=硬件身份查询、bit7=NFC 卡包（仅 N16R8）、bit8=按目录/文件名管理文件（0x60/0x61 + 0x5B 目录3）、bit9=上键双击截图（/sdcard/screenshot，仅 `CONFIG_ARK_SCREENSHOT=y` 固件） |
+| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit3=按文件名打开图片、bit4=Ark SoftAP 直传、bit5=实验 ABC9 512 色预览播放、bit6=硬件身份查询、bit7=NFC 卡包（仅 N16R8）、bit8=按目录/文件名管理文件（0x60/0x61 + 0x5B 目录3）、bit9=返回键双击截图（/sdcard/screenshot，仅 `CONFIG_ARK_SCREENSHOT=y` 固件） |
 
 ### 3.16 Ark 通用 WiFi 文件上传（0x5A）
 
@@ -376,7 +376,7 @@
 | 0x61 | FILE_PATH_READ | `dir(1) + offset(u32 BE) + count(1) + name(UTF-8,NUL)` | `status(1) + offset(u32 BE) + total(u32 BE) + bytes(0..180)` |
 
 目录号：`1=/sdcard/film`、`2=/sdcard/animation`、`3=/sdcard/screenshot`。
-0x5B 目录 3 与 0x60/0x61 需要能力位 bit8；截图功能（上键双击）需要 bit9。
+0x5B 目录 3 与 0x60/0x61 需要能力位 bit8；截图功能（返回键双击）需要 bit9。
 截图文件为单帧 MonoFast `.film`（720×480、1bpp、1=黑），命名 `shot_*.film`。
 
 默认关闭：设备不安装日志钩子、不建任务、不分配缓冲，行为与未实现该功能时完全一致。打开后设备按当前日志级别（不改变全局级别）采集日志；关闭或 BLE 断开时自动卸载钩子。
@@ -1561,7 +1561,7 @@ SUM  = (0x55 + 0x4E + 0x01 + 0x02) & 0xFF = 0xA6
 
 bit5 仅在 `CONFIG_ARK_EPD_ABC_PREVIEW=y`（默认）或 `CONFIG_ARK_EPD_ABC_DIAG=y`、实际 ABC9 播放路径已编译时宣告；bit0–bit4 的既有含义不变，包含硬件查询能力的默认 flags 为 `0x0000007F`，两个 ABC 开关均关闭时为 `0x0000005F`。N16R8 在此基础上额外设置 bit7。此位只表示能播放 [实验 ABC9 容器](../film/film.md#私有-abc9-实验容器)：Format `0x7F`、720×480 单帧、`ABC9` 标记、691232 字节，LE16 低9位 A/B/C 码；不声明已完成512实色校准，也不启用诊断图生成或其他 lab 模式。客户端只有收到该位才开放实验预览上传与播放；旧固件或无该位时保留既有出图选项。
 
-当前 Ark 固件额外设置 bit8（`0x00000100`，按目录/文件名列表、删除、分块读取：0x5B 目录 3 + 0x60 + 0x61）与 bit9（`0x00000200`，上键双击截图到 `/sdcard/screenshot`）。bit9 只在 `CONFIG_ARK_SCREENSHOT=y` 时设置：n4r2 默认关闭截图（同时关闭 0x61 读取），flags 为 `0x0000015F`；n16r8 保持开启，含 NFC bit7 时 flags 为 `0x000003DF`。
+当前 Ark 固件额外设置 bit8（`0x00000100`，按目录/文件名列表、删除、分块读取：0x5B 目录 3 + 0x60 + 0x61）与 bit9（`0x00000200`，返回键双击截图到 `/sdcard/screenshot`）。bit9 只在 `CONFIG_ARK_SCREENSHOT=y` 时设置：n4r2 默认关闭截图（同时关闭 0x61 读取），flags 为 `0x0000015F`；n16r8 保持开启，含 NFC bit7 时 flags 为 `0x000003DF`。
 
 通行证卡片文件仍放在 `/sdcard/app/pass/profile.bin`，文件头 16B：`FFUI`(4B)、version(1B)、format(1B)、width=440(u16 LE)、height=608(u16 LE)、保留零(6B)。原 v1/format1 的正文为 33440B、每字节 MSB 起 8 个黑白像素（1=黑）；新 v2/format2 的正文为 133760B、每字节高 nibble 为左像素，色码为黑0、白1、黄2、红3、蓝5、绿6。整文件分别为 33456B 和 133776B。彩色卡仅在 Ark UI 通行证页合成到黑白外壳，整屏走 EPD 4bpp 彩色刷新；退出页面回到原黑白 UI 路径。
 
@@ -1750,9 +1750,9 @@ LIST 单条记录：`id, kind, uid_len, sak, atqa(2), uid(7), flags, name_len, n
 
 #### 4.22.4 截图
 
-设备端 **双击上键** 截取当前画面，保存为单帧 MonoFast `.film` 到 `/sdcard/screenshot/shot_*.film`。
-该功能由 `CONFIG_ARK_SCREENSHOT` 控制：n4r2 默认关闭，n16r8 默认开启；关闭时设备不宣告 0x59 bit9，且不响应 0x61 读取。
-即使固件已编入截图（如 n16r8），设备系统设置里的「截图」开关也**默认关闭**；关闭时 HAL 不再上报上键双击，并把单击结算窗口恢复为 50ms（上键单击不会为等待双击而延迟），开启后才会重新识别双击并生成截图。
+设备端 **双击返回键** 截取当前画面，保存为单帧 MonoFast `.film` 到 `/sdcard/screenshot/shot_*.film`。
+该功能由 `CONFIG_ARK_SCREENSHOT` 控制，且需要 n16r8 的返回键（GPIO18）：n4r2 默认关闭，n16r8 默认开启；关闭时设备不宣告 0x59 bit9，且不响应 0x61 读取。
+即使固件已编入截图（如 n16r8），设备系统设置里的「截图」开关也**默认关闭**；关闭时 HAL 不再上报返回键双击（返回键保持 50ms 单击结算），开启后才会恢复双击识别并生成截图。
 
 - 32B 文件头：`FileSize=43200`、`ScreenWidth=720`、`ScreenHeight=480`、`ColorCount=2`、`Format=0x01`、`FrameCount=1`（其余 0），多字节小端；
 - 正文 43200B：720×480、1bpp、MSB 在前、`1=黑`，与 .film Format 0x01 约定一致；
@@ -1923,6 +1923,7 @@ int parse_response(uint8_t* in_buf, int in_len, uint8_t* out_ch, uint8_t* out_da
 
 | 版本 | 日期 | 描述 |
 |------|------|------|
+| 1.22 | 2026-11-12 | Ark 截图手势由双击上键改为双击返回键（仅 n16r8），上键恢复普通单击；关闭截图开关时返回键不认双击 |
 | 1.21 | 2026-11-12 | Ark 截图开关关闭时同时关闭上键双击识别并恢复 50ms 单击结算窗口，上键不再为双击延迟 |
 | 1.20 | 2026-11-12 | Ark 新增 0x4F 动图按名播放、0x60 按目录/文件名删除、0x61 分块读取；0x5B 目录扩展 3（截图）；0x59 新增 bit8（文件管理）/ bit9（上键双击截图）；截图保存到 `/sdcard/screenshot` |
 | 1.19 | 2026-11-07 | NFC 卡包通道由 0x5C~0x62 迁移到 0x63~0x69；0x5C/0x5D 恢复为 SoftAP 准备/硬件身份单一语义，不再按 payload 长度判别；Web 客户端同步 |

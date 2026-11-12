@@ -199,7 +199,7 @@
         var list = document.getElementById('screenshot-list');
         if (!list) return;
         if (!m_shots.length) {
-            list.innerHTML = '<p class="field-hint">还没有截图。在设备上双击上键即可截图。</p>';
+            list.innerHTML = '<p class="field-hint">还没有截图。在设备上双击返回键即可截图。</p>';
             return;
         }
         var html = '<div class="wallet-rows">';

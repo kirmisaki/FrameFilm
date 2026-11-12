@@ -49,7 +49,7 @@
 #include "app_render.h"
 #include "app_sleep.h"  /* app_sleep_run：主菜单长按 = 手动休眠 */
 #if CONFIG_ARK_SCREENSHOT
-#include "app_screenshot.h" /* 上键双击截图 */
+#include "app_screenshot.h" /* 返回键双击截图 */
 #include "app_boot_cfg.h"   /* 截图开关（默认关） */
 #endif
 #include "app_animation.h"  /* 动图按名播放（0x4F） */
@@ -936,15 +936,15 @@ static uint8_t app_anim_play_by_name(const char *name)
 
 static app_input_result_t app_manager_process_input(input_press_type_t key)
 {
-    /* 上键双击 = 全局截图：不参与 app 导航，也不受按键切换模式影响 */
+    /* 返回键双击 = 全局截图：不参与 app 导航，也不受按键切换模式影响 */
 #if CONFIG_ARK_SCREENSHOT
-    if(key == INPUT_PRESS_UP_DOUBLE)
+    if(key == INPUT_PRESS_BACK_DOUBLE)
     {
         /* 截图关闭时 HAL 已不再上报双击，正常收不到这个键；留着这层判断只做兜底，
            切换瞬间万一收到也吃掉，不下发给 UI 造成未知按键 */
         if(app_screenshot_enabled())
         {
-            sys_logi(APP_MANAGER_TAG, "screenshot: UP double click");
+            sys_logi(APP_MANAGER_TAG, "screenshot: BACK double click");
             (void)app_screenshot_capture();
         }
         return APP_INPUT_CONSUMED;

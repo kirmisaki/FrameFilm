@@ -23,7 +23,7 @@ extern "C" {
 #define APP_LANGUAGE_ZH_CN     (0)
 #define APP_LANGUAGE_EN        (1)
 
-/* 上键双击截图开关（默认关，防止误触） */
+/* 返回键双击截图开关（默认关，防止误触） */
 #define APP_SCREENSHOT_OFF     (0)
 #define APP_SCREENSHOT_ON      (1)
 
@@ -88,9 +88,9 @@ void app_language_set(uint8_t language);
 uint8_t app_language_get(void);
 
 /**
- * @brief 上键双击截图开关（默认 OFF）
+ * @brief 返回键双击截图开关（默认 OFF）
  *
- * 只在上键双击已编入固件（CONFIG_ARK_SCREENSHOT）时有意义。
+ * 只在截图已编入固件（CONFIG_ARK_SCREENSHOT）时有意义。
  */
 uint8_t app_screenshot_enabled(void);
 void app_screenshot_set(uint8_t on);

@@ -67,7 +67,7 @@ typedef struct {
     uint8_t boot_page_sel;  // BOOT PAGE 候选下标（0=SHOW 1=SKIP）
     uint8_t start_app_sel;  // START APP 候选下标（app_start_t）
     uint8_t language_sel;   // 0=简体中文 1=English
-    uint8_t screenshot_on;  // 上键双击截图开关 0/1（默认 0）
+    uint8_t screenshot_on;  // 返回键双击截图开关 0/1（默认 0）
 
     /* app 参数（IMG PLAY / IMG INTERVAL / ANIM LOOP / ANIM SPEED）
        —— 归属 app 的参数，由 app_manager_param_get 读回、param_set 写回 */

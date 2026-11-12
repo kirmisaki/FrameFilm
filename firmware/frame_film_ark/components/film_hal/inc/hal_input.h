@@ -38,7 +38,7 @@ typedef enum {
     INPUT_PRESS_PRESSED,
     INPUT_PRESS_DOUBLE, // 确认键双击（app_manager 用它"退出 app"）
     INPUT_PRESS_BACK,   // n16r8 的 GPIO18 返回键
-    INPUT_PRESS_UP_DOUBLE, // 上键双击（截图，追加在末尾以保持既有枚举值不变）
+    INPUT_PRESS_BACK_DOUBLE, // 返回键双击（截图，仅 n16r8；沿用原上键双击的枚举值）
     INPUT_PRESS_MAX,
 } input_press_type_t;
 
@@ -99,11 +99,11 @@ extern int hal_input_unregister_cb(input_press_type_t type, input_callback_t cb)
 extern void hal_input_deinit(void);
 
 /**
- * @brief 运行期开关上键双击（截图用）
- * 关闭后不再上报双击，并把单击结算窗口恢复为 50ms，上键行为与没有截图功能时一致；
- * 开启时恢复双击识别并把窗口放开到 350ms。未编译截图功能时为空实现。
+ * @brief 运行期开关返回键双击（截图用）
+ * 关闭后不再上报双击，返回键保持 50ms 单击结算；开启后把窗口放开到 350ms。
+ * 未编译截图或没有返回键的固件为空实现。
  */
-extern void hal_input_set_up_double_click(bool on);
+extern void hal_input_set_back_double_click(bool on);
 
 #ifdef __cplusplus
 }
