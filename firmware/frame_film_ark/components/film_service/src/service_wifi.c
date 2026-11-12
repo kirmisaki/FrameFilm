@@ -54,6 +54,7 @@
 #include "hal_wifi.h"
 #include "service_param.h"
 #include "service_file.h"
+#include "service_film.h"
 #include "service_wifi.h"
 #include "service_ota.h"
 #include "service_ble.h"       /* service_ble_apply_enable：心跳下发 ble_enable 时同款起停 */
@@ -82,6 +83,8 @@ static int g_download_content_length = 0;
 static int g_download_received = 0;
 static char g_download_filename[256] = {0};
 static uint8_t *g_download_buffer = NULL;
+/* 本次下载是否走内存直显（模板 app 在场时不落卡，见 service_film_push_mode_set） */
+static uint8_t g_download_to_mem = 0;
 
 typedef struct {
     char ssid[33];
@@ -1024,7 +1027,23 @@ static esp_err_t wifi_http_event_handler(esp_http_client_event_t *evt)
         }
         if(g_download_buffer && g_download_received > 0)
         {
-            if(service_file_save_start(FILE_SAVE_WIFI, g_download_filename, g_download_received) == 0)
+            if(g_download_to_mem)
+            {
+                /* 模板 app 在场：整包交内存直显，不写 TF 卡（take 接管所有权） */
+                uint8_t *buf = g_download_buffer;
+                g_download_buffer = NULL;
+                if(service_film_push_take(buf, (uint32_t)g_download_received) == 0)
+                {
+                    g_download_state = WIFI_DOWNLOAD_DONE;
+                    g_download_progress = 100;
+                }
+                else
+                {
+                    g_download_state = WIFI_DOWNLOAD_ERROR;
+                    sys_loge(WIFI_SERVICE_TAG, "HTTP download RAM push failed");
+                }
+            }
+            else if(service_file_save_start(FILE_SAVE_WIFI, g_download_filename, g_download_received) == 0)
             {
                 int write_result = service_file_save_data(FILE_SAVE_WIFI,
                                                           g_download_buffer, g_download_received);
@@ -1230,6 +1249,8 @@ void service_wifi_download_url(const char *url)
         free(url_copy);
         return;
     }
+    /* 起点决定去向：模板 app 在场时整包放内存直显，不写 TF 卡 */
+    g_download_to_mem = service_film_push_mode_get();
     g_legacy_active = true;
     g_download_state = WIFI_DOWNLOAD_DOWNLOADING;
     portEXIT_CRITICAL(&g_direct_lock);

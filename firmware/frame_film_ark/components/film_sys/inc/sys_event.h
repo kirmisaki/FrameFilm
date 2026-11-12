@@ -36,6 +36,7 @@ typedef enum {
     SYS_EVT_SD_MOUNT     = 0x0103,  // TF 卡挂载
     SYS_EVT_SD_UNMOUNT   = 0x0104,  // TF 卡卸载
     SYS_EVT_FILM_FRAME_DONE = 0x0105, // 动图某一帧已上屏（按帧推屏的 app 据此立刻推下一帧）
+    SYS_EVT_FILM_PUSH    = 0x0106,  // 内存直显的 film 已就绪（不落卡，见 service_film_push_take）
 
     SYS_EVT_WIFI_STATE   = 0x0201,  // WiFi 连接状态变化，payload: u8 state
     SYS_EVT_WIFI_DL_DONE = 0x0202,  // WiFi 下载完成

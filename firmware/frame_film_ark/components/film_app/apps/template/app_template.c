@@ -34,12 +34,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "esp_heap_caps.h"
+
 #include "sys_log.h"
 #include "sys_event.h"
+#include "hal_epd.h"
 #include "app_template.h"
 #include "app_render.h"
 #include "service_ble.h"
 #include "service_file.h"
+#include "service_film.h"
 #include "service_param.h"
 #include "service_wifi.h"
 
@@ -63,6 +67,28 @@
 /* 参数通道 TAG（payload = TLV 列表，多字节大端） */
 #define APP_TEMPLATE_TAG_PULL_ENABLE    (0x01)  // 1B：0=关闭 1=开启
 #define APP_TEMPLATE_TAG_PULL_INTERVAL  (0x02)  // 2B：1~120 分钟
+
+/* .film 文件头（与 docs/film/film.md 一致） */
+#define TEMPLATE_FILM_HDR_SIZE          (32)
+#define TEMPLATE_FILM_OFFSET_FORMAT     (0x09)
+#define TEMPLATE_FILM_OFFSET_COLORTABLE (0x10)
+
+/* v1 ColorTable 的实际颜色值 → ColorFast（Format 0x03）8bpp 波形索引
+ * 与 ui_display.c 的 native_to_fast 同源（六色按 ForFilm cfClosestIndex 选出的
+ * 波形索引）：黑 0x00→0、白 0xFF→21、黄 0xFC→63、红 0xE0→47、蓝 0x03→32、绿 0x1C→52。
+ * 未列出的值按黑色处理（0）。 */
+static const uint8_t m_template_color_to_fast[256] = {
+    [0x00] = 0,
+    [0xFF] = 21,
+    [0xFC] = 63,
+    [0xE0] = 47,
+    [0x03] = 32,
+    [0x1C] = 52,
+};
+
+/* 8bpp ColorFast 帧缓冲字节数与 v1 4bpp 主体字节数（720x480） */
+#define TEMPLATE_FAST_BYTES             ((uint32_t)EPD_WIDTH * EPD_HEIGHT)
+#define TEMPLATE_V1_BODY_BYTES          ((uint32_t)EPD_WIDTH * EPD_HEIGHT / 2u)
 
 /*********************************************************************
 * TYPEDEFS
@@ -100,8 +126,9 @@ static uint32_t m_pull_elapsed_s = 0;   // 定时拉取累计秒数
 static uint8_t  m_pull_pending = 0;     // 已请求拉取、正在等 WiFi 就绪
 static uint32_t m_pull_wait_s = 0;      // 等待 WiFi 就绪的秒数
 
-// 关注的全局事件：推送内容落盘（蓝牙直传 / WiFi 下载）
+// 关注的全局事件：内存直显（模板在场时推送/拉取不落卡）、落盘（旧路径兼容）
 static const uint16_t m_template_events[] = {
+    SYS_EVT_FILM_PUSH,
     SYS_EVT_FILE_SAVED,
     0,
 };
@@ -117,6 +144,9 @@ static void app_template_param_set(const uint8_t *tlv, uint8_t len);
 static uint8_t app_template_param_get(uint8_t *out, uint8_t max);
 static int template_load_wait(uint32_t file_id);
 static int template_render_file(uint32_t file_id);
+static int template_render_memory(void);
+static void template_show_film(const uint8_t *film, uint32_t size);
+static int template_show_colorfast(const uint8_t *film, uint32_t size);
 static void template_render_pushed(void);
 static int template_find_by_name(const char *name, uint32_t *out_id);
 static void template_trigger_pull(void);
@@ -181,6 +211,139 @@ static int template_load_wait(uint32_t file_id)
 }
 
 /**
+ * @brief 把 v1 film 转成 8bpp 索引，用 48 色 ColorFast（2 相）刷新上屏
+ *
+ * 模板是实时推送的信息面板（天气/日历等），服务端渲染出来的是 v1 六色 4bpp；
+ * 直接走 v1 整屏刷新慢且会闪。这里按 ColorTable 把六色映射成 ColorFast 的
+ * 波形索引（与 UI 层彩页同一套映射），再用 2 相刷新上屏。
+ *
+ * 只处理 Format 0x00：其余格式（0x01 MonoFast / 0x02 ColorQual / 0x03 ColorFast）
+ * 返回 -1，由调用方按文件自带的格式走 app_render_display_full —— 其中 ColorQual
+ * 的索引是另一套测量色板，固件内没有 RGB 表，不能直接换成 ColorFast 波形。
+ *
+ * @param film .film 文件起始（含 32 字节头）
+ * @param size 文件总字节数（含头）
+ * @return 0 已显示；-1 不适用/数据长度不足/内存不足（调用方回落）
+ */
+static int template_show_colorfast(const uint8_t *film, uint32_t size)
+{
+    if(film == NULL || size <= TEMPLATE_FILM_HDR_SIZE)
+    {
+        return -1;
+    }
+    if(film[TEMPLATE_FILM_OFFSET_FORMAT] != 0x00)
+    {
+        return -1;
+    }
+
+    uint32_t body_size = size - TEMPLATE_FILM_HDR_SIZE;
+    if(body_size < TEMPLATE_V1_BODY_BYTES)
+    {
+        sys_logw(APP_TEMPLATE_TAG, "v1 film too short: %u", (unsigned)body_size);
+        return -1;
+    }
+
+    /* 8bpp 整屏 345KB：与图片 app 的 8bpp 播放同量级，优先放 PSRAM */
+    uint8_t *fast = (uint8_t *)heap_caps_malloc(TEMPLATE_FAST_BYTES, MALLOC_CAP_SPIRAM);
+    if(fast == NULL)
+    {
+        sys_logw(APP_TEMPLATE_TAG, "colorfast buffer alloc failed");
+        return -1;
+    }
+
+    const uint8_t *body = film + TEMPLATE_FILM_HDR_SIZE;
+    const uint8_t *color_table = film + TEMPLATE_FILM_OFFSET_COLORTABLE;
+    const uint32_t src_row_bytes = (uint32_t)EPD_WIDTH / 2u;   // v1 每字节 2 像素
+
+    for(uint32_t y = 0; y < EPD_HEIGHT; y++)
+    {
+        const uint8_t *src = body + y * src_row_bytes;
+        uint8_t *dst = fast + y * (uint32_t)EPD_WIDTH;
+
+        for(uint32_t x = 0; x < (uint32_t)EPD_WIDTH; x += 2u)
+        {
+            uint8_t packed = src[x >> 1];
+
+            dst[x] = m_template_color_to_fast[color_table[packed >> 4]];
+            dst[x + 1u] = m_template_color_to_fast[color_table[packed & 0x0Fu]];
+        }
+    }
+
+    app_render_display_8bpp(fast, 0);   // 0 = ColorFast（2 相）
+    heap_caps_free(fast);
+    return 0;
+}
+
+/**
+ * @brief 渲染一帧 film（v1 先转 48 色 ColorFast；其它格式按文件自带方式）
+ *
+ * 先校验主体长度：驱动是按本机固定的行/列读的，服务器若按别的尺寸渲染
+ * （如 basic 600x400），短包直接交给整屏路径会越界读，这里先拦下来。
+ */
+static void template_show_film(const uint8_t *film, uint32_t size)
+{
+    if(film == NULL || size <= TEMPLATE_FILM_HDR_SIZE)
+    {
+        sys_logw(APP_TEMPLATE_TAG, "film too short: %u", (unsigned)size);
+        return;
+    }
+
+    uint8_t format = film[TEMPLATE_FILM_OFFSET_FORMAT];
+    uint32_t need;
+    switch(format)
+    {
+    case 0x01:  // MonoFast：1bpp
+        need = (uint32_t)EPD_WIDTH * EPD_HEIGHT / 8u;
+        break;
+    case 0x02:  // ColorQual：8bpp
+    case 0x03:  // ColorFast：8bpp
+        need = (uint32_t)EPD_WIDTH * EPD_HEIGHT;
+        break;
+    default:    // 0x00 v1 4bpp
+        need = TEMPLATE_V1_BODY_BYTES;
+        break;
+    }
+
+    if(size - TEMPLATE_FILM_HDR_SIZE < need)
+    {
+        sys_logw(APP_TEMPLATE_TAG, "film size mismatch: fmt=0x%02X body=%u need=%u",
+                 format, (unsigned)(size - TEMPLATE_FILM_HDR_SIZE), (unsigned)need);
+        return;
+    }
+
+    if(format == 0x00 && template_show_colorfast(film, size) == 0)
+    {
+        return;
+    }
+
+    app_render_display_full(film);
+}
+
+/**
+ * @brief 渲染内存里最近一次推送的 film（模板在场时推送/拉取不落卡）
+ *
+ * 复制一份再渲染：渲染一帧要数秒，期间新的推送会把内存里的旧缓冲换掉，
+ * 直接借出会有被释放的风险（见 service_film_push_copy）。
+ *
+ * @return 0 已显示；-1 内存里没有可显示的内容
+ */
+static int template_render_memory(void)
+{
+    uint32_t len = 0;
+    uint8_t *film = service_film_push_copy(&len);
+
+    if(film == NULL)
+    {
+        return -1;
+    }
+
+    template_show_film(film, len);
+    heap_caps_free(film);
+    sys_logi(APP_TEMPLATE_TAG, "render RAM film, %u bytes", (unsigned)len);
+    return 0;
+}
+
+/**
  * @brief 装载指定文件并整屏渲染，成功后记录文件名用于重进恢复
  */
 static int template_render_file(uint32_t file_id)
@@ -197,7 +360,7 @@ static int template_render_file(uint32_t file_id)
         return -1;
     }
 
-    app_render_display_full(buffer);
+    template_show_film(buffer, service_file_get_buffer_size());
 
     if(service_file_get_filename_safe(file_id, m_last_name, sizeof(m_last_name)) == 0)
     {
@@ -255,7 +418,16 @@ static void app_template_on_enter(void)
 {
     sys_logi(APP_TEMPLATE_TAG, "enter template app");
 
-    // 已显示过推送内容：按文件名找回并重绘（列表下标可能因上传而变动）
+    /* 在场期间：BLE 直推 / WiFi 拉取的 film 只进内存直显，不写 TF 卡 */
+    service_film_push_mode_set(1);
+
+    /* 优先显示内存里最近一次推送（断电即丢，不占卡） */
+    if(template_render_memory() == 0)
+    {
+        return;
+    }
+
+    // 旧路径：按文件名找回曾经落过卡的推送内容（列表下标可能因上传而变动）
     uint32_t id = 0;
     if(m_has_film &&
        template_find_by_name(m_last_name, &id) == 0 &&
@@ -271,6 +443,8 @@ static void app_template_on_enter(void)
 
 static void app_template_on_exit(void)
 {
+    /* 离开后恢复"落卡"行为：此时推送的内容属于相册/其它 app */
+    service_film_push_mode_set(0);
     sys_logi(APP_TEMPLATE_TAG, "exit template app");
 }
 
@@ -433,18 +607,28 @@ static void app_template_on_event(const app_event_t *e)
         return;
     }
 
-    if((sys_event_id_t)e->cmd != SYS_EVT_FILE_SAVED)
+    switch((sys_event_id_t)e->cmd)
     {
-        return;
-    }
+    case SYS_EVT_FILM_PUSH:
+        /* 内存直显：推送/拉取的内容已整包放在 RAM，不落卡 */
+        if(template_render_memory() != 0)
+        {
+            sys_logw(APP_TEMPLATE_TAG, "RAM film render failed");
+        }
+        break;
 
-    /* payload[0] = auto_load：0 表示静默批量上传，不自动显示 */
-    if(e->len > 0 && e->payload[0] == 0)
-    {
-        sys_logi(APP_TEMPLATE_TAG, "silent save, skip display");
-        return;
-    }
+    case SYS_EVT_FILE_SAVED:
+        /* payload[0] = auto_load：0 表示静默批量上传，不自动显示 */
+        if(e->len > 0 && e->payload[0] == 0)
+        {
+            sys_logi(APP_TEMPLATE_TAG, "silent save, skip display");
+            break;
+        }
+        sys_logi(APP_TEMPLATE_TAG, "content pushed, display id=%u", (unsigned)service_file_get_current_id());
+        template_render_pushed();
+        break;
 
-    sys_logi(APP_TEMPLATE_TAG, "content pushed, display id=%u", (unsigned)service_file_get_current_id());
-    template_render_pushed();
+    default:
+        break;
+    }
 }

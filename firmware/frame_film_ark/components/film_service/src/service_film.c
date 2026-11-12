@@ -36,6 +36,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
+#include "freertos/semphr.h"
 
 #include "esp_heap_caps.h"
 
@@ -99,6 +100,13 @@ static volatile uint32_t m_render_pending = 0;
    图片 app 据此在上一张还在刷新时丢弃翻页按键：否则请求会堆在队列里，
    刷完之后继续一张张翻；退出 app 时也用它等最后一张落屏再切页。 */
 static volatile uint32_t m_display_pending = 0;
+
+/* 内存直显（模板 app）：推送/拉取的 film 整包留在这里，不落卡。
+   m_push_mode 由模板 app 进出时开关；m_push_buf 只保留最近一份。 */
+static volatile uint8_t m_push_mode = 0;
+static uint8_t *m_push_buf = NULL;
+static uint32_t m_push_len = 0;
+static SemaphoreHandle_t m_push_mutex = NULL;
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -505,6 +513,15 @@ static void film_show_file_frame(uint32_t file_id, uint32_t frame_idx)
 
 void service_film_init(void)
 {
+    if(m_push_mutex == NULL)
+    {
+        m_push_mutex = xSemaphoreCreateMutex();
+        if(m_push_mutex == NULL)
+        {
+            sys_loge(FILM_TAG, "push mutex create error!");
+        }
+    }
+
     if(m_film_task_hdl == NULL)
     {
         if ( pdPASS != xTaskCreate( film_task_handle, SYS_OS_NAME_FILM_TASK, SYS_OS_SIZE_FILM_TASK, NULL, SYS_OS_PRI_FILM_TASK, NULL ))
@@ -716,4 +733,78 @@ uint32_t service_film_get_frame_count(uint32_t file_id)
         return 0;
     }
     return info.frame_count;
+}
+
+void service_film_push_mode_set(uint8_t enable)
+{
+    m_push_mode = enable ? 1 : 0;
+    sys_logi(FILM_TAG, "push mode %s", enable ? "on (RAM only)" : "off");
+}
+
+uint8_t service_film_push_mode_get(void)
+{
+    return m_push_mode;
+}
+
+int service_film_push_take(uint8_t *data, uint32_t len)
+{
+    if(data == NULL || len <= FILM_HDR_SIZE || m_push_mutex == NULL)
+    {
+        if(data != NULL)
+        {
+            heap_caps_free(data);   // 所有权已转移：失败也要释放
+        }
+        return -1;
+    }
+
+    xSemaphoreTake(m_push_mutex, portMAX_DELAY);
+    if(m_push_buf != NULL)
+    {
+        heap_caps_free(m_push_buf);
+    }
+    m_push_buf = data;
+    m_push_len = len;
+    xSemaphoreGive(m_push_mutex);
+
+    sys_logi(FILM_TAG, "RAM film ready, %u bytes", (unsigned)len);
+    sys_event_publish(SYS_EVT_FILM_PUSH, NULL, 0);
+    return 0;
+}
+
+uint8_t *service_film_push_copy(uint32_t *len)
+{
+    uint8_t *out = NULL;
+
+    if(len != NULL)
+    {
+        *len = 0;
+    }
+    if(m_push_mutex == NULL)
+    {
+        return NULL;
+    }
+
+    xSemaphoreTake(m_push_mutex, portMAX_DELAY);
+    if(m_push_buf != NULL && m_push_len > 0)
+    {
+        out = (uint8_t *)heap_caps_malloc(m_push_len, MALLOC_CAP_SPIRAM);
+        if(out == NULL)
+        {
+            out = (uint8_t *)heap_caps_malloc(m_push_len, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        }
+        if(out != NULL)
+        {
+            memcpy(out, m_push_buf, m_push_len);
+            if(len != NULL)
+            {
+                *len = m_push_len;
+            }
+        }
+        else
+        {
+            sys_logw(FILM_TAG, "RAM film copy alloc failed: %u", (unsigned)m_push_len);
+        }
+    }
+    xSemaphoreGive(m_push_mutex);
+    return out;
 }

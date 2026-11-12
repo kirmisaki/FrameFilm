@@ -117,6 +117,36 @@ extern void service_film_cancel_pending(void);
  */
 extern uint32_t service_film_get_frame_count(uint32_t file_id);
 
+/**
+ * @brief 置 1 后，BLE 直推 / WiFi 拉取的整份 film 不再落卡，改为内存直显
+ *
+ * 模板 app 进入时打开、退出时关闭：模板是实时推送的信息面板，内容随时会被
+ * 下一次拉取覆盖，没必要写 TF 卡（也不会混进相册列表）。
+ * 关闭后恢复原有"落卡 + SYS_EVT_FILE_SAVED"行为。
+ */
+extern void service_film_push_mode_set(uint8_t enable);
+extern uint8_t service_film_push_mode_get(void);
+
+/**
+ * @brief 接收一整份 .film 的所有权（PSRAM/内部 RAM 缓冲），并发布 SYS_EVT_FILM_PUSH
+ *
+ * 缓冲区必须是 heap_caps_malloc 系列分配的；无论成功与否所有权都转移给本模块
+ * （失败时由本模块释放）。只保留最近一份。
+ *
+ * @return 0 成功；-1 参数无效（已释放）
+ */
+extern int service_film_push_take(uint8_t *data, uint32_t len);
+
+/**
+ * @brief 复制当前内存中的 film（调用方负责 heap_caps_free）
+ *
+ * 用复制而不是直接借出：渲染一帧要数秒，期间新的推送不能把正在用的缓冲释放掉。
+ *
+ * @param len 输出长度
+ * @return 复制出来的缓冲；无数据/内存不足返回 NULL
+ */
+extern uint8_t *service_film_push_copy(uint32_t *len);
+
 
 #ifdef __cplusplus
 }

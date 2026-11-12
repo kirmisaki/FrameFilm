@@ -41,6 +41,7 @@
 #include "esp_system.h"
 #include "esp_app_desc.h"
 #include "esp_mac.h"
+#include "esp_heap_caps.h"
 
 #include "sys_cfg.h"
 #include "sys_log.h"
@@ -115,6 +116,10 @@ static uint8_t m_film_trans_state = BLE_FILM_TRANS_IDLE;
 static uint8_t m_film_trans_filename[256];
 static uint32_t m_film_trans_file_size = 0;
 static uint32_t m_film_trans_received = 0;
+
+/* 内存直显（模板 app）：BLE 直推的 film 不落卡，先整包收在 PSRAM 里 */
+#define BLE_FILM_RAM_MAX_BYTES      (2u * 1024u * 1024u)
+static uint8_t *m_film_ram_buf = NULL;
 static volatile uint8_t m_ble_link_epoch = 0;
 static volatile uint8_t m_ble_abort_pending = 0;
 static atomic_bool m_ble_sleep_stop_sent = false;
@@ -159,6 +164,12 @@ void service_ble_transfer_disconnected(void)
 
 static int ble_file_reset(void)
 {
+    if(m_film_ram_buf != NULL)
+    {
+        /* 未走完 STOP 的内存直显缓冲：连接中断/重开传输时丢弃 */
+        heap_caps_free(m_film_ram_buf);
+        m_film_ram_buf = NULL;
+    }
     if(m_film_trans_state != BLE_FILM_TRANS_IDLE && m_film_trans_state != BLE_FILM_TRANS_STOPPED)
     {
         /* START/NAME 尚未打开文件；LEN/DATA 才有待关闭的暂存文件。 */
@@ -1059,6 +1070,29 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                     result = service_file_save_start_to(FILE_SAVE_BLE,
                               (const char*)m_film_trans_filename, m_film_trans_file_size);
                 }
+                else if(service_film_push_mode_get())
+                {
+                    /* 模板 app 在场：内容只进内存直显，不写 TF 卡 */
+                    if(m_film_trans_file_size == 0 || m_film_trans_file_size > BLE_FILM_RAM_MAX_BYTES)
+                    {
+                        sys_loge(BEL_SERVICE_TAG, "RAM film size invalid: %u", (unsigned)m_film_trans_file_size);
+                        result = -1;
+                    }
+                    else
+                    {
+                        m_film_ram_buf = (uint8_t *)heap_caps_malloc(m_film_trans_file_size, MALLOC_CAP_SPIRAM);
+                        if(m_film_ram_buf == NULL)
+                        {
+                            sys_loge(BEL_SERVICE_TAG, "RAM film alloc failed: %u", (unsigned)m_film_trans_file_size);
+                            result = -1;
+                        }
+                        else
+                        {
+                            m_film_trans_received = 0;
+                            result = 0;
+                        }
+                    }
+                }
                 else
                 {
                     result = service_file_save_start(FILE_SAVE_BLE,
@@ -1077,6 +1111,22 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         {
             if((m_film_trans_state == BLE_FILM_TRANS_RECV_LEN || m_film_trans_state == BLE_FILM_TRANS_RECV_DATA) && cmd->len > 0)
             {
+                if(m_film_ram_buf != NULL)
+                {
+                    /* 内存直显：直接memcpy进整包缓冲 */
+                    if(cmd->len <= m_film_trans_file_size - m_film_trans_received)
+                    {
+                        memcpy(m_film_ram_buf + m_film_trans_received, cmd->pdata, cmd->len);
+                        m_film_trans_received += cmd->len;
+                        m_film_trans_state = BLE_FILM_TRANS_RECV_DATA;
+                    }
+                    else
+                    {
+                        sys_loge(BEL_SERVICE_TAG, "FILE_DATA: RAM overflow");
+                        ble_file_reset();
+                    }
+                    break;
+                }
                 uint8_t *pdata_copy = (uint8_t*)pvPortMalloc(cmd->len);
                 if(pdata_copy && cmd->len <= m_film_trans_file_size - m_film_trans_received)
                 {
@@ -1111,6 +1161,39 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                 {
                     auto_load = 0;
                 }
+
+                if(m_film_ram_buf != NULL)
+                {
+                    uint8_t *ram = m_film_ram_buf;
+                    m_film_ram_buf = NULL;
+                    if(m_film_trans_received != m_film_trans_file_size)
+                    {
+                        sys_loge(BEL_SERVICE_TAG, "RAM film incomplete: %d/%d",
+                                 (int)m_film_trans_received, (int)m_film_trans_file_size);
+                        heap_caps_free(ram);
+                        ble_file_reset();
+                        break;
+                    }
+                    if(!auto_load)
+                    {
+                        /* 静默批量上传：既不显示也不落卡，直接丢弃 */
+                        heap_caps_free(ram);
+                        m_film_trans_state = BLE_FILM_TRANS_STOPPED;
+                        break;
+                    }
+                    if(service_film_push_take(ram, m_film_trans_file_size) == 0)
+                    {
+                        sys_logi(BEL_SERVICE_TAG, "Film pushed to RAM: %d bytes", (int)m_film_trans_received);
+                        m_film_trans_state = BLE_FILM_TRANS_STOPPED;
+                    }
+                    else
+                    {
+                        sys_loge(BEL_SERVICE_TAG, "RAM film push failed");
+                        ble_file_reset();
+                    }
+                    break;
+                }
+
                 int result = -1;
                 if(m_film_trans_received == m_film_trans_file_size)
                     result = service_file_save_stop(FILE_SAVE_BLE, auto_load);
