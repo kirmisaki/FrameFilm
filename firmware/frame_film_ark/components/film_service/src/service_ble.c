@@ -811,6 +811,7 @@ reply:
  * 请求 DATA = dir(1) + offset(4 BE) + count(1) + name(UTF-8 + NUL)
  * 响应 DATA = status(1) + offset(4 BE) + total(4 BE) + bytes(0..180)
  */
+#if CONFIG_ARK_SCREENSHOT
 static void ble_file_path_read(const ble_cmd_t *cmd)
 {
     uint8_t out[9 + BLE_FILE_PATH_CHUNK_MAX] = {0};
@@ -908,6 +909,7 @@ reply:
     out[8] = (uint8_t)total;
     service_ble_send_resp(cmd->ch, out, (uint8_t)(9 + actual));
 }
+#endif /* CONFIG_ARK_SCREENSHOT */
 
 static void ble_cmd_publish_app(const ble_cmd_t *cmd)
 {
@@ -984,10 +986,13 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_CAPABILITIES_GET:
         {
             if(cmd->len != 0) break;
-            uint8_t capabilities[5] = {1, 0, 0, 0x03, 0x5F};
+            uint8_t capabilities[5] = {1, 0, 0, 0x01, 0x5F};
             /* flags 高位字节（bit8..）：
                bit8 = 按目录/文件名的列表/删除/读取（0x5B dir3 + 0x60 + 0x61）
-               bit9 = 上键双击截图（/sdcard/screenshot） */
+               bit9 = 上键双击截图（/sdcard/screenshot），仅 ARK_SCREENSHOT 开启 */
+#if CONFIG_ARK_SCREENSHOT
+            capabilities[3] |= 0x02;
+#endif
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
             capabilities[4] |= 0x20;  /* Experimental ABC9 playback. */
 #endif
@@ -1351,7 +1356,9 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         }
         case BLE_FILM_TRANS_CH_FILE_PATH_READ : // 按目录+文件名分块读取
         {
+#if CONFIG_ARK_SCREENSHOT
             ble_file_path_read(cmd);
+#endif
             break;
         }
         case BLE_FILM_TRANS_CH_FILE_LIST : // 查询文件列表

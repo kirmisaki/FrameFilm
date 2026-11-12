@@ -17,6 +17,16 @@ menu "Ark hardware"
             fall back to the built-in Montserrat/ASCII fonts. The 14px/18px
             Chinese UI body fonts are always included.
 
+    config ARK_SCREENSHOT
+        bool "Enable double-click UP screenshot"
+        default y
+        help
+            Double-click the UP key to save the current mono frame as a
+            single-frame .film under /sdcard/screenshot, and expose the
+            screenshot file management path (0x5B dir3 / 0x61 read).
+            n4r2 (4MB flash) turns this off to save flash and to keep the
+            UP key single-click latency at 50ms.
+
     config ARK_INPUT_BACK_KEY
         bool "Fourth key: BACK on GPIO18 (n16r8)"
         default n

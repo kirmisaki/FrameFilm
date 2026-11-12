@@ -48,7 +48,9 @@
 #include "app_manager.h"
 #include "app_render.h"
 #include "app_sleep.h"  /* app_sleep_run：主菜单长按 = 手动休眠 */
+#if CONFIG_ARK_SCREENSHOT
 #include "app_screenshot.h" /* 上键双击截图 */
+#endif
 #include "app_animation.h"  /* 动图按名播放（0x4F） */
 #if (SYS_NFC_ENABLE == 1)
 #include "app_wallet.h"
@@ -934,12 +936,14 @@ static uint8_t app_anim_play_by_name(const char *name)
 static app_input_result_t app_manager_process_input(input_press_type_t key)
 {
     /* 上键双击 = 全局截图：不参与 app 导航，也不受按键切换模式影响 */
+#if CONFIG_ARK_SCREENSHOT
     if(key == INPUT_PRESS_UP_DOUBLE)
     {
         sys_logi(APP_MANAGER_TAG, "screenshot: UP double click");
         (void)app_screenshot_capture();
         return APP_INPUT_CONSUMED;
     }
+#endif
 
     if(key == INPUT_PRESS_NONE || m_switch_mode == APP_SWITCH_MODE_NONE)
     {

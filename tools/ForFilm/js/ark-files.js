@@ -185,6 +185,8 @@
     var m_shotBusy = false;
     var m_shotLoadedFor = false;
     var m_connState = null;
+    var m_caps = null;
+    var m_capsQuerying = false;
 
     function shotStatus(text, error) {
         var el = document.getElementById('screenshot-status');
@@ -220,8 +222,33 @@
         var card = document.getElementById('screenshot-card');
         if (!card) return;
         var ark = typeof currentDeviceType !== 'undefined' && currentDeviceType === 'FRAMEFILMARK';
-        card.hidden = !(connected() && ark);
+        /* 只有固件宣告 bit9（截图能力）才显示管理卡片：n4r2 已关闭截图 */
+        card.hidden = !(connected() && ark && hasScreenshot(m_caps));
         if (card.hidden) m_shotLoadedFor = false;
+    }
+
+    function setCapabilities(caps) {
+        m_caps = caps;
+        syncShotVisibility();
+    }
+
+    function queryCaps() {
+        if (!connected() || m_capsQuerying || (root.ArkDevice && root.ArkDevice.busy())) return;
+        m_capsQuerying = true;
+        root.ArkDevice.run('查询截图能力', function (ctx) {
+            return ctx.request(CH_CAPS, new Uint8Array(), 3500);
+        }).then(function (caps) {
+            m_capsQuerying = false;
+            m_caps = caps;
+            syncShotVisibility();
+            var card = document.getElementById('screenshot-card');
+            if (card && !card.hidden && !m_shotLoadedFor && !(root.ArkDevice && root.ArkDevice.busy())) {
+                refreshShots();
+            }
+        }).catch(function () {
+            m_capsQuerying = false;
+            syncShotVisibility();
+        });
     }
 
     async function refreshShots() {
@@ -322,10 +349,11 @@
             m_connState = now;
             if (!now) {
                 m_shotLoadedFor = false;
+                m_caps = null;
                 shotStatus('设备已断开');
                 return;
             }
-            if (!card.hidden) refreshShots();
+            queryCaps();
         });
 
         document.querySelectorAll('.nav-item').forEach(function (item) {
@@ -342,7 +370,7 @@
 
         m_connState = connected();
         syncShotVisibility();
-        if (!card.hidden && m_connState) refreshShots();
+        if (m_connState) queryCaps();
     }
 
     root.ArkFiles = {
@@ -352,6 +380,7 @@
         connected: connected,
         hasFileMgmt: hasFileMgmt,
         hasScreenshot: hasScreenshot,
+        setCapabilities: setCapabilities,
         list: list,
         remove: remove,
         read: read,

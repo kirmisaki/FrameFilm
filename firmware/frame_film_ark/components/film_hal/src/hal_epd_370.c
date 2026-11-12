@@ -2285,6 +2285,7 @@ void hal_epd_display_mono(const unsigned char *mono_bitmap)
         m_mono_inited = true;
     }
 
+#if CONFIG_ARK_SCREENSHOT
     /* 截图缓存：只保留最近一次 mono 原始位图，UI 与直绘共用 */
     if (m_last_mono == NULL)
     {
@@ -2299,6 +2300,7 @@ void hal_epd_display_mono(const unsigned char *mono_bitmap)
         memcpy(m_last_mono, mono_bitmap, EPD_MONO_BYTES);
         m_last_mono_valid = true;
     }
+#endif
 
     epd_spectra_mono_display(mono_bitmap, false);
     epd_unlock();
@@ -2308,6 +2310,11 @@ void hal_epd_display_mono(const unsigned char *mono_bitmap)
 
 int hal_epd_snapshot_mono(uint8_t *dst, uint32_t len)
 {
+#if !CONFIG_ARK_SCREENSHOT
+    (void)dst;
+    (void)len;
+    return -1;
+#else
     if (dst == NULL || len < EPD_MONO_BYTES)
     {
         return -1;
@@ -2322,6 +2329,7 @@ int hal_epd_snapshot_mono(uint8_t *dst, uint32_t len)
     }
     epd_unlock();
     return result;
+#endif
 }
 
 uint32_t hal_epd_get_capabilities(void)

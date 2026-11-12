@@ -80,6 +80,9 @@ static void app_init_input_long(void);
 static void app_init_input_up(void);
 static void app_init_input_down(void);
 static void app_init_input_double(void);
+#if CONFIG_ARK_SCREENSHOT
+static void app_init_input_up_double(void);
+#endif
 #if (SYS_NFC_ENABLE == 1)
 static void app_init_input_back(void);
 #endif
@@ -302,10 +305,12 @@ static void app_init_input_double(void)
     app_manager_on_input(INPUT_PRESS_DOUBLE);
 }
 
+#if CONFIG_ARK_SCREENSHOT
 static void app_init_input_up_double(void)
 {
     app_manager_on_input(INPUT_PRESS_UP_DOUBLE);
 }
+#endif
 
 #if (SYS_NFC_ENABLE == 1)
 static void app_init_input_back(void)
@@ -322,7 +327,9 @@ static void app_init_register_inputs(void)
     hal_input_register_cb(INPUT_PRESS_UP,    app_init_input_up);
     hal_input_register_cb(INPUT_PRESS_DOWN,  app_init_input_down);
     hal_input_register_cb(INPUT_PRESS_DOUBLE, app_init_input_double);   // 确认键双击：退出 app
+#if CONFIG_ARK_SCREENSHOT
     hal_input_register_cb(INPUT_PRESS_UP_DOUBLE, app_init_input_up_double); // 上键双击：截图
+#endif
 #if (SYS_NFC_ENABLE == 1)
     hal_input_register_cb(INPUT_PRESS_BACK, app_init_input_back);       // n16r8 GPIO18 返回
 #endif

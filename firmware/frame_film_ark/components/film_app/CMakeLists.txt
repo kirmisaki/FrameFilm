@@ -9,7 +9,6 @@ set(srcs "core/app_init.c"
          "core/app_boot_cfg.c"
          "core/app_shell.c"
          "core/app_typography.c"
-         "core/app_screenshot.c"
          "pages/app_boot.c"
          "pages/app_menu.c"
          "pages/app_settings.c"
@@ -40,6 +39,10 @@ set(requires film_service film_hal film_sys film_ui)
 if(CONFIG_ARK_HAS_NFC)
     list(APPEND srcs "apps/wallet/app_wallet.c" "apps/wallet/app_wallet_store.c")
     list(APPEND private_include "apps/wallet")
+endif()
+
+if(CONFIG_ARK_SCREENSHOT)
+    list(APPEND srcs "core/app_screenshot.c")
 endif()
 
 idf_component_register(SRCS ${srcs}

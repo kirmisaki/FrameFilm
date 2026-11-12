@@ -1749,6 +1749,7 @@ async function setupBluetoothListener() {
             const caps = data.slice(3, -1);
             window.Ark512?.setCapabilities(caps);
             window.NfcWallet?.setCapabilities(caps);
+            window.ArkFiles?.setCapabilities(caps);
         }
         if (window.ArkDevice && window.ArkDevice.notification(data)) return;
 
