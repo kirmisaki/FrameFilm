@@ -13,9 +13,10 @@ TITLE_OUT = ARK / "components/film_ui/src/ui_fonts_title.c"
 WALLET_OUT = ARK / "components/film_ui/src/ui_fonts_wallet.c"
 BODY = ROOT / ".output/ark/SourceHanSansCN-Bold.otf"
 TITLE = ROOT / ".output/ark/SourceHanSansCN-Medium.otf"
+# 24/36px 标题字体只在中文界面使用（英文走 Montserrat），故不保留英文大写字母。
 LARGE_TEXT = {
-    24: "图片通行证模板时钟动图设置卡包IMAGEPASSTEMPLATECLOCKANIMATIONSETTINGS",
-    36: "通行证已休眠PASSSTANDBY",
+    24: "图片通行证模板时钟动图设置卡包",
+    36: "通行证已休眠",
 }
 TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.S)
 
@@ -129,8 +130,8 @@ def main() -> None:
     # Body fonts (14/18) are shared by n4r2 and n16r8.
     body_output = header("Source Han Sans CN Bold 16/18px body subsets.")
     for name, pixels, line, cap in (
-        (14, args.body_font, 16, 18, 14),
-        (18, args.body_font, 18, 22, 18),
+        (14, 16, 18, 14),
+        (18, 18, 22, 18),
     ):
         source, count = emit_font(name, args.body_font, pixels, all_chars, line, cap)
         body_output += source
@@ -140,8 +141,8 @@ def main() -> None:
     # be maintained independently without conditional code in the body font.
     title_output = header("Source Han Sans CN Medium 24/36px title subsets.")
     for name, pixels, line, cap in (
-        (24, args.title_font, 24, 28, 24),
-        (36, args.title_font, 36, 40, 36),
+        (24, 24, 28, 24),
+        (36, 36, 40, 36),
     ):
         chars = sorted({ord(c) for c in LARGE_TEXT[name]})
         source, count = emit_font(name, args.title_font, pixels, chars, line, cap)
