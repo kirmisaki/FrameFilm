@@ -47,6 +47,8 @@ void ui_display_release(void)               { }
 void ui_display_set_output(int enable)      { (void)enable; }
 void ui_display_invalidate_all(void)        { }
 int64_t ui_display_last_flush_us(void)      { return 0; }
+int ui_display_snapshot_mono(uint8_t *dst, uint32_t len)
+{ (void)dst; (void)len; return -1; }
 int ui_display_set_color_card(const uint8_t *pixels, int x, int y, int w, int h)
 { (void)pixels; (void)x; (void)y; (void)w; (void)h; return -1; }
 void ui_display_clear_color_card(void)      { }
@@ -55,6 +57,9 @@ void ui_display_clear_color_card(void)      { }
 
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include "lvgl.h"
 
@@ -86,6 +91,9 @@ static uint8_t *m_mono_buf = NULL;    /* 送驱动的 mono 位图（物理横向
 static uint8_t *m_color_buf = NULL;   /* 通行证彩色页临时整屏 ColorFast 8bpp */
 static const uint8_t *m_card_pixels = NULL;
 static int m_card_x, m_card_y, m_card_w, m_card_h;
+
+/* 保护 m_mono_buf：ui_task 的 flush 写、app_task 的截图读 */
+static SemaphoreHandle_t m_fb_lock = NULL;
 
 /* 输出闸门：app_task 侧 pause/page_exit 需要"立即"生效（防止正在进行的 flush
  * 覆盖随后绘制的直绘内容），而 ui_task 侧每帧都要读，故用 volatile 避免被缓存。 */
@@ -282,10 +290,12 @@ static void ui_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_m
         pal[0] = 0x00; pal[1] = 0x00; pal[2] = 0x00; pal[3] = 0xFF;   /* 索引 0：黑 */
         pal[4] = 0xFF; pal[5] = 0xFF; pal[6] = 0xFF; pal[7] = 0xFF;   /* 索引 1：白 */
 
+        if(m_fb_lock != NULL) xSemaphoreTake(m_fb_lock, portMAX_DELAY);
         if(m_card_pixels != NULL)
             ui_i1_to_color(px_map + UI_I1_PALETTE_BYTES, m_color_buf);
         else
             ui_i1_to_mono(px_map + UI_I1_PALETTE_BYTES, m_mono_buf);
+        if(m_fb_lock != NULL) xSemaphoreGive(m_fb_lock);
         int64_t t1 = esp_timer_get_time();
 
         /* 打开黑白快刷会话：UI 连续刷新（进度条逐格 / 连点换页）帧间省掉
@@ -329,6 +339,16 @@ int ui_display_acquire(void)
     if(m_disp != NULL)
     {
         return 0;   // 已申请
+    }
+
+    if(m_fb_lock == NULL)
+    {
+        m_fb_lock = xSemaphoreCreateMutex();
+        if(m_fb_lock == NULL)
+        {
+            sys_loge(UI_DISPLAY_TAG, "fb mutex create failed");
+            return -1;
+        }
     }
 
     /* 两块缓冲共 86KB；只在 UI 页存在期间持有（见 ui_display_acquire 说明）。
@@ -389,6 +409,7 @@ void ui_display_release(void)
         heap_caps_free(m_mono_buf);
         m_mono_buf = NULL;
     }
+    /* m_fb_lock 常驻：app_task 的截图可能与页面销毁同时发生，删锁会引入竞态 */
 }
 
 int ui_display_set_color_card(const uint8_t *pixels, int x, int y, int w, int h)
@@ -423,6 +444,25 @@ void ui_display_set_output(int enable)
 int64_t ui_display_last_flush_us(void)
 {
     return m_last_flush_us;
+}
+
+int ui_display_snapshot_mono(uint8_t *dst, uint32_t len)
+{
+    if(dst == NULL || len < UI_MONO_BYTES || m_mono_buf == NULL || m_disp == NULL)
+    {
+        return -1;
+    }
+
+    if(m_fb_lock != NULL) xSemaphoreTake(m_fb_lock, portMAX_DELAY);
+    /* 彩色卡页面走的是 m_color_buf，m_mono_buf 里仍是上一张黑白画面 */
+    if(m_card_pixels != NULL)
+    {
+        if(m_fb_lock != NULL) xSemaphoreGive(m_fb_lock);
+        return -2;
+    }
+    memcpy(dst, m_mono_buf, UI_MONO_BYTES);
+    if(m_fb_lock != NULL) xSemaphoreGive(m_fb_lock);
+    return 0;
 }
 
 void ui_display_invalidate_all(void)

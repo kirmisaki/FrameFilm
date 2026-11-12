@@ -878,6 +878,22 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- ⑤ 设备动图管理（列表样式与卡包一致） -->
+                <div class="card anim-card anim-card--device-list" id="animDeviceListCard">
+                    <div class="card__title">
+                        <span class="ic-wrap ic-wrap--mint"><svg class="ic" viewBox="0 0 24 24"><use href="#i-layers"/></svg></span>
+                        设备动图
+                        <span class="spacer"></span>
+                        <button type="button" class="icon-button" id="animDeviceListRefresh" title="刷新设备动图" data-ark-connected>
+                            <svg class="ic" viewBox="0 0 24 24"><use href="#i-refresh"/></svg>
+                        </button>
+                    </div>
+                    <div id="animDeviceListHint" class="field-hint">连接 Ark 后读取 /sdcard/animation</div>
+                    <div id="animDeviceList" class="wallet-list">
+                        <p class="field-hint">尚未读取</p>
+                    </div>
+                </div>
         </div>
 
         <!-- ================= Ark 通行证 ================= -->
@@ -1021,6 +1037,23 @@
                         关闭
                     </button>
                 </div>
+            </div>
+
+            <!-- 截图管理（Ark：上键双击截图，保存在 /sdcard/screenshot） -->
+            <div class="card" id="screenshot-card" hidden>
+                <div class="card__title">
+                    <span class="ic-wrap ic-wrap--coral"><svg class="ic" viewBox="0 0 24 24"><use href="#i-camera"/></svg></span>
+                    截图管理
+                    <span class="spacer"></span>
+                    <button type="button" class="icon-button" id="screenshot-refresh" title="刷新截图列表" data-ark-connected>
+                        <svg class="ic" viewBox="0 0 24 24"><use href="#i-refresh"/></svg>
+                    </button>
+                </div>
+                <p class="field-hint">在设备上双击上键截图，文件保存到 /sdcard/screenshot；这里可以下载或删除。</p>
+                <div id="screenshot-list" class="wallet-list">
+                    <p class="field-hint">尚未读取</p>
+                </div>
+                <div id="screenshot-status" class="field-hint" role="status"></div>
             </div>
 
             <div class="card">
@@ -1470,6 +1503,7 @@
 <script src="js/sz_enhanced.js"></script>
 <script src="js/bluetooth.js?rev=device-log-export-1"></script>
 <script src="js/ark-device.js?rev=ffb1a6487977"></script>
+<script src="js/ark-files.js?rev=ark-files-1"></script>
 <script src="js/firmware-mirror.js"></script>
 <script src="js/ark-firmware.js?rev=online-firmware-1"></script>
 <script src="js/classic-firmware.js?rev=online-firmware-1"></script>
@@ -1485,7 +1519,7 @@
 <script src="js/nfc-wallet.js?v=nfc-11"></script>
 <script src="js/batch.js?v=fix-1"></script>
 <script src="js/gif-decoder.js"></script>
-<script src="js/animation.js?v=ark-state-2"></script>
+<script src="js/animation.js?v=ark-device-list-1"></script>
 <!-- 串口烧录：esptool-js（内嵌，官方 bundle 转经典脚本，挂 window.ESPTOOL）+ 本仓库的烧录流程 -->
 <script src="js/esptool-js.js"></script>
 <script src="js/serial-flash.js?rev=online-firmware-1"></script>

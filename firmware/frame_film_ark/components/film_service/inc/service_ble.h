@@ -95,6 +95,11 @@ extern "C"{
 // 注：dock 固件没有 app 层（按键是 PC 键盘），未实现此号。
 #define BLE_FILM_TRANS_CH_CTRL_KEY_INJECT                  (0x4E) // 远程按键注入
 
+/* 动图按名播放：文件名 UTF-8 + NUL；设备解析 /sdcard/animation 列表后切到动图 app。
+   回包 1 字节 status：0 成功 / 1 不存在或不可播放 / 2 不支持 / 3 忙或休眠流程中 / 4 参数错误。
+   放在 0x4E 之后顺延，避免占用已分配的 app 参数通道。 */
+#define BLE_FILM_TRANS_CH_CTRL_ANIM_PLAY                   (0x4F)
+
 // Ark 临时直传：凭据仅在本次 RAM 会话使用，不改持久化 WiFi 配网。
 #define BLE_FILM_TRANS_CH_DIRECT_START                     (0x50)
 #define BLE_FILM_TRANS_CH_DIRECT_STATUS                    (0x51)
@@ -107,6 +112,14 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_DIRECT_OTA_APPLY (0x58)
 #define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open, bit4=SoftAP, bit5=ABC9 preview, bit6=hardware identity, bit7=NFC wallet
 #define BLE_FILM_TRANS_CH_STORAGE_CATALOG (0x5B) // Ark read-only storage/catalog
+/* 按目录 + 文件名管理（Ark，目录号 1=film 2=animation 3=screenshot）：
+   0x60 删除：dir(1) + 文件名 UTF-8 + NUL → status(1)
+   0x61 分块读取：dir(1) + offset(u32 BE) + count(1) + 文件名 UTF-8 + NUL
+                → status(1) + offset(u32 BE) + total(u32 BE) + bytes(0..180)
+   status：0 成功 / 1 不存在 / 2 IO 错误 / 4 参数错误 */
+#define BLE_FILM_TRANS_CH_FILE_PATH_DELETE (0x60)
+#define BLE_FILM_TRANS_CH_FILE_PATH_READ (0x61)
+#define BLE_FILE_PATH_CHUNK_MAX (180)
 #define BLE_FILM_TRANS_CH_DIRECT_FILE_START (0x5A) // SSID\0PASSWORD\0URL\0相对路径\0
 #define BLE_FILM_TRANS_CH_DIRECT_AP_PREPARE (0x5C) // 空请求：准备 SoftAP
 #define BLE_FILM_TRANS_CH_HARDWARE_INFO_GET (0x5D) // 空请求：查询硬件身份

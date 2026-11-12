@@ -362,6 +362,8 @@ body {
     color: var(--ink-soft);
 }
 
+.field-hint.is-error { color: var(--coral); }
+
 input[type="text"],
 input[type="password"],
 input[type="number"],

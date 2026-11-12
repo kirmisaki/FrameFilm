@@ -29,6 +29,8 @@
 /*********************************************************************
  * INCLUDES
  */
+#include <string.h>
+
 #include "sys_log.h"
 #include "sys_event.h"
 #include "hal_input.h"
@@ -82,6 +84,9 @@ static uint32_t m_frame_count = 0;    // 当前文件总帧数（RAM，不持久
 static uint32_t m_frame_idx = 0;      // 当前帧索引（RAM，不持久化）
 static uint32_t m_frame_acc_ms = 0;   // 帧分频累计（毫秒）
 static uint32_t m_loop_wait_ms = 0;   // 剩余循环间隔（毫秒），>0 表示处于两轮之间的停顿
+static uint32_t m_file_count_seen = 0; // 最近一次列表数量（删除/新增后据此重启）
+static char     m_pending_name[128];   // 一次性目标文件名（BLE 按名播放）
+static uint8_t  m_pending_open = 0;
 
 static const app_anim_state_t m_anim_default = {
     .play_mode = APP_ANIM_PLAY_SINGLE,
@@ -95,6 +100,7 @@ static const app_anim_state_t m_anim_default = {
 //  - 某一帧已上屏 → 立刻推下一帧（不必等下一个 100ms 心跳）
 static const uint16_t m_anim_events[] = {
     SYS_EVT_FILE_SAVED,
+    SYS_EVT_FILE_LIST,
     SYS_EVT_FILM_FRAME_DONE,
     0,
 };
@@ -114,6 +120,7 @@ static void anim_toggle_mode(void);
 static void anim_next_round(void);
 static void anim_advance(void);
 static void app_animation_on_downloaded(void);
+static void app_animation_sync_list(void);
 static const char *app_animation_enter_block_reason(void);
 
 /*********************************************************************
@@ -186,6 +193,7 @@ static void anim_start(uint32_t file_id, int persist)
     m_frame_idx = 0;
     m_frame_acc_ms = 0;
     m_loop_wait_ms = 0;
+    m_file_count_seen = service_file_get_count();
 
     /* 帧数 0 = 文件读不出来（格式未知 / 长度不足 / 已损坏）：
        不要再投递渲染，否则会每次空转一轮加载超时，表现为按键无响应 */
@@ -267,6 +275,39 @@ static void app_animation_on_downloaded(void)
 }
 
 /**
+ * @brief 列表数量变化（网页删除/新增）后重启当前文件
+ *
+ * 删除会让后续文件下标整体前移，原 file_id 可能已指向别的文件；
+ * 数量不变时不动（避免进页/上传时的重复刷新把播放打断）。
+ */
+static void app_animation_sync_list(void)
+{
+    uint32_t count = service_file_get_count();
+
+    if(count == m_file_count_seen)
+    {
+        return;
+    }
+    m_file_count_seen = count;
+
+    if(count == 0)
+    {
+        sys_logw(APP_ANIM_TAG, "all animation files removed");
+        m_frame_count = 0;
+        m_frame_idx = 0;
+        return;
+    }
+
+    if(m_anim.file_id >= count)
+    {
+        m_anim.file_id = 0;
+    }
+    sys_logi(APP_ANIM_TAG, "file list changed (count=%u), restart file=%u",
+             (unsigned)count, (unsigned)m_anim.file_id);
+    anim_start(m_anim.file_id, 0);
+}
+
+/**
  * @brief 进入前预检：动图目录里没有 .film 就拦下来（见 app_entry_t.enter_block_reason）
  *
  * 拦在菜单里，而不是切过去再发现目录是空的：切过去画面不会有任何变化，用户会
@@ -283,6 +324,15 @@ static const char *app_animation_enter_block_reason(void)
     /* 帧数取不到 = 文件头损坏 / 长度不足：进去也只有空屏，拦在菜单里说明原因。
        （超大文件不在此列：装不进 PSRAM 的会自动按帧从 SD 流式播放） */
     uint32_t id = (m_anim.file_id < service_file_get_count()) ? m_anim.file_id : 0;
+    if(m_pending_open)
+    {
+        uint32_t found = 0;
+        if(service_file_find_id(m_pending_name, &found) != 0)
+        {
+            return "ANIM FILE NOT FOUND";
+        }
+        id = found;
+    }
     if(service_film_get_frame_count(id) == 0)
     {
         return "ANIM FILE UNREADABLE";
@@ -310,6 +360,22 @@ static void app_animation_on_enter(void)
     {
         cur = 0;
     }
+
+    /* BLE 按名播放的一次性目标：此刻列表已由 app_manager 切好并等待就绪 */
+    if(m_pending_open)
+    {
+        uint32_t found = 0;
+        if(service_file_find_id(m_pending_name, &found) == 0)
+        {
+            cur = found;
+        }
+        else
+        {
+            sys_logw(APP_ANIM_TAG, "pending file not found: %s", m_pending_name);
+        }
+        m_pending_open = 0;
+    }
+
     anim_start(cur, 0);
 }
 
@@ -559,6 +625,13 @@ static void app_animation_on_event(const app_event_t *e)
                 app_animation_on_downloaded();
             }
             break;
+        case SYS_EVT_FILE_LIST:
+            /* 网页删除/新增会刷新列表：只在仍是当前 app 时处理 */
+            if(app_manager_get_current() == APP_ID_ANIMATION)
+            {
+                app_animation_sync_list();
+            }
+            break;
         case SYS_EVT_FILM_FRAME_DONE:
             /* 上一帧刚落屏：不等到下一个 100ms 心跳，立刻接上下一帧 */
             anim_advance();
@@ -571,4 +644,41 @@ static void app_animation_on_event(const app_event_t *e)
     default:
         break;
     }
+}
+
+uint8_t app_animation_open_name(const char *name)
+{
+    uint32_t file_id = 0;
+
+    if(name == NULL || name[0] == '\0' || service_file_get_count() == 0)
+    {
+        return 1;
+    }
+    if(service_file_find_id(name, &file_id) != 0)
+    {
+        sys_logw(APP_ANIM_TAG, "open name not found: %s", name);
+        return 1;
+    }
+    if(service_film_get_frame_count(file_id) == 0)
+    {
+        sys_logw(APP_ANIM_TAG, "open name unplayable: %s", name);
+        return 1;
+    }
+
+    anim_start(file_id, 1);
+    return 0;
+}
+
+void app_animation_request_open(const char *name)
+{
+    if(name == NULL || name[0] == '\0')
+    {
+        m_pending_open = 0;
+        m_pending_name[0] = '\0';
+        return;
+    }
+
+    strncpy(m_pending_name, name, sizeof(m_pending_name) - 1);
+    m_pending_name[sizeof(m_pending_name) - 1] = '\0';
+    m_pending_open = 1;
 }

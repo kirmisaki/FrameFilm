@@ -457,6 +457,9 @@ body:not(.show-anim-tab) .nav-item[data-page="anim-page"] { display: none; }
     #anim-page.active > .anim-card--preview,
     #anim-page.active > .anim-card--output { grid-column: 2; }
 
+    /* 设备动图管理跨满整行（列表较长，放单栏会挤） */
+    #anim-page.active > .anim-card--device-list { grid-column: 1 / -1; }
+
     .anim-modes .mode-button { flex: 0 0 auto; padding: 10px 16px; }
     .anim-frames { overflow-x: visible; flex-wrap: wrap; }
 }

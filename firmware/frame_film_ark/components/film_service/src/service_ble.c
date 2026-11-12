@@ -649,6 +649,7 @@ static bool ble_cmd_conflicts_with_direct(const ble_cmd_t *cmd)
     case BLE_FILM_TRANS_CH_OTA_START:
     case BLE_FILM_TRANS_CH_DEVICE_NAME_SET:
     case BLE_FILM_TRANS_CH_CTRL_APP_SWITCH:
+    case BLE_FILM_TRANS_CH_CTRL_ANIM_PLAY:
     case BLE_FILM_TRANS_CH_CTRL_KEY_INJECT:
     case BLE_FILM_TRANS_CH_APP_IMAGE_PARAM:
     case BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM:
@@ -805,6 +806,109 @@ reply:
     service_ble_send_resp(BLE_FILM_TRANS_CH_PROFILE_READ, out, (uint8_t)(9 + actual));
 }
 
+/*
+ * 按目录 + 文件名分块读取（0x61）。用于下载截图等不在当前 app 列表里的文件。
+ * 请求 DATA = dir(1) + offset(4 BE) + count(1) + name(UTF-8 + NUL)
+ * 响应 DATA = status(1) + offset(4 BE) + total(4 BE) + bytes(0..180)
+ */
+static void ble_file_path_read(const ble_cmd_t *cmd)
+{
+    uint8_t out[9 + BLE_FILE_PATH_CHUNK_MAX] = {0};
+    uint32_t offset = 0;
+    uint32_t total = 0;
+    uint8_t count = 0;
+    size_t actual = 0;
+    FILE *fp = NULL;
+    const char *dir = NULL;
+    const char *name = NULL;
+    char path[512];
+
+    if(cmd->len < 7 || cmd->pdata == NULL)
+    {
+        out[0] = 4;
+        goto reply;
+    }
+
+    dir = service_file_dir_path(cmd->pdata[0]);
+    offset = ((uint32_t)cmd->pdata[1] << 24) | ((uint32_t)cmd->pdata[2] << 16) |
+             ((uint32_t)cmd->pdata[3] << 8) | (uint32_t)cmd->pdata[4];
+    count = cmd->pdata[5];
+    name = (const char *)&cmd->pdata[6];
+
+    if(dir == NULL || count == 0 || count > BLE_FILE_PATH_CHUNK_MAX ||
+       memchr(name, '\0', (size_t)(cmd->len - 6)) == NULL ||
+       !service_file_name_valid(name))
+    {
+        out[0] = 4;
+        goto reply;
+    }
+
+    if(hal_sd_get_status() != SD_MOUNT)
+    {
+        out[0] = 1;
+        goto reply;
+    }
+    if(snprintf(path, sizeof(path), "%s/%s", dir, name) >= (int)sizeof(path))
+    {
+        out[0] = 4;
+        goto reply;
+    }
+
+    fp = fopen(path, "rb");
+    if(fp == NULL)
+    {
+        out[0] = errno == ENOENT ? 1 : 2;
+        goto reply;
+    }
+    if(fseek(fp, 0, SEEK_END) != 0)
+    {
+        out[0] = 2;
+        goto reply;
+    }
+    long size = ftell(fp);
+    if(size < 0)
+    {
+        out[0] = 2;
+        goto reply;
+    }
+    total = (uint32_t)size;
+    if(offset > total)
+    {
+        out[0] = 4;
+        goto reply;
+    }
+    if(fseek(fp, (long)offset, SEEK_SET) != 0)
+    {
+        out[0] = 2;
+        goto reply;
+    }
+    if(count > total - offset)
+    {
+        count = (uint8_t)(total - offset);
+    }
+    if(count > 0)
+    {
+        actual = fread(&out[9], 1, count, fp);
+        if(actual != count)
+        {
+            actual = 0;
+            out[0] = 2;
+        }
+    }
+
+reply:
+    if(fp != NULL) fclose(fp);
+    out[1] = (uint8_t)(offset >> 24);
+    out[2] = (uint8_t)(offset >> 16);
+    out[3] = (uint8_t)(offset >> 8);
+    out[4] = (uint8_t)offset;
+    out[5] = (uint8_t)(total >> 24);
+    out[6] = (uint8_t)(total >> 16);
+    out[7] = (uint8_t)(total >> 8);
+    out[8] = (uint8_t)total;
+    service_ble_send_resp(cmd->ch, out, (uint8_t)(9 + actual));
+}
+
 static void ble_cmd_publish_app(const ble_cmd_t *cmd)
 {
     /* payload: [0]=ch, [1..]=命令数据，值语义拷贝，app 侧在自身任务执行 */
@@ -880,7 +984,10 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_CAPABILITIES_GET:
         {
             if(cmd->len != 0) break;
-            uint8_t capabilities[5] = {1, 0, 0, 0, 0x5F};
+            uint8_t capabilities[5] = {1, 0, 0, 0x03, 0x5F};
+            /* flags 高位字节（bit8..）：
+               bit8 = 按目录/文件名的列表/删除/读取（0x5B dir3 + 0x60 + 0x61）
+               bit9 = 上键双击截图（/sdcard/screenshot） */
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
             capabilities[4] |= 0x20;  /* Experimental ABC9 playback. */
 #endif
@@ -916,7 +1023,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                 }
                 length = 26;
             }
-            else if(cmd->len == 5 && (cmd->pdata[0] == 1 || cmd->pdata[0] == 2))
+            else if(cmd->len == 5 && (cmd->pdata[0] >= 1 && cmd->pdata[0] <= 3))
             {
                 uint32_t index = ((uint32_t)cmd->pdata[1]<<24) | ((uint32_t)cmd->pdata[2]<<16) |
                                  ((uint32_t)cmd->pdata[3]<<8) | cmd->pdata[4];
@@ -1223,6 +1330,28 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                 sys_logi(BEL_SERVICE_TAG, "Delete file id: %d", file_id);
                 service_file_delete(file_id);
             }
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_PATH_DELETE : // 按目录+文件名删除
+        {
+            uint8_t status = 4;
+            if(cmd->len >= 3)
+            {
+                const char *name = (const char *)&cmd->pdata[1];
+                if(memchr(name, '\0', (size_t)(cmd->len - 1)) != NULL &&
+                   service_file_name_valid(name))
+                {
+                    status = (uint8_t)service_file_delete_in_dir(cmd->pdata[0], name);
+                    sys_logi(BEL_SERVICE_TAG, "Delete dir=%u name=%s status=%u",
+                             (unsigned)cmd->pdata[0], name, (unsigned)status);
+                }
+            }
+            service_ble_send_resp(cmd->ch, &status, 1);
+            break;
+        }
+        case BLE_FILM_TRANS_CH_FILE_PATH_READ : // 按目录+文件名分块读取
+        {
+            ble_file_path_read(cmd);
             break;
         }
         case BLE_FILM_TRANS_CH_FILE_LIST : // 查询文件列表
@@ -1768,6 +1897,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         // app 相关通道（0x4B 切 app / 0x45~0x4A 参数通道 / 0x63~0x69 NFC 卡包）：BLE 层不解析语义，
         // 整包上浮给 app 层，由 app_manager 按 ch 归属路由（0x4B 走切换逻辑，0x45~0x4A 走目标 app 的参数读写）
         case BLE_FILM_TRANS_CH_CTRL_APP_SWITCH :
+        case BLE_FILM_TRANS_CH_CTRL_ANIM_PLAY :
         case BLE_FILM_TRANS_CH_APP_IMAGE_PARAM :
         case BLE_FILM_TRANS_CH_APP_IMAGE_PARAM_GET :
         case BLE_FILM_TRANS_CH_APP_TEMPLATE_PARAM :

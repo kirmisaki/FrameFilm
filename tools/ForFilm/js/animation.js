@@ -1737,6 +1737,7 @@ async function animUpload() {
                 : '已归档到 /sdcard/animation，可在设备「动画」里查看') +
             '</span>', 'success');
         showMessage('动画已发送到设备', 'success');
+        animRefreshDeviceList(true);
     } catch (err) {
         filmTransState = BLE_FILM_TRANS_STATE_IDLE;
         legacyFilmTransferActive = false;
@@ -1766,6 +1767,110 @@ async function animPlayOnDevice(silentParams) {
         if (!silentParams) showMessage('下发失败：' + err.message, 'error');
         return false;
     }
+}
+
+/* ============================================================
+   12.5 设备动图列表（Ark /sdcard/animation）
+   ============================================================ */
+
+var animDeviceNames = [];
+var animDeviceListBusy = false;
+var animDeviceListLoaded = false;
+var animLastArkConnected = null;
+
+function animSetDeviceListHint(text, isError) {
+    var el = document.getElementById('animDeviceListHint');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('is-error', !!isError);
+}
+
+function animRenderDeviceList() {
+    var list = document.getElementById('animDeviceList');
+    if (!list) return;
+    if (!animDeviceNames.length) {
+        list.innerHTML = '<p class="field-hint">设备上还没有动图。</p>';
+        return;
+    }
+    var html = '<div class="wallet-rows">';
+    for (var i = 0; i < animDeviceNames.length; i++) {
+        html += '<div class="wallet-row">' +
+            '<div class="wallet-row__body">' +
+            '<div class="wallet-row__name">' + animEscape(animDeviceNames[i]) + '</div>' +
+            '<div class="wallet-row__meta">/sdcard/animation · .film</div>' +
+            '</div>' +
+            '<div class="wallet-row-actions">' +
+            '<button type="button" class="secondary-button" data-anim-device-action="play" data-anim-device-index="' + i + '">播放</button>' +
+            '<button type="button" class="secondary-button" data-anim-device-action="delete" data-anim-device-index="' + i + '">删除</button>' +
+            '</div></div>';
+    }
+    list.innerHTML = html + '</div>';
+}
+
+function animRefreshDeviceList(force) {
+    if (animDeviceListBusy) return Promise.resolve();
+    if (!force && animDeviceListLoaded) return Promise.resolve();
+    if (!animDeviceReady() || !window.ArkFiles) {
+        animDeviceNames = [];
+        animRenderDeviceList();
+        animSetDeviceListHint('连接 Ark 后读取 /sdcard/animation');
+        animDeviceListLoaded = false;
+        return Promise.resolve();
+    }
+
+    animDeviceListBusy = true;
+    animSetDeviceListHint('正在读取设备动图…');
+    return window.ArkFiles.run('读取设备动图', function (ctx) {
+        return window.ArkFiles.list(ctx, window.ArkFiles.DIR_ANIM);
+    }).then(function (names) {
+        animDeviceNames = names || [];
+        animDeviceListLoaded = true;
+        animRenderDeviceList();
+        animSetDeviceListHint(animDeviceNames.length
+            ? ('共 ' + animDeviceNames.length + ' 个动图')
+            : '设备上还没有动图');
+    }).catch(function (err) {
+        animDeviceNames = [];
+        animRenderDeviceList();
+        animSetDeviceListHint('读取失败：' + err.message, true);
+    }).finally(function () {
+        animDeviceListBusy = false;
+    });
+}
+
+function animPlayDeviceFile(index) {
+    var name = animDeviceNames[index];
+    if (!name) return;
+    if (!animDeviceReady() || !window.ArkFiles) {
+        showMessage('请先连接 Ark', 'error');
+        return;
+    }
+    window.ArkFiles.run('播放设备动图', function (ctx) {
+        return window.ArkFiles.playAnimation(ctx, name, {
+            playMode: animSelectedPlayMode(),
+            frameMs: animFrameMs(),
+            loopSeconds: animLoopSeconds()
+        });
+    }).then(function () {
+        showMessage('已在设备上播放 ' + name, 'success');
+    }).catch(function (err) {
+        showMessage('播放失败：' + err.message, 'error');
+    });
+}
+
+function animDeleteDeviceFile(index) {
+    var name = animDeviceNames[index];
+    if (!name) return;
+    if (!confirm('从设备 SD 卡删除动图 ' + name + '？')) return;
+    if (!window.ArkFiles) return;
+    window.ArkFiles.run('删除设备动图', function (ctx) {
+        return window.ArkFiles.remove(ctx, window.ArkFiles.DIR_ANIM, name);
+    }).then(function () {
+        showMessage('已删除 ' + name, 'success');
+        animRefreshDeviceList(true);
+    }).catch(function (err) {
+        showMessage('删除失败：' + err.message, 'error');
+    });
 }
 
 function animSelectedPlayMode() {
@@ -1841,6 +1946,7 @@ function animSyncDeviceAvailability() {
     var ready = animDeviceReady();
 
     animSyncNavVisibility();
+    if (!ready) animDeviceListLoaded = false;
     if (panel) {
         panel.classList.toggle('is-disabled', !ready);
     }
@@ -1870,6 +1976,7 @@ function animSyncDeviceAvailability() {
 function animOnPageEnter() {
     animRefreshFrames();
     animSyncDeviceAvailability();
+    animRefreshDeviceList(false);
     animRenderDrawCanvas();
     animUpdateDrawSize();
     animUpdateStageScale();
@@ -2071,6 +2178,33 @@ function initAnimationStudio() {
         animPlayOnDevice(false).then(function (ok) {
             if (ok) showMessage('已切到设备动画并下发播放参数', 'success');
         });
+    });
+
+    // 设备动图列表：刷新 / 播放 / 删除
+    var devRefresh = document.getElementById('animDeviceListRefresh');
+    if (devRefresh) devRefresh.addEventListener('click', function () {
+        animRefreshDeviceList(true);
+    });
+    var devList = document.getElementById('animDeviceList');
+    if (devList) devList.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('button[data-anim-device-action]') : null;
+        if (!btn) return;
+        var index = parseInt(btn.getAttribute('data-anim-device-index'), 10);
+        if (!(index >= 0 && index < animDeviceNames.length)) return;
+        if (btn.getAttribute('data-anim-device-action') === 'play') animPlayDeviceFile(index);
+        else animDeleteDeviceFile(index);
+    });
+    window.addEventListener('ark-device-state', function () {
+        var now = animDeviceReady();
+        /* 只在连接状态翻转时刷新：run 的 busy 事件不能反复触发读取 */
+        if (now === animLastArkConnected) return;
+        animLastArkConnected = now;
+        if (!now) {
+            animDeviceListLoaded = false;
+            return;
+        }
+        var page = document.getElementById('anim-page');
+        if (page && page.classList.contains('active')) animRefreshDeviceList(false);
     });
 
     animSetMode('draw');

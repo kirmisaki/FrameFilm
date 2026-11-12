@@ -48,6 +48,8 @@
 #include "app_manager.h"
 #include "app_render.h"
 #include "app_sleep.h"  /* app_sleep_run：主菜单长按 = 手动休眠 */
+#include "app_screenshot.h" /* 上键双击截图 */
+#include "app_animation.h"  /* 动图按名播放（0x4F） */
 #if (SYS_NFC_ENABLE == 1)
 #include "app_wallet.h"
 #endif
@@ -141,6 +143,7 @@ static uint8_t app_do_switch_target(app_id_t id, const char *filename);
 static void app_menu_notice(const char *why);
 static void app_manager_sleep_from_app(void);
 static int app_sleep_keeps_screen(void);
+static uint8_t app_anim_play_by_name(const char *name);
 static int app_param_ch_route(uint8_t ch, const uint8_t *data, uint8_t len);
 static app_input_result_t app_manager_process_input(input_press_type_t key);
 static void app_input_dispatch(input_press_type_t key);
@@ -621,9 +624,23 @@ static void app_handle_event(const app_event_t *e)
         /* 调度器级：BLE 请求切换 app（payload: [0]=命令通道，[1]=目标 app id） */
         if((uint16_t)e->cmd == SYS_EVT_BLE_APP_CMD)
         {
+            if(e->len < 1)
+            {
+                return;
+            }
             if(e->len == 2 && e->payload[0] == BLE_FILM_TRANS_CH_CTRL_APP_SWITCH)
             {
                 app_do_switch((app_id_t)e->payload[1]);
+            }
+            /* 动图按名播放（payload: [0]=0x4F, [1..]=文件名 + '\0'） */
+            else if(e->payload[0] == BLE_FILM_TRANS_CH_CTRL_ANIM_PLAY)
+            {
+                uint8_t status = 4;
+                if(e->len >= 2 && memchr(&e->payload[1], '\0', (size_t)(e->len - 1)) != NULL)
+                {
+                    status = app_anim_play_by_name((const char *)&e->payload[1]);
+                }
+                service_ble_send_resp(BLE_FILM_TRANS_CH_CTRL_ANIM_PLAY, &status, 1);
             }
             /* 远程按键注入（payload: [0]=命令通道，[1]=键值）：
                映射成与 HAL 上报同款事件入队，完整复用既有语义
@@ -875,8 +892,54 @@ static void app_manager_sleep_from_app(void)
     app_sleep_run(show_card);
 }
 
+/**
+ * @brief BLE 0x4F：按文件名播放动画（网页设备动图列表的"播放"）
+ *
+ * 已经在动画 app 时直接在当前列表里解析；否则先登记一次性目标再切 app，
+ * 由 on_enter 在列表就绪后解析 —— 不在外部临时切换 service_file 目录，
+ * 避免打断正在播放的图片/动图。
+ *
+ * @return 0 成功；1 文件不存在/不可播放；2 不支持；3 设备忙/休眠流程中；4 参数错误
+ */
+static uint8_t app_anim_play_by_name(const char *name)
+{
+    if(name == NULL || name[0] == '\0')
+    {
+        return 4;
+    }
+    if(!app_is_registered(APP_ID_ANIMATION))
+    {
+        return 2;
+    }
+
+    if(m_current_app == APP_ID_ANIMATION && m_app_running)
+    {
+        return (app_animation_open_name(name) == 0) ? 0 : 1;
+    }
+
+    app_animation_request_open(name);
+    uint8_t status = app_do_switch_target(APP_ID_ANIMATION, NULL);
+    if(status != 0)
+    {
+        app_animation_request_open(NULL);
+        /* 预检失败（找不到文件/文件不可读）统一按"不可播放"回给网页 */
+        if(status == 2)
+        {
+            status = 1;
+        }
+    }
+    return status;
+}
+
 static app_input_result_t app_manager_process_input(input_press_type_t key)
 {
+    /* 上键双击 = 全局截图：不参与 app 导航，也不受按键切换模式影响 */
+    if(key == INPUT_PRESS_UP_DOUBLE)
+    {
+        (void)app_screenshot_capture();
+        return APP_INPUT_CONSUMED;
+    }
+
     if(key == INPUT_PRESS_NONE || m_switch_mode == APP_SWITCH_MODE_NONE)
     {
         return APP_INPUT_PASS;   // 未开启按键切换：全部按键放行给当前 app（BLE 远程切换不受影响）

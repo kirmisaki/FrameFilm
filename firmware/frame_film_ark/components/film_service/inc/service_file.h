@@ -25,6 +25,7 @@ extern "C" {
 #define FILE_TAG                    "file"
 #define FILM_DIR                    "/sdcard/film"
 #define ANIM_DIR                    "/sdcard/animation"
+#define SCREENSHOT_DIR              "/sdcard/screenshot"
 #define FILM_FILE_EXT               ".film"
 
 #define FILE_LOAD_STATE_NONE        (0)
@@ -319,6 +320,32 @@ extern int service_file_is_load_failed(uint32_t file_id);
  * @return int 0:成功, -1:失败
  */
 extern int service_file_delete(uint32_t file_id);
+
+/**
+ * @brief 目录号 → SD 卡目录路径
+ *
+ * @param directory 1=/sdcard/film 2=/sdcard/animation 3=/sdcard/screenshot
+ * @return 目录常量；非法目录号返回 NULL
+ */
+extern const char *service_file_dir_path(uint8_t directory);
+
+/**
+ * @brief 校验"单级文件名"是否安全可用
+ *
+ * 拒绝空名、路径分隔符、"." / ".." 以及超长名字，供按名删除/读取命令使用。
+ */
+extern bool service_file_name_valid(const char *name);
+
+/**
+ * @brief 按文件名删除指定目录下的文件
+ *
+ * 与 service_file_delete()（按当前列表下标）不同：本接口不依赖当前工作目录，
+ * 用于网页管理 /sdcard/animation 与 /sdcard/screenshot。
+ * 若删除的正是当前工作目录，会作废已加载缓冲并异步刷新列表。
+ *
+ * @return 0 成功；1 文件不存在；2 参数/IO 错误
+ */
+extern int service_file_delete_in_dir(uint8_t directory, const char *name);
 
 
 #ifdef __cplusplus

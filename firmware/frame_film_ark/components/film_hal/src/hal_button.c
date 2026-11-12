@@ -118,11 +118,13 @@ void hal_input_init(void)
     memset(&m_button_mgr, 0, sizeof(m_button_mgr));
 
     // 初始化上/右按键
+    /* 上键要认双击（截图），与确认键同理：short_press_time 兼作双击配对窗口，
+       取 50ms 时双击必被判成两次单击。代价是单击上键晚一个窗口下发。 */
     button_config_t up_cfg =
     {
         .type = BUTTON_TYPE_GPIO,
         .long_press_time = BUTTON_LONG_PRESS_TIME_MS,
-        .short_press_time = BUTTON_SHORT_PRESS_TIME_MS,
+        .short_press_time = BUTTON_DOUBLE_CLICK_WINDOW_MS,
         .gpio_button_config = {
             .gpio_num = BUTTON_PIN_UP,
             .active_level = BUTTON_ACTIVE_LEVEL,
@@ -133,6 +135,8 @@ void hal_input_init(void)
     {
         iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_SINGLE_CLICK, button_up_cb, NULL);
         iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_LONG_PRESS_START, button_up_cb, NULL);
+        /* 双击只发 DOUBLE_CLICK、不发 SINGLE_CLICK（库内部已消歧），用于全局截图 */
+        iot_button_register_cb(m_button_mgr.buttons[0].handle, BUTTON_DOUBLE_CLICK, button_up_cb, NULL);
         m_button_mgr.buttons[0].initialized = true;
         sys_logi(BUTTON_TAG, "UP button initialized");
     }
@@ -277,6 +281,11 @@ static void button_up_cb(void *button_handle, void *usr_data)
     {
         sys_logi(BUTTON_TAG, "UP LONG PRESS");
         trigger_callbacks(INPUT_PRESS_UP);
+    }
+    else if (event == BUTTON_DOUBLE_CLICK)
+    {
+        sys_logi(BUTTON_TAG, "UP DOUBLE PRESS");
+        trigger_callbacks(INPUT_PRESS_UP_DOUBLE);
     }
 }
 

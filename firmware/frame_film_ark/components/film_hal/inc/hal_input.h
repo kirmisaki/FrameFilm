@@ -37,6 +37,7 @@ typedef enum {
     INPUT_PRESS_PRESSED,
     INPUT_PRESS_DOUBLE, // 确认键双击（app_manager 用它"退出 app"）
     INPUT_PRESS_BACK,   // n16r8 的 GPIO18 返回键
+    INPUT_PRESS_UP_DOUBLE, // 上键双击（截图，追加在末尾以保持既有枚举值不变）
     INPUT_PRESS_MAX,
 } input_press_type_t;
 

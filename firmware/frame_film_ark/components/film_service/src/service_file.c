@@ -1581,11 +1581,64 @@ int service_file_delete(uint32_t file_id)
     }
 }
 
+const char *service_file_dir_path(uint8_t directory)
+{
+    switch(directory)
+    {
+    case 1: return FILM_DIR;
+    case 2: return ANIM_DIR;
+    case 3: return SCREENSHOT_DIR;
+    default: return NULL;
+    }
+}
+
+bool service_file_name_valid(const char *name)
+{
+    if(name == NULL || name[0] == '\0') return false;
+    if(strlen(name) >= 128) return false;
+    if(strcmp(name, ".") == 0 || strcmp(name, "..") == 0) return false;
+    /* 只接受目录内的单级文件名，避免 "../" 之类越界访问 */
+    return strchr(name, '/') == NULL && strchr(name, '\\') == NULL;
+}
+
+int service_file_delete_in_dir(uint8_t directory, const char *name)
+{
+    const char *dir = service_file_dir_path(directory);
+
+    if(dir == NULL || !service_file_name_valid(name)) return 2;
+
+    char filepath[512];
+    if(snprintf(filepath, sizeof(filepath), "%s/%s", dir, name) >= (int)sizeof(filepath))
+    {
+        return 2;
+    }
+
+    struct stat st;
+    if(stat(filepath, &st) != 0) return 1;
+    if(!S_ISREG(st.st_mode)) return 2;
+
+    if(remove(filepath) != 0)
+    {
+        sys_logw(FILE_TAG, "Failed to delete %s (errno=%d)", filepath, errno);
+        return errno == ENOENT ? 1 : 2;
+    }
+
+    sys_logi(FILE_TAG, "Deleted %s", filepath);
+
+    /* 删的是当前工作目录里的文件：列表/缓冲都必须跟着失效 */
+    if(strcmp(m_file_active_dir, dir) == 0)
+    {
+        file_invalidate_buffer();
+        service_file_refresh_list();
+    }
+    return 0;
+}
+
 /* No set_dir/refresh/clean or playback state mutation; missing directory is empty. */
 int service_file_catalog(uint8_t directory, uint32_t index, uint32_t *count,
                          char *name, size_t name_size)
 {
-    const char *path = directory == 1 ? FILM_DIR : directory == 2 ? ANIM_DIR : NULL;
+    const char *path = service_file_dir_path(directory);
     if(!path || !count || (name && name_size == 0)) return 3;
     *count = 0;
     if(name) name[0] = '\0';

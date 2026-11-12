@@ -43,6 +43,23 @@ extern "C" {
  */
 extern const app_entry_t g_app_animation_entry;
 
+/**
+ * @brief 当前已在动图 app 内：按文件名切换并立即播放
+ *
+ * @return 0 成功；1 文件不存在/不可播放
+ */
+uint8_t app_animation_open_name(const char *name);
+
+/**
+ * @brief 登记一次性目标文件：下次进入动图 app 时按名打开
+ *
+ * 用于 BLE 远程播放选中：app_manager 先登记名字再切 app，
+ * 由 on_enter 在列表就绪后解析，避免在外部临时切换文件目录。
+ *
+ * @param name 文件名；NULL 清除登记
+ */
+void app_animation_request_open(const char *name);
+
 #ifdef __cplusplus
 }
 #endif

@@ -2,7 +2,7 @@
 
 > AI 开发快速参考 — 完整命令列表、数据格式、使用示例
 >
-> 协议在冰箱贴固件（`frame_film` 三机型 / `frame_film_ark` 单机型）**同源**（命令值与回包格式一致）；但 **app 通道（`0x45~0x4E`、含 App 控制/参数/时间同步/远程按键）只有 `frame_film_ark` 实现**，`frame_film` 会直接忽略（其命令表止于 `0x00~0x42`）；底座 `frame_film_dock` 另有专属通道。
+> 协议在冰箱贴固件（`frame_film` 三机型 / `frame_film_ark` 单机型）**同源**（命令值与回包格式一致）；但 **app 通道（`0x45~0x4F`、含 App 控制/参数/时间同步/远程按键/动图按名播放）只有 `frame_film_ark` 实现**，`frame_film` 会直接忽略（其命令表止于 `0x00~0x42`）；底座 `frame_film_dock` 另有专属通道。
 
 ## 数据包格式
 
@@ -88,8 +88,9 @@
 | 0x4A | APP_ANIM_PARAM_GET | ↑ | TLV | 动图 app 参数查询 |
 | 0x4B | APP_SWITCH | ↓ | uint8 | 切换 app（app_id 见下），不回包 |
 | 0x4C | APP_CURRENT_GET | ↑ | uint8 | 查询当前 app（0xFF=未知） |
+| 0x4F | ANIM_PLAY | ↓ + ↑ | 文件名 UTF-8 + NUL | 按文件名播放动图并切到动图 app，回 1B status |
 
-> **适用固件**：`0x42` 三套固件均有；`0x45` ~ `0x4C` **仅通行证版 `frame_film_ark` 实现**，`frame_film`（三机型）会直接忽略。
+> **适用固件**：`0x42` 三套固件均有；`0x45` ~ `0x4F` **仅通行证版 `frame_film_ark` 实现**，`frame_film`（三机型）会直接忽略。
 >
 > `0x43` / `0x44` 为 **Dock 底座专属**通道（键盘键值），冰箱贴固件不使用，故 app 控制通道跳号到 `0x4B` / `0x4C`。
 
@@ -137,8 +138,20 @@ TLV = `[TAG(1B)][LEN(1B)][VALUE(LEN B)]...`；查询通道 = 设置通道 + 1；
 
 详情见 `blecmd_protocol.md` §3.10 / §4.10。
 
-## 播放模式枚举
+## 文件管理与截图 (0x5B 目录3 / 0x60 / 0x61) v1.20
 
+> **适用固件**：仅 `frame_film_ark`；客户端按 0x59 bit8（文件管理）/ bit9（截图）判断。
+
+| CH | 名称 | 方向 | 数据 | 说明 |
+|----|------|------|------|------|
+| 0x5B | STORAGE_CATALOG | ↑ | dir(1)+index(u32 BE) | dir 1=film / 2=animation / 3=screenshot |
+| 0x60 | FILE_PATH_DELETE | ↓ + ↑ | dir(1)+文件名 UTF-8+NUL | 按名删除，回 1B status |
+| 0x61 | FILE_PATH_READ | ↓ + ↑ | dir(1)+offset(u32 BE)+count(1)+文件名 UTF-8+NUL | 分块读取，回 status+offset+total+bytes |
+
+- 上键双击截图：保存单帧 MonoFast `.film`（720×480，43200B）到 `/sdcard/screenshot`
+- 仅 UI 层页面可截图；图片/模板/动图为直绘层，不生成截图
+
+## 播放模式枚举
 > **[已废弃]** 下列 CTRL_MODE (0x20) 枚举已下线，播放模式语义下移到图片 app 参数通道（`0x45` 的 `play_mode` / `auto_interval`）。
 
 | 值 | 名称 | 说明 |
