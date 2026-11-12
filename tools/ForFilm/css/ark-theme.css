@@ -175,3 +175,10 @@ body.theme-ark :is(.mode-button.active,.kb-event-tab.active,.kb-key.active,.anim
 }
 @media(prefers-reduced-motion:reduce){body.theme-ark :is(button,a,input,select,textarea){transition:none}}
 @media(min-width:900px) and (max-width:1100px){body.theme-ark #convert-page.active,body.theme-ark .frame-detail.is-open .frame-tab-content.active{display:block}body.theme-ark .frame-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Device terminal: strip the toy pills/shadows and reuse the flat Ark shell. */
+body.theme-ark :is(.device-log-card__title .secondary-button,.device-log-serial .secondary-button,.device-log-card__title .icon-button){border-radius:0;border-width:1px;box-shadow:none;transform:none;font-family:var(--ark-body)}
+body.theme-ark :is(.device-log-card__title .secondary-button,.device-log-serial .secondary-button,.device-log-card__title .icon-button):is(:hover,:active){box-shadow:none;transform:none;border-color:var(--ark-accent);background:var(--ark-bg-3);color:var(--ark-ink)}
+body.theme-ark .device-log-serial{border-bottom:1px solid var(--ark-line);gap:12px}
+body.theme-ark .device-log-serial__label{font:600 13px/1.2 var(--ark-body);letter-spacing:.06em;color:var(--ark-ink-2)}
+body.theme-ark .device-log-serial select{border-width:1px;border-radius:0;box-shadow:none}
+
