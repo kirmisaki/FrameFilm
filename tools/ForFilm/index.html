@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ForFilm</title>
-    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=serial-terminal-3">
+    <link id="style-sheet" rel="stylesheet" href="css/style.css?v=serial-terminal-6">
     <link rel="stylesheet" href="css/keyboard.css">
     <!-- ARK 通行证版皮肤：默认不生效，连上 FRAMEFILMARK 后由 js/ark-theme.js 激活 -->
     <link id="ark-theme-sheet" rel="stylesheet" href="css/ark-theme.css?v=theme-coverage-3">
@@ -1175,7 +1175,7 @@
                 <div id="device-log-view" class="debug-log show device-log-view"></div>
             </div>
 
-            <div class="card">
+            <div class="card" id="device-control-card">
                 <div class="card__title">
                     <span class="ic-wrap ic-wrap--sun"><svg class="ic" viewBox="0 0 24 24"><use href="#i-board"/></svg></span>
                     设备控制
@@ -1206,9 +1206,9 @@
                     <div class="action-controls">
                         <button class="secondary-button" id="ark-ota-check" type="button" onclick="ArkOta.check()">检查更新</button>
                         <button class="secondary-button" id="ota-local-btn" type="button" onclick="selectOtaFile()">选择文件</button>
-                        <span id="ota-file-size" class="file-size-text">未选择</span>
-                        <button class="secondary-button" onclick="startOtaUpgrade()" id="ota-upgrade-btn">开始升级</button>
+                        <button class="primary-button" onclick="startOtaUpgrade()" id="ota-upgrade-btn">开始升级</button>
                     </div>
+                    <p id="ota-file-size" class="field-hint">未选择</p>
                     <label class="fw-option" id="ark-ota-legacy" hidden>旧固件 · 实物规格
                         <select id="ark-ota-legacy-target">
                             <option value="">请选择</option>

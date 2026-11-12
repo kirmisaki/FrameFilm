@@ -1149,7 +1149,36 @@ input[type="range"]::-webkit-slider-thumb {
 /* 外链按钮：a 标签复用按钮样式，去掉下划线 */
 .action-controls a.secondary-button { text-decoration: none; }
 
-.file-size-text { flex: 1; min-width: 70px; font-size: 12px; color: var(--ink-soft); }
+/* 设备控制：分区留白与控件节奏 */
+#device-control-card .divider { margin: var(--sp-4) 0; }
+#device-control-card .action-controls { gap: 10px 12px; }
+#device-control-card .action-controls .primary-button {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    padding: 9px 15px;
+    font-size: 13px;
+}
+#device-control-card .action-item > .field-hint { margin: 8px 0 0; }
+#device-control-card .fw-option {
+    display: block;
+    margin-top: var(--sp-3);
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13.5px;
+}
+#device-control-card .fw-option[hidden] { display: none; }
+#device-control-card .fw-option select { margin-top: 6px; font-weight: 400; }
+#device-control-card .action-controls > input[type="text"] {
+    flex: 1 1 220px;
+    width: auto;
+    min-width: 0;
+}
+#device-control-card #ark-device-name-current {
+    flex: 1 1 100%;
+    font-size: 12px;
+    color: var(--ink-soft);
+}
 
 /* 调试日志 */
 .debug-log {
@@ -1251,7 +1280,9 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .device-log-view {
-    height: clamp(180px, 34vh, 300px);
+    height: clamp(240px, 46vh, 420px);
+    /* .debug-log 自带 max-height:170px，会盖掉上面的 height，必须显式放开 */
+    max-height: none;
     white-space: pre-wrap;
     word-break: break-all;
 }
