@@ -52,7 +52,7 @@ extern "C" {
 #define SYS_MODEL_NUMBER               "M1.0"
 #define SYS_SERIAL_NUMBER              "FILM000001"             //SN号
 #define SYS_HAREWARE_VERSION           "H1.0"                   //硬件版本号
-#define SYS_FIRMWARE_VERSION           "3.2.5"                  //固件版本号
+#define SYS_FIRMWARE_VERSION           "3.2.6"                  //固件版本号
 #define SYS_SYSTEM_ID                  "loveU"
 
 #define SYS_BLE_DEFAULT_KEY            "FRAMEFILM_KEY"

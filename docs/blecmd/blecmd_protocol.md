@@ -1549,7 +1549,7 @@ SUM  = (0x55 + 0x4E + 0x01 + 0x02) & 0xFF = 0xA6
 | 0x57 DIRECT_OTA_START | size(u32 BE), 文件SHA256(32B), SSID\0PASSWORD\0URL\0 | 0接受 / 1忙 / 2参数或容量无效 / 3资源不足 |
 | 0x58 DIRECT_OTA_APPLY | 空 | 0已激活待重启 / 1非READY或已取消 / 2激活失败 |
 
-0x57 DATA 总长仍须 ≤192B，三字符串约束与0x50一致；OTA大小必须非零且不超过0x56的otaMax。只接受项目名 `frame_film_ark`、ESP32-S3的app镜像，不支持merged flash镜像。HTTP必须200且Content-Length等于请求size；逐块写入并验证完整文件SHA256，ESP-IDF镜像检查通过后才能准备提交。version（含3.2.5彩蛋）仅供展示，不作为升级限制或成功标识；同项目、同S3且合法的镜像可升级。
+0x57 DATA 总长仍须 ≤192B，三字符串约束与0x50一致；OTA大小必须非零且不超过0x56的otaMax。只接受项目名 `frame_film_ark`、ESP32-S3的app镜像，不支持merged flash镜像。HTTP必须200且Content-Length等于请求size；逐块写入并验证完整文件SHA256，ESP-IDF镜像检查通过后才能准备提交。version（含3.2.6彩蛋）仅供展示，不作为升级限制或成功标识；同项目、同S3且合法的镜像可升级。
 
 0x51仍返回11B（state,progress,error,received:u32 BE,total:u32 BE）。原0~6不变，新增7=READY、8=APPLYING。READY表示完整镜像已校验、原WiFi已恢复、启动分区尚未改变；该状态仍独占会话，120秒未apply/cancel自动清理。APPLYING表示正在激活/待重启。百分比100仅表示数据接收完成。新增error：7=OTA写入/镜像/目标检查失败，8=HTTP声明长度或SHA256不符，9=READY等待超时；0~6沿用原定义。
 
@@ -1585,7 +1585,7 @@ HTTP 响应需为 200 且有非零 Content-Length；文件可为任意非空二�
 
 ### 4.18 Ark SoftAP 文件直传（0x5C）
 
-本拓扑仅用于支持能力的 Ark 固件。Android 10 及以上手机作为 WiFi STA 提供 HTTP 文件服务；设备通过 0x5C 准备自己的 SoftAP，手机连接设备 AP 后，设备访问手机 STA 地址上的 HTTP URL。Android 9 与不支持该能力的旧固件继续使用既有 WiFi Direct P2P GO 流程。固件显示版本号仍可能为 3.2.5，能力应通过 0x59 查询，不以版本号推断。
+本拓扑仅用于支持能力的 Ark 固件。Android 10 及以上手机作为 WiFi STA 提供 HTTP 文件服务；设备通过 0x5C 准备自己的 SoftAP，手机连接设备 AP 后，设备访问手机 STA 地址上的 HTTP URL。Android 9 与不支持该能力的旧固件继续使用既有 WiFi Direct P2P GO 流程。固件显示版本号可能为 3.2.5 / 3.2.6，能力应通过 0x59 查询，不以版本号推断。
 
 `DIRECT_AP_PREPARE` 请求 DATA 必须为空。设备预留直传会话并异步启动 SoftAP，响应 DATA 为 `status(u8)`；status=0 表示已接受准备，响应 DATA 随后包含 `SSID\0PASSWORD\0IP\0`，字符串为 ASCII NUL 结尾，IP 为设备 AP 地址。status=1 忙、2 参数错误、3 资源不足时响应只有 status 字节。接受不代表 AP 已就绪；客户端应使用返回的凭据连接，按需重试连接，随后以既有 0x50 或 0x5A（文件）或 0x57（OTA）启动下载。启动 payload 保持原格式，SSID 和密码必须与 0x5C 返回值一致，URL 指向手机 STA 地址上的现有 HTTP 文件服务。0x50/0x5A/0x57 的原始请求结构与内容校验语义不变。
 
@@ -1627,9 +1627,9 @@ HTTP 响应需为 200 且有非零 Content-Length；文件可为任意非空二�
 | 24 | 32 | targetId，ASCII NUL结尾，余字节为0 |
 | 56 | 8 | 保留，全0 |
 
-App应按设备targetId选择发布产物，并校验下载/导入镜像内的descriptor。固件BLE OTA与HTTP OTA共用目标收尾校验：ESP-IDF镜像完整性、芯片/项目、descriptor及实际硬件目标均匹配，且大小不超过现有OTA槽，才允许选择新boot partition。错误目标、缺descriptor或未知硬件均不能激活，当前镜像保留。HTTP拒绝表现为原有OTA错误7，BLE沿用失败后重启当前镜像的行为。该校验不修改原电纸屏驱动或显示版本3.2.5。
+App应按设备targetId选择发布产物，并校验下载/导入镜像内的descriptor。固件BLE OTA与HTTP OTA共用目标收尾校验：ESP-IDF镜像完整性、芯片/项目、descriptor及实际硬件目标均匹配，且大小不超过现有OTA槽，才允许选择新boot partition。错误目标、缺descriptor或未知硬件均不能激活，当前镜像保留。HTTP拒绝表现为原有OTA错误7，BLE沿用失败后重启当前镜像的行为。该校验不修改原电纸屏驱动或显示版本3.2.6。
 
-旧设备首次获得0x5D需要一次明确型号的升级；新客户端不得根据版本3.2.5、广播名、同款屏幕或0x56的ELF指纹猜硬件型号。缺少可信硬件信息时保留其他功能，禁止自动推荐/推送未知目标。OTA app.bin不会迁移Flash分区表，n16r8镜像不自动将1900K OTA槽变为4096K；容量仍以0x56返回的实际OTA槽上限为准。
+旧设备首次获得0x5D需要一次明确型号的升级；新客户端不得根据版本3.2.5 / 3.2.6、广播名、同款屏幕或0x56的ELF指纹猜硬件型号。缺少可信硬件信息时保留其他功能，禁止自动推荐/推送未知目标。OTA app.bin不会迁移Flash分区表，n16r8镜像不自动将1900K OTA槽变为4096K；容量仍以0x56返回的实际OTA槽上限为准。
 
 ### 4.20 NFC 卡包（0x63 ~ 0x69，仅 n16r8）
 

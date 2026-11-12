@@ -22,7 +22,7 @@
 3. **明日方舟本体风格与个人通行证**：按用户最新方向采用罗德岛档案风格，保留横向轮播、图标、反白卡片、切角与信息面板。设置页保留单页布局，在“系统参数”中加入“语言 / Language”，共 18 行；分组标题收紧高度并加宽黑底，参数行高不变。中文沿用当前文案，English 对照汉化前 `515b9b0` 的原始英文，新个人档案功能另补英文。状态栏、开机及休眠品牌均为罗德岛文字标识，主题不随语言退回终末地。逻辑画布为 480×720，中文使用子集字库。旧 `tools/ui-mockup/index.html` 仅供参考原有布局，不代表当前主题。
 4. **最后完善 Android App**：现有原生版暂作联调工具，只修复妨碍固件联调的问题，高级功能和 UI 完善放在固件之后。
 
-当前 Ark 固件版本为 **3.2.5**，设备显示、BLE 固件信息和 ESP-IDF 应用元数据保持一致。2026-10-08 的休眠修复版已用 ESP-IDF 5.5.2 编译通过：应用大小 **1,931,888 字节**，1900 KiB 应用分区剩余 **13,712 字节**。构建证据为本地 `.output/ark/logs/firmware-3.2.5-sleep-final-build.log`。此前针对实际 `service_monitor.c` 的 [`host_sleep`](frame_film_ark/tests/host_sleep/) 测试通过，覆盖关闭自动休眠、手动休眠、直传退出等待、按键释放、app/UI 与 BLE 未完成停止的门闸；[`host_storage`](frame_film_ark/tests/host_storage/) 通过，新增上传失败后重复取消的检查；本轮未重复运行这些无关测试。
+当前 Ark 固件版本为 **3.2.6**，设备显示、BLE 固件信息和 ESP-IDF 应用元数据保持一致。2026-10-08 的休眠修复版已用 ESP-IDF 5.5.2 编译通过：应用大小 **1,931,888 字节**，1900 KiB 应用分区剩余 **13,712 字节**。构建证据为本地 `.output/ark/logs/firmware-3.2.5-sleep-final-build.log`。此前针对实际 `service_monitor.c` 的 [`host_sleep`](frame_film_ark/tests/host_sleep/) 测试通过，覆盖关闭自动休眠、手动休眠、直传退出等待、按键释放、app/UI 与 BLE 未完成停止的门闸；[`host_storage`](frame_film_ark/tests/host_storage/) 通过，新增上传失败后重复取消的检查；本轮未重复运行这些无关测试。
 
 语言默认简体中文，设置页单击确认切换后即时生效，保存于 app7 的 v2 三字节配置。读取兼容旧 v1 两字节配置，保留已有开机画面和启动应用选择；未改变服务层整体配置结构。个人资料图中的用户文字不自动翻译。真实 `app_boot_cfg.c` 的小范围 host test 已验证 v1 迁移、v2 保存和重载；模拟器中英文设置页切换通过，截图位于 `.output/ark/language-preview/`。
 

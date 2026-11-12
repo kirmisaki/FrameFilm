@@ -97,7 +97,7 @@ App: 0.4.1+5
 
 - Release 提供两份 OTA 镜像 `frame_film_ark-n4r2.bin` / `frame_film_ark-n16r8.bin`、两份完整串口镜像、固件 OTA 清单、APK 和 App 更新清单。App 自动更新使用清单中的 OTA 镜像。
 - Notes 取对应更新日志节，并附源码 commit 和四份固件镜像的 SHA256。Release 保留仓库原有 Latest 标记。固件客户端从最近 20 个正式发布中按 `published_at` 选含精确 Ark 镜像的候选，App 客户端优先选最高 `versionCode`，相同构建号再比发布时间。
-- App 按 JSON `versionCode` 判断升级；固件按构建 ELF SHA256 判断同构建并在重启后确认。屏幕显示的 `3.2.5` 不作升级版本号。
+- App 按 JSON `versionCode` 判断升级；固件按构建 ELF SHA256 判断同构建并在重启后确认。屏幕显示的 `3.2.6` 不作升级版本号。
 - 客户端无登录查询公开 Releases；只下载后校验导入，不自动刷机。CI 构建和发布不代表真实设备验收。
 
 2026-10-09 已推送提交 `4fa8e77`，[Actions #37910525382](https://github.com/Rafael-ban/FrameFilm/actions/runs/37910525382) 的 Android APK 与 Ark 固件 job 均成功，包含新增 Android 原生更新代码、AOT 资源检查和 APK 元数据生成。此次为普通 push，Release job 按预期跳过；公开发布与 App 内覆盖安装仍需单独验收。
