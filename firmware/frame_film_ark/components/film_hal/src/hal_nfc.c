@@ -9,6 +9,7 @@
 #include "sys_log.h"
 #include "hal_nfc.h"
 #include "st25r3916_nfc.h"
+#include "st25r3916_m1.h"
 
 #if (SYS_NFC_ENABLE == 1)
 
@@ -125,6 +126,35 @@ esp_err_t hal_nfc_reader_halt(void)
 {
     if(m_nfc == NULL) return ESP_ERR_INVALID_STATE;
     return st25r_reader_halt(m_nfc);
+}
+
+/* 读卡侧 M1 整卡导出：候选密钥逐个认证扇区，成功的扇区 trailer 回填实际密钥。 */
+esp_err_t hal_nfc_m1_read(const hal_nfc_card_t *card, uint8_t *blocks, uint16_t block_count,
+                          const uint8_t *keys, uint8_t key_count, bool try_key_b,
+                          uint16_t *blocks_read, uint8_t *sectors_read)
+{
+    if(m_nfc == NULL) return ESP_ERR_INVALID_STATE;
+    if(card == NULL || blocks == NULL || keys == NULL || key_count == 0) return ESP_ERR_INVALID_ARG;
+
+    st25r_card_t c;
+    memset(&c, 0, sizeof(c));
+    c.tech = ST25R_TECH_NFC_A;
+    c.atqa = (uint16_t)(card->atqa[0] | ((uint16_t)card->atqa[1] << 8));
+    c.sak = card->sak;
+    c.uid_len = card->uid_len;
+    memcpy(c.uid, card->uid,
+           card->uid_len <= sizeof(c.uid) ? card->uid_len : sizeof(c.uid));
+
+    st25r_m1_dump_t dump;
+    memset(&dump, 0, sizeof(dump));
+    dump.blocks = blocks;
+    dump.block_count = block_count;
+    dump.keys = keys;
+    dump.key_count = key_count;
+    dump.try_key_b = try_key_b;
+    dump.blocks_read = blocks_read;
+    dump.sectors_read = sectors_read;
+    return st25r_m1_read_card(m_nfc, &c, &dump);
 }
 
 static bool ntag_type_of(hal_nfc_kind_t kind, st25r_ntag_type_t *type)

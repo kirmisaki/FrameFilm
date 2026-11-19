@@ -91,6 +91,16 @@ esp_err_t hal_nfc_emu_stop(void);
 esp_err_t hal_nfc_emu_set_card(const hal_nfc_card_t *card);
 bool hal_nfc_emu_running(void);
 
+/**
+ * 读卡侧：用候选密钥把 M1（1K/2K/4K）整卡导出成块镜像。
+ * blocks 输出 block_count*16 字节（失败/未认证的扇区保持 0）；
+ * 认证成功的扇区 trailer 会被写入实际生效的密钥，便于随后直接模拟。
+ * reader_begin() 之后、reader_end() 之前调用。
+ */
+esp_err_t hal_nfc_m1_read(const hal_nfc_card_t *card, uint8_t *blocks, uint16_t block_count,
+                          const uint8_t *keys, uint8_t key_count, bool try_key_b,
+                          uint16_t *blocks_read, uint8_t *sectors_read);
+
 bool hal_nfc_irq_active(void);
 esp_err_t hal_nfc_sleep_arm(void);
 void hal_nfc_sleep_disarm(void);

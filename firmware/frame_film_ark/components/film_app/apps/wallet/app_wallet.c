@@ -460,6 +460,20 @@ static int wallet_ntag_pages(uint8_t version)
     }
 }
 
+/* 读 M1 时依次尝试的密钥（公版常见默认密钥，不做爆破；每个再按 Key A/B 各试一次）。
+   命中后会把该密钥回填进扇区 trailer，镜像保留实际生效的密钥。 */
+static const uint8_t k_m1_keys[][6] = {
+    {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+    {0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5},
+    {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7},
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+    {0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5},
+    {0x4D, 0x3A, 0x99, 0xC3, 0x51, 0xDD},
+    {0x1A, 0x98, 0x2C, 0x7E, 0x45, 0x9A},
+    {0x5C, 0x8F, 0xF9, 0x99, 0x0D, 0xA2},
+};
+#define M1_KEY_COUNT ((uint8_t)(sizeof(k_m1_keys) / sizeof(k_m1_keys[0])))
+
 static wallet_card_t *wallet_read_card(hal_nfc_card_t *id, wallet_scan_status_t *status)
 {
     *status = WSCAN_UNSUPPORTED;
@@ -472,6 +486,51 @@ static wallet_card_t *wallet_read_card(hal_nfc_card_t *id, wallet_scan_status_t 
     if(id->sak == 0x08 || id->sak == 0x18 || id->sak == 0x38 ||
        id->sak == 0x88 || id->sak == 0x98)
     {
+        /* 先尝试用候选密钥整卡导出；没有命中再退回只存 UID（原来的行为）。 */
+        uint16_t blocks = (id->sak == 0x08 || id->sak == 0x88) ? 64 :
+                          (id->sak == 0x18) ? 128 : 256;
+        uint8_t kind = (blocks == 64) ? HAL_NFC_KIND_M1_1K :
+                       (blocks == 128) ? HAL_NFC_KIND_M1_2K : HAL_NFC_KIND_M1_4K;
+        uint8_t *mem = (uint8_t *)heap_caps_malloc((size_t)blocks * 16u, MALLOC_CAP_SPIRAM);
+        if(mem == NULL) mem = (uint8_t *)malloc((size_t)blocks * 16u);
+        if(mem != NULL)
+        {
+            uint16_t read = 0;
+            uint8_t sectors = 0;
+            esp_err_t err = hal_nfc_m1_read(id, mem, blocks, (const uint8_t *)k_m1_keys,
+                                            M1_KEY_COUNT, true, &read, &sectors);
+            if(err == ESP_OK && read > 0)
+            {
+                wallet_card_t *c = (wallet_card_t *)heap_caps_malloc(sizeof(*c), MALLOC_CAP_SPIRAM);
+                if(c == NULL) c = (wallet_card_t *)malloc(sizeof(*c));
+                if(c == NULL)
+                {
+                    heap_caps_free(mem);
+                    *status = WSCAN_ERROR;
+                    return NULL;
+                }
+                memset(c, 0, sizeof(*c));
+                c->kind = kind;
+                c->data_format = HAL_NFC_DATA_M1_BLOCKS;
+                c->data_ver = WALLET_DATA_VER;
+                c->uid_len = id->uid_len;
+                c->sak = id->sak;
+                c->atqa[0] = id->atqa[0];
+                c->atqa[1] = id->atqa[1];
+                memcpy(c->uid, id->uid, sizeof(c->uid));
+                c->mem = mem;
+                c->mem_len = (uint16_t)(blocks * 16u);
+                c->name_len = 0;
+                *status = WSCAN_OK;
+                sys_logi(WALLET_TAG, "m1 dump: %u blocks (%u bytes), %u sectors",
+                         (unsigned)read, (unsigned)(read * 16u), (unsigned)sectors);
+                return c;
+            }
+            sys_logw(WALLET_TAG, "m1 dump failed (%s, %u blocks read), fallback to UID",
+                     esp_err_to_name(err), (unsigned)read);
+            heap_caps_free(mem);
+        }
+
         wallet_card_t *c = (wallet_card_t *)heap_caps_malloc(sizeof(*c), MALLOC_CAP_SPIRAM);
         if(c == NULL) c = (wallet_card_t *)malloc(sizeof(*c));
         if(c == NULL) { *status = WSCAN_ERROR; return NULL; }

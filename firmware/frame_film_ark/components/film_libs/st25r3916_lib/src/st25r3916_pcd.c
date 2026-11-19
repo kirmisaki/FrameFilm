@@ -234,7 +234,7 @@ bool st25r_pcd_request(st25r_handle_t h, bool wakeup, uint16_t *atqa)
         return false;
     }
     *atqa = (uint16_t)(((uint16_t)rbuf[1] << 8) | rbuf[0]);
-    ESP_LOGI(TAG, "ATQA %04X (irq=%08X)", (unsigned)*atqa, (unsigned)irq);
+    ESP_LOGD(TAG, "ATQA %04X (irq=%08X)", (unsigned)*atqa, (unsigned)irq);
     return true;
 }
 

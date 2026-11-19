@@ -12,6 +12,8 @@ idf_component_register(
         "src/st25r3916_pcd.c"
         "src/st25r3916_picc.c"
         "src/st25r3916_ntag.c"
+        "src/st25r3916_crypto1.c"
+        "src/st25r3916_m1_reader.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "src"
     REQUIRES esp_driver_spi esp_driver_gpio
