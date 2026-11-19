@@ -357,6 +357,7 @@ esp_err_t st25r_reader_begin(st25r_handle_t h)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "chip re-init failed (%s)", esp_err_to_name(err));
     } else {
+        h->need_reinit = false;
         err = st25r_pcd_configure(h);
     }
     st25r_unlock(h);
@@ -371,6 +372,9 @@ esp_err_t st25r_reader_end(st25r_handle_t h)
     st25r_lock(h);
     st25r_field_off(h);
     h->reader_active = false;
+    /* 读卡侧改了 RX_CONF/相关器/AUX_DEF 等，模拟侧逐项复位容易漏：
+       标记一下，下次启动模拟前重跑一次芯片初始化。 */
+    h->need_reinit = true;
     st25r_unlock(h);
     return ESP_OK;
 }

@@ -30,6 +30,7 @@ struct st25r_dev {
     bool bus_owned; /* true: this library initialized the SPI bus and must free it */
     bool ready;
     bool reader_active;
+    bool need_reinit; /* 读卡模式留下 initiator 寄存器，模拟启动前需重跑芯片初始化 */
     uint32_t clock_hz;
 
     struct {

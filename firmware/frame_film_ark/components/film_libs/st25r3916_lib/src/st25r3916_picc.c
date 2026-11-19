@@ -417,6 +417,15 @@ esp_err_t st25r_picc_configure(st25r_handle_t h, const st25r_card_t *card)
         return ESP_ERR_INVALID_ARG;
     }
 
+    /* 从读卡模式切回来时，RX_CONF/相关器/AUX_DEF 等 initiator 配置会残留，
+       逐项复位容易漏；重跑一次芯片初始化，和上电时的模拟路径保持一致。 */
+    if (h->need_reinit) {
+        if (st25r_chip_init(h) != ESP_OK) {
+            return ESP_FAIL;
+        }
+        h->need_reinit = false;
+    }
+
     if (!st25r_enable_osc(h) || !st25r_cmd(h, ST25R_CMD_STOP_ALL_ACTIVITIES) ||
         !st25r_reg_clear(h, ST25R_REG_OP_CONTROL, ST25R_OP_WU)) {
         return ESP_FAIL;
@@ -493,6 +502,16 @@ static void IRAM_ATTR picc_irq_isr(void *arg)
     }
 }
 
+/* GPIO ISR 服务是全局单例：装过再装会返回 ESP_ERR_INVALID_STATE 并打 E 日志。 */
+static void picc_isr_service_ensure(void)
+{
+    static bool checked;
+    if (!checked) {
+        const esp_err_t err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+        checked = (err == ESP_OK || err == ESP_ERR_INVALID_STATE);
+    }
+}
+
 static void picc_task(void *arg)
 {
     st25r_handle_t h = (st25r_handle_t)arg;
@@ -545,12 +564,12 @@ esp_err_t st25r_picc_begin(st25r_handle_t h, const st25r_picc_config_t *cfg)
 
     h->emu.running = true;
     if (!h->emu.external_step) {
-        /* IRQ 上升沿唤醒模拟任务；ISR 服务可能被 EPD/SD 装过，重复安装会返回
-           ESP_ERR_INVALID_STATE，这里直接忽略。 */
+        /* IRQ 上升沿唤醒模拟任务；ISR 服务全局只能装一次，装过再装会返回
+           ESP_ERR_INVALID_STATE 并打错误日志，所以这里只尝试一次。 */
         if (h->cfg.pin_irq != GPIO_NUM_NC) {
             h->emu.irq_sem = xSemaphoreCreateBinary();
             if (h->emu.irq_sem) {
-                (void)gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+                picc_isr_service_ensure();
                 if (gpio_set_intr_type(h->cfg.pin_irq, GPIO_INTR_POSEDGE) != ESP_OK ||
                     gpio_isr_handler_add(h->cfg.pin_irq, picc_irq_isr, h) != ESP_OK) {
                     vSemaphoreDelete(h->emu.irq_sem);

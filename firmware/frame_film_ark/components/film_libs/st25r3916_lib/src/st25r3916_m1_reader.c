@@ -23,6 +23,7 @@
 static const char *TAG = "st25r3916/m1rd";
 
 #define M1_RD_TIMEOUT_MS 20
+#define M1_RD_RESELECT_TRIES 20
 
 typedef struct {
     bool authed;
@@ -96,6 +97,19 @@ static bool rd_wait_rx(st25r_handle_t h, uint32_t timeout_ms, uint32_t *irq)
     }
     *irq = v;
     return (v & ST25R_IRQ_RXE) != 0;
+}
+
+/* Re-select the card between sectors. A single missed WUPA/anticollision used
+ * to abort the whole dump, so retry a few times before giving up. */
+static bool rd_reselect(st25r_handle_t h, st25r_card_t *card)
+{
+    for (uint8_t i = 0; i < M1_RD_RESELECT_TRIES; i++) {
+        if (st25r_reader_poll(h, card, 100) == ESP_OK) {
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return false;
 }
 
 /* Plain AUTH command: HW CRC + HW parity; the Nt reply has no CRC. */
@@ -373,9 +387,21 @@ esp_err_t st25r_m1_read_card(st25r_handle_t h, const st25r_card_t *card, const s
             const uint8_t *key = cfg->keys + (uint16_t)k * 6u;
             if (st25r_m1_reader_auth(h, card, first, key, false) == ESP_OK) {
                 used = key;
-            } else if (cfg->try_key_b && st25r_m1_reader_auth(h, card, first, key, true) == ESP_OK) {
+                break;
+            }
+            /* A failed authentication leaves the card mute: re-select before
+             * the same key as Key B and before the next candidate key. */
+            st25r_card_t again;
+            if (cfg->try_key_b && rd_reselect(h, &again) &&
+                st25r_m1_reader_auth(h, card, first, key, true) == ESP_OK) {
                 used = key;
                 used_b = true;
+                break;
+            }
+            if ((uint8_t)(k + 1u) < cfg->key_count && !rd_reselect(h, &again)) {
+                ESP_LOGW(TAG, "re-select failed before key %u of sector %u", (unsigned)(k + 1u),
+                         (unsigned)s);
+                break;
             }
         }
 
@@ -391,8 +417,8 @@ esp_err_t st25r_m1_read_card(st25r_handle_t h, const st25r_card_t *card, const s
                 }
             }
             if (ok) {
-                /* Patch the trailer so the image can be replayed by the listener
-                 * (Key A always reads as zeros on a real card). */
+                /* Patch the trailer with the key that actually worked (Key A
+                 * always reads as zeros on a real card). */
                 uint8_t *trailer = cfg->blocks + (uint16_t)(first + count - 1u) * 16u;
                 if (used_b) {
                     memcpy(trailer + 10, used, 6);
@@ -412,7 +438,9 @@ esp_err_t st25r_m1_read_card(st25r_handle_t h, const st25r_card_t *card, const s
         if ((uint8_t)(s + 1u) < sectors) {
             /* A second plain AUTH needs an unauthenticated card: re-select. */
             st25r_card_t again;
-            if (st25r_reader_poll(h, &again, 100) != ESP_OK) {
+            if (!rd_reselect(h, &again)) {
+                ESP_LOGW(TAG, "re-select failed after sector %u, stop at %u/%u blocks", s,
+                         blocks_read, cfg->block_count);
                 break;
             }
         }
