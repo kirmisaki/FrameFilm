@@ -6,6 +6,10 @@
 #include "hal_wifi.h"
 #include <stdio.h>
 #include "esp_mac.h"
+#include "sys_log.h"
+
+#define HAL_WIFI_TAG            "HAL_WIFI"
+#define HAL_WIFI_SCAN_MAX_AP    (16)
 
 static bool s_netif_ready;
 static bool s_initialized;
@@ -13,11 +17,42 @@ static volatile bool s_connected;
 static esp_event_handler_instance_t s_wifi_handler;
 static esp_event_handler_instance_t s_ip_handler;
 
+/* 临时诊断：把 STA 断开原因翻成可读字符串，用来区分"收不到路由器"和"发不出去"。 */
+static const char *wifi_reason_name(uint8_t reason)
+{
+    switch(reason)
+    {
+    case 1:   return "UNSPECIFIED";
+    case 2:   return "AUTH_EXPIRE";
+    case 3:   return "AUTH_LEAVE";
+    case 4:   return "ASSOC_EXPIRE";
+    case 5:   return "ASSOC_TOOMANY";
+    case 6:   return "NOT_AUTHED";
+    case 7:   return "NOT_ASSOCED";
+    case 8:   return "ASSOC_LEAVE";
+    case 9:   return "ASSOC_NOT_AUTHED";
+    case 15:  return "4WAY_HANDSHAKE_TIMEOUT";
+    case 200: return "BEACON_TIMEOUT";
+    case 201: return "NO_AP_FOUND";
+    case 202: return "AUTH_FAIL";
+    case 203: return "ASSOC_FAIL";
+    case 204: return "HANDSHAKE_TIMEOUT";
+    case 205: return "CONNECTION_FAIL";
+    default:  return "OTHER";
+    }
+}
+
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
-    (void)data;
-    if(base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) s_connected = false;
+    if(base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED)
+    {
+        s_connected = false;
+        const wifi_event_sta_disconnected_t *d = (const wifi_event_sta_disconnected_t *)data;
+        uint8_t reason = d ? d->reason : 0;
+        sys_logw(HAL_WIFI_TAG, "STA disconnected: reason=%u (%s), rssi=%d",
+                 (unsigned)reason, wifi_reason_name(reason), d ? d->rssi : 0);
+    }
     if(base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) s_connected = true;
 }
 
@@ -55,6 +90,13 @@ esp_err_t hal_wifi_init(bool ram_storage)
     }
     s_initialized = true;
     s_connected = false;
+
+    /* 临时诊断：打印当前最大发射功率（单位 0.25dBm），用于判断 PA 是否被限幅。 */
+    {
+        int8_t txp = 0;
+        if(esp_wifi_get_max_tx_power(&txp) == ESP_OK)
+            sys_logi(HAL_WIFI_TAG, "max tx power: %d (0.25dBm) = %d dBm", (int)txp, (int)txp / 4);
+    }
     return ESP_OK;
 }
 
@@ -161,7 +203,7 @@ esp_err_t hal_wifi_softap_start(const char *ssid, const char *password)
     strlcpy((char *)config.ap.ssid, ssid, sizeof(config.ap.ssid));
     config.ap.ssid_len = strlen(ssid);
     strlcpy((char *)config.ap.password, password, sizeof(config.ap.password));
-    config.ap.channel = 1;
+    config.ap.channel = 11;
     config.ap.max_connection = 1;
     config.ap.authmode = WIFI_AUTH_WPA2_PSK;
     config.ap.pmf_cfg.capable = true;
@@ -179,3 +221,65 @@ esp_err_t hal_wifi_softap_stop(void)
     if(err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_STA);
     return err == ESP_OK ? esp_wifi_start() : err;
 }
+
+/* 临时诊断：打印 SoftAP 当前信道/带宽/已连 station 数。
+   用来确认 AP 是否真的在发、手机有没有关联上来。定位完删除。 */
+void hal_wifi_softap_status(void)
+{
+    if(!s_initialized) return;
+
+    uint8_t primary = 0;
+    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+    wifi_bandwidth_t bw = WIFI_BW_HT20;
+    wifi_sta_list_t list = {0};
+
+    esp_wifi_get_channel(&primary, &second);
+    esp_wifi_get_bandwidth(WIFI_IF_AP, &bw);
+    esp_wifi_ap_get_sta_list(&list);
+    sys_logi(HAL_WIFI_TAG, "softAP status: ch=%u bw=%d stations=%d",
+             (unsigned)primary, (int)bw, (int)list.num);
+}
+
+/* 临时诊断：阻塞扫描一次并把 SSID/信道/RSSI 打到串口。
+   用于判断 2.4G 接收链路是否正常（扫不到任何 AP = 收侧有问题）。定位完删除。 */
+esp_err_t hal_wifi_scan_dump(void)
+{
+    if(!s_initialized) return ESP_ERR_INVALID_STATE;
+
+    static wifi_ap_record_t s_records[HAL_WIFI_SCAN_MAX_AP];
+    wifi_scan_config_t scan = {0};
+    scan.show_hidden = true;
+
+    esp_err_t err = esp_wifi_scan_start(&scan, true);
+    if(err != ESP_OK)
+    {
+        sys_logw(HAL_WIFI_TAG, "scan start failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    uint16_t ap_num = 0;
+    esp_wifi_scan_get_ap_num(&ap_num);
+
+    uint16_t want = ap_num > HAL_WIFI_SCAN_MAX_AP ? HAL_WIFI_SCAN_MAX_AP : ap_num;
+    if(want > 0)
+    {
+        err = esp_wifi_scan_get_ap_records(&want, s_records);
+        if(err != ESP_OK)
+        {
+            sys_logw(HAL_WIFI_TAG, "scan get records failed: %s", esp_err_to_name(err));
+            esp_wifi_clear_ap_list();
+            return err;
+        }
+    }
+
+    sys_logi(HAL_WIFI_TAG, "scan done: %u AP(s) found, listing %u", (unsigned)ap_num, (unsigned)want);
+    for(uint16_t i = 0; i < want; i++)
+    {
+        sys_logi(HAL_WIFI_TAG, "  [%02u] %-32s ch=%2u rssi=%4d auth=%u",
+                 (unsigned)i, (const char *)s_records[i].ssid, (unsigned)s_records[i].primary,
+                 s_records[i].rssi, (unsigned)s_records[i].authmode);
+    }
+    esp_wifi_clear_ap_list();
+    return ESP_OK;
+}
+

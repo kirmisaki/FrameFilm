@@ -23,5 +23,9 @@ esp_err_t hal_wifi_set_power_save(wifi_ps_type_t type);
 esp_err_t hal_wifi_softap_identity(char *ssid, size_t size);
 esp_err_t hal_wifi_softap_start(const char *ssid, const char *password);
 esp_err_t hal_wifi_softap_stop(void);
+/* 临时诊断：阻塞扫描一次并打印 SSID/信道/RSSI。 */
+esp_err_t hal_wifi_scan_dump(void);
+/* 临时诊断：打印 SoftAP 信道/带宽/已连 station 数。 */
+void hal_wifi_softap_status(void);
 
 #endif /* __HAL_WIFI_H__ */

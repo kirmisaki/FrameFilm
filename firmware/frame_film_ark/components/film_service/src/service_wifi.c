@@ -160,6 +160,10 @@ void service_wifi_init(void)
 
     sys_logi(WIFI_SERVICE_TAG, "WiFi initialized");
 
+    /* 临时诊断：启动时扫描一次并打印 SSID/信道/RSSI，用来判断 2.4G 接收链路。
+       定位完毕后连同上一条 hal_wifi_scan_dump() 一起删除。 */
+    (void)hal_wifi_scan_dump();
+
     // 启动心跳任务（内部等待 WiFi 连接后再上报）
     service_wifi_heartbeat_start();
 
@@ -852,7 +856,9 @@ static void wifi_direct_task(void *arg)
             portEXIT_CRITICAL(&g_direct_lock);
             sys_logi(WIFI_SERVICE_TAG, "SoftAP prepared: %s; waiting for phone server", args->ssid);
             TickType_t started = xTaskGetTickCount();
+            TickType_t last_status = started;   /* 临时诊断：每 5s 打一次 AP 状态 */
             bool submitted = false;
+            hal_wifi_softap_status();
             while(!error) {
                 portENTER_CRITICAL(&g_direct_lock);
                 submitted = g_softap_submitted;
@@ -863,7 +869,13 @@ static void wifi_direct_task(void *arg)
                 if(cancelled) error = WIFI_DIRECT_ERR_CANCELLED;
                 else if(submitted) break;
                 else if(expired) error = WIFI_DIRECT_ERR_CONNECT;
-                else vTaskDelay(pdMS_TO_TICKS(50));
+                else {
+                    if(xTaskGetTickCount() - last_status >= pdMS_TO_TICKS(5000)) {
+                        last_status = xTaskGetTickCount();
+                        hal_wifi_softap_status();
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                }
             }
             if(!error) {
                 /* Let the BLE start ACK finish before intentionally disconnecting. */
