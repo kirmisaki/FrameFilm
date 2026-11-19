@@ -51,7 +51,8 @@
 #define APP_UI_MSG_WALLET_SNAP      0x22
 #define APP_UI_MSG_WALLET_COVER     0x23
 
-#define WALLET_UI_MAX_ROWS          5
+#define WALLET_UI_MAX_ROWS          8
+#define WALLET_UI_ROW_H             38
 #define WALLET_COVER_PIXELS         (WALLET_COVER_W * WALLET_COVER_H)
 
 typedef struct {
@@ -930,9 +931,20 @@ static void wallet_ui_apply_snapshot(void)
             lv_label_set_text(m_type_label, m_snap.type);
             lv_label_set_text_fmt(m_count_label, app_text("%u 张卡片", "%u CARDS"), (unsigned)m_snap.count);
 
+            /* 卡片多于可视行数时，让列表窗口跟随当前选中卡滚动，
+               而不是永远从第 1 张开始显示。 */
+            int first = 0;
+            if((int)m_snap.count > WALLET_UI_MAX_ROWS)
+            {
+                first = (int)m_snap.current - WALLET_UI_MAX_ROWS / 2;
+                if(first < 0) first = 0;
+                const int last_first = (int)m_snap.count - WALLET_UI_MAX_ROWS;
+                if(first > last_first) first = last_first;
+            }
+
             for(int i = 0; i < WALLET_UI_MAX_ROWS; i++)
             {
-                int idx = i;
+                int idx = first + i;
                 if(idx >= m_snap.count)
                 {
                     lv_obj_set_hidden(m_row_obj[i], true);
@@ -1191,7 +1203,7 @@ static void wallet_ui_create(lv_obj_t *root)
     lv_obj_t *list = lv_obj_create(m_emu_page);
     lv_obj_remove_style_all(list);
     lv_obj_set_scrollable(list, false);
-    lv_obj_set_size(list, WALLET_COVER_W, WALLET_UI_MAX_ROWS * 38);
+    lv_obj_set_size(list, WALLET_COVER_W, WALLET_UI_MAX_ROWS * WALLET_UI_ROW_H);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
 
     for(int i = 0; i < WALLET_UI_MAX_ROWS; i++)
@@ -1199,7 +1211,7 @@ static void wallet_ui_create(lv_obj_t *root)
         m_row_obj[i] = lv_obj_create(list);
         lv_obj_remove_style_all(m_row_obj[i]);
         lv_obj_set_scrollable(m_row_obj[i], false);
-        lv_obj_set_size(m_row_obj[i], WALLET_COVER_W, 38);
+        lv_obj_set_size(m_row_obj[i], WALLET_COVER_W, WALLET_UI_ROW_H);
         lv_obj_set_style_border_side(m_row_obj[i], LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN);
         lv_obj_set_style_border_width(m_row_obj[i], 1, LV_PART_MAIN);
         lv_obj_set_style_border_color(m_row_obj[i], lv_color_black(), LV_PART_MAIN);
