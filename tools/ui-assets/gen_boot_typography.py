@@ -68,7 +68,8 @@ def emit(name: str, image: Image.Image) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("font_dir", type=Path)
+    # 默认从仓库资源目录取字；也可显式传入其它目录
+    parser.add_argument("font_dir", type=Path, nargs="?", default=ROOT / "assets" / "fonts")
     args = parser.parse_args()
     title = render_phrase(
         args.font_dir / "Novecentosanswide-DemiBold.otf", "ARKNIGHTS", 48, 6

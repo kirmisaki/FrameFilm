@@ -11,12 +11,14 @@ APP = ARK / "components/film_app"
 BODY_OUT = ARK / "components/film_ui/src/ui_fonts_body.c"
 TITLE_OUT = ARK / "components/film_ui/src/ui_fonts_title.c"
 WALLET_OUT = ARK / "components/film_ui/src/ui_fonts_wallet.c"
-BODY = ROOT / ".output/ark/SourceHanSansCN-Bold.otf"
-TITLE = ROOT / ".output/ark/SourceHanSansCN-Medium.otf"
-# 24/36px 标题字体只在中文界面使用（英文走 Montserrat），故不保留英文大写字母。
+BODY = ROOT / "assets/fonts/NotoSansCJKsc-Bold.otf"
+TITLE = ROOT / "assets/fonts/NotoSansCJKsc-Bold.otf"
+# 24/36px 标题字体只在中文界面使用（英文走 Montserrat），故不保留英文小写字母。
+# 24px：主菜单条目名 + 各页标题（宠物 app 的 喂食 / 猜大小 / 宠物状态 / 已离开）
+# 36px：通行证页主字 + 宠物名字 TAMAGO（大写字母）
 LARGE_TEXT = {
-    24: "图片通行证模板时钟动图设置卡包",
-    36: "通行证已休眠",
+    24: "图片通行证模板时钟动图设置卡包宠物喂食猜大小状态已离开",
+    36: "通行证已休眠ABCDEFGHIJKLMNOPQRSTUVWXYZ",
 }
 TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.S)
 
@@ -139,12 +141,18 @@ def main() -> None:
 
     # Title fonts (24/36) are separate generated files so the two variants can
     # be maintained independently without conditional code in the body font.
-    title_output = header("Source Han Sans CN Medium 24/36px title subsets.")
+    #
+    # 字符集 = 源码里出现过的全部字符（与正文一致）+ 额外指定字。
+    # 早先这里是硬编码的十几个字，结果任何新页面用了 24/36px 字体就会缺字
+    # （宠物 app 的 正餐/零食/大/小/第/得分 就是这样漏掉的），故改为全量收录：
+    # 24/36px 只增约 100KB flash，换来"改文案不用再想字体"。
+    title_output = header("Source Han Sans CN Bold 24/36px title subsets.")
+    title_extra = {pixels: {ord(c) for c in text} for pixels, text in LARGE_TEXT.items()}
     for name, pixels, line, cap in (
         (24, 24, 28, 24),
         (36, 36, 40, 36),
     ):
-        chars = sorted({ord(c) for c in LARGE_TEXT[name]})
+        chars = sorted(set(all_chars) | title_extra.get(name, set()))
         source, count = emit_font(name, args.title_font, pixels, chars, line, cap)
         title_output += source
         print(f"ui_font_{name}: {len(chars)} glyphs, {count} bitmap bytes")

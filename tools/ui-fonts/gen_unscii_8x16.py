@@ -38,6 +38,7 @@ BASE_LINE = 0                   # unscii_8 的 base_line = 0（基线在行底�
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 TTF_CANDIDATES = [
+    os.path.join(REPO_ROOT, "assets", "fonts", "unscii-8.ttf"),
     os.path.join(REPO_ROOT, "tools", "ui-fonts", "unscii-8.ttf"),
     os.path.join(REPO_ROOT, "firmware", "frame_film", "managed_components", "lvgl__lvgl",
                  "scripts", "generators", "built_in_font", "unscii-8.ttf"),
