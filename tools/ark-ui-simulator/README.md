@@ -16,7 +16,7 @@ cmake --build tools/ark-ui-simulator/build -j4
 ./tools/ark-ui-simulator/build/ark-ui-simulator
 ```
 
-操作：↑/↓ 切换菜单项或设置行；Enter 进入页面、修改设置；双击 Enter 返回菜单并高亮刚离开的应用；按住 Enter 一秒预览休眠卡。数字 1–6 依次直接预览开机、菜单、设置、休眠卡、通行证、时钟。Esc 关闭窗口。图片、模板、动图走固件直绘路径，尚未接入此模拟器。
+用 ↑/↓ 切换菜单项或设置行，按 Enter 进入页面或修改设置，双击 Enter 返回菜单并高亮刚离开的应用。按住 Enter 一秒模拟休眠，通行证页会留屏，休眠后轻按 Enter 唤醒。数字 1–6 依次直接预览开机、菜单、设置、休眠卡、通行证、时钟。Esc 关闭窗口。图片、模板、动图走固件直绘路径，尚未接入此模拟器。
 
 检查菜单字体的真实 I1 渲染时，用 `--menu-preview <目录>`：
 
@@ -65,6 +65,6 @@ ARK_PASS_PROFILE="$PWD/.output/ark/logs/pass-preview/profile.bin" \
 
 使用的是 [LVGL 官方 SDL 桌面驱动](https://docs.lvgl.io/master/integration/pc/sdl.html)。逻辑窗口为 480×720，符合 Ark `ui_conf.h`；实际电子纸仍需上机验证。
 
-本机中文页面版 `--smoke` 已通过：验证菜单选通行证、双击返回后仍选中原图标并再次进入，设置修改、设置及时钟返回索引，以及休眠卡唤醒。截图在项目根目录 `.output/ark/logs/full-cn-preview/`：`boot.bmp`、`menu.bmp`、`menu-return.bmp`、`pass.bmp`、`settings.bmp`、`clock.bmp`、`sleep.bmp`。这些截图验证页面渲染与最小导航，不代表实体屏幕验收。模拟器目前长按统一展示休眠卡，不能据此判断实机 app 内休眠的留屏行为；固件 app 内休眠会保留当前画面。
+`--smoke` 覆盖菜单选通行证、双击返回后的菜单位置、通行证休眠留屏和唤醒、设置修改、设置及时钟返回索引，以及菜单休眠卡和唤醒。通行证留屏截图为 `pass-sleep.bmp`。模拟器按当前 app 的 `sleep_face` 决定保留画面或显示休眠卡。实际电子纸留屏和深度休眠由实机验证。
 
 个人通行证版设置 `ARK_PASS_PROFILE` 后的 `--smoke` 也已通过，包含重载失败时保留旧图与恢复文件后重试，截图在 `.output/ark/logs/pass-device-preview/`，新增 `pass-reload-failed.bmp` 和 `pass-reload-retry.bmp`。

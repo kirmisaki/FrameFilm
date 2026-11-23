@@ -161,6 +161,7 @@ void app_boot_cfg_set(uint8_t boot_page, uint8_t start_app)
     boot_cfg.boot_page = boot_page; boot_cfg.start_app = start_app;
 }
 uint8_t app_language_get(void) { return boot_cfg.language; }
+uint8_t app_screenshot_enabled(void) { return APP_SCREENSHOT_OFF; }
 void app_language_set(uint8_t language)
 {
     if(language <= APP_LANGUAGE_EN) boot_cfg.language = language;

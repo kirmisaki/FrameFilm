@@ -19,6 +19,7 @@
 #include "simulator.h"
 
 static uint8_t menu_sel;
+static bool sleep_keep;
 
 static void show_menu(void)
 {
@@ -65,8 +66,25 @@ static void press_key(input_press_type_t key)
 {
     const app_ui_ops_t *ops = simulator_current_ops();
     const app_entry_t *entry = simulator_current_entry();
+    if(sleep_keep) {
+        if(key == INPUT_PRESS_SHORT) {
+            lv_display_enable_invalidation(lv_display_get_default(), true);
+            sleep_keep = false;
+            show_boot();
+        }
+        return;
+    }
     if(ops == app_sleep_ops() && key == INPUT_PRESS_SHORT) { show_boot(); return; }
-    if(key == INPUT_PRESS_LONG) { show_sleep(); return; }
+    if(key == INPUT_PRESS_LONG) {
+        if(entry && entry->sleep_face == APP_SLEEP_FACE_KEEP) {
+            lv_display_t *display = lv_display_get_default();
+            lv_refr_now(display);
+            lv_display_enable_invalidation(display, false);
+            sleep_keep = true;
+        }
+        else show_sleep();
+        return;
+    }
     if(key == INPUT_PRESS_DOUBLE) { show_menu(); return; }
     if(entry == &g_app_menu_entry) {
         if(key == INPUT_PRESS_UP) menu_sel = (menu_sel + 1) % APP_MENU_ENTRY_NUM;
@@ -396,6 +414,12 @@ int main(int argc, char **argv)
         result |= save_frame(display, argv[2], "menu-return");
         press_key(INPUT_PRESS_SHORT);
         if(simulator_current_entry() != &g_app_pass_entry) result = -1;
+        press_key(INPUT_PRESS_LONG);
+        press_key(INPUT_PRESS_DOUBLE);
+        if(!sleep_keep || simulator_current_entry() != &g_app_pass_entry) result = -1;
+        result |= save_frame(display, argv[2], "pass-sleep");
+        press_key(INPUT_PRESS_SHORT);
+        if(sleep_keep || simulator_current_ops() != app_boot_ops()) result = -1;
         simulator_show(g_app_settings_entry.ui_ops, &g_app_settings_entry);
         simulator_process_requests();
         press_key(INPUT_PRESS_UP);
@@ -415,7 +439,8 @@ int main(int argc, char **argv)
         result |= save_frame(display, argv[2], "clock");
         press_key(INPUT_PRESS_DOUBLE);
         if(menu_sel != 3) result = -1;
-        show_sleep();
+        press_key(INPUT_PRESS_LONG);
+        if(sleep_keep || simulator_current_ops() != app_sleep_ops()) result = -1;
         result |= save_frame(display, argv[2], "sleep");
         press_key(INPUT_PRESS_SHORT);
         if(simulator_current_ops() != app_boot_ops()) result = -1;
@@ -456,7 +481,7 @@ int main(int argc, char **argv)
         int shortcut = keys[SDL_SCANCODE_1] ? 1 : keys[SDL_SCANCODE_2] ? 2 :
                        keys[SDL_SCANCODE_3] ? 3 : keys[SDL_SCANCODE_4] ? 4 :
                        keys[SDL_SCANCODE_5] ? 5 : keys[SDL_SCANCODE_6] ? 6 : 0;
-        if(shortcut && shortcut != old_shortcut) {
+        if(!sleep_keep && shortcut && shortcut != old_shortcut) {
             if(shortcut == 1) show_boot();
             if(shortcut == 2) show_menu();
             if(shortcut == 3) simulator_show(g_app_settings_entry.ui_ops, &g_app_settings_entry);

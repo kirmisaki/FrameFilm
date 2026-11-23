@@ -448,4 +448,5 @@ const app_entry_t g_app_pass_entry = {
     .layer = APP_LAYER_UI,
     .ui_ops = &g_pass_ui_ops,
     .on_event = pass_on_event,
+    .sleep_face = APP_SLEEP_FACE_KEEP,
 };
