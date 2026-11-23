@@ -986,15 +986,17 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_CAPABILITIES_GET:
         {
             if(cmd->len != 0) break;
-            uint8_t capabilities[5] = {1, 0, 0, 0x01, 0x5F};
+            uint8_t capabilities[5] = {1, 0, 0, 0x05, 0x5F};
             /* flags 高位字节（bit8..）：
                bit8 = 按目录/文件名的列表/删除/读取（0x5B dir3 + 0x60 + 0x61）
-               bit9 = 返回键双击截图（/sdcard/screenshot），仅 ARK_SCREENSHOT 开启 */
+               bit9 = 返回键双击截图（/sdcard/screenshot），仅 ARK_SCREENSHOT 开启
+               bit10 = 480x720 全屏 FFUI 通行证（v1 单色 / v2 六色，彩色另需 bit0） */
 #if CONFIG_ARK_SCREENSHOT
             capabilities[3] |= 0x02;
 #endif
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
-            capabilities[4] |= 0x20;  /* Experimental ABC9 playback. */
+            capabilities[4] |= 0x20;  /* General ABC9 .film playback, unchanged. */
+            capabilities[3] |= 0x08;  /* bit11: I006 ABC9 app/pass/profile.bin. */
 #endif
 #if (SYS_NFC_ENABLE == 1)
             capabilities[4] |= 0x80;

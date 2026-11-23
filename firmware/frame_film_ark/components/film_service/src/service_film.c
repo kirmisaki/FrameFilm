@@ -43,6 +43,7 @@
 #include "sys_log.h"
 #include "sys_event.h"
 #include "hal_api.h"
+#include "hal_epd_abc9.h"
 #include "service_file.h"
 #include "service_film.h"
 
@@ -280,12 +281,7 @@ static int film_parse_header(const uint8_t *hdr, film_info_t *info)
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     if(info->format == 0x7F)
     {
-        uint32_t body_size = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8) |
-                             ((uint32_t)hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
-        uint16_t width = hdr[4] | ((uint16_t)hdr[5] << 8);
-        uint16_t height = hdr[6] | ((uint16_t)hdr[7] << 8);
-        if(count != 1 || width != EPD_WIDTH || height != EPD_HEIGHT ||
-           body_size != info->frame_size || memcmp(hdr + 12, "ABC9", 4) != 0)
+        if(!hal_epd_abc9_header_valid(hdr))
         {
             sys_loge(FILM_TAG, "Invalid private ABC9 header");
             return -1;

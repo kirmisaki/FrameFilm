@@ -1395,9 +1395,7 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
 
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     case 0x7F:  // Experimental ABC9 input, never a public film2 format.
-        if (header->frameCount != 1 || header->screenWidth != EPD_WIDTH ||
-            header->screenHeight != EPD_HEIGHT || memcmp(header->reserved, "ABC9", 4) != 0)
-            return ESP_ERR_INVALID_ARG;
+        if (!hal_epd_abc9_header_valid(filmData)) return ESP_ERR_INVALID_ARG;
         frameSize = EPD_WIDTH * EPD_HEIGHT * 2u;
         break;
 #endif
@@ -2219,13 +2217,10 @@ esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size)
     if (pixels == NULL || size != EPD_WIDTH * EPD_HEIGHT * 2u)
         return ESP_ERR_INVALID_ARG;
     /* Check all high bits BEFORE display_init/full_clear/any REF. */
-    for (uint32_t i = 1; i < size; i += 2)
+    if (!hal_epd_abc9_codes_valid(pixels, size))
     {
-        if (pixels[i] & 0xFE)
-        {
-            sys_loge(EPD_TAG, "ABC9 rejected pixel %lu: high bits set", (unsigned long)(i / 2));
-            return ESP_ERR_INVALID_ARG;
-        }
+        sys_loge(EPD_TAG, "ABC9 rejected: high bits set");
+        return ESP_ERR_INVALID_ARG;
     }
     EPD_PROFILE_BEGIN("abc9_lab");
     epd_lock();

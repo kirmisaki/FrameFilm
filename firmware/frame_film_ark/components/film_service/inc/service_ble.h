@@ -110,7 +110,7 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_BUILD_INFO_GET (0x56)
 #define BLE_FILM_TRANS_CH_DIRECT_OTA_START (0x57)
 #define BLE_FILM_TRANS_CH_DIRECT_OTA_APPLY (0x58)
-#define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open, bit4=SoftAP, bit5=ABC9 preview, bit6=hardware identity, bit7=NFC wallet
+#define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open, bit4=SoftAP, bit5=ABC9 preview, bit6=hardware identity, bit7=NFC wallet, bit8=file paths, bit9=screenshot, bit10=fullscreen pass (mono/color; color also needs bit0), bit11=I006 ABC9 app profile
 #define BLE_FILM_TRANS_CH_STORAGE_CATALOG (0x5B) // Ark read-only storage/catalog
 /* 按目录 + 文件名管理（Ark，目录号 1=film 2=animation 3=screenshot）：
    0x60 删除：dir(1) + 文件名 UTF-8 + NUL → status(1)

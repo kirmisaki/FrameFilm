@@ -46,6 +46,7 @@
 #include "sys_log.h"
 #include "sys_event.h"
 #include "hal_api.h"
+#include "hal_epd_abc9.h"
 #include "service_file.h"
 #include "esp_timer.h"
 
@@ -886,14 +887,11 @@ static int file_validate_abc9_body(void)
         {
             size_t count = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
             if(fread(chunk, 1, count, fp) != count) break;
-            for(size_t i = 1; i < count; i += 2)
+            if(!hal_epd_abc9_codes_valid(chunk, count))
             {
-                if(chunk[i] & 0xFE)
-                {
-                    sys_loge(FILE_TAG, "ABC9 upload rejected: high bits set");
-                    fclose(fp);
-                    return -1;
-                }
+                sys_loge(FILE_TAG, "ABC9 upload rejected: high bits set");
+                fclose(fp);
+                return -1;
             }
             remaining -= count;
         }
@@ -977,8 +975,7 @@ static int file_validate_film(uint16_t *frame_count_out)
         break;
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     case 0x7F:  // Experimental ABC9 container, not public film2.
-        if(hdr[FILM_HDR_OFFSET_FRAMECOUNT] != 1 || hdr[FILM_HDR_OFFSET_FRAMECOUNT + 1] != 0 ||
-           memcmp(hdr + 12, "ABC9", 4) != 0) return -1;
+        if(!hal_epd_abc9_header_valid(hdr)) return -1;
         frame_size = EPD_WIDTH * EPD_HEIGHT * 2u;
         break;
 #endif

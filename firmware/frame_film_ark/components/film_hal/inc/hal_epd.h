@@ -8,6 +8,7 @@
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "sys_log.h"
+#include "hal_epd_abc9.h"
 
 /*********************************************************************
  * CPPMIX

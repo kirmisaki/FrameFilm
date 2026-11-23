@@ -5,7 +5,18 @@ design/
 
 # Local development records and conversation attachments
 /docs/development/
+/.codex-attachments/
 /.codex-remote-attachments/
+/oc-temp.png
+
+# Local student card references and PSD-derived artwork
+/docs/knowledge/Image_495824632339013.jpg
+/docs/knowledge/Image_497982913709644.png
+/docs/knowledge/READ ME必读.txt
+/docs/knowledge/罗德岛学院 学生证件模板 CMYK.psd
+/tools/ark-pass-editor/student-card-base.png
+/tools/ark-pass-editor/student-card-psd.png
+/tools/ark-pass-editor/student-palettes/
 
 # Generated dependencies and build caches
 node_modules/

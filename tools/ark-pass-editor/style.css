@@ -1,4 +1,8 @@
 :root{color-scheme:light;--ink:#181818;--muted:#666;--line:#d8d8d8;--paper:#fff;--ground:#f1f1ef;--danger:#a52720;font-family:"Noto Sans CJK SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+[hidden]{display:none!important}
+.template-field{margin-bottom:20px}
+.preview-frame.student-preview canvas{max-width:720px}
+#student-base-status:empty{margin:0;padding:0;min-height:0;border:0}
 .embedded-nav,.embedded-connection-hint{display:none}
 body.embedded .masthead,body.embedded #connect,body.embedded .device-name-panel,body.embedded .standalone-connection-hint{display:none}
 body.embedded .embedded-nav{display:block;max-width:1240px;margin:0 auto;padding:16px 24px 0}

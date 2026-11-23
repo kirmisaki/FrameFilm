@@ -3,33 +3,217 @@
   'use strict';
   const palette = [[0, 0, 0], [255, 255, 255], [255, 255, 0], [255, 0, 0], [0, 0, 255], [41, 204, 20]];
   const codes = [0, 1, 2, 3, 5, 6];
+  // Student preview/metrics only: ui_display.c native_to_fast indexes
+  // 0/21/63/47/32/52 in ForFilm's CF_PALETTE_FAST. This RGB fixture is
+  // shared with the SDL preview, not a prediction of every physical panel.
+  const studentPalette = [[0, 0, 0], [255, 255, 255], [219, 198, 57], [180, 71, 32], [21, 60, 135], [123, 149, 112]];
+  const inkOrder = [3, 2, 5, 4, 3]; // red -> yellow -> green -> blue -> red
+  const nominalAngles = [0, Math.PI / 2, 3 * Math.PI / 4, 3 * Math.PI / 2];
+  const inkSegments = inkOrder.slice(0, -1).map((a, i) => {
+    const b = inkOrder[i + 1], ca = studentPalette[a], cb = studentPalette[b];
+    const ax = ca[0] - ca[1], ay = ca[1] - ca[2];
+    const bx = cb[0] - cb[1], by = cb[1] - cb[2];
+    const angle = (Math.atan2(ay, ax) + 2 * Math.PI) % (2 * Math.PI);
+    return { a, b, ax, ay, bx, by, det: ax * by - ay * bx, angle,
+      start: Math.min(angle, nominalAngles[i]), end: Math.max(angle, nominalAngles[i]) };
+  });
+  // Unit chroma for the display's yellow, red, blue and green inks.
+  const artworkHues = [[1, 1, 0], [1, 0, 0], [0, 0, 1], [0, 1, 0]];
   const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  function encode(rgba, mode, hasAvatar) {
-    if (rgba.length !== 440 * 608 * 4 || !['mono', 'grayscale', 'color'].includes(mode)) throw new Error('通行证像素或头像模式无效。');
-    const color = mode === 'color';
-    const bin = new Uint8Array(color ? 133776 : 33456);
-    bin.set([70, 70, 85, 73, color ? 2 : 1, color ? 2 : 1, 184, 1, 96, 2]);
-    for (let i = 0; i < 440 * 608; i++) {
-      const k = i * 4, x = i % 440, y = Math.floor(i / 440);
-      const inside = hasAvatar && x >= 20 && x < 148 && y >= 143 && y < 303;
-      const luminance = .299 * rgba[k] + .587 * rgba[k + 1] + .114 * rgba[k + 2];
+  const deviceWidth = 440, deviceHeight = 608, headerSize = 16;
+  const operatorAvatar = { x: 20, y: 143, width: 128, height: 160 };
+
+  function contains(rect, x, y) {
+    return rect && x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
+  }
+
+  function thresholdAt(x, y) {
+    return (bayer[(y & 3) * 4 + (x & 3)] + .5) * 255 / 16;
+  }
+
+  function artworkIndex(r, g, b, luminance, threshold, color) {
+    const low = Math.min(r, g, b), high = Math.max(r, g, b), chroma = high - low;
+    // Preserve solid dark text/ink as well as faint gray artwork.
+    if (!color || chroma <= 24) return luminance < 80 || luminance < threshold ? 0 : 1;
+    if (threshold < low) return 1;
+    if (threshold >= high) return 0;
+    // Match hue independently of brightness, so a pale blue does not turn green.
+    const rr = (r - low) / chroma, gg = (g - low) / chroma, bb = (b - low) / chroma;
+    let index = 2, distance = Infinity;
+    artworkHues.forEach(([hr, hg, hb], p) => {
+      const d = (rr - hr) ** 2 + (gg - hg) ** 2 + (bb - hb) ** 2;
+      if (d < distance) { distance = d; index = p + 2; }
+    });
+    return index;
+  }
+
+  function quantize(rgba, mode, width, avatarRect, ditherArtwork) {
+    const indices = new Uint8Array(deviceWidth * deviceHeight);
+    for (let i = 0; i < indices.length; i++) {
+      const k = i * 4, x = i % width, y = Math.floor(i / width);
+      const inside = contains(avatarRect, x, y);
+      const r = rgba[k], g = rgba[k + 1], b = rgba[k + 2];
+      const luminance = .299 * r + .587 * g + .114 * b;
       let index = luminance < 160 ? 0 : 1;
-      if (inside && color) {
+      if (ditherArtwork && !inside) {
+        index = artworkIndex(r, g, b, luminance, thresholdAt(x, y), mode === 'color');
+      } else if (inside && mode === 'color') {
         let distance = Infinity;
         palette.forEach((rgb, p) => {
-          const r = rgba[k] - rgb[0], g = rgba[k + 1] - rgb[1], b = rgba[k + 2] - rgb[2];
-          const d = .299 * r * r + .587 * g * g + .114 * b * b;
+          const dr = r - rgb[0], dg = g - rgb[1], db = b - rgb[2];
+          const d = .299 * dr * dr + .587 * dg * dg + .114 * db * db;
           if (d < distance) { distance = d; index = p; }
         });
       } else if (inside && mode === 'grayscale') {
-        const threshold = (bayer[((y - 143) & 3) * 4 + ((x - 20) & 3)] + .5) * 255 / 16;
-        index = luminance < threshold ? 0 : 1;
+        index = luminance < thresholdAt(x - avatarRect.x, y - avatarRect.y) ? 0 : 1;
       }
+      indices[i] = index;
       rgba[k] = palette[index][0]; rgba[k + 1] = palette[index][1]; rgba[k + 2] = palette[index][2]; rgba[k + 3] = 255;
-      if (color) bin[16 + (i >> 1)] |= codes[index] << ((i & 1) ? 0 : 4);
-      else if (index === 0) bin[16 + (i >> 3)] |= 0x80 >> (i & 7);
+    }
+    return indices;
+  }
+
+  // Continuous hue/chroma mapping into the measured six-ink gamut. A small
+  // hue plateau at each ink keeps both nominal saturated primaries and the
+  // measured fixture on that ink; interpolate the gaps instead of hard hue
+  // classification. Opponent coordinates remove the neutral component.
+  function studentBlend(r, g, b) {
+    const weights = [0, 0, 0, 0, 0, 0];
+    const magnitude = Math.hypot(r - g, g - b);
+    let angle = (Math.atan2(g - b, r - g) + 2 * Math.PI) % (2 * Math.PI);
+    for (let i = 0; i < inkSegments.length; i++) {
+      const segment = inkSegments[i], next = inkSegments[(i + 1) % inkSegments.length];
+      const nextStart = i === 3 ? 2 * Math.PI : next.start;
+      if (angle > nextStart) continue;
+      if (angle <= segment.end) angle = segment.angle;
+      else {
+        const nextAngle = next.angle + (i === 3 ? 2 * Math.PI : 0);
+        angle = segment.angle + (angle - segment.end) / (nextStart - segment.end) * (nextAngle - segment.angle);
+      }
+      break;
+    }
+    const vx = Math.cos(angle) * magnitude, vy = Math.sin(angle) * magnitude;
+    const luminance = .299 * r + .587 * g + .114 * b;
+    const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+    const chromaScale = Math.min(1, (chroma - 12) / 24); // soft neutral protection, 12..36
+    for (const segment of inkSegments) {
+      const wa = (vx * segment.by - vy * segment.bx) / segment.det;
+      const wb = (segment.ax * vy - segment.ay * vx) / segment.det;
+      if (wa < -1e-9 || wb < -1e-9) continue;
+      const total = Math.max(0, wa) + Math.max(0, wb);
+      const fraction = Math.max(0, wa) / total;
+      const ca = studentPalette[segment.a], cb = studentPalette[segment.b];
+      const mix = ca.map((value, c) => fraction * value + (1 - fraction) * cb[c]);
+      const mixY = .299 * mix[0] + .587 * mix[1] + .114 * mix[2];
+      // Preserve source Y, reducing only chroma until black/white weights fit.
+      // This prevents light seams when a gradient crosses a hue/gamut edge.
+      const ink = Math.min(total * chromaScale, 1, luminance / mixY, (255 - luminance) / (255 - mixY));
+      weights[1] = Math.max(0, (luminance - ink * mixY) / 255);
+      weights[0] = Math.max(0, 1 - ink - weights[1]);
+      weights[segment.a] = ink * fraction;
+      weights[segment.b] = ink * (1 - fraction);
+      return weights;
+    }
+    return weights; // All non-neutral RGB hues are enclosed by inkSegments.
+  }
+
+  function quantizeStudent(rgba, mode, width, height, avatarRect, ditherArtwork) {
+    const indices = new Uint8Array(width * height);
+    const classes = new Uint8Array(indices.length);
+    for (let i = 0; i < indices.length; i++) {
+      const k = i * 4, r = rgba[k], g = rgba[k + 1], b = rgba[k + 2];
+      const neutral = mode !== 'color' || Math.max(r, g, b) - Math.min(r, g, b) <= 12;
+      const luminance = .299 * r + .587 * g + .114 * b;
+      // Do not leak diffusion across avatar edges or into solid text/paper.
+      classes[i] = contains(avatarRect, i % width, Math.floor(i / width)) ? 3 :
+        !ditherArtwork || (neutral && (luminance < 1 || luminance >= 254)) ? 0 : neutral ? 1 : 2;
+    }
+    let current = new Float64Array((width + 2) * 3), next = new Float64Array(current.length);
+    function diffuse(x, y, row, type, er, eg, eb, factor) {
+      if (x < 0 || x >= width || y >= height || classes[y * width + x] !== type) return;
+      const k = (x + 1) * 3;
+      row[k] += er * factor; row[k + 1] += eg * factor; row[k + 2] += eb * factor;
+    }
+    for (let y = 0; y < height; y++) {
+      const direction = (y & 1) ? -1 : 1;
+      for (let step = 0; step < width; step++) {
+        const x = direction === 1 ? step : width - 1 - step;
+        const i = y * width + x, k = i * 4, e = (x + 1) * 3, type = classes[i];
+        const r = rgba[k], g = rgba[k + 1], b = rgba[k + 2];
+        const luminance = .299 * r + .587 * g + .114 * b;
+        let index = luminance < 160 ? 0 : 1;
+        if (type === 3) {
+          // Preserve avatar classification/Bayer behavior; only its student
+          // RGB preview changes to the same fixture as the packed ink codes.
+          if (mode === 'color') {
+            let distance = Infinity;
+            palette.forEach((rgb, p) => {
+              const d = .299 * (r - rgb[0]) ** 2 + .587 * (g - rgb[1]) ** 2 + .114 * (b - rgb[2]) ** 2;
+              if (d < distance) { distance = d; index = p; }
+            });
+          } else if (mode === 'grayscale') {
+            index = luminance < thresholdAt(x - avatarRect.x, y - avatarRect.y) ? 0 : 1;
+          }
+        } else if (type !== 0) {
+          const weights = type === 1 ? [1 - luminance / 255, luminance / 255, 0, 0, 0, 0] : studentBlend(r, g, b);
+          const target = [0, 0, 0];
+          for (let p = 0; p < weights.length; p++) {
+            for (let c = 0; c < 3; c++) target[c] += weights[p] * studentPalette[p][c];
+          }
+          const rr = target[0] + current[e], gg = target[1] + current[e + 1], bb = target[2] + current[e + 2];
+          let distance = Infinity, candidates = 0;
+          studentPalette.forEach((rgb, p) => {
+            if (weights[p] <= 1e-9) return;
+            candidates++;
+            const d = .299 * (rr - rgb[0]) ** 2 + .587 * (gg - rgb[1]) ** 2 + .114 * (bb - rgb[2]) ** 2;
+            if (d < distance) { distance = d; index = p; }
+          });
+          // Reuse ForFilm's serpentine Floyd-Steinberg 7/3/5/1 kernel, in
+          // floating-point measured RGB. Restrict candidates to the blend's
+          // inks so neutral text cannot acquire color and cyan cannot turn gray.
+          if (candidates > 1) {
+            const rgb = studentPalette[index], er = rr - rgb[0], eg = gg - rgb[1], eb = bb - rgb[2];
+            diffuse(x + direction, y, current, type, er, eg, eb, 7 / 16);
+            diffuse(x - direction, y + 1, next, type, er, eg, eb, 3 / 16);
+            diffuse(x, y + 1, next, type, er, eg, eb, 5 / 16);
+            diffuse(x + direction, y + 1, next, type, er, eg, eb, 1 / 16);
+          }
+        }
+        indices[i] = index;
+        rgba[k] = studentPalette[index][0]; rgba[k + 1] = studentPalette[index][1]; rgba[k + 2] = studentPalette[index][2]; rgba[k + 3] = 255;
+      }
+      const previous = current; current = next; next = previous; next.fill(0);
+    }
+    return indices;
+  }
+
+  function pack(indices, color, width, height, rotateClockwise) {
+    const format = color ? 2 : 1;
+    const outputWidth = rotateClockwise ? height : width, outputHeight = rotateClockwise ? width : height;
+    const bin = new Uint8Array(headerSize + indices.length / (color ? 2 : 8));
+    bin.set([70, 70, 85, 73, format, format, outputWidth & 255, outputWidth >> 8, outputHeight & 255, outputHeight >> 8]);
+    for (let i = 0; i < indices.length; i++) {
+      const index = indices[i];
+      // Fullscreen student 720×480 (x,y) -> 480×720 (479-y,x).
+      const dst = rotateClockwise ? (i % width) * outputWidth + outputWidth - 1 - Math.floor(i / width) : i;
+      if (color) bin[headerSize + (dst >> 1)] |= codes[index] << ((dst & 1) ? 0 : 4);
+      else if (index === 0) bin[headerSize + (dst >> 3)] |= 0x80 >> (dst & 7);
     }
     return bin;
+  }
+
+  function encode(rgba, mode, hasAvatar, {
+    width = deviceWidth, height = deviceHeight, avatarRect = operatorAvatar, ditherArtwork = false, rotateClockwise = false,
+  } = {}) {
+    const student = width === 720 && height === 480 && rotateClockwise;
+    const operator = width === deviceWidth && height === deviceHeight && !rotateClockwise;
+    if ((!student && !operator) || rgba.length !== width * height * 4 || !['mono', 'grayscale', 'color'].includes(mode)) {
+      throw new Error('通行证像素或头像模式无效。');
+    }
+    const rect = hasAvatar ? avatarRect : null;
+    const indices = student ? quantizeStudent(rgba, mode, width, height, rect, ditherArtwork) :
+      quantize(rgba, mode, width, rect, ditherArtwork);
+    return pack(indices, mode === 'color', width, height, rotateClockwise);
   }
   const api = { encode };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

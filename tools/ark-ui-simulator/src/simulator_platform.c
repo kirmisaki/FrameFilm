@@ -94,22 +94,27 @@ int ui_core_post(uint32_t cmd, const void *data, uint8_t len)
     return 0;
 }
 int ui_core_is_ready(void) { return 1; }
-void simulator_reset_color_card(void) { memset(&color_card, 0, sizeof(color_card)); }
 simulator_color_card_t simulator_color_card(void) { return color_card; }
+#ifndef ARK_UI_SIMULATOR_REAL_DISPLAY
 int ui_display_set_color_card(const uint8_t *pixels, int x, int y, int w, int h)
 {
     (void)pixels;
-    color_card.calls++;
+    color_card.active = 1;
     color_card.x = x; color_card.y = y;
     color_card.w = w; color_card.h = h;
     return 0;
 }
-void ui_display_clear_color_card(void) { }
+void ui_display_clear_color_card(void) { color_card.active = 0; }
+/* RGB SDL preview has no calibrated ABC9 renderer. The real-display host
+   target below tests native playback, without inventing a panel preview. */
+int ui_display_set_abc9_card(const uint8_t *pixels, uint32_t size)
+{ (void)pixels; (void)size; return -1; }
 void ui_display_invalidate_all(void)
 {
     lv_obj_t *screen = lv_screen_active();
     if(screen != NULL) lv_obj_invalidate(screen);
 }
+#endif
 void ui_core_page_enter(uint8_t app_id, const app_ui_ops_t *ops) { (void)app_id; simulator_show(ops, NULL); }
 void ui_core_page_exit(void) { simulator_show(NULL, NULL); }
 void app_manager_sleep_show(const app_ui_ops_t *ops) { simulator_show(ops, NULL); }
