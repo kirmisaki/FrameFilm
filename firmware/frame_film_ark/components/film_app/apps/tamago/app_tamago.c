@@ -49,8 +49,6 @@
 /* 动画帧间隔（ms）：16 帧 × 250ms = 4s 一轮，与原始视频等长
  * （视频 4s/30fps；电子纸跑不到 30fps，这里用 4fps 保住动作节奏） */
 #define TG_FRAME_MS             (250)
-/* 交互后动画持续时长（ms）：之后停在静态帧，避免持续全屏刷新 */
-#define TG_ANIM_HOLD_MS         (8000)
 
 /* ---- 养育规则（游戏分钟） ---- */
 #define TG_HUNGER_DROP_MIN      (120)   /* 清醒：每 2h 饥饿 −1 */
@@ -188,7 +186,6 @@ static tg_screen_t m_screen;
 static uint8_t m_icon;
 static int m_last_min;              /* 上次刷新的“日分钟”，抑制无谓上屏（-1 = 未初始化） */
 static uint32_t m_frame;            /* 动画帧号 */
-static uint32_t m_anim_until_ms;
 static uint8_t m_force_refresh;
 static uint8_t m_need_rebuild;      /* 死忙等“模型强制换页”场合置位，由 tick 统一重建 */
 static char m_msg[64];              /* 消息行文本（跨页面重建保留） */
@@ -256,7 +253,6 @@ static void tg_finish_game(void);
 static void tg_simulate(uint32_t elapsed_s);
 static void tg_step_minute(int minute_of_day);
 static void tg_die(const char *reason);
-static void tg_touch_anim(void);
 static void tg_set_msg(const char *txt);
 
 static lv_obj_t *tg_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t color,
@@ -329,11 +325,6 @@ static const char *tg_attention(void)
     if(m_st.happy == 0)             return tg_text("孤单", "LONELY");
     if(m_st.disc_call)              return tg_text("呼叫", "CALL");
     return NULL;
-}
-
-static void tg_touch_anim(void)
-{
-    m_anim_until_ms = lv_tick_get() + TG_ANIM_HOLD_MS;
 }
 
 /**
@@ -463,7 +454,7 @@ static void tg_draw_frame(void)
 }
 
 /**
- * @brief 帧动画定时器（300ms）：交互后的窗口内循环播放，窗口外停在首帧
+ * @brief 帧动画定时器：宠物主界面常驻循环播放
  */
 static void tg_anim_cb(lv_timer_t *timer)
 {
@@ -471,15 +462,6 @@ static void tg_anim_cb(lv_timer_t *timer)
 
     if(m_body == NULL)
     {
-        return;
-    }
-    if(lv_tick_get() >= m_anim_until_ms)
-    {
-        if(m_frame != 0u)
-        {
-            m_frame = 0;
-            tg_draw_frame();
-        }
         return;
     }
     m_frame++;
@@ -608,7 +590,6 @@ static void tg_step_minute(int minute_of_day)
         {
             /* 进化：播放一段进化动画再回到常态 */
             m_evolve_until_ms = lv_tick_get() + 5000u;
-            tg_touch_anim();
         }
     }
 
@@ -1451,8 +1432,6 @@ static void tg_tick_cb(lv_timer_t *timer)
 
 static void tg_on_key(input_press_type_t key)
 {
-    tg_touch_anim();
-
     switch(m_screen)
     {
     case TG_SCR_PET:
@@ -1539,7 +1518,6 @@ static void tg_page_create(lv_obj_t *root)
     m_frame = 0;
     m_last_anim = -1;
     m_evolve_until_ms = 0;
-    tg_touch_anim();
 
     if(m_px == NULL)
     {
