@@ -97,12 +97,21 @@ typedef struct {
 static ui_asset_slot_t m_icons[UI_ICON_NUM] = {
     { .code = "image",     .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_image     },
     { .code = "pass",      .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_pass      },
+#if CONFIG_ARK_HAS_NFC
     { .code = "wallet",    .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_wallet    },
+#else
+    /* n4r2 没有卡包入口：不引用内置图，省下 800B（槽位保留以维持枚举下标） */
+    { .code = "wallet",    .w = UI_ICON_W, .h = UI_ICON_H },
+#endif
     { .code = "template",  .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_template  },
     { .code = "clock",     .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_clock     },
     { .code = "animation", .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_animation },
     { .code = "settings",  .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_settings  },
-    { .code = "tamago",    .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_tamago    },
+    { .code = "tamago",    .w = UI_ICON_W, .h = UI_ICON_H,
+#if CONFIG_ARK_HAS_NFC
+      .def = ui_def_icon_tamago
+#endif
+    },
 };
 
 static ui_asset_slot_t m_badge = {
@@ -246,7 +255,14 @@ static const void *ui_asset_resolve(ui_asset_slot_t *s, const char *fname)
         /* 缺失 / 非法 / 尺寸不符都走这里：用内置默认图，界面不空 */
         sys_logw(UI_ASSETS_TAG, "%s/%s unusable (r=%d), fallback to builtin",
                  s->code, fname, r);
-        ui_asset_expand(s->def, s->w, s->h, s->l8);
+        if(s->def != NULL)
+        {
+            ui_asset_expand(s->def, s->w, s->h, s->l8);
+        }
+        else
+        {
+            memset(s->l8, 0xFF, l8_size);   /* 该变体没有内置图（如 n4r2 的卡包/宠物） */
+        }
     }
 
     s->dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
