@@ -1,0 +1,2416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FrameFilm Ark · TAMAGO App 原型（480×720 / 1-bit）</title>
+<style>
+/* ============================================================
+   FrameFilm Ark — TAMAGO 电子宠物 App 原型
+   目标：E6 3.70" 720×480 彩色电子纸，逻辑竖屏 480×720
+   约束：纯 1-bit（黑/白）、无补间动画、每次状态变更一整帧
+   本文件零依赖，双击即可在浏览器打开
+   ============================================================ */
+:root{
+  --ink:#000; --paper:#fff;
+  --font-ui:'Helvetica Neue',Helvetica,Arial,'PingFang SC','Microsoft YaHei',sans-serif;
+  --font-mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,'Courier New',monospace;
+  --pad:20px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:#141517;color:#c9cbc6;
+  font:14px/1.65 var(--font-ui);
+  padding:48px 24px 96px;
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.03) 0 1px,transparent 1px 6px);
+}
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto}
+a{color:#d8dad2}
+
+/* ---------- 页头 ---------- */
+.masthead{border-bottom:2px solid #3a3c40;padding-bottom:20px;margin-bottom:40px}
+.masthead .kicker{font:11px/1 var(--font-mono);letter-spacing:.22em;color:#7d8178;text-transform:uppercase}
+.masthead h1{font-size:34px;font-weight:700;letter-spacing:-.01em;color:#f2f3ee;margin:14px 0 10px}
+.masthead p{max-width:76ch;color:#9a9d94;font-size:14px}
+.masthead .meta{margin-top:16px;font:11px/1.9 var(--font-mono);color:#6d7168;letter-spacing:.06em}
+
+section{margin-bottom:56px}
+h2{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#f2f3ee;
+   display:flex;align-items:center;gap:12px;margin-bottom:22px;font-weight:700}
+h2::before{content:'';width:0;height:0;border-left:11px solid #f2f3ee;border-top:6px solid transparent;border-bottom:6px solid transparent;flex:none}
+h2::after{content:'';height:1px;background:#3a3c40;flex:1}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #2c2e31;vertical-align:top}
+th{font:11px/1.5 var(--font-mono);letter-spacing:.12em;color:#7d8178;text-transform:uppercase;font-weight:400}
+td:first-child{color:#e6e8e2;white-space:nowrap}
+td code{font:12px/1.5 var(--font-mono);color:#b9bcb3;background:#202224;padding:1px 5px;border-radius:2px}
+
+.stagewrap{display:grid;grid-template-columns:500px 1fr;gap:40px;align-items:start}
+@media (max-width:1000px){.stagewrap{grid-template-columns:1fr}}
+
+/* ---------- 设备 ---------- */
+.device{
+  width:480px;height:720px;position:relative;flex:none;box-sizing:content-box;
+  background:#0c0d0e;padding:10px;
+}
+.device-inner{width:100%;height:100%;background:var(--paper);color:var(--ink);position:relative;overflow:hidden;font-family:var(--font-ui)}
+.device-tag{font:10px/1 var(--font-mono);letter-spacing:.2em;color:#7d8178;margin-top:12px;text-align:right}
+
+/* ---------- 公共壳 ---------- */
+.status{position:relative;height:30px;display:flex;align-items:center;gap:10px;padding:0 14px;
+        border-bottom:1px solid var(--ink);font:10px/1 var(--font-mono);letter-spacing:.1em}
+.status .brand{display:flex;align-items:center;gap:7px;font-weight:700;letter-spacing:.14em}
+.status .sp{flex:1}
+.status .clock{position:absolute;left:50%;transform:translateX(-50%);font-weight:700;letter-spacing:.14em}
+.status .cell{display:flex;align-items:center;gap:5px}
+.pip{width:9px;height:9px;border:1px solid var(--ink)}
+.pip.on{background:var(--ink)}
+.tri-r{width:0;height:0;border-left:8px solid var(--ink);border-top:5px solid transparent;border-bottom:5px solid transparent}
+
+.foot{position:absolute;left:0;right:0;bottom:0;height:28px;display:flex;align-items:center;
+      gap:10px;padding:0 14px;border-top:1px solid var(--ink);font:9px/1 var(--font-mono);letter-spacing:.05em;white-space:pre}
+.foot .sp{flex:1}
+.screen-body{position:absolute;left:0;right:0;top:30px;bottom:28px;padding:16px var(--pad);display:flex;flex-direction:column}
+.micro{font:9px/1.5 var(--font-mono);letter-spacing:.14em;text-transform:uppercase}
+.dim{opacity:.62}
+.rule{height:1px;background:var(--ink)}
+
+/* ---------- 宠物页 ---------- */
+.t-head{display:flex;justify-content:space-between;align-items:flex-end;height:18px;
+        font:9.5px/1 var(--font-mono);letter-spacing:.14em;text-transform:uppercase;flex:none}
+.t-rule{margin:9px 0 12px;flex:none}
+.t-unit{display:flex;align-items:flex-end;justify-content:space-between;flex:none;height:58px}
+.t-unit .name{font:700 30px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;
+              white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-unit .sub{text-align:right;font:8.5px/1.55 var(--font-mono);letter-spacing:.08em;opacity:.7;white-space:pre}
+.t-titlecn{font:11px/1.2 var(--font-ui);letter-spacing:.18em;margin-top:4px;opacity:.72}
+
+.t-heartrow{display:flex;align-items:center;gap:7px;margin-top:12px;flex:none;height:16px}
+.t-heartrow .lab{font:8.5px/1 var(--font-mono);letter-spacing:.12em;width:78px;flex:none;opacity:.7}
+.hearts{display:flex;gap:3px;align-items:center}
+.heart{width:14px;height:12px;display:block}
+.t-disc{display:flex;gap:2px;align-items:center;margin-left:auto}
+.t-disc i{width:12px;height:7px;border:1px solid var(--ink)}
+.t-disc i.on{background:var(--ink)}
+
+.pet-stage{position:relative;flex:1;min-height:280px;border:1px solid var(--ink);overflow:hidden;margin-top:10px;background:var(--paper)}
+.cm{position:absolute;width:12px;height:12px;pointer-events:none}
+.cm.tl{left:7px;top:7px;border-left:1px solid var(--ink);border-top:1px solid var(--ink)}
+.cm.tr{right:7px;top:7px;border-right:1px solid var(--ink);border-top:1px solid var(--ink)}
+.cm.bl{left:7px;bottom:7px;border-left:1px solid var(--ink);border-bottom:1px solid var(--ink)}
+.cm.br{right:7px;bottom:7px;border-right:1px solid var(--ink);border-bottom:1px solid var(--ink)}
+.stage-top{position:absolute;left:13px;right:13px;top:10px;display:flex;justify-content:space-between;
+           font:8.5px/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase}
+.stage-alert{position:absolute;right:12px;top:27px;background:var(--ink);color:var(--paper);
+             font:9px/1 var(--font-mono);letter-spacing:.1em;padding:4px 7px;display:none}
+.stage-alert.on{display:block}
+.pet-canvas{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);
+            width:230px;height:230px;image-rendering:pixelated;image-rendering:crisp-edges}
+/* ---------- 状态动画视频层 ----------
+ * 6 段 mp4（待机/高兴/吃饭/生病/睡觉/升级）按状态切换；
+ * 白底用 multiply 融进纸面，滤镜压成 1-bit 观感。 */
+.pet-media{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);
+           width:230px;height:230px;pointer-events:none}
+.pet-media video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+                 mix-blend-mode:multiply;background:transparent;
+                 filter:grayscale(1) contrast(3.2) brightness(1.06)}
+.pet-dither{position:absolute;inset:0;width:100%;height:100%;
+            image-rendering:pixelated;image-rendering:crisp-edges}
+/* 上传立绘：白底用 multiply 融进纸面，1px 边框把它收成一张“角色卡” */
+.pet-portrait{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);
+              width:230px;height:230px;object-fit:contain;background:var(--paper);
+              border:1px solid var(--ink);mix-blend-mode:multiply;image-rendering:auto}
+.pet-portrait.s1{width:204px;height:204px}
+.pet-portrait.s2{width:214px;height:214px}
+.pet-portrait.s3{width:224px;height:224px}
+.pet-portrait.s4{width:230px;height:230px}
+.pet-portrait.mono{filter:grayscale(1) contrast(3.6) brightness(1.08)}
+.pet-portrait.sleeping{filter:grayscale(1) contrast(2.6) brightness(.82)}
+.pet-portrait.color{filter:none}
+
+/* ---------- 立绘动态 ----------
+ * 待机呼吸 + 微晃、睡眠慢速摇摆、生病快抖、无聊侧头
+ * 全部用 transform，不影响 mix-blend-mode 下的白底融合 */
+@keyframes portrait-idle{
+  0%,100% { transform: translateX(-50%) translateY(0) rotate(-0.6deg) scale(1) }
+  25%     { transform: translateX(-50%) translateY(-3px) rotate(0.4deg)  scale(1.008) }
+  50%     { transform: translateX(-50%) translateY(-1px) rotate(0.7deg)   scale(1) }
+  75%     { transform: translateX(-50%) translateY(-4px) rotate(-0.3deg) scale(1.006) }
+}
+@keyframes portrait-sleep{
+  0%,100% { transform: translateX(-50%) translateY(2px) rotate(-2deg) scale(.98); filter:grayscale(1) contrast(2.6) brightness(.82) }
+  50%     { transform: translateX(-50%) translateY(0)   rotate(2deg)  scale(.99); filter:grayscale(1) contrast(2.4) brightness(.78) }
+}
+@keyframes portrait-sick{
+  0%,100% { transform: translateX(-50%) translateY(0)   rotate(0)    scale(1);   filter:grayscale(1) contrast(2.8) brightness(.9)  }
+  25%     { transform: translateX(calc(-50% + 3px)) translateY(1px) rotate(1.5deg) scale(.995); filter:grayscale(1) contrast(2.9) brightness(.88) }
+  50%     { transform: translateX(calc(-50% - 3px)) translateY(-1px) rotate(-1.5deg) scale(.99); filter:grayscale(1) contrast(3)   brightness(.86) }
+  75%     { transform: translateX(calc(-50% + 2px)) translateY(1px) rotate(1deg)   scale(.995); filter:grayscale(1) contrast(2.9) brightness(.88) }
+}
+@keyframes portrait-bored{
+  0%,85%,100% { transform: translateX(-50%) rotate(0) }
+  90%         { transform: translateX(-50%) rotate(-5deg) }
+  95%         { transform: translateX(-50%) rotate(4deg) }
+}
+@keyframes portrait-dead{
+  0%   { transform: translateX(-50%) rotate(0)   scale(1); opacity:1; filter:grayscale(1) contrast(4) brightness(.5) }
+  100% { transform: translateX(-50%) rotate(10deg) scale(.85); opacity:.3; filter:grayscale(1) contrast(4) brightness(.4) }
+}
+@keyframes zzz-float{
+  0%   { opacity:0;   transform: translateY(0)    scale(.8) }
+  20%  { opacity:1;   transform: translateY(-10px) scale(1) }
+  80%  { opacity:.6;  transform: translateY(-36px) scale(1.1) }
+  100% { opacity:0;   transform: translateY(-56px) scale(.8) }
+}
+/* 没有加 animation 名的基础状态（如"死亡"走 portrait-dead） */
+.pet-portrait.alive.idle   { animation: portrait-idle 2.4s ease-in-out infinite }
+.pet-portrait.alive.sleeping{ animation: portrait-sleep 5s ease-in-out infinite }
+.pet-portrait.alive.sick   { animation: portrait-sick 0.6s ease-in-out infinite }
+.pet-portrait.alive.bored  { animation: portrait-idle 2.2s ease-in-out infinite, portrait-bored 6s ease-in-out infinite }
+.pet-portrait.dead         { animation: portrait-dead 3s ease-in-out forwards }
+.stage-zzz{position:absolute;right:20px;top:24px;font:700 16px/1 var(--font-mono);letter-spacing:.1em;
+           animation:zzz-float 2.4s ease-out infinite;animation-delay:.2s}
+.stage-zzz:nth-child(2){animation-delay:.9s;font-size:11px}
+.stage-floor{position:absolute;left:22px;right:22px;bottom:24px;height:1px;background:var(--ink)}
+.stage-caption{position:absolute;left:13px;right:13px;bottom:7px;display:flex;justify-content:space-between;
+               font:8.5px/1.2 var(--font-mono);letter-spacing:.08em;text-transform:uppercase}
+
+.t-msg{height:16px;margin-top:8px;font:9px/1.2 var(--font-mono);letter-spacing:.07em;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.t-msg.warn{font-weight:700}
+
+.icons{display:flex;gap:4px;margin-top:9px;flex:none;height:54px}
+.icon{flex:1;border:1px solid var(--ink);display:flex;flex-direction:column;align-items:center;
+      justify-content:center;gap:2px;cursor:pointer;user-select:none;background:var(--paper);color:var(--ink)}
+.icon svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6}
+.icon b{font:7.5px/1 var(--font-mono);letter-spacing:.05em;font-weight:400}
+.icon.sel{background:var(--ink);color:var(--paper)}
+.icon.alert{box-shadow:inset 0 0 0 2px var(--ink);font-weight:700}
+.icon.sel.alert{box-shadow:inset 0 0 0 2px var(--paper)}
+.icon.dim{opacity:.32}
+
+.info{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--ink);margin-top:9px;flex:none}
+.info .cell{padding:6px 9px;min-height:39px;border-right:1px solid var(--ink)}
+.info .cell:nth-child(2n){border-right:0}
+.info .cell:nth-child(-n+2){border-bottom:1px solid var(--ink)}
+.info .k{font:8px/1 var(--font-mono);letter-spacing:.12em;opacity:.62}
+.info .v{font-size:14px;font-weight:700;letter-spacing:.02em;margin-top:3px}
+
+/* ---------- 状态页 ---------- */
+.t-status-head{display:flex;justify-content:space-between;align-items:flex-end;height:34px;flex:none}
+.t-status-head h3{font-size:26px;font-weight:700;letter-spacing:.1em}
+.t-status-head .mono{font:9px/1 var(--font-mono);letter-spacing:.1em;opacity:.6}
+.status-list{border-top:1px solid var(--ink);margin-top:12px}
+.status-row{display:flex;justify-content:space-between;align-items:center;gap:12px;
+            padding:9px 2px;border-bottom:1px solid var(--ink);font-size:13px}
+.status-row .k{font:9px/1.4 var(--font-mono);letter-spacing:.11em;opacity:.66}
+.status-row .v{font-family:var(--font-mono);font-size:11.5px;font-weight:700;text-align:right}
+.life-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:12px}
+.life-grid div{border:1px solid var(--ink);padding:5px 4px;text-align:center;
+               font:8px/1.5 var(--font-mono);letter-spacing:.05em;opacity:.5}
+.life-grid div.on{background:var(--ink);color:var(--paper);opacity:1}
+
+/* ---------- 游戏页 ---------- */
+.game-box{border:1px solid var(--ink);padding:16px;margin-top:14px}
+.game-round{display:flex;gap:4px;margin-bottom:18px}
+.game-round i{flex:1;height:7px;border:1px solid var(--ink)}
+.game-round i.on{background:var(--ink)}
+.game-q{font-size:22px;font-weight:700;letter-spacing:.06em;line-height:1.25;min-height:56px}
+.game-sub{font:9px/1.6 var(--font-mono);letter-spacing:.1em;opacity:.64;margin-top:6px;min-height:30px}
+.choice-row{display:flex;gap:10px;margin-top:12px}
+.choice{flex:1;height:88px;border:1px solid var(--ink);display:flex;flex-direction:column;
+        align-items:center;justify-content:center;gap:6px;font:10px/1 var(--font-mono);letter-spacing:.1em;
+        cursor:pointer;user-select:none}
+.choice b{font-size:28px;font-weight:700;line-height:1}
+.choice.on{background:var(--ink);color:var(--paper)}
+.game-result{font-size:28px;font-weight:700;letter-spacing:.1em;margin-top:6px}
+.game-foot{margin-top:auto;font:9px/1.5 var(--font-mono);letter-spacing:.08em;opacity:.64}
+
+/* ---------- 食物页 ---------- */
+.food-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.food-card{border:1px solid var(--ink);height:150px;display:flex;flex-direction:column;
+           align-items:center;justify-content:center;gap:8px;cursor:pointer;user-select:none}
+.food-card b{font-size:24px;font-weight:700;letter-spacing:.1em}
+.food-card span{font:9px/1.5 var(--font-mono);letter-spacing:.08em;opacity:.62}
+.food-card.on{background:var(--ink);color:var(--paper)}
+.food-card.on span{opacity:.8}
+.food-note{margin-top:14px;font:9px/1.6 var(--font-mono);letter-spacing:.08em;opacity:.65}
+
+/* ---------- 主菜单占位 ---------- */
+.menu-list{display:flex;flex-direction:column;border-top:1px solid var(--ink);margin-top:8px}
+.menu-row{height:43px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--ink);
+          padding:0 10px;font-size:14px}
+.menu-row .idx{font:9px/1 var(--font-mono);letter-spacing:.1em;width:22px;flex:none}
+.menu-row .en{margin-left:auto;font:8.5px/1 var(--font-mono);letter-spacing:.1em;opacity:.52}
+.menu-row{cursor:pointer}
+.menu-row.on{background:var(--ink);color:var(--paper)}
+.menu-row.on .en{opacity:.78}
+.menu-note{margin-top:auto;font:9px/1.6 var(--font-mono);letter-spacing:.07em;opacity:.65}
+
+/* ---------- 休眠卡 ---------- */
+.sleep-body{align-items:center;justify-content:center;gap:0;text-align:center}
+.sleep-glyph{width:144px;height:144px;border:2px solid var(--ink);position:relative;margin-bottom:30px}
+.sleep-glyph::before,.sleep-glyph::after{content:'';position:absolute;left:28px;right:28px;height:2px;background:var(--ink)}
+.sleep-glyph::before{top:50px}
+.sleep-glyph::after{top:70px}
+.sleep-word{font-size:34px;font-weight:700;letter-spacing:.26em;text-indent:.26em;margin:18px 0}
+.sleep-sub{font-size:14px;letter-spacing:.1em}
+.sleep-mono{font:9px/1.7 var(--font-mono);letter-spacing:.08em;opacity:.62;margin-top:18px}
+
+/* ---------- 右侧控制 ---------- */
+.side{display:flex;flex-direction:column;gap:22px}
+.side h3{font:11px/1 var(--font-mono);letter-spacing:.18em;text-transform:uppercase;color:#f2f3ee;margin-bottom:10px}
+.controls{display:flex;flex-direction:column;gap:12px;border:1px solid #3a3c40;padding:18px}
+.ctrl{display:flex;align-items:center;gap:10px;font-size:13px;color:#c9cbc6}
+.ctrl label{flex:1}
+.ctrl select,.ctrl input[type=text]{background:#202224;border:1px solid #4a4d52;color:#d8dad2;padding:5px 8px;font:11px/1.4 var(--font-mono)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button{font:11px/1 var(--font-mono);letter-spacing:.06em;background:#202224;border:1px solid #4a4d52;
+       color:#d8dad2;padding:8px 10px;cursor:pointer}
+button:hover{background:#2a2c2f;border-color:#6b6f75}
+button.primary{background:#e6e8e2;color:#111;border-color:#e6e8e2}
+.pad{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.keys{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;color:#d8dad2;padding:5px 8px;border-radius:3px}
+.klist{font:11px/2 var(--font-mono);color:#8b8f85}
+.klist b{color:#e6e8e2;font-weight:400}
+.note{font-size:12.5px;color:#8b8f85;padding-left:14px;border-left:2px solid #3a3c40}
+.note b{color:#d8dad2;font-weight:600}
+.dbg{font:10px/1.9 var(--font-mono);color:#9a9d94;letter-spacing:.03em;border-top:1px solid #3a3c40;padding-top:10px}
+.dbg b{color:#e6e8e2;font-weight:400}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="masthead">
+  <div class="kicker">FrameFilm Ark / Tamago / Prototype 01</div>
+  <h1>TAMAGO · 掌上宠物</h1>
+  <p>把万代拓麻歌子的经典养育闭环搬到 480×720 的 1-bit 电子纸上：蛋、幼年、进化、饥饿/快乐/教养、
+     喂食、清洁、吃药、小游戏、昼夜作息、便便、生病、死亡与代数。原型用三键操作，并演示“离线时间补算”
+     与睡前存档，验证这套玩法在 Ark 的刷新与功耗约束下是否成立。</p>
+  <div class="meta">
+    TARGET &nbsp; E6 3.70" 720×480 → 480×720 (logical portrait)<br>
+    DEPTH &nbsp;&nbsp; 1 bpp &nbsp;·&nbsp; REFRESH &nbsp;MonoFast 差分 197–410 ms / 首帧约 940 ms<br>
+    INPUT &nbsp;&nbsp; UP / DOWN / ENTER &nbsp;·&nbsp; 双击 ENTER 回主菜单 &nbsp;·&nbsp; 长按 ENTER 全局休眠<br>
+    SCOPE &nbsp;&nbsp; 经典 P1/P2 养育闭环；不含音效、联机与彩色动画
+  </div>
+</header>
+
+<section>
+  <h2>01 可交互原型</h2>
+  <div class="stagewrap">
+    <div>
+      <div class="device"><div class="device-inner" id="screen"></div></div>
+      <div class="device-tag">480 × 720 / 1 bpp / 1:1</div>
+      <div class="pad">
+        <button data-act="up">↑ UP</button>
+        <button data-act="down">↓ DOWN</button>
+        <button data-act="enter" class="primary" id="btnEnter">确认</button>
+        <button data-act="menu">回主菜单</button>
+        <button data-act="sleep">休眠</button>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="controls">
+        <h3>时间 / 状态注入</h3>
+        <div class="ctrl">
+          <label for="speed">时间流速</label>
+          <select id="speed">
+            <option value="0">暂停</option>
+            <option value="60">60×（1 游戏分钟 / 秒）</option>
+            <option value="300" selected>300×（5 游戏分钟 / 秒）</option>
+            <option value="900">900×（15 游戏分钟 / 秒）</option>
+          </select>
+        </div>
+        <div class="ctrl">
+          <label for="useVideo">状态动画视频</label>
+          <input id="useVideo" type="checkbox" checked>
+        </div>
+        <div class="ctrl">
+          <label for="videoDither">视频转 1-bit 抖动</label>
+          <input id="videoDither" type="checkbox">
+        </div>
+        <div class="btns">
+          <button data-inject="poop">立刻便便</button>
+          <button data-inject="sick">立刻生病</button>
+          <button data-inject="disc">管教时机</button>
+          <button data-inject="night">切到夜间</button>
+          <button data-inject="evolve">强制进化</button>
+          <button data-inject="hungry">降低饥饿</button>
+          <button data-inject="sad">降低快乐</button>
+          <button data-inject="offline">模拟离线 6h</button>
+          <button data-inject="heal">满状态</button>
+          <button data-inject="reset">重置宠物</button>
+        </div>
+        <h3 style="margin-top:16px">当前模型</h3>
+        <div class="dbg" id="dbg"></div>
+      </div>
+
+      <div>
+        <h3>键盘</h3>
+        <div class="keys">
+          <kbd>↑ / ↓</kbd><kbd>ENTER</kbd><kbd>ESC</kbd><kbd>按住 ENTER 0.7s</kbd>
+        </div>
+        <div class="klist" style="margin-top:10px">
+          <b>宠物页</b>　↑↓ 选图标 · 确认键执行 · 双击确认返回 · 长按确认休眠<br>
+          <b>子页</b>　　食物 / 游戏用 ↑↓ 选择，确认键确认；ESC 或双击返回<br>
+          <b>时间</b>　　300× = 5 游戏分钟 / 秒；夜间 21:00–08:00，睡眠中饥饿暂停<br>
+          <b>存档</b>　　切页 / 睡前自动保存；“离线 6h”演示唤醒后的时间补算
+        </div>
+      </div>
+
+      <div class="note">
+        <b>刷新约束：</b>原型按“离散帧”设计，没有补间动画；宠物只在状态变化时重绘，
+        固件里约 2–5 fps。所有状态变更都只重绘一屏，不做滚动与转场。<br>
+        <b>状态动画：</b>6 段视频（待机 / 吃饭 / 高兴 / 生病 / 睡觉 / 进化）按状态自动切换，
+        喂食、游戏胜利、进化会临时播一次动作再回待机；勾选「视频转 1-bit 抖动」可看
+        Floyd-Steinberg 逐帧二值化的电子纸效果。<br>
+        <b>兜底：</b>视频不可用时回退上传立绘；再不可用回退矢量小动物
+        （<code>tamago_v1_vector.html</code>）。
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>02 版式规格</h2>
+  <table>
+    <tr><th>区域</th><th>坐标 / 尺寸</th><th>说明</th></tr>
+    <tr><td>状态栏</td><td>0 – 30 px</td><td>电量 / 蓝牙 / 居中游戏时钟，沿用 app_shell</td></tr>
+    <tr><td>正文</td><td>x 20 – 460，y 46 – 692</td><td>440 宽；上下留白 16 px</td></tr>
+    <tr><td>标题行</td><td>440 × 18，y 46</td><td>宠物单元 01 + 游戏时钟</td></tr>
+    <tr><td>宠物铭牌</td><td>440 × 58，y 76</td><td>名字 + 代数 / 年龄 / 体重</td></tr>
+    <tr><td>心数行</td><td>440 × 16，y 146</td><td>饥饿 / 快乐各 4 心；右侧 5 格教养条</td></tr>
+    <tr><td>宠物舞台</td><td>440 × 258–314，y 172</td><td>1 px 描边 + 四角取景；204–230 px 立绘卡 / 矢量宠物</td></tr>
+    <tr><td>消息行</td><td>440 × 16，y 496</td><td>待机 / 睡觉 / 生病 / 呼叫 / 死亡</td></tr>
+    <tr><td>图标条</td><td>440 × 54，y 521</td><td>8 格：食物 / 灯光 / 游戏 / 吃药 / 清洁 / 管教 / 状态 / 呼叫</td></tr>
+    <tr><td>信息格</td><td>440 × 78，y 584</td><td>2×2：阶段 / 便便 / 灯光 / 生病</td></tr>
+    <tr><td>提示行</td><td>692 – 720</td><td>按键提示 + 页面名</td></tr>
+    <tr><td>食物页</td><td>440 × 150，y 190</td><td>正餐 / 零食两张卡，↑↓ 选择，确认键喂食</td></tr>
+    <tr><td>游戏页</td><td>440 × 250，y 150</td><td>3 回合猜大小；↑ = 大，↓ = 小</td></tr>
+    <tr><td>状态页</td><td>440 × 560</td><td>生命周期条 + 11 行只读数值</td></tr>
+    <tr><td>休眠卡</td><td>全屏</td><td>已休眠 + 唤醒提示；时间仍在流逝</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>03 状态与数值</h2>
+  <table>
+    <tr><th>项目</th><th>原型规则</th><th>设计意图</th></tr>
+    <tr><td>成长阶段</td><td>蛋 0–2h → 幼年 2–8h → 少年 8–20h → 青年 20–40h → 成年 40h+</td><td>按“存活游戏小时”推进，不依赖真实日期</td></tr>
+    <tr><td>饥饿 / 快乐</td><td>各 0–4 心；清醒时每 2h / 3h 掉 1 心</td><td>低值时触发 CALL；归零后进入死亡倒计时</td></tr>
+    <tr><td>教养</td><td>0–5 格；每 8h 出现一次管教时机，2h 内不处理记一次照顾失误</td><td>把“呼救”从随机事件改成可演示的计时器</td></tr>
+    <tr><td>便便 / 生病</td><td>每 4h 便便 +1（上限 3）；有便便时每 5h 判定生病</td><td>清洁与吃药构成负反馈闭环</td></tr>
+    <tr><td>睡眠</td><td>21:00–08:00 自动睡；睡眠中饥饿/快乐暂停，但开灯会掉快乐并增加生病率</td><td>对应电子纸“静止即省电”的形态</td></tr>
+    <tr><td>死亡</td><td>饥饿与快乐同时归零 6h，或生病未治 12h</td><td>保留拓麻歌子的“不可逆”压力</td></tr>
+    <tr><td>时间补算</td><td>进入 app / 定时唤醒时按时间差一次性推进；原型用“离线 6h”按钮演示</td><td>固件 deep sleep 后靠 RTC 时间补算，不要求进程常驻</td></tr>
+    <tr><td>喂食</td><td>正餐 +1 饥饿 +1 体重；零食 +1 快乐 +1 体重</td><td>体重随喂食上升，游戏/时间缓慢下降</td></tr>
+    <tr><td>小游戏</td><td>3 回合猜高低；≥2 回合胜利 → +1 快乐 −1 体重</td><td>三键即可完成，不需要额外输入设备</td></tr>
+    <tr><td>按键</td><td>↑↓ 选图标 / 选项；短按确认键执行；双击返回；长按休眠</td><td>完全复用 Ark 的全局按键语义</td></tr>
+  </table>
+  <div class="note" style="margin-top:14px">
+    原型把时间加速到 300×，便于在几十秒内看到掉心、便便、生病与进化。固件里这些计时使用
+    <b>真实时间</b>，并在每次唤醒时按 <code>time()</code> 差值补算，因此设备睡多久都不会“饿死”在睡梦里。
+  </div>
+</section>
+
+<section>
+  <h2>04 与固件的对应</h2>
+  <table>
+    <tr><th>原型元素</th><th>固件落点</th></tr>
+    <tr><td>宠物舞台 / 图标条 / 状态页</td><td><code>apps/tamago/app_tamago.c</code>（UI 层页面，<code>app_ui_ops_t</code>）</td></tr>
+    <tr><td>1-bit 精灵与眨眼帧</td><td><code>apps/tamago/app_tamago_assets.c</code>（L8/I1 图像描述，存 flash）</td></tr>
+    <tr><td>宠物状态持久化</td><td><code>app_entry_t.state / state_size / state_ver / state_default</code>，框架在切页/睡前自动存取</td></tr>
+    <tr><td>状态机与时间补算</td><td>app 任务侧 <code>on_event</code>；页面用 <code>app_manager_post_ui_msg()</code> 上报操作</td></tr>
+    <tr><td>喂食 / 清洁 / 游戏 / 吃药</td><td>页面发 <code>APP_UI_REQ_TAMAGO_*</code>；app 任务改状态、<code>app_state_save()</code>、回投快照</td></tr>
+    <tr><td>双击回菜单 / 长按休眠</td><td>框架全局语义，app 不需要额外实现；长按走 <code>app_manager_sleep_from_app()</code></td></tr>
+    <tr><td>夜间休眠 / 定时唤醒</td><td><code>hal_pwr_set_timer_wakeup()</code>（分钟级）+ <code>time()</code> 跨 deep sleep 保持</td></tr>
+    <tr><td>刷新节奏</td><td><code>hal_epd_display_mono()</code> MonoFast 差分；UI I1 → mono 转置</td></tr>
+    <tr><td>菜单入口</td><td><code>app_manager.c</code> 的 <code>m_menu_entries[]</code> 与 <code>app_menu.c</code> 的 <code>MENU_ITEMS[]</code> 同序追加</td></tr>
+    <tr><td>无蜂鸣器</td><td>用 WS2812 闪灯 + 屏幕 CALL 图标替代音效，不伪造声音</td></tr>
+  </table>
+  <div class="note" style="margin-top:14px">
+    完整取舍见对话中的评估：经典 P1/P2 的养育闭环可覆盖；联机/结婚、商店、触屏、彩色逐帧动画
+    依赖 Ark 没有的硬件或波形能力，不在本版范围。
+  </div>
+</section>
+</div>
+<script>
+(function(){
+'use strict';
+
+var screenEl = document.getElementById('screen');
+var dbgEl    = document.getElementById('dbg');
+var speedEl  = document.getElementById('speed');
+var useVideoEl = document.getElementById('useVideo');
+var videoDitherEl = document.getElementById('videoDither');
+
+/* ---------- 常量 ---------- */
+var ICONS = ['食物','灯光','游戏','吃药','清洁','管教','状态','呼叫'];
+var STAGES = [
+  { key:'egg',   name:'蛋'   },
+  { key:'baby',  name:'幼年' },
+  { key:'child', name:'少年' },
+  { key:'teen',  name:'青年' },
+  { key:'adult', name:'成年' }
+];
+var MENU = [
+  { cn:'图片',   en:'IMAGE'  },
+  { cn:'通行证', en:'PASS'   },
+  { cn:'卡包',   en:'WALLET' },
+  { cn:'模板',   en:'TPL'    },
+  { cn:'时钟',   en:'CLOCK'  },
+  { cn:'动图',   en:'ANIM'   },
+  { cn:'宠物',   en:'TAMAGO' },
+  { cn:'设置',   en:'SET'    }
+];
+
+/* ---------- 状态 ---------- */
+var M = {
+  screen: 'pet',          // pet | status | game | food | menu | sleep
+  icon: 0,
+  foodChoice: 0,
+  game: null,
+  menuSel: 6,
+  clock: 10 * 60 + 12,    // 游戏内分钟（从第 1 天 00:00 起算）
+  speed: 300,
+  lastReal: Date.now(),
+  blink: false,
+  portrait: true,       // 立绘兜底：视频不可用时用 PNG 立绘
+  portraitMono: true,   // 立绘默认压成 1-bit 高对比
+  portraitImg: null,    // 预加载的 PNG 图像对象
+  portraitReady: false, // PNG 是否加载完成
+  animFrame: 0,         // 动画帧计数
+  animRAF: 0,           // requestAnimationFrame handle
+  animRunning: false,
+  /* ---- 状态动画视频 ---- */
+  useVideo: true,       // 启用 6 段状态视频
+  videoDither: false,   // true = 视频逐帧转 1-bit 抖动
+  videoEl: null,        // 常驻 video 元素（跨 render 复用）
+  videoReady: false,    // 当前视频是否可播
+  vidState: '',         // 当前播放的状态名
+  vidOverride: '',      // 临时动作覆盖（吃饭/高兴/升级）
+  vidOverrideUntil: 0,
+  lastDither: 0,        // 抖动节流时间戳
+  notice: '',
+  noticeUntil: 0,
+  dirty: false
+};
+
+M.pet = newPet(1);
+
+function newPet(gen){
+  return {
+    name: 'TAMAGO',
+    gen: gen || 1,
+    hoursAlive: 0,
+    hunger: 3,
+    happy: 3,
+    disc: 0,
+    weight: 12,
+    care: 0,
+    poop: 0,
+    sick: false,
+    light: true,
+    alive: true,
+    discCall: false,
+    discSince: 0,
+    sickSince: 0,
+    starvingSince: 0,
+    reason: '',
+    bornAt: M.clock,
+    stage: 0
+  };
+}
+
+/* ---------- 基础工具 ---------- */
+function pad2(n){ return (n < 10 ? '0' : '') + n; }
+function esc(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+  });
+}
+function clockText(){
+  var m = ((M.clock % 1440) + 1440) % 1440;
+  return pad2(Math.floor(m / 60)) + ':' + pad2(Math.floor(m % 60));
+}
+function dayLabel(){
+  return 'D' + pad2(Math.floor(M.clock / 1440) + 1);
+}
+function hourOfDay(){
+  return Math.floor((((M.clock % 1440) + 1440) % 1440) / 60);
+}
+function isNightHour(h){ return (h >= 21 || h < 8); }
+function stageFromHours(h){
+  if(h < 2)  return 0;
+  if(h < 8)  return 1;
+  if(h < 20) return 2;
+  if(h < 40) return 3;
+  return 4;
+}
+function stageName(){
+  var p = M.pet;
+  return p.alive ? STAGES[p.stage].name : '无信号';
+}
+function petSleeping(){
+  return M.pet.alive && isNightHour(hourOfDay());
+}
+function ageDays(){
+  return Math.floor(M.pet.hoursAlive / 24);
+}
+function notice(text){
+  M.notice = text || '';
+  M.noticeUntil = Date.now() + 3200;
+}
+function attention(){
+  var p = M.pet;
+  if(!p.alive) return { key:'dead',   label:'死亡' };
+  if(p.sick)   return { key:'sick',   label:'生病' };
+  if(p.poop > 0) return { key:'dirty', label:'便便' };
+  if(p.hunger <= 0) return { key:'hungry', label:'饿了' };
+  if(p.happy <= 0)  return { key:'sad',    label:'孤单' };
+  if(p.discCall)    return { key:'disc',   label:'呼叫' };
+  return null;
+}
+
+/* ---------- SVG ---------- */
+function heartSVG(on){
+  return '<svg class="heart" viewBox="0 0 16 14" aria-hidden="true">' +
+    '<path d="M8 13C4 10 1 8 1 5.2 1 3 2.6 1.5 4.6 1.5c1.5 0 2.7.8 3.4 2 .7-1.2 1.9-2 3.4-2 2 0 3.6 1.5 3.6 3.7C15 8 12 10 8 13z" ' +
+    'fill="' + (on ? '#000' : 'none') + '" stroke="#000" stroke-width="1.2"/></svg>';
+}
+function heartsHTML(n){
+  var s = '';
+  for(var i = 0; i < 4; i++) s += heartSVG(i < n);
+  return s;
+}
+function discHTML(n){
+  var s = '';
+  for(var i = 0; i < 5; i++) s += '<i class="' + (i < n ? 'on' : '') + '"></i>';
+  return s;
+}
+function iconSVG(i){
+  switch(i){
+    case 0: return '<svg viewBox="0 0 24 24"><circle cx="12" cy="14" r="6"/><path d="M12 8V5"/><path d="M12 5c2-2 4-2 5-1"/></svg>';
+    case 1: return '<svg viewBox="0 0 24 24"><path d="M9 17h6M10 20h4"/><path d="M8 13a5 5 0 1 1 8 0c-1 1-1 2-1 3H9c0-1 0-2-1-3z"/></svg>';
+    case 2: return '<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="3"/><path d="M8 12h2M9 11v2"/><circle cx="15" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="17" cy="13" r="1" fill="currentColor" stroke="none"/></svg>';
+    case 3: return '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M12 8v8M8 12h8"/></svg>';
+    case 4: return '<svg viewBox="0 0 24 24"><path d="M5 19l10-10"/><path d="M14 5l5 5"/><path d="M4 20l4-1-3-3z"/></svg>';
+    case 5: return '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M8 12l3 3 5-6"/></svg>';
+    case 6: return '<svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 3 10 2-5h7"/></svg>';
+    default:return '<svg viewBox="0 0 24 24"><path d="M12 4l8 15H4z"/><path d="M12 9v5"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/></svg>';
+  }
+}
+
+/* ---------- 1-bit 精灵（'#' = 黑） ---------- */
+var SPR = {
+  egg: [
+    '................................',
+    '................................',
+    '...............####.............',
+    '.............########...........',
+    '...........####....####.........',
+    '..........##..........##........',
+    '.........##............##.......',
+    '........##....##........##......',
+    '........##...####.......##......',
+    '.......##.....##.........##.....',
+    '.......##................##.....',
+    '......##........##........##....',
+    '......##.......####.......##....',
+    '......##........##........##....',
+    '......##..................##....',
+    '......##..................##....',
+    '.......##................##.....',
+    '.......##................##.....',
+    '........##..............##......',
+    '.........##............##.......',
+    '..........##..........##........',
+    '...........####....####.........',
+    '.............########...........',
+    '...............####.............',
+    '................................',
+    '................................'
+  ],
+  baby: [
+    '................................',
+    '..........#..........#..........',
+    '.........###........###.........',
+    '..........##........##..........',
+    '............########............',
+    '..........##........##..........',
+    '.........#............#.........',
+    '........#..............#........',
+    '........#..............#........',
+    '.......#....##....##....#.......',
+    '.......#....##....##....#.......',
+    '.......#................#.......',
+    '.......#......####......#.......',
+    '.......#.......##.......#.......',
+    '........#..............#........',
+    '........#..............#........',
+    '.........#............#.........',
+    '..........##........##..........',
+    '...........##########...........',
+    '..........##........##..........',
+    '.........#............#.........',
+    '.........#............#.........',
+    '..........##........##..........',
+    '...........##########...........',
+    '..........##........##..........',
+    '.........##..........##.........',
+    '................................',
+    '................................'
+  ],
+  child: [
+    '................................',
+    '..........###......###..........',
+    '.........#...#....#...#.........',
+    '..........###......###..........',
+    '............########............',
+    '..........##........##..........',
+    '.........#............#.........',
+    '........#..............#........',
+    '........#..............#........',
+    '.......#....##....##....#.......',
+    '.......#....##....##....#.......',
+    '.......#................#.......',
+    '.......#......####......#.......',
+    '.......#.......##.......#.......',
+    '........#..............#........',
+    '........#..............#........',
+    '.........#............#.........',
+    '..........##........##..........',
+    '...........##########...........',
+    '..........##........##..........',
+    '.........#............#.........',
+    '.........#............#.........',
+    '..........##........##..........',
+    '...........##########...........',
+    '..........##........##..........',
+    '.........##..........##.........',
+    '................................',
+    '................................'
+  ],
+  teen: [
+    '................................',
+    '.........#............#.........',
+    '........###..........###........',
+    '..........##........##..........',
+    '............########............',
+    '..........##........##..........',
+    '.........#............#.........',
+    '........#..............#........',
+    '........#..............#........',
+    '.......#....##....##....#.......',
+    '.......#....##....##....#.......',
+    '.......#................#.......',
+    '.......#......####......#.......',
+    '.......#.......##.......#.......',
+    '........#..............#........',
+    '........#..............#........',
+    '.......##..............##.......',
+    '......##................##......',
+    '......##................##......',
+    '.......##..............##.......',
+    '.........##..........##.........',
+    '..........##########............',
+    '.........##..........##.........',
+    '........##............##........',
+    '........##............##........',
+    '.........##..........##.........',
+    '..........############..........',
+    '..........##........##..........',
+    '.........##..........##.........',
+    '................................',
+    '................................'
+  ],
+  adult: [
+    '................................',
+    '..............####..............',
+    '.........#...######...#.........',
+    '........###.########.###........',
+    '..........##........##..........',
+    '............########............',
+    '..........##........##..........',
+    '.........#............#.........',
+    '........#..............#........',
+    '.......#....##....##....#.......',
+    '.......#....##....##....#.......',
+    '.......#................#.......',
+    '.......#......####......#.......',
+    '.......#.......##.......#.......',
+    '........#..............#........',
+    '........#..............#........',
+    '...#....#..............#....#...',
+    '..###...##............##...###..',
+    '..###....##..........##....###..',
+    '...#......##........##......#...',
+    '...........##########...........',
+    '..........##........##..........',
+    '.........##..........##.........',
+    '........##............##........',
+    '........##............##........',
+    '.........##..........##.........',
+    '..........############..........',
+    '..........##........##..........',
+    '.........##..........##.........',
+    '................................',
+    '................................'
+  ],
+  sleep: [
+    '................................',
+    '..........###......###..........',
+    '.........#...#....#...#.........',
+    '..........###......###..........',
+    '............########............',
+    '..........##........##..........',
+    '.........#............#.........',
+    '........#..............#........',
+    '........#..............#........',
+    '.......#...####..####...#.......',
+    '.......#................#.......',
+    '.......#................#.......',
+    '.......#......####......#.......',
+    '.......#.......##.......#.......',
+    '........#..............#........',
+    '........#..............#........',
+    '.........#............#.........',
+    '..........##........##..........',
+    '...........##########...........',
+    '..........##........##..........',
+    '.........#............#.........',
+    '.........#............#.........',
+    '..........##........##..........',
+    '...........##########...........',
+    '..........##........##..........',
+    '.........##..........##.........',
+    '................................',
+    '................................'
+  ],
+  dead: [
+    '................................',
+    '................................',
+    '.............######.............',
+    '...........##########...........',
+    '..........###......###..........',
+    '.........##..........##.........',
+    '.........#............#.........',
+    '.........#....##......#.........',
+    '.........#...####.....#.........',
+    '.........#....##......#.........',
+    '.........#............#.........',
+    '.........#............#.........',
+    '.........#............#.........',
+    '.........#............#.........',
+    '.........#............#.........',
+    '.........#............#.........',
+    '.........##..........##.........',
+    '..........############..........',
+    '..........############..........',
+    '................................',
+    '................................'
+  ],
+  poop: [
+    '................',
+    '......####......',
+    '....########....',
+    '...##########...',
+    '..############..',
+    '..############..',
+    '.##############.',
+    '.##############.',
+    '..############..',
+    '...##########...',
+    '................',
+    '................'
+  ],
+  skull: [
+    '....########....',
+    '..############..',
+    '.##############.',
+    '.##############.',
+    '##..########..##',
+    '##..########..##',
+    '.##############.',
+    '.##############.',
+    '..############..',
+    '...##..##..##...',
+    '....########....',
+    '................'
+  ]
+};
+
+/* ---------- 画布：1-bit 矢量吉祥物 ----------
+ * 先在离屏画布上画平滑曲线，再按亮度阈值压成纯黑/白，
+ * 这样风格仍是电子纸的 1-bit，但轮廓比手摆像素点更自然。 */
+var FOX_CFG = [
+  null,
+  { hr:16, hy:38, brx:15, bry:15, by:68, ear:3,  tail:0,  scarf:0, tuft:0 },
+  { hr:18, hy:36, brx:17, bry:16, by:68, ear:6,  tail:10, scarf:0, tuft:0 },
+  { hr:19, hy:34, brx:18, bry:17, by:66, ear:9,  tail:15, scarf:1, tuft:0 },
+  { hr:20, hy:32, brx:20, bry:18, by:64, ear:11, tail:19, scarf:1, tuft:1 }
+];
+
+function ell(g, x, y, rx, ry, fill, stroke, lw){
+  g.beginPath();
+  g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  if(fill){ g.fillStyle = fill; g.fill(); }
+  if(stroke){ g.strokeStyle = stroke; g.lineWidth = lw || 3; g.stroke(); }
+}
+function seg(g, x1, y1, x2, y2, lw){
+  g.beginPath();
+  g.moveTo(x1, y1);
+  g.lineTo(x2, y2);
+  g.strokeStyle = '#000';
+  g.lineWidth = lw || 2;
+  g.stroke();
+}
+function drawPoop(g, x, y, s){
+  s = s || 1;
+  ell(g, x, y + 9 * s, 10 * s, 6 * s, '#000', null, 0);
+  ell(g, x, y + 4 * s, 7 * s, 5 * s, '#000', null, 0);
+  ell(g, x, y - 1 * s, 4 * s, 4 * s, '#000', null, 0);
+}
+function drawSkull(g, x, y, s){
+  s = s || 1;
+  ell(g, x, y + 4 * s, 7 * s, 6 * s, '#fff', '#000', 2 * s);
+  ell(g, x - 2.5 * s, y + 3 * s, 1.4 * s, 1.8 * s, '#000', null, 0);
+  ell(g, x + 2.5 * s, y + 3 * s, 1.4 * s, 1.8 * s, '#000', null, 0);
+  g.fillStyle = '#000';
+  g.fillRect(x - 2 * s, y + 8 * s, 4 * s, 1.4 * s);
+}
+function drawEgg(g){
+  ell(g, 48, 49, 22, 28, '#fff', '#000', 4);
+  ell(g, 39, 39, 4, 6, '#000', null, 0);
+  ell(g, 56, 57, 5, 7, '#000', null, 0);
+  ell(g, 56, 30, 3, 4, '#000', null, 0);
+  g.beginPath();
+  g.moveTo(31, 56); g.lineTo(38, 50); g.lineTo(34, 44);
+  g.lineTo(46, 38); g.lineTo(52, 44); g.lineTo(61, 38);
+  g.strokeStyle = '#000'; g.lineWidth = 2.5; g.stroke();
+  for(var i = -3; i <= 3; i++) g.fillRect(48 + i * 6 - 2, 84, 4, 2);
+}
+function drawTombstone(g){
+  g.beginPath();
+  g.moveTo(27, 80); g.lineTo(27, 42);
+  g.quadraticCurveTo(27, 20, 48, 20);
+  g.quadraticCurveTo(69, 20, 69, 42);
+  g.lineTo(69, 80); g.closePath();
+  g.fillStyle = '#fff'; g.fill();
+  g.strokeStyle = '#000'; g.lineWidth = 4; g.stroke();
+
+  g.fillStyle = '#000';
+  g.fillRect(44, 32, 8, 22);
+  g.fillRect(35, 39, 26, 8);
+  g.font = 'bold 10px monospace';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('R.I.P.', 48, 71);
+  g.fillRect(18, 82, 60, 3);
+}
+function drawFox(g, stage, sleeping){
+  var c = FOX_CFG[stage] || FOX_CFG[1];
+  var cx = 48;
+
+  /* 地面上的虚线投影，让宠物“站”在舞台上 */
+  for(var i = -3; i <= 3; i++) g.fillRect(cx + i * 6 - 2, 92, 4, 2);
+
+  /* 尾巴 */
+  if(c.tail > 0){
+    var t0x = cx + c.brx * 0.55, t0y = c.by + c.bry * 0.4;
+    g.beginPath();
+    g.moveTo(t0x, t0y);
+    g.bezierCurveTo(cx + c.brx + 14, c.by + c.bry * 0.6,
+                    cx + c.brx + 20, c.by - 10,
+                    cx + c.brx + 6, c.by - 22);
+    g.strokeStyle = '#000'; g.lineWidth = c.tail; g.lineCap = 'round'; g.stroke();
+
+    g.beginPath();
+    g.moveTo(t0x, t0y);
+    g.bezierCurveTo(cx + c.brx + 14, c.by + c.bry * 0.6,
+                    cx + c.brx + 20, c.by - 10,
+                    cx + c.brx + 6, c.by - 22);
+    g.strokeStyle = '#fff'; g.lineWidth = Math.max(3, c.tail - 7); g.stroke();
+    ell(g, cx + c.brx + 6, c.by - 22, c.tail * 0.42, c.tail * 0.38, '#fff', '#000', 2);
+  }
+
+  /* 耳朵（先画，后面用头盖住根部） */
+  function ear(sign){
+    var bx = cx + sign * c.hr * 0.55;
+    var by = c.hy - c.hr * 0.55;
+    var tx = cx + sign * c.hr * 0.92;
+    var ty = c.hy - c.hr * 1.05 - c.ear;
+    g.beginPath();
+    g.moveTo(bx - sign * c.hr * 0.18, by + 3);
+    g.lineTo(tx, ty);
+    g.quadraticCurveTo(cx + sign * c.hr * 0.62, c.hy - c.hr * 0.88,
+                       bx + sign * c.hr * 0.22, by + 1);
+    g.closePath();
+    g.fillStyle = '#fff'; g.fill();
+    g.strokeStyle = '#000'; g.lineWidth = 3.2; g.stroke();
+
+    g.beginPath();
+    g.moveTo(bx - sign * c.hr * 0.04, by - 2);
+    g.lineTo(cx + sign * c.hr * 0.80, c.hy - c.hr * 0.95 - c.ear * 0.65);
+    g.quadraticCurveTo(cx + sign * c.hr * 0.55, c.hy - c.hr * 0.80,
+                       bx + sign * c.hr * 0.10, by - 4);
+    g.closePath();
+    g.fillStyle = '#000'; g.fill();
+  }
+  ear(-1);
+  ear(1);
+
+  /* 身体 + 脚 */
+  ell(g, cx, c.by, c.brx, c.bry, '#fff', '#000', 3.4);
+  ell(g, cx - c.brx * 0.55, c.by + c.bry - 1, 6, 4, '#fff', '#000', 2.4);
+  ell(g, cx + c.brx * 0.55, c.by + c.bry - 1, 6, 4, '#fff', '#000', 2.4);
+
+  /* 围巾 */
+  if(c.scarf){
+    g.beginPath();
+    g.ellipse(cx, c.by - c.bry + 4, c.brx * 0.92, 4.5, 0, 0, Math.PI * 2);
+    g.fillStyle = '#000'; g.fill();
+    g.beginPath();
+    g.moveTo(cx + c.brx * 0.55, c.by - c.bry + 6);
+    g.quadraticCurveTo(cx + c.brx + 9, c.by - c.bry + 12,
+                       cx + c.brx + 3, c.by - c.bry + 22);
+    g.strokeStyle = '#000'; g.lineWidth = 6; g.lineCap = 'round'; g.stroke();
+  }
+
+  /* 头 */
+  ell(g, cx, c.hy, c.hr, c.hr * 0.92, '#fff', '#000', 3.4);
+
+  /* 头顶小呆毛 */
+  if(c.tuft){
+    seg(g, cx - 4, c.hy - c.hr * 0.88, cx - 8, c.hy - c.hr * 1.16, 3);
+    seg(g, cx, c.hy - c.hr * 0.94, cx, c.hy - c.hr * 1.24, 3);
+    seg(g, cx + 4, c.hy - c.hr * 0.88, cx + 8, c.hy - c.hr * 1.16, 3);
+  }
+
+  /* 眼睛 */
+  if(sleeping){
+    g.beginPath();
+    g.arc(cx - c.hr * 0.38, c.hy, 6, 0.14 * Math.PI, 0.86 * Math.PI);
+    g.strokeStyle = '#000'; g.lineWidth = 3; g.stroke();
+    g.beginPath();
+    g.arc(cx + c.hr * 0.38, c.hy, 6, 0.14 * Math.PI, 0.86 * Math.PI);
+    g.strokeStyle = '#000'; g.lineWidth = 3; g.stroke();
+  } else {
+    ell(g, cx - c.hr * 0.38, c.hy, 4.5, 6.2, '#000', null, 0);
+    ell(g, cx + c.hr * 0.38, c.hy, 4.5, 6.2, '#000', null, 0);
+    ell(g, cx - c.hr * 0.38 - 1.6, c.hy - 2.2, 1.8, 2.2, '#fff', null, 0);
+    ell(g, cx + c.hr * 0.38 - 1.6, c.hy - 2.2, 1.8, 2.2, '#fff', null, 0);
+  }
+
+  /* 鼻子与笑脸 */
+  g.beginPath();
+  g.moveTo(cx - 2.5, c.hy + c.hr * 0.32);
+  g.lineTo(cx + 2.5, c.hy + c.hr * 0.32);
+  g.lineTo(cx, c.hy + c.hr * 0.44);
+  g.closePath();
+  g.fillStyle = '#000'; g.fill();
+
+  g.beginPath();
+  g.arc(cx - 3, c.hy + c.hr * 0.44, 4, 0, Math.PI, false);
+  g.strokeStyle = '#000'; g.lineWidth = 2.2; g.stroke();
+  g.beginPath();
+  g.arc(cx + 3, c.hy + c.hr * 0.44, 4, 0, Math.PI, false);
+  g.strokeStyle = '#000'; g.lineWidth = 2.2; g.stroke();
+
+  /* 脸颊上的小斜线 */
+  seg(g, cx - c.hr * 0.74, c.hy + c.hr * 0.26, cx - c.hr * 0.57, c.hy + c.hr * 0.36, 2);
+  seg(g, cx - c.hr * 0.72, c.hy + c.hr * 0.42, cx - c.hr * 0.55, c.hy + c.hr * 0.52, 2);
+  seg(g, cx + c.hr * 0.74, c.hy + c.hr * 0.26, cx + c.hr * 0.57, c.hy + c.hr * 0.36, 2);
+  seg(g, cx + c.hr * 0.72, c.hy + c.hr * 0.42, cx + c.hr * 0.55, c.hy + c.hr * 0.52, 2);
+
+  /* 睡觉的小 Z */
+  if(sleeping){
+    g.font = 'bold 13px monospace';
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.fillStyle = '#000';
+    g.fillText('Z', 76, 22);
+    g.font = 'bold 9px monospace';
+    g.fillText('z', 84, 13);
+  }
+}
+function threshold(ctx, w, h){
+  var img = ctx.getImageData(0, 0, w, h);
+  var d = img.data;
+  for(var i = 0; i < d.length; i += 4){
+    var lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    var v = lum < 128 ? 0 : 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+    d[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+/* ---------- 立绘帧绘制：把 PNG 局部变换贴回 canvas ----------
+ * 每帧传入 frameIdx，由 requestAnimationFrame 驱动；
+ * 整体变换（呼吸/摇摆/抖）+ 局部动画（眨眼/兔耳颤）分别处理。 */
+function drawPortraitFrame(ctx, W, frameIdx, state, mono){
+  if(!M.portraitReady){
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, W);
+    return;
+  }
+  var img = M.portraitImg;
+  var cx = W / 2, cy = W / 2;
+
+  /* ---- 1. 整体变换（呼吸 / 摇摆 / 抖 / 歪头 / 死亡） ---- */
+  var breath = Math.sin(frameIdx / 40 * Math.PI * 2);      /* 40 帧 ≈ 呼吸 */
+  var sway   = Math.sin(frameIdx / 90 * Math.PI * 2);      /* 90 帧 ≈ 摇摆 */
+  var sick   = Math.sin(frameIdx / 4 * Math.PI * 2);       /* 4 帧 ≈ 生病抖 */
+
+  var dx = 0, dy = 0, rot = 0, sc = 1;
+  var opacity = 1;
+
+  if(state === 'dead'){
+    /* 死亡：逐渐歪倒 + 缩小 + 淡出 */
+    var deathT = Math.min(1, frameIdx / 120);
+    rot   = deathT * 0.175;          /* 10° */
+    sc    = 1 - deathT * 0.15;
+    opacity = 1 - deathT * 0.7;
+  } else if(state === 'sleeping'){
+    rot = sway * 0.035;              /* ±2° 慢摆 */
+    dy  = 2;
+    sc  = 0.98;
+  } else if(state === 'sick'){
+    dx  = sick * 2;
+    rot = sick * 0.026;              /* ±1.5° 快抖 */
+  } else if(state === 'bored'){
+    /* 每 6s 一次 歪头：frameIdx % 360 在某段窗口内 tilt */
+    var mod6 = frameIdx % 360;
+    if(mod6 < 30)      rot = 0;
+    else if(mod6 < 180) rot = 0.07 * Math.sin((mod6 - 30) / 150 * Math.PI); /* ±4° */
+    else               rot = 0;
+  } else {
+    /* idle：呼吸 + 极微摇摆 */
+    dy  = breath * 2;
+    sc  = 1 + breath * 0.015;
+    rot = sway * 0.006;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.translate(cx, cy);
+  ctx.rotate(rot);
+  ctx.scale(sc, sc);
+
+  /* ---- 2. 先画**除耳朵之外**的主体：用离屏 canvas 把原图白底滤掉 ---- */
+  var body = drawPortraitBody(img, W, mono);
+  if(body) ctx.drawImage(body, -cx, -cy);
+
+  /* ---- 3. 局部动画层：从原图裁出左耳/右耳分别 clip + rotate 贴回 ---- */
+  drawEarsAnimated(ctx, img, W, frameIdx, mono, state);
+
+  /* ---- 4. 眼睛：眨眼遮罩（idle/bored 每 8s 一次，sleeping 一直闭眼） ---- */
+  drawEyesAnimated(ctx, W, frameIdx, state);
+
+  ctx.restore();
+}
+
+/* 把 PNG 白底替换成电子纸白（或透明），返回处理后的离屏 canvas；带缓存 */
+function drawPortraitBody(img, W, mono){
+  var key = W + '_' + (mono ? 'mono' : 'color');
+  if(M._portraitBodyCacheKey === key && M._portraitBodyCache) return M._portraitBodyCache;
+  var off = document.createElement('canvas');
+  off.width = off.height = W;
+  var g = off.getContext('2d');
+  g.imageSmoothingEnabled = true;
+  var tmp = document.createElement('canvas');
+  tmp.width = img.naturalWidth;
+  tmp.height = img.naturalHeight;
+  var tg = tmp.getContext('2d');
+  tg.filter = mono ? 'grayscale(1) contrast(3.6) brightness(1.08)' : 'none';
+  tg.drawImage(img, 0, 0);
+  g.drawImage(tmp, 0, 0, W, W);
+  var imgData = g.getImageData(0, 0, W, W);
+  var d = imgData.data;
+  for(var i = 0; i < d.length; i += 4){
+    var lum = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    if(lum > 240){
+      d[i] = d[i+1] = d[i+2] = 255;
+      d[i+3] = 0;
+    }
+  }
+  g.putImageData(imgData, 0, 0);
+  M._portraitBodyCache = off;
+  M._portraitBodyCacheKey = key;
+  return off;
+}
+
+/* 两只耳朵分别裁剪 + 旋转贴回，颤动独立于整体 */
+function drawEarsAnimated(ctx, img, W, frameIdx, mono, state){
+  /* 原图坐标换算：PNG 天然 500×500，canvas 目标 96×96，比例 ≈ 0.192 */
+  var S = 0.192;
+  /* 左耳原图区域：大概 (70, 60)→(250, 300)，右耳镜像 */
+  var LEFT_EAR =  { sx: 70,  sy: 60,  sw: 180, sh: 240 };
+  var RIGHT_EAR = { sx: 250, sy: 60, sw: 180, sh: 240 };
+
+  /* 颤动角度（睡觉/生病/无聊 都有不同节奏） */
+  var earT = frameIdx / 8;             /* 每 8 帧颤一下 */
+  var leftAng  = Math.sin(earT) * 0.10;    /* ±6° */
+  var rightAng = Math.sin(earT + 0.3) * 0.08; /* 稍错位 */
+  if(state === 'sleeping'){ leftAng *= 0.3; rightAng *= 0.3; }
+  if(state === 'sick'){ leftAng = Math.sin(frameIdx/2) * 0.2; rightAng = Math.cos(frameIdx/2) * 0.2; }
+
+  /* 左耳：目标画布上的中心位置 */
+  var leftCx = 28, leftCy = 26;    /* canvas 96×96 上的左耳中心 */
+  var rightCx = 68, rightCy = 26;
+  var leftW = LEFT_EAR.sw * S,  leftH = LEFT_EAR.sh * S;
+  var rightW = RIGHT_EAR.sw * S, rightH = RIGHT_EAR.sh * S;
+
+  ctx.save();
+  ctx.translate(leftCx, leftCy);
+  ctx.rotate(leftAng);
+  ctx.drawImage(img, LEFT_EAR.sx, LEFT_EAR.sy, LEFT_EAR.sw, LEFT_EAR.sh,
+                -leftW/2, -leftH/2, leftW, leftH);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(rightCx, rightCy);
+  ctx.rotate(rightAng);
+  ctx.drawImage(img, RIGHT_EAR.sx, RIGHT_EAR.sy, RIGHT_EAR.sw, RIGHT_EAR.sh,
+                -rightW/2, -rightH/2, rightW, rightH);
+  ctx.restore();
+}
+
+/* 眼睛：idle/bored 每 8s 眨眼一次（200ms 闭眼），sleeping 一直闭眼 */
+function drawEyesAnimated(ctx, W, frameIdx, state){
+  var cx = 38, cy = 48;      /* 左眼 canvas 坐标 (96×96) */
+  var rx = 8, ry = 3;
+  var closed;
+  if(state === 'sleeping' || state === 'dead'){
+    closed = true;
+  } else if(state === 'sick'){
+    closed = false;          /* 生病时睁着大眼睛 */
+  } else {
+    /* 眨眼：8s 周期 ≈ 480 帧（60fps），其中 12 帧闭眼 */
+    var cycle = frameIdx % 480;
+    closed = (cycle < 12);
+  }
+  ctx.save();
+  if(closed){
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 8, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(W - cx, cy, 8, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPet(){
+  var cv = document.getElementById('petCanvas');
+  if(!cv) return;
+
+  /* 视频接管舞台时（非抖动模式）不需要画 canvas */
+  if(videoActive() && !M.videoDither){ cv.style.display = 'none'; return; }
+  cv.style.display = '';
+
+  var W = cv.width;
+  var ctx = cv.getContext('2d');
+
+  var p = M.pet;
+  var sleeping = petSleeping();
+
+  /* ---- 立绘模式：rAF 驱动 canvas 动画（PNG 未加载时自动回退像素） ---- */
+  if(M.portrait && M.portraitReady && p.alive && p.stage > 0){
+    var state;
+    if(!p.alive)        state = 'dead';
+    else if(p.sick)     state = 'sick';
+    else if(sleeping)   state = 'sleeping';
+    else if(attNeeded()) state = 'bored';
+    else                state = 'idle';
+    /* 清白底 → 画立绘帧 → 叠生病骷髅/便便 */
+    ctx.fillStyle = 'transparent';
+    ctx.clearRect(0, 0, W, W);
+    drawPortraitFrame(ctx, W, M.animFrame, state, M.portraitMono);
+    if(p.sick){
+      /* 在立绘上叠生病骷髅（用 1-bit vector 画，不依赖 PNG） */
+      drawSkullOverlay(ctx, 16, 18, 1);
+    }
+    if(p.poop > 0){
+      for(var i = 0; i < Math.min(p.poop, 2); i++){
+        drawPoopOverlay(ctx, 74 - i * 10, 74);
+      }
+    }
+    return;
+  }
+
+  /* ---- 像素模式：原有 drawFox / drawEgg / drawTombstone ---- */
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, W);
+
+  var off = document.createElement('canvas');
+  off.width = off.height = W;
+  var g = off.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, W, W);
+  g.strokeStyle = '#000';
+  g.fillStyle = '#000';
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+
+  if(!p.alive)          drawTombstone(g);
+  else if(p.stage === 0) drawEgg(g);
+  else                   drawFox(g, p.stage, sleeping);
+
+  if(p.alive && p.sick) drawSkull(g, 11, 15, 1);
+  if(p.alive && p.poop > 0){
+    var n = Math.min(p.poop, 2);
+    for(var i = 0; i < n; i++) drawPoop(g, 78 - i * 13, 82, 0.8);
+  }
+
+  threshold(g, W, W);
+  ctx.drawImage(off, 0, 0);
+}
+
+/* ---- 生病骷髅/便便 overlay（画在 canvas 上，不依赖离屏 1-bit 转换） ---- */
+function drawSkullOverlay(ctx, cx, cy, s){
+  s = s || 1;
+  ctx.save();
+  ctx.strokeStyle = '#000'; ctx.fillStyle = '#fff';
+  ctx.lineWidth = 2 * s;
+  ctx.beginPath(); ctx.ellipse(cx, cy, 7*s, 6*s, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(cx - 2.5*s, cy + 1*s, 1.4*s, 1.8*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + 2.5*s, cy + 1*s, 1.4*s, 1.8*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillRect(cx - 2*s, cy + 6*s, 4*s, 1.4*s);
+  ctx.restore();
+}
+function drawPoopOverlay(ctx, cx, cy, s){
+  s = s || 1;
+  ctx.save();
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 8*s, 9*s, 5*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, cy + 3*s, 6*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, cy - 2*s, 3.5*s, 3.5*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+/* 判断是否"需要照顾"（无聊/attention） */
+function attNeeded(){
+  var p = M.pet;
+  return p.alive && (p.hunger <= 1 || p.happy <= 1);
+}
+
+/* ---------- 状态动画视频引擎 ----------
+ * 6 段 mp4 按状态自动切换；视频不可用时回退 PNG 立绘。
+ * 可选「转 1-bit」：逐帧 Floyd-Steinberg 抖动，节流到 ~11fps。 */
+var VIDEO_SRC = {
+  idle:   'assets/tamago_video/idle.mp4',
+  happy:  'assets/tamago_video/happy.mp4',
+  eat:    'assets/tamago_video/eat.mp4',
+  sick:   'assets/tamago_video/sick.mp4',
+  sleep:  'assets/tamago_video/sleep.mp4',
+  evolve: 'assets/tamago_video/evolve.mp4'
+};
+
+function ensureVideoEl(){
+  if(M.videoEl) return M.videoEl;
+  var v = document.createElement('video');
+  v.muted = true;
+  v.defaultMuted = true;
+  v.loop = true;
+  v.playsInline = true;
+  v.preload = 'auto';
+  v.setAttribute('muted', '');
+  v.setAttribute('playsinline', '');
+  v.setAttribute('webkit-playsinline', '');
+  v.addEventListener('loadeddata', function(){
+    M.videoReady = true;
+    syncCanvasVisibility();
+  });
+  v.addEventListener('error', function(){
+    M.videoReady = false;
+    syncCanvasVisibility();
+    console.warn('[video] 加载失败，回退立绘：', v.currentSrc || v.src);
+  });
+  M.videoEl = v;
+  return v;
+}
+
+function ensureDitherCanvas(){
+  var d = document.getElementById('petDither');
+  if(!d){
+    d = document.createElement('canvas');
+    d.id = 'petDither';
+    d.className = 'pet-dither';
+    d.width = 192;
+    d.height = 192;
+    d.style.display = 'none';
+  }
+  return d;
+}
+
+/* 当前状态对应的视频（优先级：睡觉 > 临时动作 > 生病 > 待机） */
+function desiredVideo(){
+  var p = M.pet;
+  if(!p || !p.alive) return null;
+  if(petSleeping()) return 'sleep';
+  if(M.vidOverride && Date.now() < M.vidOverrideUntil) return M.vidOverride;
+  if(p.sick) return 'sick';
+  return 'idle';
+}
+
+function playOnce(name, ms){
+  M.vidOverride = name;
+  M.vidOverrideUntil = Date.now() + (ms || 3000);
+  syncVideo();
+}
+
+/* 舞台左下角的状态角标；与当前播放的动画一致 */
+function stageStateLabel(){
+  var p = M.pet;
+  if(!p.alive) return '无信号';
+  var st = desiredVideo();
+  var map = { idle:'待机', eat:'吃饭', happy:'高兴', sick:'生病', sleep:'睡觉', evolve:'进化' };
+  if(M.useVideo && st && map[st]) return map[st];
+  return petSleeping() ? '睡觉' : '待机';
+}
+
+function setVideoState(name){
+  var v = ensureVideoEl();
+  if(M.vidState === name) return;
+  M.vidState = name;
+  v.src = VIDEO_SRC[name];
+  try { v.load(); } catch(e){}
+  var pr = v.play();
+  if(pr && pr.catch) pr.catch(function(){});
+}
+
+function syncVideo(){
+  var st = desiredVideo();
+  if(st) setVideoState(st);
+}
+
+function videoActive(){
+  return !!(M.useVideo && M.videoReady && desiredVideo());
+}
+
+function syncCanvasVisibility(){
+  var cv = document.getElementById('petCanvas');
+  if(cv) cv.style.display = videoActive() ? 'none' : '';
+  var d = document.getElementById('petDither');
+  if(d) d.style.display = (videoActive() && M.videoDither) ? '' : 'none';
+  if(M.videoEl){
+    M.videoEl.style.visibility = (videoActive() && !M.videoDither) ? '' : 'hidden';
+  }
+}
+
+/* render 之后把常驻 video 重新挂回舞台（innerHTML 会销毁节点） */
+function attachVideo(){
+  var media = document.getElementById('petMedia');
+  if(!media){ syncCanvasVisibility(); return; }
+  if(M.useVideo){
+    var st = desiredVideo();
+    if(st){
+      var v = ensureVideoEl();
+      if(v.parentNode !== media) media.appendChild(v);
+      setVideoState(st);
+      var pr = v.play();
+      if(pr && pr.catch) pr.catch(function(){});
+      if(M.videoDither){
+        var d = ensureDitherCanvas();
+        if(d.parentNode !== media) media.appendChild(d);
+      }
+    }
+  }
+  syncCanvasVisibility();
+}
+
+/* 逐帧 1-bit：Floyd-Steinberg（192×192 超采样后由 CSS 放大） */
+function renderDitherFrame(){
+  var v = M.videoEl;
+  var cv = document.getElementById('petDither');
+  if(!v || !cv || v.readyState < 2) return;
+
+  var now = performance.now();
+  if(now - M.lastDither < 90) return;   /* ~11fps，接近电子纸实际刷新 */
+  M.lastDither = now;
+
+  var W = cv.width, H = cv.height;
+  var ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  var vw = v.videoWidth || 1, vh = v.videoHeight || 1;
+  var s = Math.min(W / vw, H / vh);
+  ctx.drawImage(v, (W - vw * s) / 2, (H - vh * s) / 2, vw * s, vh * s);
+
+  var img;
+  try {
+    img = ctx.getImageData(0, 0, W, H);
+  } catch(err){
+    /* file:// 直开时 canvas 会被跨域污染，读不了像素 → 自动关掉抖动 */
+    if(!M.ditherWarned){
+      M.ditherWarned = true;
+      M.videoDither = false;
+      console.warn('[video] 抖动模式需要 HTTP 打开（file:// 会被跨域限制），已自动关闭');
+      syncCanvasVisibility();
+      var vv = document.getElementById('videoDither');
+      if(vv) vv.checked = false;
+    }
+    return;
+  }
+  var d = img.data;
+  var gray = new Float32Array(W * H);
+  for(var i = 0, n = W * H; i < n; i++){
+    var o = i * 4;
+    gray[i] = 0.299 * d[o] + 0.587 * d[o + 1] + 0.114 * d[o + 2];
+  }
+  for(var y = 0; y < H; y++){
+    for(var x = 0; x < W; x++){
+      var k = y * W + x;
+      var oldV = gray[k];
+      var newV = oldV < 128 ? 0 : 255;
+      var err = oldV - newV;
+      gray[k] = newV;
+      if(x + 1 < W) gray[k + 1] += err * 7 / 16;
+      if(y + 1 < H){
+        if(x > 0) gray[k + W - 1] += err * 3 / 16;
+        gray[k + W] += err * 5 / 16;
+        if(x + 1 < W) gray[k + W + 1] += err * 1 / 16;
+      }
+    }
+  }
+  for(var j = 0, m = W * H; j < m; j++){
+    var o2 = j * 4;
+    var b = gray[j] > 127 ? 255 : 0;
+    d[o2] = d[o2 + 1] = d[o2 + 2] = b;
+    d[o2 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/* ---------- 渲染 ---------- */
+function statusBar(){
+  return '<div class="status">' +
+    '<span class="brand"><i class="tri-r"></i>宠物</span>' +
+    '<span class="sp"></span>' +
+    '<span class="cell"><span class="pip on"></span><span class="pip on"></span>82%</span>' +
+    '<span class="clock js-clock">' + clockText() + '</span>' +
+  '</div>';
+}
+function foot(hint, page){
+  return '<div class="foot"><span>' + esc(hint) + '</span><span class="sp"></span><span>' + esc(page) + '</span></div>';
+}
+function render(){
+  var html;
+  if(M.screen === 'status')      html = statusHTML();
+  else if(M.screen === 'game')   html = gameHTML();
+  else if(M.screen === 'food')   html = foodHTML();
+  else if(M.screen === 'menu')   html = menuHTML();
+  else if(M.screen === 'sleep')  html = sleepHTML();
+  else                           html = petHTML();
+
+  screenEl.innerHTML = html;
+  M.dirty = false;
+  drawPet();
+  attachVideo();
+  updateClockOnly();
+  updateDbg();
+}
+
+function petHTML(){
+  var p = M.pet;
+  var att = attention();
+  var sleeping = petSleeping();
+  var st = stageName();
+  var alertLabel = !p.alive ? '死亡' : (att ? att.label : (sleeping ? '睡眠' : ''));
+  var msg = M.notice || (
+    !p.alive ? '已死亡 · ' + p.reason :
+    att ? att.label + ' · 需要照顾' :
+    sleeping ? '睡眠中 · 08:00 自动唤醒' :
+    '状态良好 · 等待互动'
+  );
+  var warn = !p.alive || !!att;
+  var icons = '';
+  var usePortrait = M.portrait && p.alive && p.stage > 0;
+  /* 立绘状态 class（canvas 动画驱动，保留给 Zzz div 和设备舞台） */
+  var portraitState;
+  if(!p.alive)          portraitState = 'dead';
+  else if(p.sick)       portraitState = 'alive sick';
+  else if(sleeping)     portraitState = 'alive sleeping';
+  else if(att)          portraitState = 'alive bored';
+  else                  portraitState = 'alive idle';
+  /* 视频层（常驻 video 由 attachVideo 挂入）+ 立绘兜底 canvas */
+  var petEl = '<div class="pet-media" id="petMedia"></div>' +
+              '<canvas class="pet-canvas" id="petCanvas" width="96" height="96"></canvas>';
+  var zzzEl = (!videoActive() && usePortrait && sleeping)
+    ? '<div class="stage-zzz">Z</div><div class="stage-zzz">z</div><div class="stage-zzz">z</div>'
+    : '';
+
+  for(var i = 0; i < ICONS.length; i++){
+    var dim = (!p.alive) || (sleeping && (i === 0 || i === 2 || i === 5));
+    icons += '<div class="icon' + (i === M.icon ? ' sel' : '') +
+      (i === 7 && att ? ' alert' : '') + (dim ? ' dim' : '') +
+      '" data-icon="' + i + '" title="' + ICONS[i] + '">' +
+      iconSVG(i) + '<b>' + ICONS[i] + '</b></div>';
+  }
+
+  return statusBar() +
+    '<div class="screen-body">' +
+      '<div class="t-head"><span>宠物单元 01</span><span>' + st + ' · <span class="js-clock">' + clockText() + '</span></span></div>' +
+      '<div class="rule t-rule"></div>' +
+      '<div class="t-unit">' +
+        '<div><div class="name">' + esc(p.name) + '</div><div class="t-titlecn">掌上宠物 · 第 ' + p.gen + ' 代</div></div>' +
+        '<div class="sub">代数 ' + pad2(p.gen) + '<br>年龄 ' + ageDays() + '天<br>体重 ' + p.weight + 'g</div>' +
+      '</div>' +
+      '<div class="t-heartrow"><span class="lab">饥饿</span><span class="hearts">' + heartsHTML(p.hunger) + '</span></div>' +
+      '<div class="t-heartrow"><span class="lab">快乐</span><span class="hearts">' + heartsHTML(p.happy) + '</span>' +
+        '<span class="t-disc" title="教养">' + discHTML(p.disc) + '</span></div>' +
+      '<div class="pet-stage">' +
+        '<i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>' +
+        '<div class="stage-top"><span>单元 01 / ' + st + '</span><span>灯光 ' + (p.light ? '开' : '关') + '</span></div>' +
+        '<div class="stage-alert' + (alertLabel ? ' on' : '') + '">' + alertLabel + '</div>' +
+        petEl + zzzEl +
+        '<div class="stage-floor"></div>' +
+        '<div class="stage-caption"><span>' + stageStateLabel() + '</span>' +
+          '<span class="js-clock">' + clockText() + '</span></div>' +
+      '</div>' +
+      '<div class="t-msg' + (warn ? ' warn' : '') + '">' + esc(msg) + '</div>' +
+      '<div class="icons">' + icons + '</div>' +
+      '<div class="info">' +
+        '<div class="cell"><div class="k">阶段</div><div class="v">' + st + '</div></div>' +
+        '<div class="cell"><div class="k">便便</div><div class="v">' + p.poop + ' / 3</div></div>' +
+        '<div class="cell"><div class="k">灯光</div><div class="v">' + (p.light ? '开' : '关') + '</div></div>' +
+        '<div class="cell"><div class="k">生病</div><div class="v">' + (p.sick ? '是' : '否') + '</div></div>' +
+      '</div>' +
+    '</div>' +
+    foot('↑↓ 选择图标   确认键执行   双击返回   长按休眠', '宠物 · 主界面');
+}
+
+function statusRow(k, v){
+  return '<div class="status-row"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>';
+}
+function statusHTML(){
+  var p = M.pet;
+  var state = !p.alive ? '已死亡' : petSleeping() ? '睡眠中' : '清醒';
+  var life = '';
+
+  for(var i = 0; i < STAGES.length; i++){
+    life += '<div class="' + (p.alive && i <= p.stage ? 'on' : '') + '">' + STAGES[i].name + '</div>';
+  }
+
+  return statusBar() +
+    '<div class="screen-body">' +
+      '<div class="t-status-head"><h3>宠物状态</h3><span class="mono">' + state + '</span></div>' +
+      '<div class="rule" style="margin-top:10px"></div>' +
+      '<div class="status-list">' +
+        statusRow('名字', p.name + ' · 第 ' + p.gen + ' 代') +
+        statusRow('阶段', stageName() + ' · ' + ageDays() + ' 天') +
+        statusRow('年龄', p.hoursAlive + ' 小时') +
+        statusRow('体重', p.weight + ' g') +
+        statusRow('饥饿', p.hunger + ' / 4') +
+        statusRow('快乐', p.happy + ' / 4') +
+        statusRow('教养', p.disc + ' / 5') +
+        statusRow('照顾失误', String(p.care)) +
+        statusRow('便便', p.poop + ' / 3') +
+        statusRow('灯光', p.light ? '开' : '关') +
+        statusRow('生病', p.sick ? '是' : '否') +
+      '</div>' +
+      '<div class="life-grid">' + life + '</div>' +
+      '<div class="menu-note">确认键返回宠物 · 双击返回 · 长按休眠</div>' +
+    '</div>' +
+    foot('确认键返回   双击返回   长按休眠', '宠物 · 状态');
+}
+
+function gameHTML(){
+  var g = M.game;
+  if(!g){ M.screen = 'pet'; return petHTML(); }
+
+  var rounds = '';
+  for(var i = 0; i < 3; i++) rounds += '<i class="' + (i < g.round ? 'on' : '') + '"></i>';
+
+  var body;
+  if(g.phase === 'pick'){
+    body = '<div class="game-q">大了还是小了？</div>' +
+      '<div class="game-sub">第 ' + (g.round + 1) + ' / 3 回合 · ↑ 选大，↓ 选小，按确认</div>' +
+      '<div class="choice-row">' +
+        '<div class="choice' + (g.pick === 0 ? ' on' : '') + '" data-pick="0"><b>↑</b>大</div>' +
+        '<div class="choice' + (g.pick === 1 ? ' on' : '') + '" data-pick="1"><b>↓</b>小</div>' +
+      '</div>';
+  } else {
+    body = '<div class="game-q">' + (g.lastWin ? '猜对了' : '猜错了') + '</div>' +
+      '<div class="game-sub">当前 ' + g.score + ' 分 · 按确认继续</div>' +
+      '<div class="game-result">' + (g.lastWin ? '+1' : '+0') + '</div>';
+  }
+
+  return statusBar() +
+    '<div class="screen-body">' +
+      '<div class="t-status-head"><h3>小游戏</h3><span class="mono">' + g.score + ' 分</span></div>' +
+      '<div class="rule" style="margin-top:10px"></div>' +
+      '<div class="game-box">' +
+        '<div class="game-round">' + rounds + '</div>' +
+        body +
+      '</div>' +
+      '<div class="game-foot">3 回合内赢 2 回合 → 快乐 +1 / 体重 −1；' +
+        (g.phase === 'result' ? '按确认继续' : '↑↓ 选择 · 按确认') + '</div>' +
+    '</div>' +
+    foot('↑↓ 选择   确认键确认   双击返回   长按休眠', '宠物 · 小游戏');
+}
+
+function foodHTML(){
+  return statusBar() +
+    '<div class="screen-body">' +
+      '<div class="t-status-head"><h3>食物</h3><span class="mono">饥饿 ' + M.pet.hunger + ' / 4</span></div>' +
+      '<div class="rule" style="margin-top:10px"></div>' +
+      '<div class="food-grid">' +
+        '<div class="food-card' + (M.foodChoice === 0 ? ' on' : '') + '" data-food="0">' +
+          '<b>正餐</b><span>饥饿 +1<br>体重 +1</span></div>' +
+        '<div class="food-card' + (M.foodChoice === 1 ? ' on' : '') + '" data-food="1">' +
+          '<b>零食</b><span>快乐 +1<br>体重 +1</span></div>' +
+      '</div>' +
+      '<div class="food-note">↑↓ 选择 · 确认键喂食 · 双击取消<br>吃太饱会被拒绝；睡眠中不能喂食。</div>' +
+    '</div>' +
+    foot('↑↓ 选择   确认键喂食   双击取消', '宠物 · 食物');
+}
+
+function menuHTML(){
+  var rows = '';
+  for(var i = 0; i < MENU.length; i++){
+    rows += '<div class="menu-row' + (i === M.menuSel ? ' on' : '') + '" data-menu="' + i + '">' +
+      '<span class="idx">' + pad2(i + 1) + '</span><span>' + MENU[i].cn + '</span>' +
+      '<span class="en">' + MENU[i].en + '</span></div>';
+  }
+  var note = M.notice || '原型只实现第 07 项「宠物」；其它入口保持占位。';
+
+  return statusBar() +
+    '<div class="screen-body">' +
+      '<div class="t-status-head"><h3>主菜单</h3><span class="mono">占位</span></div>' +
+      '<div class="rule" style="margin-top:10px"></div>' +
+      '<div class="menu-list">' + rows + '</div>' +
+      '<div class="menu-note">' + esc(note) + '</div>' +
+    '</div>' +
+    foot('↑↓ 选择   确认键进入   双击无动作   长按休眠', '主菜单');
+}
+
+function sleepHTML(){
+  return statusBar() +
+    '<div class="screen-body sleep-body">' +
+      '<div class="sleep-glyph"></div>' +
+      '<div class="rule" style="width:320px"></div>' +
+      '<div class="sleep-word">已休眠</div>' +
+      '<div class="rule" style="width:320px"></div>' +
+      '<div class="sleep-sub">按确认键唤醒</div>' +
+      '<div class="sleep-mono">' + dayLabel() + ' · <span class="js-clock">' + clockText() + '</span><br>' +
+        '宠物状态已存档；时间仍在流逝</div>' +
+    '</div>' +
+    foot('确认键唤醒   原型模拟深睡', '宠物 · 休眠');
+}
+
+function updateClockOnly(){
+  var t = clockText();
+  var nodes = document.querySelectorAll('.js-clock');
+  for(var i = 0; i < nodes.length; i++) nodes[i].textContent = t;
+}
+
+function screenName(){
+  var names = { pet:'主界面', status:'状态', game:'小游戏', food:'食物', menu:'主菜单', sleep:'休眠' };
+  return names[M.screen] || M.screen;
+}
+function updateDbg(){
+  if(!dbgEl) return;
+  var p = M.pet;
+  dbgEl.innerHTML =
+    '时间 <b>' + dayLabel() + ' ' + clockText() + '</b><br>' +
+    '阶段 <b>' + stageName() + '</b> · 存活 <b>' + p.hoursAlive + ' 小时</b><br>' +
+    '饥饿 / 快乐 <b>' + p.hunger + ' / ' + p.happy + '</b> · 教养 <b>' + p.disc + '</b><br>' +
+    '便便 <b>' + p.poop + '</b> · 生病 <b>' + (p.sick ? '是' : '否') + '</b> · 灯光 <b>' + (p.light ? '开' : '关') + '</b><br>' +
+    '照顾失误 <b>' + p.care + '</b> · 呼叫 <b>' + (p.discCall ? '是' : '否') + '</b><br>' +
+    '屏幕 <b>' + screenName() + '</b> · 流速 <b>' + M.speed + '×</b>' +
+    (p.alive ? '' : '<br><b>已死亡 · ' + esc(p.reason) + '</b>');
+}
+
+/* ---------- 时间推演 ---------- */
+function checkEvolution(){
+  var p = M.pet;
+  if(!p.alive) return;
+  var st = stageFromHours(p.hoursAlive);
+  if(st !== p.stage){
+    var grew = st > p.stage;
+    p.stage = st;
+    p.weight = Math.max(p.weight, 8 + st * 4);
+    notice('进化 · ' + STAGES[st].name);
+    if(grew) playOnce('evolve', 3600);
+  }
+}
+
+function die(reason){
+  var p = M.pet;
+  if(!p.alive) return;
+  p.alive = false;
+  p.sick = false;
+  p.reason = reason;
+  M.game = null;
+  M.screen = 'pet';
+  notice('它离开了 · ' + reason);
+}
+
+function hourlyTick(){
+  var p = M.pet;
+  if(!p.alive) return;
+
+  p.hoursAlive++;
+  var sleeping = isNightHour(hourOfDay());
+
+  if(sleeping){
+    /* 睡眠中饥饿暂停；开灯睡会掉快乐，并增加生病率 */
+    if(p.light && p.hoursAlive % 2 === 0){
+      p.happy = Math.max(0, p.happy - 1);
+      if(Math.random() < 0.30) p.sick = true;
+    }
+  } else {
+    if(p.hoursAlive % 2 === 0) p.hunger = Math.max(0, p.hunger - 1);
+    if(p.hoursAlive % 3 === 0) p.happy  = Math.max(0, p.happy  - 1);
+    if(p.hoursAlive % 4 === 0) p.poop   = Math.min(3, p.poop + 1);
+    if(p.poop > 0 && !p.sick && p.hoursAlive % 5 === 0) p.sick = true;
+
+    if(p.hoursAlive % 8 === 0 && !p.discCall){
+      p.discCall = true;
+      p.discSince = M.clock;
+      notice('管教时机 · 按 DISC');
+    }
+    if(p.discCall && (M.clock - p.discSince) >= 120){
+      p.discCall = false;
+      p.care++;
+      notice('照顾失误 +1');
+    }
+  }
+
+  if(p.sick){
+    if(!p.sickSince) p.sickSince = M.clock;
+  } else {
+    p.sickSince = 0;
+  }
+  if(p.sickSince && (M.clock - p.sickSince) >= 720){
+    die('病死');
+    M.dirty = true;
+    return;
+  }
+
+  if(p.hunger <= 0 && p.happy <= 0){
+    if(!p.starvingSince) p.starvingSince = M.clock;
+  } else {
+    p.starvingSince = 0;
+  }
+  if(p.starvingSince && (M.clock - p.starvingSince) >= 360){
+    die('被忽视');
+    M.dirty = true;
+    return;
+  }
+
+  checkEvolution();
+  M.dirty = true;
+}
+
+function advance(mins){
+  if(!isFinite(mins) || mins <= 0) return;
+  var remaining = mins;
+  var guard = 0;
+
+  while(remaining > 1e-6 && guard++ < 5000){
+    var nextBoundary = (Math.floor(M.clock / 60) + 1) * 60;
+    var step = Math.min(remaining, nextBoundary - M.clock);
+    if(step < 1e-6) step = Math.min(remaining, 60);
+
+    M.clock += step;
+    remaining -= step;
+
+    if(M.clock >= nextBoundary - 1e-6) hourlyTick();
+  }
+}
+
+/* ---------- 按键动作 ---------- */
+function doUp(){
+  if(M.screen === 'pet'){
+    M.icon = (M.icon + ICONS.length - 1) % ICONS.length;
+    render();
+  } else if(M.screen === 'food'){
+    M.foodChoice = 0;
+    render();
+  } else if(M.screen === 'game' && M.game && M.game.phase === 'pick'){
+    M.game.pick = 0;
+    render();
+  } else if(M.screen === 'menu'){
+    M.menuSel = (M.menuSel + MENU.length - 1) % MENU.length;
+    render();
+  }
+}
+function doDown(){
+  if(M.screen === 'pet'){
+    M.icon = (M.icon + 1) % ICONS.length;
+    render();
+  } else if(M.screen === 'food'){
+    M.foodChoice = 1;
+    render();
+  } else if(M.screen === 'game' && M.game && M.game.phase === 'pick'){
+    M.game.pick = 1;
+    render();
+  } else if(M.screen === 'menu'){
+    M.menuSel = (M.menuSel + 1) % MENU.length;
+    render();
+  }
+}
+
+function doIcon(){
+  var p = M.pet;
+
+  if(!p.alive){
+    notice('它已经离开了 · 用右侧「重置宠物」');
+    render();
+    return;
+  }
+  if(petSleeping() && (M.icon === 0 || M.icon === 2 || M.icon === 5)){
+    notice('它在睡觉 · 只能喂药、清洁、查看或开关灯');
+    render();
+    return;
+  }
+
+  switch(M.icon){
+    case 0:
+      M.foodChoice = (p.hunger >= 4) ? 1 : 0;
+      M.screen = 'food';
+      break;
+    case 1:
+      p.light = !p.light;
+      notice(p.light ? '开灯' : '关灯');
+      break;
+    case 2:
+      startGame();
+      return;
+    case 3:
+      medicine();
+      return;
+    case 4:
+      clean();
+      return;
+    case 5:
+      discipline();
+      return;
+    case 6:
+      M.screen = 'status';
+      break;
+    default:
+      showCall();
+      return;
+  }
+  render();
+}
+
+function feed(kind){
+  var p = M.pet;
+
+  if(!p.alive){ notice('它已经离开了'); render(); return; }
+  if(petSleeping()){ notice('它在睡觉 · 不能喂食'); render(); return; }
+
+  if(kind === 0){
+    if(p.hunger >= 4){ notice('已经吃饱了'); render(); return; }
+    p.hunger = Math.min(4, p.hunger + 1);
+    p.weight += 1;
+    notice('正餐 · 饥饿 +1');
+  } else {
+    if(p.happy >= 4){ notice('它很开心 · 不需要零食'); render(); return; }
+    p.happy = Math.min(4, p.happy + 1);
+    p.weight += 1;
+    notice('零食 · 快乐 +1');
+  }
+  playOnce('eat', 2800);
+  M.screen = 'pet';
+  render();
+}
+
+function startGame(){
+  var p = M.pet;
+
+  if(petSleeping()){ notice('它在睡觉'); render(); return; }
+  if(p.sick){ notice('生病了 · 先吃药'); render(); return; }
+
+  M.game = {
+    round: 0,
+    score: 0,
+    pick: 0,
+    target: Math.random() < 0.5 ? 0 : 1,
+    phase: 'pick',
+    lastWin: false
+  };
+  M.screen = 'game';
+  render();
+}
+
+function gameConfirm(){
+  var g = M.game;
+  if(!g) return;
+
+  if(g.phase === 'pick'){
+    g.lastWin = (g.pick === g.target);
+    if(g.lastWin) g.score++;
+    g.phase = 'result';
+    render();
+    return;
+  }
+
+  g.round++;
+  if(g.round >= 3){
+    finishGame();
+    return;
+  }
+  g.target = Math.random() < 0.5 ? 0 : 1;
+  g.pick = 0;
+  g.phase = 'pick';
+  render();
+}
+
+function finishGame(){
+  var g = M.game;
+  var p = M.pet;
+
+  if(g && g.score >= 2){
+    p.happy = Math.min(4, p.happy + 1);
+    p.weight = Math.max(1, p.weight - 1);
+    notice('游戏胜利 · 快乐 +1 / 体重 −1');
+    playOnce('happy', 3200);
+  } else {
+    notice('游戏结束 · 胜 ' + (g ? g.score : 0) + ' / 3');
+  }
+  M.game = null;
+  M.screen = 'pet';
+  render();
+}
+
+function medicine(){
+  var p = M.pet;
+  if(!p.alive){ notice('它已经离开了'); }
+  else if(p.sick){
+    p.sick = false;
+    p.sickSince = 0;
+    notice('服药 · 已康复');
+  } else {
+    notice('没有生病');
+  }
+  render();
+}
+
+function clean(){
+  var p = M.pet;
+  if(!p.alive){ notice('它已经离开了'); }
+  else if(p.poop > 0){
+    p.poop = 0;
+    notice('清洁完成');
+  } else {
+    notice('已经很干净');
+  }
+  render();
+}
+
+function discipline(){
+  var p = M.pet;
+  if(!p.alive){ notice('它已经离开了'); }
+  else if(p.discCall){
+    p.discCall = false;
+    p.disc = Math.min(5, p.disc + 1);
+    notice('管教 +1');
+  } else {
+    notice('现在不需要管教');
+  }
+  render();
+}
+
+function showCall(){
+  var att = attention();
+  notice(att ? '呼叫 · ' + att.label : '状态良好 · 没有呼叫');
+  render();
+}
+
+function goMenu(){
+  cancelPending();
+  M.screen = 'menu';
+  M.menuSel = 6;
+  M.game = null;
+  M.notice = '';
+  M.noticeUntil = 0;
+  render();
+}
+
+function goSleep(){
+  cancelPending();
+  M.screen = 'sleep';
+  M.game = null;
+  M.blink = false;
+  M.notice = '';
+  M.noticeUntil = 0;
+  render();
+}
+
+function wake(){
+  if(M.screen !== 'sleep') return;
+  M.screen = 'pet';
+  notice('已唤醒 · 宠物状态已补算');
+  render();
+}
+
+function menuConfirm(){
+  if(M.menuSel === 6){
+    M.screen = 'pet';
+    notice('进入宠物');
+  } else {
+    notice('原型未实现 · 仅第 07 项「宠物」可进入');
+  }
+  render();
+}
+
+function doEnter(){
+  if(M.screen === 'menu'){ menuConfirm(); return; }
+  if(M.screen === 'status'){ M.screen = 'pet'; render(); return; }
+  if(M.screen === 'game'){ gameConfirm(); return; }
+  if(M.screen === 'food'){ feed(M.foodChoice); return; }
+  if(M.screen === 'sleep'){ wake(); return; }
+  doIcon();
+}
+
+function doubleEnter(){
+  if(M.screen === 'menu' || M.screen === 'sleep') return;
+  goMenu();
+}
+
+function doEscape(){
+  if(M.screen === 'sleep'){ wake(); return; }
+  if(M.screen === 'menu' || M.screen === 'status' ||
+     M.screen === 'game' || M.screen === 'food'){
+    M.screen = 'pet';
+    render();
+    return;
+  }
+  goMenu();
+}
+
+/* ---------- 状态注入 ---------- */
+function resetPet(){
+  var gen = M.pet ? (M.pet.alive ? M.pet.gen : M.pet.gen + 1) : 1;
+  M.pet = newPet(gen);
+  M.screen = 'pet';
+  M.icon = 0;
+  M.game = null;
+  M.foodChoice = 0;
+  M.blink = false;
+  notice('新的蛋 · 第 ' + gen + ' 代');
+  render();
+}
+
+function inject(kind){
+  var p = M.pet;
+
+  switch(kind){
+    case 'poop':
+      p.poop = Math.min(3, p.poop + 1);
+      notice('便便 +1');
+      break;
+    case 'sick':
+      p.sick = true;
+      p.sickSince = M.clock;
+      notice('生病了');
+      break;
+    case 'disc':
+      p.discCall = true;
+      p.discSince = M.clock;
+      notice('管教时机出现');
+      break;
+    case 'night':
+      M.clock = Math.floor(M.clock / 1440) * 1440 + 21 * 60;
+      notice('切入夜间 · 记得关灯');
+      break;
+    case 'evolve':
+      if(p.stage >= 4){ notice('已经是成年形态'); }
+      else {
+        p.hoursAlive = [2, 8, 20, 40][p.stage];
+        checkEvolution();
+      }
+      break;
+    case 'hungry':
+      p.hunger = 0;
+      notice('饥饿归零');
+      break;
+    case 'sad':
+      p.happy = 0;
+      notice('快乐归零');
+      break;
+    case 'offline':
+      advance(360);
+      if(p.alive) notice('离线 6 小时 · 时间补算完成');
+      break;
+    case 'heal':
+      if(!p.alive){
+        notice('已死亡 · 请重置宠物');
+      } else {
+        p.hunger = 4;
+        p.happy = 4;
+        p.disc = Math.max(p.disc, 3);
+        p.poop = 0;
+        p.sick = false;
+        p.sickSince = 0;
+        p.starvingSince = 0;
+        p.discCall = false;
+        p.light = true;
+        notice('状态已恢复');
+      }
+      break;
+    case 'reset':
+      resetPet();
+      return;
+    default:
+      break;
+  }
+  render();
+}
+
+/* ---------- 长按 / 双击 ---------- */
+var ENTER_LONG = 700;
+var ENTER_WINDOW = 320;
+var enterArmed = false;
+var longFired = false;
+var pressTimer = null;
+var pendingEnter = null;
+
+function cancelPending(){
+  if(pendingEnter){
+    clearTimeout(pendingEnter);
+    pendingEnter = null;
+  }
+}
+
+function enterDown(){
+  if(M.screen === 'sleep'){ wake(); return; }
+  if(enterArmed) return;
+
+  enterArmed = true;
+  longFired = false;
+  pressTimer = setTimeout(function(){
+    if(!enterArmed) return;
+    longFired = true;
+    goSleep();
+  }, ENTER_LONG);
+}
+
+function enterUp(){
+  if(!enterArmed) return;
+  enterArmed = false;
+
+  if(pressTimer){ clearTimeout(pressTimer); pressTimer = null; }
+  if(longFired){ longFired = false; return; }
+
+  if(pendingEnter){
+    clearTimeout(pendingEnter);
+    pendingEnter = null;
+    doubleEnter();
+    return;
+  }
+  pendingEnter = setTimeout(function(){
+    pendingEnter = null;
+    doEnter();
+  }, ENTER_WINDOW);
+}
+
+/* ---------- 事件绑定 ---------- */
+screenEl.addEventListener('click', function(e){
+  var el = e.target;
+
+  var icon = el.closest ? el.closest('[data-icon]') : null;
+  if(icon){
+    M.icon = parseInt(icon.getAttribute('data-icon'), 10) || 0;
+    render();
+    return;
+  }
+
+  var pick = el.closest ? el.closest('[data-pick]') : null;
+  if(pick && M.game && M.game.phase === 'pick'){
+    M.game.pick = parseInt(pick.getAttribute('data-pick'), 10) || 0;
+    render();
+    return;
+  }
+
+  var food = el.closest ? el.closest('[data-food]') : null;
+  if(food){
+    M.foodChoice = parseInt(food.getAttribute('data-food'), 10) || 0;
+    render();
+    return;
+  }
+
+  var menu = el.closest ? el.closest('[data-menu]') : null;
+  if(menu){
+    M.menuSel = parseInt(menu.getAttribute('data-menu'), 10) || 0;
+    render();
+  }
+});
+
+var actBtns = document.querySelectorAll('[data-act]');
+for(var b = 0; b < actBtns.length; b++){
+  (function(btn){
+    var act = btn.getAttribute('data-act');
+    if(act === 'enter') return;
+
+    btn.addEventListener('click', function(){
+      if(act === 'up') doUp();
+      else if(act === 'down') doDown();
+      else if(act === 'menu') goMenu();
+      else if(act === 'sleep') goSleep();
+    });
+  })(actBtns[b]);
+}
+
+var injectBtns = document.querySelectorAll('[data-inject]');
+for(var q = 0; q < injectBtns.length; q++){
+  (function(btn){
+    btn.addEventListener('click', function(){
+      inject(btn.getAttribute('data-inject'));
+    });
+  })(injectBtns[q]);
+}
+
+var btnEnter = document.getElementById('btnEnter');
+if(btnEnter){
+  btnEnter.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    enterDown();
+  });
+}
+document.addEventListener('pointerup', function(){ enterUp(); });
+document.addEventListener('pointercancel', function(){ enterUp(); });
+
+speedEl.addEventListener('change', function(){
+  M.speed = parseInt(speedEl.value, 10) || 0;
+  updateDbg();
+});
+
+if(useVideoEl){
+  useVideoEl.checked = M.useVideo;
+  useVideoEl.addEventListener('change', function(){
+    M.useVideo = useVideoEl.checked;
+    if(M.useVideo){ M.vidState = ''; syncVideo(); }
+    render();
+  });
+}
+if(videoDitherEl){
+  videoDitherEl.checked = M.videoDither;
+  videoDitherEl.addEventListener('change', function(){
+    M.videoDither = videoDitherEl.checked;
+    render();
+  });
+}
+
+document.addEventListener('keydown', function(e){
+  var tag = e.target && e.target.tagName;
+  if(tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+  if(e.key === 'ArrowUp'){
+    e.preventDefault();
+    doUp();
+  } else if(e.key === 'ArrowDown'){
+    e.preventDefault();
+    doDown();
+  } else if(e.key === 'Enter'){
+    e.preventDefault();
+    if(!e.repeat) enterDown();
+  } else if(e.key === 'Escape'){
+    e.preventDefault();
+    doEscape();
+  }
+});
+document.addEventListener('keyup', function(e){
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    enterUp();
+  }
+});
+
+/* ---------- 主循环 ---------- */
+setInterval(function(){
+  var now = Date.now();
+  var dt = (now - M.lastReal) / 1000;
+  M.lastReal = now;
+  if(dt > 1.5) dt = 1.5;   /* 防止后台标签页一次跳太多 */
+
+  if(M.speed > 0 && dt > 0){
+    advance(dt * M.speed / 60);   /* 游戏分钟 */
+  }
+
+  if(M.notice && now > M.noticeUntil){
+    M.notice = '';
+    M.noticeUntil = 0;
+    M.dirty = true;
+  }
+  /* 临时动作视频到期 → 切回常态（待机/生病/睡觉） */
+  if(M.vidOverride && now >= M.vidOverrideUntil){
+    M.vidOverride = '';
+    syncVideo();
+  }
+  /* 视频状态跟随宠物状态（待机/生病/睡觉自动切换） */
+  syncVideo();
+  if(M.dirty) render();
+  else updateClockOnly();
+  updateDbg();
+}, 250);
+
+/* ---------- 启动 ---------- */
+M.pet.hoursAlive = 3;
+M.pet.stage = 1;
+M.pet.weight = 14;
+speedEl.value = String(M.speed);
+notice('幼年体 · 300× 时间流速');
+
+/* 预加载阿米娅 PNG（立绘动画核心资源） */
+M.portraitImg = new Image();
+M.portraitImg.crossOrigin = 'anonymous';
+M.portraitImg.onload = function(){
+  M.portraitReady = true;
+  console.log('[portrait] loaded', M.portraitImg.naturalWidth, '×', M.portraitImg.naturalHeight);
+};
+M.portraitImg.onerror = function(){
+  M.portraitReady = false;
+  console.warn('[portrait] load failed → 回退像素模式');
+};
+M.portraitImg.src = 'assets/tamago_face.png';
+
+/* requestAnimationFrame 循环：视频抖动逐帧转 1-bit；否则驱动立绘局部动画 */
+function startAnimLoop(){
+  if(M.animRunning) return;
+  M.animRunning = true;
+  function tick(){
+    if(!M.animRunning) return;
+    M.animFrame++;
+    if(videoActive() && M.videoDither){
+      renderDitherFrame();
+    } else if(!videoActive()){
+      var cv = document.getElementById('petCanvas');
+      var p = M.pet;
+      if(cv && M.portraitReady && M.portrait && p && p.alive && p.stage > 0){
+        drawPet();
+      }
+    }
+    M.animRAF = requestAnimationFrame(tick);
+  }
+  M.animRAF = requestAnimationFrame(tick);
+}
+function stopAnimLoop(){
+  M.animRunning = false;
+  if(M.animRAF){ cancelAnimationFrame(M.animRAF); M.animRAF = 0; }
+}
+
+render();
+startAnimLoop();
+})();
+</script>
+</body>
+</html>

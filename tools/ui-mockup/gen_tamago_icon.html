@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Tamago Icon (80×80 1-bit)</title>
+<style>
+body{background:#101014;color:#e8e8ea;font:13px Consolas,'Microsoft YaHei UI',monospace;padding:20px}
+h1{font-size:15px;margin-bottom:8px}
+p{color:#888;font-size:12px;margin-bottom:12px}
+canvas{background:#fff;image-rendering:pixelated;border:1px solid #333;display:block}
+#big{width:320px;height:320px;margin-top:10px}
+#log{color:#3ddc97;margin-top:10px;white-space:pre-wrap}
+button{margin-top:12px;background:#3ddc97;color:#0a0a0e;border:0;padding:8px 14px;border-radius:4px;font:700 12px Consolas;cursor:pointer}
+</style>
+</head>
+<body>
+<h1>Tamago 图标（80×80 线稿）</h1>
+<p>黑线 + 透明底，按 1-bit 线稿量化。预览下方放大 4 倍。</p>
+<canvas id="c" width="80" height="80" style="width:160px;height:160px"></canvas>
+<canvas id="big" width="320" height="320"></canvas>
+<button id="up">上传 ui_def_icon_tamago.png</button>
+<div id="log"></div>
+<script>
+'use strict';
+const C = document.getElementById('c');
+const X = C.getContext('2d');
+X.lineCap = 'round';
+X.lineJoin = 'round';
+X.strokeStyle = '#000';
+X.fillStyle = '#000';
+
+function ear(sign){
+  // sign=-1 左耳, +1 右耳
+  const bx = 40 + sign * 9;
+  const by = 30;
+  const tx = 40 + sign * 17;
+  const ty = 6;
+  X.beginPath();
+  X.moveTo(bx - sign * 0.5, by);
+  X.quadraticCurveTo(40 + sign * 12, 14, tx, ty + 2);
+  X.quadraticCurveTo(40 + sign * 20, 18, bx + sign * 5, by + 1);
+  X.closePath();
+  X.lineWidth = 4;
+  X.stroke();
+  // 耳内短线
+  X.beginPath();
+  X.moveTo(bx + sign * 1, by - 5);
+  X.quadraticCurveTo(40 + sign * 13, 18, tx + sign * 1, ty + 6);
+  X.lineWidth = 2;
+  X.stroke();
+}
+
+function draw(){
+  const cx = 40, cy = 40, R = 29;
+
+  X.clearRect(0, 0, 80, 80);
+
+  /* 上半球：45° 斜线填充（1-bit 下用排线表示“上色的一半”） */
+  X.save();
+  X.beginPath();
+  X.arc(cx, cy, R - 4, Math.PI, Math.PI * 2);
+  X.closePath();
+  X.clip();
+  X.lineWidth = 2;
+  for (let i = -R; i <= R * 2; i += 6) {
+    X.beginPath();
+    X.moveTo(cx - R + i, cy - R);
+    X.lineTo(cx - R + i + 2 * R, cy + R);
+    X.stroke();
+  }
+  X.restore();
+
+  /* 外圆 */
+  X.beginPath();
+  X.arc(cx, cy, R, 0, Math.PI * 2);
+  X.lineWidth = 5;
+  X.stroke();
+
+  /* 中间横带 */
+  X.fillRect(cx - R + 2, cy - 3, (R - 2) * 2, 6);
+
+  /* 中心按钮：黑圈 + 白心 */
+  X.beginPath();
+  X.arc(cx, cy, 10, 0, Math.PI * 2);
+  X.fillStyle = '#fff';
+  X.fill();
+  X.lineWidth = 4;
+  X.stroke();
+
+  /* 按钮高光 */
+  X.beginPath();
+  X.arc(cx - 3, cy - 3, 2, 0, Math.PI * 2);
+  X.fillStyle = '#000';
+  X.fill();
+}
+
+function preview(){
+  const B = document.getElementById('big').getContext('2d');
+  B.imageSmoothingEnabled = false;
+  B.clearRect(0, 0, 320, 320);
+  B.drawImage(C, 0, 0, 320, 320);
+}
+
+draw();
+preview();
+
+document.getElementById('up').addEventListener('click', async () => {
+  const blob = await new Promise(r => C.toBlob(r, 'image/png'));
+  try{
+    const resp = await fetch('/save?name=ui_def_icon_tamago.png', { method: 'POST', body: blob });
+    document.getElementById('log').textContent = await resp.text();
+  }catch(e){
+    document.getElementById('log').textContent = '❌ ' + e.message;
+  }
+});
+</script>
+</body>
+</html>
