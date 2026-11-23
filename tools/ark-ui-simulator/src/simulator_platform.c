@@ -109,6 +109,10 @@ void ui_display_clear_color_card(void) { color_card.active = 0; }
    target below tests native playback, without inventing a panel preview. */
 int ui_display_set_abc9_card(const uint8_t *pixels, uint32_t size)
 { (void)pixels; (void)size; return -1; }
+int ui_display_set_fast_card(const uint8_t *pixels, uint32_t size)
+{ (void)pixels; (void)size; return -1; }
+int ui_display_set_compact_card(const uint8_t *body, uint32_t size, int x, int y, int abc9, int avatar)
+{ (void)body; (void)size; (void)x; (void)y; (void)abc9; (void)avatar; return -1; }
 void ui_display_invalidate_all(void)
 {
     lv_obj_t *screen = lv_screen_active();

@@ -1198,13 +1198,21 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                bit9 = 返回键双击截图（/sdcard/screenshot），仅 ARK_SCREENSHOT 开启
                bit10 = 480x720 全屏 FFUI 通行证（v1 单色 / v2 六色，彩色另需 bit0）
                bit12 = 校验式 BLE OTA（0x6A–0x6E）
-               bit13 = 需设备确认的 BLE SD 文件上传 */
+               bit13 = 需设备确认的 BLE SD 文件上传
+               bit14 = native student ColorFast profile.bin
+               bit15 = FFUI v3 compact operator I006 + ColorFast */
+#if SYS_UI_ENABLE
+            capabilities[3] |= 0x40; /* bit14: exact native Format 0x03 student pass. */
+#endif
 #if CONFIG_ARK_SCREENSHOT
             capabilities[3] |= 0x02;
 #endif
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
             capabilities[4] |= 0x20;  /* General ABC9 .film playback, unchanged. */
             capabilities[3] |= 0x08;  /* bit11: I006 ABC9 app/pass/profile.bin. */
+#if SYS_UI_ENABLE
+            capabilities[3] |= 0x80;  /* bit15: both compact operator decoders compiled. */
+#endif
 #endif
 #if (SYS_NFC_ENABLE == 1)
             capabilities[4] |= 0x80;

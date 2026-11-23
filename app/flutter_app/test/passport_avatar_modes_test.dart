@@ -11,11 +11,11 @@ void main() {
       rgba.setRange((y * 440 + x) * 4, (y * 440 + x) * 4 + 3, color);
   test('legacy JSON defaults mono and selected modes round trip', () {
     final old =
-        jsonDecode(const PassportProfile().toJson()) as Map<String, dynamic>;
+        jsonDecode(const PassportProfile(version: 1, avatarMode: 'mono').toJson()) as Map<String, dynamic>;
     old.remove('avatarMode');
     expect(PassportProfile.fromJson(jsonEncode(old)).avatarMode, 'mono');
     for (final mode in ['mono', 'grayscale', 'color']) {
-      final p = PassportProfile(avatarMode: mode);
+      final p = PassportProfile(version: 1, avatarMode: mode);
       expect(PassportProfile.fromJson(p.toJson()).avatarMode, mode);
     }
     expect(

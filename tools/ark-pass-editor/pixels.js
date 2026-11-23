@@ -215,7 +215,82 @@
       quantize(rgba, mode, width, rect, ditherArtwork);
     return pack(indices, mode === 'color', width, height, rotateClockwise);
   }
-  const api = { encode };
+  // New outputs never use the legacy six-ink encoder above. Both previews
+  // and bytes below come from the existing Film/Ark quantizers.
+  function colorFast(image) {
+    const input = { width: image.width, height: image.height, data: image.data.slice() };
+    const profile = root.CF_PROFILES?.colorFast55;
+    if (!profile || !root.cfQuantize) throw new Error('ColorFast 配色资料未加载');
+    const result = root.cfQuantize(input, 1, true, profile);
+    const codes = new Uint8Array(image.width * image.height);
+    for (let i = 0; i < codes.length; i++) {
+      const k = i * 4;
+      codes[i] = root.cfClosestIndex(result.data[k], result.data[k + 1], result.data[k + 2], profile);
+      result.data.set([...profile.palette[codes[i]], 255], k);
+    }
+    return { codes, rgba: result.data };
+  }
+
+  async function avatar(image, output, options = {}) {
+    if (!['i006', 'colorfast'].includes(output)) throw new Error('输出模式无效');
+    if (options.cancelled?.()) throw new Error('预览已取消');
+    const result = output === 'i006'
+      ? await root.Ark512.render(image, { continuousTone: true, cancelled: options.cancelled }) : colorFast(image);
+    if (options.cancelled?.()) throw new Error('预览已取消');
+    return result;
+  }
+
+  function studentColorFast(image) {
+    if (image.width !== 720 || image.height !== 480 || image.data.length !== 720 * 480 * 4) throw new Error('学生证需要 720×480 RGBA');
+    // Reader landscape -> logical portrait (same sampling order as I006),
+    // then logical -> native. Consequently native is 180° from reader.
+    const logical = { width: 480, height: 720, data: new Uint8ClampedArray(image.data.length) };
+    for (let y = 0; y < 480; y++) for (let x = 0; x < 720; x++) {
+      logical.data.set(image.data.subarray((y * 720 + x) * 4, (y * 720 + x) * 4 + 4), (x * 480 + 479 - y) * 4);
+    }
+    const result = colorFast(logical), bin = new Uint8Array(32 + 345600), view = new DataView(bin.buffer);
+    view.setUint32(0, 345600, true); view.setUint16(4, 720, true); view.setUint16(6, 480, true);
+    bin[9] = 3; view.setUint16(10, 1, true);
+    const rgba = new Uint8ClampedArray(image.data.length);
+    for (let y = 0; y < 720; y++) for (let x = 0; x < 480; x++) {
+      const src = y * 480 + x, native = x * 720 + 719 - y, reader = 345599 - native;
+      bin[32 + native] = result.codes[src];
+      rgba.set(result.rgba.subarray(src * 4, src * 4 + 4), reader * 4);
+    }
+    return { bin, rgba };
+  }
+
+  async function compact(image, output, hasAvatar, options = {}) {
+    if (image.width !== 440 || image.height !== 608 || image.data.length !== 440 * 608 * 4 || !['i006', 'colorfast'].includes(output)) throw new Error('紧凑档案像素或输出模式无效');
+    const bin = new Uint8Array(16 + 33440 + (hasAvatar ? 128 * 160 * (output === 'i006' ? 2 : 1) : 0));
+    const view = new DataView(bin.buffer), rgba = new Uint8ClampedArray(image.data.length);
+    bin.set([70, 70, 85, 73, 3, output === 'i006' ? 127 : 3]);
+    view.setUint16(6, 440, true); view.setUint16(8, 608, true); bin[10] = Number(!!hasAvatar);
+    const chrome = output === 'i006' ? root.Ark512.preview(new Uint16Array([387, 75]), 2, 1) : new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]);
+    for (let i = 0; i < 440 * 608; i++) {
+      const k = i * 4, black = .299 * image.data[k] + .587 * image.data[k + 1] + .114 * image.data[k + 2] < 160;
+      if (black) bin[16 + (i >> 3)] |= 128 >> (i & 7);
+      rgba.set(chrome.subarray(black ? 0 : 4, black ? 4 : 8), k);
+    }
+    if (hasAvatar) {
+      const crop = { width: 128, height: 160, data: new Uint8ClampedArray(128 * 160 * 4) };
+      for (let y = 0; y < 160; y++) {
+        const src = ((143 + y) * 440 + 20) * 4;
+        crop.data.set(image.data.subarray(src, src + 128 * 4), y * 128 * 4);
+      }
+      const result = await avatar(crop, output, options);
+      for (let i = 0; i < result.codes.length; i++) {
+        const code = result.codes[i];
+        if (!Number.isInteger(code) || code < 0 || code > (output === 'i006' ? 511 : 63)) throw new Error('头像索引无效');
+        if (output === 'i006') view.setUint16(33456 + i * 2, code, true);
+        else bin[33456 + i] = code;
+      }
+      for (let y = 0; y < 160; y++) rgba.set(result.rgba.subarray(y * 128 * 4, (y + 1) * 128 * 4), ((143 + y) * 440 + 20) * 4);
+    }
+    if (options.cancelled?.()) throw new Error('预览已取消');
+    return { bin, rgba };
+  }
+  const api = { encode, avatar, compact, studentColorFast };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PassportPixels = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

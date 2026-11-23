@@ -17,6 +17,8 @@
         android:label="${framefilmAppLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <meta-data android:name="org.framefilm.ark.releaseRepository"
+            android:value="${framefilmReleaseRepository}" />
         <provider
             android:name="org.framefilm.framefilm_ark.AppUpdateProvider"
             android:authorities="${applicationId}.updates"
@@ -61,8 +63,6 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
-        <package android:name="org.framefilm.ark.flutter" />
-        <package android:name="org.framefilm.ark.flutter.dev" />
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

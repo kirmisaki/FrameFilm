@@ -47,6 +47,7 @@
 #include "sys_event.h"
 #include "hal_api.h"
 #include "hal_epd_abc9.h"
+#include "hal_pass_profile.h"
 #include "service_file.h"
 #include "esp_timer.h"
 
@@ -185,6 +186,7 @@ static void file_load_next_event(void);
 static void file_sd_check_event(void);
 static void file_free_buffer(void);
 static int file_validate_film(uint16_t *frame_count);
+static int file_validate_pass_profile(void);
 static int file_target_by_frame_count(char *dst_path, size_t dst_size);
 static void file_invalidate_buffer(void);
 static void file_publish_list_event(uint8_t save_pending);
@@ -497,6 +499,11 @@ save_start_done:
                                  m_file_state.save_part_path,
                                  (unsigned long)m_file_state.save_written,
                                  (unsigned long)m_file_state.save_file_size);
+                    }
+                    else if(strcmp(target, PASS_PROFILE_FILE_PATH) == 0 &&
+                            file_validate_pass_profile() != 0)
+                    {
+                        sys_loge(FILE_TAG, "Pass profile validation failed: %s", m_file_state.save_part_path);
                     }
                     else if(m_file_state.save_skip_relocate ?
                             (is_film && file_validate_film(NULL) != 0) :
@@ -901,6 +908,16 @@ static int file_validate_abc9_body(void)
     return result;
 }
 #endif
+
+static int file_validate_pass_profile(void)
+{
+    FILE *fp = fopen(m_file_state.save_part_path, "rb");
+    if(fp == NULL) return -1;
+    PassProfileInfo_t info;
+    int valid = hal_pass_profile_inspect(fp, &info);
+    fclose(fp);
+    return valid ? 0 : -1;
+}
 
 /* Validate the uploaded container before committing or choosing its directory. */
 static int file_validate_film(uint16_t *frame_count_out)

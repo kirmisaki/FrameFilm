@@ -13,6 +13,7 @@ import 'frame_codec.dart';
 import 'frame_algorithms.dart' show quantizeFramePixels;
 import 'live_image_composition.dart';
 import 'image_resampling.dart';
+import 'passport_color.dart';
 
 const avatarAlgorithms = {
   'adaptive': '自适应（与 Film 相同）',
@@ -99,16 +100,18 @@ Future<String> prepareAvatarSource(Uint8List bytes) async {
   }
   final image = await decodeCompositionSource(bytes);
   try {
-    final ratio = math.min(1.0, 640 / math.max(image.width, image.height));
-    final w = math.max(1, (image.width * ratio).round());
-    final h = math.max(1, (image.height * ratio).round());
-    final resized = await resizeCompositionSource(image, w, h);
-    try {
-      final source = await _png(resized);
-      if (source.length > 6000000) throw const FormatException('头像源图过大，请换一张图片');
-      return source;
-    } finally {
-      resized.dispose();
+    var ratio = math.min(1.0, 2048 / math.max(image.width, image.height));
+    while (true) {
+      final w = math.max(1, (image.width * ratio).round());
+      final h = math.max(1, (image.height * ratio).round());
+      final resized = await resizeCompositionSource(image, w, h);
+      try {
+        final source = await _png(resized);
+        if (source.length <= 6000000) return source;
+      } finally {
+        resized.dispose();
+      }
+      ratio *= .75;
     }
   } finally {
     image.dispose();
@@ -119,17 +122,25 @@ Future<({String crop, String processed})> renderAvatarEdit(
   PassportAvatarEdit edit,
   String mode, {
   void Function()? checkCancelled,
+  int width = 128,
+  int height = 160,
+  bool quantize = true,
 }) async {
+  final modern = passportOutputs.contains(mode);
+  if (!modern && !const ['mono', 'grayscale', 'color'].contains(mode)) {
+    throw const FormatException('头像输出模式无效');
+  }
   final o = edit.options;
   checkCancelled?.call();
   final crop = await renderImageComposition(
     base64Decode(edit.source.substring(22)),
-    width: 128,
-    height: 160,
+    width: width,
+    height: height,
     quarterTurns: (o['turns'] as num).toInt(),
     zoom: (o['zoom'] as num).toDouble(),
-    panX: (o['x'] as num).toDouble(),
-    panY: (o['y'] as num).toDouble(),
+    // Persist pan in the historical 128×160 composition coordinate system.
+    panX: (o['x'] as num).toDouble() * width / 128,
+    panY: (o['y'] as num).toDouble() * height / 160,
     resampling: ImageResampling.values.byName(o['resampling'] as String),
     legacyQuality: ui.FilterQuality.high,
     legacyDecodeLimit: 4096,
@@ -139,7 +150,7 @@ Future<({String crop, String processed})> renderAvatarEdit(
   late Uint8List rgba;
   try {
     checkCancelled?.call();
-    cropPng = await _png(crop);
+    if (!modern) cropPng = await _png(crop);
     rgba = (await crop.toByteData(format: ui.ImageByteFormat.rawRgba))!.buffer
         .asUint8List();
   } finally {
@@ -151,9 +162,24 @@ Future<({String crop, String processed})> renderAvatarEdit(
     FrameOptions(
       brightness: (o['brightness'] as num).toDouble(),
       contrast: (o['contrast'] as num).toDouble(),
-      saturation: mode == 'color' ? (o['saturation'] as num).toDouble() : 0,
+      saturation: modern || mode == 'color'
+          ? (o['saturation'] as num).toDouble()
+          : 0,
     ),
   );
+  if (modern) {
+    cropPng = passportRgbPng(rgba, width, height);
+    if (!quantize) return (crop: cropPng, processed: cropPng);
+    await quantizePassportColor(
+      rgba,
+      width,
+      height,
+      mode,
+      checkCancelled: checkCancelled,
+    );
+    checkCancelled?.call();
+    return (crop: cropPng, processed: passportRgbPng(rgba, width, height));
+  }
   if (mode == 'color') {
     fitSourceRgba(
       rgba,
@@ -171,24 +197,24 @@ Future<({String crop, String processed})> renderAvatarEdit(
         return false;
       },
       null,
-      width: 128,
-      height: 160,
+      width: width,
+      height: height,
     );
   } else if (mode == 'color' || o['dither'] == true) {
     await quantizeFramePixels(
       rgba,
-      128,
-      160,
+      width,
+      height,
       algorithm: FrameAlgorithm.values.byName(o['algorithm'] as String),
       dither: o['dither'] as bool,
       strength: (o['strength'] as num).toDouble(),
       checkCancelled: checkCancelled,
     );
   } else {
-    await quantizeFrameMono(rgba, false, null, null, width: 128, height: 160);
+    await quantizeFrameMono(rgba, false, null, null, width: width, height: height);
   }
   checkCancelled?.call();
-  final image = await imageFromRgba(rgba, 128, 160);
+  final image = await imageFromRgba(rgba, width, height);
   try {
     final processed = await _png(image);
     checkCancelled?.call();
@@ -203,9 +229,16 @@ class PassportAvatarDialog extends StatefulWidget {
     super.key,
     required this.edit,
     required this.mode,
+    this.width = 128,
+    this.height = 160,
+    this.devicePreview,
   });
   final PassportAvatarEdit edit;
   final String mode;
+  final int width, height;
+
+  /// Student cards must crop the portrait from the whole-card quantization.
+  final Future<String> Function(String, void Function())? devicePreview;
   @override
   State<PassportAvatarDialog> createState() => _PassportAvatarDialogState();
 }
@@ -246,19 +279,25 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
       error = null;
     });
     try {
+      void checkCancelled() {
+        if (!mounted || g != generation) throw StateError('头像预览已取消');
+      }
+
       final result = await renderAvatarEdit(
         PassportAvatarEdit(widget.edit.source, snapshot),
         widget.mode,
-        checkCancelled: () {
-          if (!mounted || g != generation) {
-            throw StateError('头像预览已取消');
-          }
-        },
+        width: widget.width,
+        height: widget.height,
+        quantize: widget.devicePreview == null,
+        checkCancelled: checkCancelled,
       );
+      final device = widget.devicePreview == null
+          ? result.processed
+          : await widget.devicePreview!(result.crop, checkCancelled);
       if (mounted && g == generation) {
         setState(() {
           crop = result.crop;
-          processed = result.processed;
+          processed = device;
           pending = false;
         });
       }
@@ -360,35 +399,44 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
                   child: SizedBox(
                     width: 128,
                     height: 160,
-                    child: LiveImageComposition(
-                      key: const ValueKey('avatar-live-composition'),
-                      source: sourceBytes,
-                      width: 128,
-                      height: 160,
-                      sourceProfile: fastSourceProfile,
-                      legacyQuality: ui.FilterQuality.high,
-                      legacyDecodeLimit: 4096,
-                      options: FrameOptions(
-                        resampling: ImageResampling.values.byName(
-                          options['resampling'] as String,
-                        ),
-                        quarterTurns: (options['turns'] as num).toInt(),
-                        zoom: (options['zoom'] as num).toDouble(),
-                        panX: (options['x'] as num).toDouble(),
-                        panY: (options['y'] as num).toDouble(),
-                        brightness: (options['brightness'] as num).toDouble(),
-                        rangeFit: widget.mode == 'color'
-                            ? (options['rangeFit'] as num).toDouble()
-                            : 0,
-                        warmChroma: widget.mode == 'color'
-                            ? (options['warmChroma'] as num).toDouble()
-                            : 0,
-                        contrast: (options['contrast'] as num).toDouble(),
-                        saturation: widget.mode == 'color'
-                            ? (options['saturation'] as num).toDouble()
-                            : 0,
-                      ),
-                    ),
+                    child: passportOutputs.contains(widget.mode)
+                        ? (crop == null
+                              ? const SizedBox()
+                              : Image.memory(
+                                  base64Decode(crop!.substring(22)),
+                                  gaplessPlayback: true,
+                                  filterQuality: FilterQuality.none,
+                                ))
+                        : LiveImageComposition(
+                            key: const ValueKey('avatar-live-composition'),
+                            source: sourceBytes,
+                            width: 128,
+                            height: 160,
+                            sourceProfile: fastSourceProfile,
+                            legacyQuality: ui.FilterQuality.high,
+                            legacyDecodeLimit: 4096,
+                            options: FrameOptions(
+                              resampling: ImageResampling.values.byName(
+                                options['resampling'] as String,
+                              ),
+                              quarterTurns: (options['turns'] as num).toInt(),
+                              zoom: (options['zoom'] as num).toDouble(),
+                              panX: (options['x'] as num).toDouble(),
+                              panY: (options['y'] as num).toDouble(),
+                              brightness: (options['brightness'] as num)
+                                  .toDouble(),
+                              rangeFit: widget.mode == 'color'
+                                  ? (options['rangeFit'] as num).toDouble()
+                                  : 0,
+                              warmChroma: widget.mode == 'color'
+                                  ? (options['warmChroma'] as num).toDouble()
+                                  : 0,
+                              contrast: (options['contrast'] as num).toDouble(),
+                              saturation: widget.mode == 'color'
+                                  ? (options['saturation'] as num).toDouble()
+                                  : 0,
+                            ),
+                          ),
                   ),
                 ),
                 SizedBox(
@@ -435,38 +483,42 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
               slider('warmChroma', '暖色收缩', 0, 1),
               const Text('暖色偏黄时可选，按本屏显示调整。'),
             ],
-            SwitchListTile(
-              title: const Text('抖动'),
-              value: options['dither'] as bool,
-              onChanged: (v) => change('dither', v),
-            ),
-            if (widget.mode == 'mono')
-              const Text(
-                '黑白头像使用 Film MonoFast：开启抖动使用 Floyd-Steinberg，关闭时直接黑白量化。',
-              )
-            else ...[
-              if (widget.mode == 'grayscale')
-                const Text('灰度头像先转为灰阶，再使用所选 Film 算法生成黑白空间半色调。'),
-              DropdownButton<String>(
-                value: options['algorithm'] as String,
-                isExpanded: true,
-                items: avatarAlgorithms.entries
-                    .map(
-                      (e) =>
-                          DropdownMenuItem(value: e.key, child: Text(e.value)),
-                    )
-                    .toList(),
-                onChanged: options['dither'] == true
-                    ? (v) {
-                        if (v != null) change('algorithm', v);
-                      }
-                    : null,
+            if (!passportOutputs.contains(widget.mode)) ...[
+              SwitchListTile(
+                title: const Text('抖动'),
+                value: options['dither'] as bool,
+                onChanged: (v) => change('dither', v),
               ),
-              if (options['dither'] == true)
-                if (options['algorithm'] == 'adaptive')
-                  const Text('根据头像细节和色彩自动选择抖动算法与强度。可继续调整构图、亮度和对比度。')
-                else
-                  slider('strength', '抖动强度', 0, 3),
+              if (widget.mode == 'mono')
+                const Text(
+                  '黑白头像使用 Film MonoFast：开启抖动使用 Floyd-Steinberg，关闭时直接黑白量化。',
+                )
+              else ...[
+                if (widget.mode == 'grayscale')
+                  const Text('灰度头像先转为灰阶，再使用所选 Film 算法生成黑白空间半色调。'),
+                DropdownButton<String>(
+                  value: options['algorithm'] as String,
+                  isExpanded: true,
+                  items: avatarAlgorithms.entries
+                      .map(
+                        (e) => DropdownMenuItem(
+                          value: e.key,
+                          child: Text(e.value),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: options['dither'] == true
+                      ? (v) {
+                          if (v != null) change('algorithm', v);
+                        }
+                      : null,
+                ),
+                if (options['dither'] == true)
+                  if (options['algorithm'] == 'adaptive')
+                    const Text('根据头像细节和色彩自动选择抖动算法与强度。可继续调整构图、亮度和对比度。')
+                  else
+                    slider('strength', '抖动强度', 0, 3),
+              ],
             ],
           ],
         ),
@@ -482,7 +534,7 @@ class _PassportAvatarDialogState extends State<PassportAvatarDialog> {
             ? null
             : () => Navigator.pop(context, (
                 edit: PassportAvatarEdit(widget.edit.source, {...options}),
-                png: processed!,
+                png: passportOutputs.contains(widget.mode) ? crop! : processed!,
               )),
         child: const Text('应用头像'),
       ),

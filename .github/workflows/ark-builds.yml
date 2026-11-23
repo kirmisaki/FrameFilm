@@ -37,6 +37,10 @@ jobs:
           fetch-depth: 0
       - name: Check hardware firmware manifest contracts
         run: python3 -m unittest discover -s tools/ci -p test_ark_firmware_manifest.py -v
+      - name: Check own-channel APK release contracts
+        run: |
+          node -e 'require("./app/flutter_app/tool/generate_app_release.cjs").channelFor(process.env.GITHUB_REPOSITORY)'
+          node --test app/flutter_app/tool/app_release.test.cjs
       - name: Read new Ark changelog entry
         id: entry
         env:
@@ -230,9 +234,20 @@ jobs:
               assert any(name.endswith('/libflutter.so') for name in names), 'Missing Flutter engine'
               assert 'assets/flutter_assets/kernel_blob.bin' in names, 'Missing debug Dart kernel'
               print('Debug Flutter engine and Dart kernel are present.')
-      - name: Prepare app release metadata
+      - name: Prepare and validate own-channel app release metadata
         if: steps.signing.outputs.signed == 'true'
-        run: node app/flutter_app/tool/generate_app_release.cjs app/flutter_app/build/app/outputs/flutter-apk/app-release.apk app-release
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          node app/flutter_app/tool/generate_app_release.cjs app/flutter_app/build/app/outputs/flutter-apk/app-release.apk app-release
+          node app/flutter_app/tool/validate_app_release.cjs app-release/framefilm-ark-flutter.apk app-release/framefilm-ark-flutter.json
+      - name: Check published own-channel version continuity
+        if: needs.plan.outputs.publish == 'true'
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION_NAME: ${{ needs.plan.outputs.version_name }}
+          VERSION_CODE: ${{ needs.plan.outputs.version_code }}
+        run: node app/flutter_app/tool/validate_app_release.cjs app-release/framefilm-ark-flutter.apk app-release/framefilm-ark-flutter.json --history
       - name: Upload release APK
         if: steps.signing.outputs.signed == 'true'
         uses: actions/upload-artifact@v7
@@ -489,7 +504,7 @@ jobs:
           for asset in "${assets[@]}"; do
             test -s "$asset" || { echo "::error::Missing release asset: $asset"; exit 1; }
           done
-          node -e 'const m=require("./"+process.argv[1]); if(m.versionName!==process.env.VERSION_NAME || String(m.versionCode)!==process.env.VERSION_CODE) process.exit(1)' "$metadata"
+          node app/flutter_app/tool/validate_app_release.cjs "$apk" "$metadata" --history
           node app/flutter_app/tool/ark_release_plan.cjs docs/ARK_CHANGELOG.md \
             /dev/null app/flutter_app/pubspec.yaml workflow_dispatch release-notes.md
           digest_n4="$(sha256sum "$image_n4" | cut -d ' ' -f 1)"

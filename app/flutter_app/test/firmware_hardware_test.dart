@@ -44,7 +44,7 @@ Map<String, Object?> release({
       {
         'name': name,
         'size': 123,
-        'browser_download_url': 'https://example.com/$name',
+        'browser_download_url': releaseAssetUri(releaseRepository, 'v3.2.5', name).toString(),
         if (name.endsWith('.bin')) 'digest': 'sha256:${'a' * 64}',
       },
   ],
@@ -69,7 +69,7 @@ void main() {
                 200,
               );
             }
-            expect(request.url.path, '/framefilm-ark-firmware.json');
+            expect(request.url.path, '/$releaseRepository/releases/download/v3.2.5/framefilm-ark-firmware.json');
             return http.Response(jsonEncode(manifest()), 200);
           }),
         );
@@ -79,6 +79,9 @@ void main() {
         expect(selected.displayVersion, '3.2.5');
         expect(selected.elfSha256, 'b' * 64);
         expect(selected.downloadArguments['targetId'], hardware.targetId);
+        expect(selected.downloadArguments['repository'], releaseRepository);
+        expect(selected.downloadArguments['tag'], 'v3.2.5');
+        expect(selected.downloadArguments['metadataUrl'], releaseAssetUri(releaseRepository, 'v3.2.5', 'framefilm-ark-firmware.json').toString());
         expect(requests, 2);
         service.dispose();
       }
@@ -202,6 +205,24 @@ void main() {
       service.dispose();
     },
   );
+  test('firmware metadata and image must belong to the same own release', () async {
+    for (final name in ['framefilm-ark-firmware.json', 'frame_film_ark-n4r2.bin']) {
+      for (final badUrl in [
+        'https://example.com/$name',
+        releaseAssetUri(releaseRepository, 'different-tag', name).toString(),
+        releaseAssetUri(AppReleaseChannel.values.firstWhere((c) => c != AppReleaseChannel.current).repository, 'v3.2.5', name).toString(),
+      ]) {
+        final bad = release();
+        bad['assets'] = [for (final asset in bad['assets'] as List)
+          {...asset as Map, if (asset['name'] == name) 'browser_download_url': badUrl}];
+        final service = GitHubReleaseService(client: MockClient((request) async => http.Response(
+          jsonEncode(request.url.host == 'api.github.com' ? [bad] : manifest()), 200,
+        )));
+        await expectLater(service.latest(hardware: HardwareIdentity.n4r2), throwsFormatException);
+        service.dispose();
+      }
+    }
+  });
   test(
     'hardware retains partial state, explicit unknown and disconnect clear it',
     () {

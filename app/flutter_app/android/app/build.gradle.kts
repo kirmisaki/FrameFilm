@@ -20,13 +20,18 @@ val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: releasePropert
 val hasReleaseSigning = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
     .all { !it.isNullOrBlank() }
 val releaseRepoDefine = "FRAMEFILM_APP_RELEASE_REPO="
-val releaseRepository = providers.gradleProperty("dart-defines").orNull.orEmpty()
+val configuredReleaseRepository = providers.gradleProperty("dart-defines").orNull.orEmpty()
     .split(',')
     .filter { it.isNotBlank() }
     .map { String(Base64.getDecoder().decode(it), Charsets.UTF_8) }
     .firstOrNull { it.startsWith(releaseRepoDefine) }
     ?.removePrefix(releaseRepoDefine) ?: "Rafael-Ikaros/FrameFilm"
-val isDevelopmentRelease = !releaseRepository.equals("kirmisaki/FrameFilm", ignoreCase = true)
+val releaseRepository = when (configuredReleaseRepository.lowercase()) {
+    "kirmisaki/framefilm" -> "kirmisaki/FrameFilm"
+    "rafael-ikaros/framefilm" -> "Rafael-Ikaros/FrameFilm"
+    else -> error("FRAMEFILM_APP_RELEASE_REPO must be kirmisaki/FrameFilm or Rafael-Ikaros/FrameFilm")
+}
+val isDevelopmentRelease = releaseRepository == "Rafael-Ikaros/FrameFilm"
 val stableApplicationId = "org.framefilm.ark.flutter"
 gradle.taskGraph.whenReady {
     if (allTasks.any { it.project == project && it.name in listOf("packageRelease", "signReleaseBundle") }) {
@@ -47,6 +52,7 @@ android {
 
     defaultConfig {
         applicationId = if (isDevelopmentRelease) "$stableApplicationId.dev" else stableApplicationId
+        manifestPlaceholders["framefilmReleaseRepository"] = releaseRepository
         manifestPlaceholders["framefilmAppLabel"] = if (isDevelopmentRelease) "FrameFilm Ark 开发版" else "FrameFilm Ark"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.

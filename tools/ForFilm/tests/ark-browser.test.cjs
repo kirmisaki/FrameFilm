@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 async function mockBluetooth() {
-    const profile = { version: 1, codename: '设备档案', codenameUnset: false,
+    const profile = { version: 3, kind: 'operator', output: 'i006', codename: '设备档案', codenameUnset: false,
         number: 'ARK-001', numberUnset: false, affiliation: '罗德岛', signature: '测试资料', avatar: null };
     const mock = window.mockArk = { packets: [], holdProfile: false, badProfile: false, direct: 3, restoring: 0, app: 5, files: [] };
     const encode = value => new TextEncoder().encode(value);
@@ -26,6 +26,7 @@ async function mockBluetooth() {
             else if (ch === 0x54 || ch === 0x55) payload = [0, ...encode('FRAMEFILMARK-测试'), 0];
             else if (ch === 0x4B) mock.app = bytes[3];
             else if (ch === 0x4C) payload = [mock.app];
+            else if (ch === 0x59) payload = [1, 0, 0, 128, 0]; // compact I006 + ColorFast (bit15)
             else if (ch === 0x52) { mock.restoring = 2; payload = [0]; }
             else if (ch === 0x51) {
                 if (mock.restoring && --mock.restoring === 0) mock.direct = 6;
@@ -102,7 +103,7 @@ if (require.main === module) (async () => {
         await page.waitForFunction(() => ArkDevice.connected());
         await page.locator('[data-page="pass-page"]').click();
         await editor.locator('#send').click();
-        await editor.locator('#device-status').filter({ hasText: '两个文件已发送完成' }).waitFor();
+        await editor.locator('#device-status').filter({ hasText: '两个文件已发送' }).waitFor();
         assert.deepEqual(await page.evaluate(() => mockArk.files), ['app/pass/profile.bin', 'app/pass/profile.json']);
         await page.locator('#ark-pass-open').click();
         await page.waitForFunction(() => mockArk.app === 6 && !ArkDevice.busy());

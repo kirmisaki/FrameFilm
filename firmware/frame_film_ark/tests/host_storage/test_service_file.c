@@ -16,6 +16,8 @@
 
 static char host_film_dir[64];
 static char host_anim_dir[64];
+static char host_profile_path[96];
+#define PASS_PROFILE_FILE_PATH host_profile_path
 static int fail_next_write;
 static int fail_next_close;
 static int fail_part_rename;
@@ -277,6 +279,74 @@ static void test_abc9_upload(const uint8_t *old_film, size_t old_size)
     free(abc9);
 }
 
+static void test_pass_profile_upload(void)
+{
+    const uint8_t old[] = "previous profile remains visible";
+    uint8_t *profile = calloc(EPD_ABC9_FILE_BYTES + 2u, 1);
+    assert(profile);
+    snprintf(host_profile_path, sizeof(host_profile_path), "%s/profile.bin", host_film_dir);
+    /* Native Fast, native ABC9, compact Fast/ABC9 (with and without avatar),
+       legacy compact I1 and full six-color. Both BLE/WiFi use the same STOP. */
+    for(unsigned mode = 0; mode < 8; ++mode)
+    {
+        const int abc9 = mode == 1 || mode == 3 || mode == 5;
+        const int compact = mode >= 2 && mode <= 5;
+        const int avatar = mode == 2 || mode == 3;
+        size_t header_size = mode < 2 ? 32 : 16;
+        size_t body_size = mode < 2 ? (abc9 ? EPD_ABC9_BODY_BYTES : PASS_FAST_BODY_BYTES) :
+            compact ? PASS_COMPACT_I1_BYTES + avatar * PASS_AVATAR_PIXELS * (abc9 ? 2u : 1u) :
+            mode == 6 ? PASS_COMPACT_I1_BYTES : 480u * 720u / 2u;
+        size_t size = header_size + body_size;
+        for(unsigned scenario = 0; scenario < 6; ++scenario)
+        {
+            memset(profile, 0, size + 2);
+            if(mode < 2)
+            {
+                for(unsigned i = 0; i < 4; ++i) profile[i] = (uint8_t)(body_size >> (8 * i));
+                profile[4] = 0xD0; profile[5] = 2; profile[6] = 0xE0; profile[7] = 1;
+                profile[9] = abc9 ? 0x7F : 3; profile[10] = 1;
+                if(abc9) memcpy(profile + 12, "ABC9", 4);
+            }
+            else
+            {
+                memcpy(profile, "FFUI", 4);
+                profile[4] = compact ? 3 : mode == 6 ? 1 : 2;
+                profile[5] = compact ? (abc9 ? 0x7F : 3) : mode == 6 ? 1 : 2;
+                unsigned w = mode == 7 ? 480 : 440, h = mode == 7 ? 720 : 608;
+                profile[6] = w & 255; profile[7] = w >> 8;
+                profile[8] = h & 255; profile[9] = h >> 8;
+                if(compact) profile[10] = avatar;
+            }
+            size_t uploaded = size;
+            switch(scenario)
+            {
+            case 1: profile[mode < 2 ? 4 : 6] ^= 1; break;
+            case 2: --uploaded; break;
+            case 3: ++uploaded; break;
+            case 4:
+                if(mode < 2 || (compact && avatar) || mode == 7) profile[size - 1] = 0xFF;
+                else profile[15] = 1;
+                break;
+            case 5: profile[mode < 2 ? 10 : 5] = 0xFE; break;
+            }
+            int accepted = scenario == 0;
+#if !defined(CONFIG_ARK_EPD_ABC_PREVIEW) && !defined(CONFIG_ARK_EPD_ABC_DIAG)
+            if(abc9) accepted = 0;
+#endif
+            write_bytes(host_profile_path, old, sizeof(old));
+            assert(service_file_save_start(FILE_SAVE_BLE, "profile.bin", uploaded) == 0);
+            /* The path-upload entry resolves /sdcard; host harness substitutes
+               that mount only and retains the actual shared STOP/commit path. */
+            m_file_state.save_skip_relocate = 1;
+            assert(save_data(profile, uploaded) == 0);
+            assert(service_file_save_stop(FILE_SAVE_BLE, 0) == (accepted ? 0 : -1));
+            expect_bytes(host_profile_path, accepted ? profile : old, accepted ? uploaded : sizeof(old));
+            remove_traces("profile.bin");
+        }
+    }
+    free(profile);
+}
+
 int main(void)
 {
     char root[] = "/tmp/framefilm-ark-storage-XXXXXX";
@@ -445,6 +515,7 @@ int main(void)
     remove_traces("reboot.film");
 
     test_abc9_upload(old_film, film_size);
+    test_pass_profile_upload();
 
     free(m_file_state.file_list);
     assert(rmdir(host_film_dir) == 0);

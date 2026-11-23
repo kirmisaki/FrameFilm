@@ -7,10 +7,12 @@ import 'passport_avatar_editor.dart';
 import 'passport_profile.dart';
 import 'passport_storage.dart' as storage;
 import 'student_passport_profile.dart';
+import 'passport_color.dart';
 
 class StudentPassportEditorController {
   StudentPassportProfile? profile;
   PassportAvatarEdit? avatarEdit;
+  bool legacyOutput = false;
   ({Object? revision})? pendingRead;
   Future<void> saving = Future.value();
 }
@@ -29,11 +31,14 @@ class StudentPassportEditor extends StatefulWidget {
     required this.onOpen,
     this.onRetry,
     this.canSend = true,
+    this.colorFastSupported = false,
   });
 
   final StudentPassportEditorController controller;
   final bool canOperate, supported, busy;
   final bool canSend;
+  final bool
+  colorFastSupported; // Capability 0x59 bit14; supported remains bit11.
   final Map<String, Object?> operation;
   final Future<void> Function() onRead;
   final Future<void> Function(String, Uint8List) onSave;
@@ -60,7 +65,12 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
   bool _codeUnset = false, _numberUnset = false, _working = false;
   bool _loading = true, _rendering = false;
   String? _avatar;
-  String _palette = 'amiya';
+  String _palette = 'amiya', _output = 'i006';
+  bool _legacyAvatar = false, _legacySize = false;
+  bool _legacyOutput = false;
+  int _rasterGeneration = -1;
+  bool get _modeSupported =>
+      _output == 'colorfast' ? widget.colorFastSupported : widget.supported;
   PassportRaster? _raster;
   String? _rasterPalette;
   String _status = '';
@@ -73,8 +83,10 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
     codenameUnset: _codeUnset,
     studentNumberUnset: _numberUnset,
     avatar: _avatar,
-    avatarMode: _saved.avatarMode,
+    avatarMode: _legacyAvatar ? _saved.avatarMode : 'color',
     palette: _palette,
+    output: _legacySize ? _saved.studentOutput : _output,
+    version: _legacySize ? 2 : 3,
   );
 
   @override
@@ -92,6 +104,18 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
     _numberUnset = profile.studentNumberUnset;
     _avatar = profile.avatar;
     _palette = profile.palette;
+    _legacyOutput = profile.output == 'ffui';
+    _output = _legacyOutput ? 'i006' : profile.output;
+    _legacySize = profile.version == 2 && profile.avatar != null;
+    _legacyAvatar =
+        _legacySize &&
+        profile.avatarMode != 'color' &&
+        (_cache.avatarEdit == null || _cache.avatarEdit!.source == profile.avatar);
+    if (_legacyAvatar)
+      _status = '旧头像已黑白化，请重选原图或移除；无法从旧图恢复颜色。';
+    else if (_legacySize && _cache.avatarEdit == null)
+      _status = '沿用旧彩色小图；重选原图才能恢复更多细节。';
+    if (_legacyOutput) _status = '旧 FFUI 不是 ColorFast，请重新选择输出模式。';
   }
 
   Future<void> _load() async {
@@ -99,14 +123,24 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
       final cached = _cache.profile;
       if (cached != null) {
         _setProfile(cached);
+        _legacyOutput = _legacyOutput || _cache.legacyOutput;
       } else {
         final raw = await storage.loadStudentPassportDraft();
         if (!mounted) return;
         if (raw != null) {
-          final profile = StudentPassportProfile.fromJson(raw);
+          final value = jsonDecode(raw);
+          final wrapper = value is Map && value['draftVersion'] == 2;
+          final profile = StudentPassportProfile.fromJson(
+            wrapper ? jsonEncode(value['profile']) : raw,
+          );
+          _cache.avatarEdit = wrapper && value['avatarEditor'] != null
+              ? PassportAvatarEdit.fromJson(value['avatarEditor'] as Map)
+              : null;
           (await validateStudentPassportAvatar(profile))?.dispose();
           if (!mounted) return;
           _setProfile(profile);
+          _legacyOutput =
+              _legacyOutput || (wrapper && value['legacyOutput'] == 'ffui');
         }
       }
     } catch (e) {
@@ -146,7 +180,7 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
     if (generation != _renderGeneration) return;
     try {
       final data = jsonDecode(raw);
-      if (data is Map && data['version'] == 1) {
+      if (data is Map && (data['version'] == 1 || data['kind'] == 'operator')) {
         setState(() => _status = '设备当前保存的是干员档案，学生证草稿已保留。');
         return;
       }
@@ -156,9 +190,9 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
       _cache.avatarEdit = null;
       _setProfile(profile);
       _changed(
-        status: profile.studentOutput == 'ffui'
-            ? '已读取资料。下次发送将使用 I006。'
-            : '已读取学生证资料。',
+        status: _legacyAvatar || _legacyOutput
+            ? _status
+            : '已读取学生证资料；设备 JSON 只含最终裁切，无法恢复原景。',
       );
     } catch (e) {
       if (mounted) setState(() => _status = '资料校验失败，学生证草稿已保留：$e');
@@ -166,25 +200,60 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
   }
 
   void _changed({String status = ''}) {
-    final profile = _profile;
     _cache.pendingRead = null;
+    _persist();
+    setState(() => _status = status);
+    _refresh();
+  }
+
+  void _persist() {
+    final profile = _profile;
     _cache.profile = profile;
-    final json = profile.toJson();
+    _cache.legacyOutput = _legacyOutput;
+    final json = jsonEncode({
+      'draftVersion': 2,
+      'profile': jsonDecode(profile.toJson()),
+      if (_cache.avatarEdit != null)
+        'avatarEditor': _cache.avatarEdit!.toJson(),
+      if (_legacyOutput) 'legacyOutput': 'ffui',
+    });
     _cache.saving = _cache.saving
         .then((_) => storage.saveStudentPassportDraft(json))
         .catchError((Object e) {
           if (mounted) setState(() => _status = '学生证草稿保存失败：$e');
         });
-    setState(() => _status = status);
-    _refresh();
   }
 
   Future<void> _refresh() async {
     final generation = ++_renderGeneration;
-    final profile = _profile;
     setState(() => _rendering = true);
     bool cancelled() => !mounted || generation != _renderGeneration;
     try {
+      final edit =
+          _cache.avatarEdit ??
+          (_legacySize && !_legacyAvatar && _avatar != null
+              ? PassportAvatarEdit(_avatar!)
+              : null);
+      if (edit != null && !_legacyAvatar) {
+        final color = await renderAvatarEdit(
+          edit,
+          _output,
+          width: 239,
+          height: 299,
+          quantize: false,
+          checkCancelled: () {
+            if (cancelled()) throw StateError('预览已取消');
+          },
+        );
+        if (cancelled()) return;
+        if (_avatar != color.crop || _legacySize) {
+          _avatar = color.crop;
+          _legacySize = false;
+          _legacyAvatar = false;
+          _persist();
+        }
+      }
+      final profile = _profile;
       final template = await rootBundle.load(
         studentPassportTemplateAsset(profile.palette),
       );
@@ -198,6 +267,7 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
         setState(() {
           _raster = raster;
           _rasterPalette = profile.palette;
+          _rasterGeneration = generation;
           _rendering = false;
         });
       }
@@ -228,6 +298,10 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
   }
 
   Future<void> _editPhoto({required bool pick}) => _run(() async {
+    if (!pick && _legacyAvatar) {
+      setState(() => _status = '旧头像已黑白化，请导入原图；调整旧图不能恢复颜色。');
+      return;
+    }
     var edit = _cache.avatarEdit;
     if (pick) {
       final image = await storage.pickPassportAvatar();
@@ -239,12 +313,34 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
     final source = edit;
     final result = await showDialog<({PassportAvatarEdit edit, String png})>(
       context: context,
-      builder: (_) =>
-          PassportAvatarDialog(edit: source, mode: _saved.avatarMode),
+      builder: (_) => PassportAvatarDialog(
+        edit: source,
+        mode: _output,
+        width: 239,
+        height: 299,
+        devicePreview: (avatar, checkCancelled) async {
+          final template = await rootBundle.load(
+            studentPassportTemplateAsset(_palette),
+          );
+          checkCancelled();
+          final raster = await renderStudentPassport(
+            _profile.withAvatar(avatar, output: _output),
+            Uint8List.sublistView(template),
+            isCancelled: () {
+              checkCancelled();
+              return false;
+            },
+          );
+          checkCancelled();
+          return passportPreviewCrop(raster.png, 41, 111, 239, 299);
+        },
+      ),
     );
     if (result != null && mounted) {
       _cache.avatarEdit = result.edit;
       _avatar = result.png;
+      _legacyAvatar = false;
+      _legacySize = false;
       _changed();
     }
   });
@@ -296,6 +392,7 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
         Align(
           alignment: Alignment.centerLeft,
           child: DropdownButton<String>(
+            key: const Key('student-palette'),
             value: _palette,
             items: [
               for (final palette in studentPassportPalettes.entries)
@@ -385,6 +482,8 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
                   : () {
                       _avatar = null;
                       _cache.avatarEdit = null;
+                      _legacyAvatar = false;
+                      _legacySize = false;
                       _changed();
                     },
               child: const Text('移除照片'),
@@ -392,7 +491,26 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
           ],
         ),
         const SizedBox(height: 12),
-        if (!widget.supported) const Text('连接支持 I006 学生证的 Ark 固件后即可发送。'),
+        DropdownButtonFormField<String>(
+          key: ValueKey('student-$_output'),
+          initialValue: _output,
+          decoration: const InputDecoration(labelText: '输出模式'),
+          items: const [
+            DropdownMenuItem(value: 'i006', child: Text('I006 / 512 色')),
+            DropdownMenuItem(value: 'colorfast', child: Text('ColorFast')),
+          ],
+          onChanged: _locked
+              ? null
+              : (value) {
+                  if (value == null) return;
+                  _output = value;
+                  _legacyOutput = false;
+                  _changed();
+                },
+        ),
+        if (_legacyAvatar) const Text('旧头像已黑白化，请重选原图或移除；不会自动恢复颜色。'),
+        if (_legacyOutput) const Text('旧 FFUI 不是 ColorFast，请重新选择输出模式。'),
+        if (!_modeSupported) const Text('当前设备不支持所选学生证模式，请升级固件；仍可编辑并保存草稿。'),
         const Text('发送后会替换设备上的通行证。'),
         Wrap(
           spacing: 8,
@@ -406,7 +524,11 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
               onPressed:
                   widget.canOperate &&
                       widget.canSend &&
-                      widget.supported &&
+                      _modeSupported &&
+                      !_legacyAvatar &&
+                      !_legacyOutput &&
+                      !_legacySize &&
+                      _rasterGeneration == _renderGeneration &&
                       !_locked &&
                       !_rendering &&
                       errors.isEmpty &&
@@ -423,8 +545,7 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
             ),
             if (op['canRetry'] == true && op['kind'] == 'student')
               OutlinedButton(
-                onPressed:
-                    !_locked && widget.supported && widget.onRetry != null
+                onPressed: !_locked && _modeSupported && widget.onRetry != null
                     ? () => _run(widget.onRetry!)
                     : null,
                 child: const Text('重试上次上传'),

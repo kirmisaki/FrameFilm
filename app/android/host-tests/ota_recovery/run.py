@@ -22,6 +22,8 @@ CACHE = GRADLE_HOME / "caches" / "modules-2" / "files-2.1"
 VERSION = os.environ.get("FRAMEFILM_HOST_KOTLIN_VERSION", "2.2.20")
 SOURCES = [
     ROOT / "android/app/src/main/java/org/framefilm/ark/Abc9Preview.kt",
+    ROOT / "flutter_app/android/app/src/main/kotlin/org/framefilm/framefilm_ark/PassportRasterFormat.kt",
+    HERE / "PassportRasterHostTest.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/ArkSession.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/DirectTransferCoordinator.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/TransferCoordinator.kt",
@@ -107,7 +109,8 @@ def run() -> None:
         )
         for main_class in ("org.framefilm.ark.OtaRecoveryHostTestKt", "org.framefilm.ark.BleTransferHostTestKt",
                            "org.framefilm.ark.BleFirmwareHostTestKt",
-                           "org.framefilm.ark.ArkFirmwareTest", "org.framefilm.ark.FirmwareDownloaderTest"):
+                           "org.framefilm.ark.ArkFirmwareTest", "org.framefilm.ark.FirmwareDownloaderTest",
+                           "org.framefilm.framefilm_ark.PassportRasterHostTestKt"):
             subprocess.run(
                 [java, "-cp", os.pathsep.join(map(str, [output, stdlib])), main_class],
                 check=True, cwd=ROOT,

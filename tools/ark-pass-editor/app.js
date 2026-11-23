@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const W = 440, H = 608, AV_W = 128, AV_H = 160;
-  const PROFILE_VERSION = 1;
+  const PROFILE_VERSION = 3;
   const DRAFT_KEY = 'framefilm-ark-pass-profile-v1';
   const STUDENT_TEMPLATE = 'rhodes-academy-student';
   const STUDENT_DRAFT_KEY = 'framefilm-ark-pass-rhodes-academy-student-v2';
@@ -21,8 +21,8 @@
   ]);
   const studentBases = new Map();
   const studentBaseUrl = (palette) => `student-palettes/fullscreen/${palette}.png`;
-  const CAP_COLOR_PASS = 1 << 0, CAP_FULLSCREEN_PASS = 1 << 10, CAP_I006_PASS = 1 << 11;
-  const usesStudentI006 = () => isStudent() && profile.studentOutput === DEFAULT_STUDENT_OUTPUT;
+  const usesStudentI006 = () => isStudent() && profile.output === DEFAULT_STUDENT_OUTPUT;
+  const avatarSize = (owner = profile) => templateOf(owner) === STUDENT_TEMPLATE ? STUDENT_AVATAR : { width: AV_W, height: AV_H };
   const SERVICE_UUID = '00002000-0000-1000-8000-00805f9b34fb';
   const CHARACTERISTIC_UUID = '00002001-0000-1000-8000-00805f9b34fb';
   const CH = { start: 0x03, name: 0x00, length: 0x01, data: 0x02, stop: 0x04 };
@@ -40,7 +40,7 @@
   const studentFields = ['codename', 'student-number', 'race'];
   const fields = [...operatorFields, 'student-number', 'race'];
   const fieldKey = (id) => id === 'student-number' ? 'studentNumber' : id;
-  const templateOf = (value) => value.version === 2 ? STUDENT_TEMPLATE : 'operator';
+  const templateOf = (value) => value.kind === 'student' || value.version === 2 ? STUDENT_TEMPLATE : 'operator';
   const isStudent = () => templateOf(profile) === STUDENT_TEMPLATE;
   const activeFields = () => isStudent() ? studentFields : operatorFields;
   const draftKey = (template) => template === STUDENT_TEMPLATE ? STUDENT_DRAFT_KEY : DRAFT_KEY;
@@ -123,12 +123,13 @@
 
   function emptyProfile(template = 'operator') {
     if (template === STUDENT_TEMPLATE) return {
-      version: 2, template: STUDENT_TEMPLATE, palette: DEFAULT_STUDENT_PALETTE, studentOutput: DEFAULT_STUDENT_OUTPUT,
+      version: PROFILE_VERSION, kind: 'student', output: DEFAULT_STUDENT_OUTPUT,
+      template: STUDENT_TEMPLATE, palette: DEFAULT_STUDENT_PALETTE,
       codename: '', codenameUnset: false,
-      studentNumber: '', studentNumberUnset: false, race: '', avatar: null, avatarMode: 'mono'
+      studentNumber: '', studentNumberUnset: false, race: '', avatar: null
     };
-    return { version: PROFILE_VERSION, codename: '', codenameUnset: false,
-      number: '', numberUnset: false, affiliation: '', signature: '', avatar: null, avatarMode: 'mono' };
+    return { version: PROFILE_VERSION, kind: 'operator', output: DEFAULT_STUDENT_OUTPUT, codename: '', codenameUnset: false,
+      number: '', numberUnset: false, affiliation: '', signature: '', avatar: null };
   }
   const cjk = '"Noto Sans CJK SC","Microsoft YaHei","PingFang SC",sans-serif';
   const mono = 'ui-monospace,Consolas,monospace';
@@ -203,7 +204,13 @@
       };
     }
     for (const id of fields) setError(id, errors[id] || '');
-    valid = activeFields().every((id) => !errors[id]);
+    let jsonValid = true;
+    try { jsonBytes(); } catch (error) { jsonValid = false; setFileStatus(error.message); }
+    valid = activeFields().every((id) => !errors[id]) && jsonValid && !profile._legacyAvatar && !profile._legacyOutput;
+    const warning = profile._legacyAvatar ? '旧头像已做过黑白/灰阶转换，不能恢复颜色；请选择彩色原图或移除头像后再发送。' :
+      profile._legacyOutput ? '旧 FFUI（含六色）不等于 ColorFast；请明确选择 I006 或 ColorFast 后再发送。' :
+      profile._legacySize ? '旧头像仅有低分辨率彩色裁切，已适配槽尺寸但不会恢复细节；建议重新选择原图。' : '';
+    $('migration-status').textContent = warning;
     const canExport = valid && renderedBin !== null;
     $('download-bin').disabled = !canExport || editingLocked || !!transfer || !!readJob;
     $('download-png').disabled = !canExport || editingLocked || !!transfer || !!readJob;
@@ -288,23 +295,26 @@
     txt(profile.studentNumber.trim() || '未设置', STUDENT_NUMBER.x, STUDENT_NUMBER.y, STUDENT_NUMBER.size, 600, mono);
     txt(profile.race.trim() || '未设置', STUDENT_RACE.x, STUDENT_RACE.y, STUDENT_RACE.size, 600);
   }
-  function encodeStudentFfui(pixels, mode) {
-    return PassportPixels.encode(pixels.data, mode, !!avatarImage,
-      { width: STUDENT_W, height: STUDENT_H, avatarRect: STUDENT_AVATAR, ditherArtwork: true, rotateClockwise: true });
+  async function renderCard(pixels, basePixels, student, output, hasAvatar, cancelled) {
+    if (cancelled()) throw new Error('预览已取消');
+    const result = student ? output === 'i006'
+      ? await PassportStudentI006.render(pixels, basePixels, { cancelled, avatarRect: STUDENT_AVATAR })
+      : PassportPixels.studentColorFast(pixels)
+      : await PassportPixels.compact(pixels, output, hasAvatar, { cancelled });
+    if (cancelled()) throw new Error('预览已取消');
+    return result;
   }
-  async function renderI006(pixels, basePixels, generation) {
+  async function renderOutput(pixels, basePixels, generation, student, output, hasAvatar) {
     const cancelled = () => generation !== renderGeneration;
     const status = $('student-base-status');
     try {
-      const { bin, rgba } = await PassportStudentI006.render(pixels, basePixels, { cancelled, avatarRect: STUDENT_AVATAR });
+      const { bin, rgba } = await renderCard(pixels, basePixels, student, output, hasAvatar, cancelled);
       if (cancelled()) return;
-      pixels.data.set(rgba);
-      ctx.putImageData(pixels, 0, 0);
-      renderedBin = bin;
+      pixels.data.set(rgba); ctx.putImageData(pixels, 0, 0); renderedBin = bin;
       status.textContent = '';
     } catch (error) {
       if (cancelled()) return;
-      status.textContent = `无法生成 I006：${error.message}。可选择兼容 FFUI，资料不会丢失。`;
+      status.textContent = `无法生成 ${output}：${error.message}。资料未改变，不会降级。`;
     }
     validate();
   }
@@ -331,14 +341,10 @@
       baseStatus.textContent = '';
       if (student) drawStudent(base); else drawOperator();
       const pixels = g.getImageData(0, 0, width, height);
-      if (usesStudentI006()) {
-        renderedBin = null;
-        baseStatus.textContent = '正在生成 I006 设备色彩…';
-        renderTimer = setTimeout(() => void renderI006(pixels, base.pixels, generation), 120);
-      } else {
-        renderedBin = student ? encodeStudentFfui(pixels, profile.avatarMode) :
-          PassportPixels.encode(pixels.data, profile.avatarMode, !!avatarImage);
-      }
+      renderedBin = null;
+      baseStatus.textContent = `正在生成 ${profile.output === 'i006' ? 'I006' : 'ColorFast'} 设备色彩…`;
+      const output = profile.output, hasAvatar = !!avatarImage;
+      renderTimer = setTimeout(() => void renderOutput(pixels, base?.pixels, generation, student, output, hasAvatar), 120);
       ctx.putImageData(pixels, 0, 0);
     }
     validate();
@@ -354,13 +360,13 @@
     a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  function jsonBytes() { return new TextEncoder().encode(JSON.stringify(profile, null, 2) + '\n'); }
+  function jsonBytes() { return PassportProfile.wire(profile); }
   function cacheDraft() {
     drafts[templateOf(profile)] = { profile, image: avatarImage, edit: avatarEdit };
   }
   function persist() {
     cacheDraft();
-    try { localStorage.setItem(draftKey(templateOf(profile)), JSON.stringify(avatarEdit ? {draftVersion:2,profile,avatarEditor:avatarEdit} : profile)); }
+    try { localStorage.setItem(draftKey(templateOf(profile)), JSON.stringify({draftVersion:3,profile,avatarEditor:avatarEdit})); }
     catch { setFileStatus('浏览器无法保存本地草稿；请导出 JSON 留存。'); }
   }
   function activateDraft(template) {
@@ -383,8 +389,10 @@
     $('number-unset').checked = !!profile.numberUnset;
     $('student-number-unset').checked = !!profile.studentNumberUnset;
     $('student-palette').value = profile.palette || DEFAULT_STUDENT_PALETTE;
-    $('student-output').value = profile.studentOutput || DEFAULT_STUDENT_OUTPUT;
-    $('avatar-mode').value = profile.avatarMode;
+    // A legacy FFUI import has no new-format choice yet. Leave the two-option
+    // select unselected so choosing the default I006 also fires change.
+    $('student-output').value = profile._legacyOutput ? '' : profile.output;
+    $('avatar-mode').value = profile._legacyOutput ? '' : profile.output;
     $('preview-dimensions').textContent = student ? '720 × 480 / 横向全屏' : '440 × 608 / 设备色彩';
     $('student-orientation').hidden = !student;
     canvas.parentElement.classList.toggle('student-preview', student);
@@ -397,15 +405,24 @@
     profile.codenameUnset = $('codename-unset').checked;
     if (isStudent()) profile.studentNumberUnset = $('student-number-unset').checked;
     else profile.numberUnset = $('number-unset').checked;
-    profile.avatarMode = $('avatar-mode').value;
     persist(); draw();
   }
-  async function imageFromDataUrl(dataUrl) {
+  async function imageFromDataUrl(dataUrl, owner = profile) {
     if (dataUrl === null) return null;
     if (!/^data:image\/png;base64,/i.test(dataUrl) || dataUrl.length > 300000) throw new Error('头像必须是裁切后的 PNG data URL（不超过 300 KB）。');
     const img = new Image(); img.src = dataUrl; await img.decode();
-    if (img.naturalWidth !== AV_W || img.naturalHeight !== AV_H) throw new Error('头像尺寸必须为 128×160。');
-    return img;
+    const { width, height } = avatarSize(owner);
+    const legacySmall = owner._legacySize && img.naturalWidth === AV_W && img.naturalHeight === AV_H;
+    if (!legacySmall && (img.naturalWidth !== width || img.naturalHeight !== height)) throw new Error(`头像尺寸必须为 ${width}×${height}。`);
+    // Composite transparency on paper white, including legacy device imports.
+    const normalized = document.createElement('canvas'); normalized.width = width; normalized.height = height;
+    const c = normalized.getContext('2d', { alpha: false }); c.fillStyle = '#fff'; c.fillRect(0, 0, width, height);
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; c.drawImage(img, 0, 0, width, height);
+    const png = normalized.toDataURL('image/png');
+    if (png.length > 300000) throw new Error('裁切后的 PNG 超过 300 KB。');
+    PassportProfile.wire({ ...owner, avatar: png });
+    owner.avatar = png;
+    const result = new Image(); result.src = png; await result.decode(); return result;
   }
   async function avatarFromFile(file) {
     if (!file || editingLocked) return;
@@ -419,56 +436,54 @@
     if(!edit)return;
     setEditingLocked(true);
     try {
-      const result=await PassportAvatarEditor.open(edit,profile.avatarMode);
-      if(result){avatarImage=await imageFromDataUrl(result.png);profile.avatar=result.png;avatarEdit=result.edit;persist();draw();}
+      const size = avatarSize(), student = isStudent(), output = profile.output;
+      const preview = student ? async (avatarPixels, cancelled) => {
+        const pixels = g.getImageData(0, 0, STUDENT_W, STUDENT_H);
+        for (let y = 0; y < size.height; y++) pixels.data.set(avatarPixels.data.subarray(y * size.width * 4, (y + 1) * size.width * 4), ((STUDENT_AVATAR.y + y) * STUDENT_W + STUDENT_AVATAR.x) * 4);
+        const base = studentBases.get(profile.palette);
+        if (!base?.image) throw new Error('学生证底图尚未加载');
+        const result = await renderCard(pixels, base.pixels, true, output, true, cancelled);
+        const rgba = new Uint8ClampedArray(size.width * size.height * 4);
+        for (let y = 0; y < size.height; y++) {
+          const start = ((STUDENT_AVATAR.y + y) * STUDENT_W + STUDENT_AVATAR.x) * 4;
+          rgba.set(result.rgba.subarray(start, start + size.width * 4), y * size.width * 4);
+        }
+        return { rgba };
+      } : null;
+      const result=await PassportAvatarEditor.open(edit,output,{...size,preview});
+      if(result){
+        const next = {...profile, avatar:result.png, _legacyAvatar:!!profile._legacyAvatar && !replacement, _legacySize:!!profile._legacySize && !replacement};
+        const image = await imageFromDataUrl(result.png, next); PassportProfile.wire(next);
+        profile=next;avatarImage=image;avatarEdit=result.edit;persist();draw();
+      }
     } finally {setEditingLocked(false);}
   }
-  async function changeAvatarMode() {
-    const mode=$('avatar-mode').value;
-    if(!profile.avatar){profile.avatarMode=mode;persist();draw();return;}
-    setEditingLocked(true);
-    try {
-      const edit=avatarEdit || {source:profile.avatar,options:{...PassportAvatarEditor.defaults}};
-      const png=await PassportAvatarEditor.processed(edit,mode);
-      avatarImage=await imageFromDataUrl(png);profile.avatar=png;avatarEdit=edit;profile.avatarMode=mode;persist();draw();
-    } catch(e){$('avatar-mode').value=profile.avatarMode;setFileStatus(`头像处理失败：${e.message}`);}
-    finally {setEditingLocked(false);}
+  function changeOutput(output) {
+    if (editingLocked || !['i006', 'colorfast'].includes(output)) return;
+    profile.output = output; profile._legacyOutput = false;
+    $('student-output').value = output; $('avatar-mode').value = output;
+    // Changing modes must never reprocess the local source or the RGB crop.
+    persist(); draw();
   }
-  function parseProfile(raw) {
-    const value = JSON.parse(raw);
-    if (!value || typeof value !== 'object' || ![PROFILE_VERSION, 2].includes(value.version)) throw new Error('JSON 版本不支持。');
-    const student = value.version === 2;
-    if (student && value.template !== STUDENT_TEMPLATE) throw new Error('JSON 学生证模板类型不支持。');
-    const limits = student ? { codename: 32, studentNumber: 12, race: 60 } :
-      { codename: 32, number: 36, affiliation: 60, signature: 200 };
-    for (const [id, limit] of Object.entries(limits)) {
-      if (typeof value[id] !== 'string' || value[id].length > limit) throw new Error(`${id} 字段格式或长度无效。`);
-    }
-    if (typeof value.codenameUnset !== 'boolean' || typeof value[student ? 'studentNumberUnset' : 'numberUnset'] !== 'boolean') throw new Error('尚未设置标记格式无效。');
-    if (value.avatar !== null && typeof value.avatar !== 'string') throw new Error('avatar 字段格式无效。');
-    const avatarMode = value.avatarMode === undefined ? 'mono' : value.avatarMode;
-    if (!['mono', 'grayscale', 'color'].includes(avatarMode)) throw new Error('头像显示模式无效。');
-    if (student) {
-      const palette = value.palette === undefined ? DEFAULT_STUDENT_PALETTE : value.palette;
-      if (!studentPalettes.has(palette)) throw new Error('JSON 学生证配色不支持。');
-      const studentOutput = value.studentOutput === undefined ? DEFAULT_STUDENT_OUTPUT : value.studentOutput;
-      if (![DEFAULT_STUDENT_OUTPUT, 'ffui'].includes(studentOutput)) throw new Error('JSON 学生证输出模式不支持。');
-      return { version: 2, template: STUDENT_TEMPLATE, palette, studentOutput, codename: value.codename, codenameUnset: value.codenameUnset,
-        studentNumber: value.studentNumber, studentNumberUnset: value.studentNumberUnset, race: value.race,
-        avatar: value.avatar, avatarMode };
-    }
-    return { version: PROFILE_VERSION, codename: value.codename, codenameUnset: value.codenameUnset,
-      number: value.number, numberUnset: value.numberUnset, affiliation: value.affiliation,
-      signature: value.signature, avatar: value.avatar, avatarMode };
-  }
+  function parseProfile(raw) { return PassportProfile.parse(raw); }
   async function restoreDraft(template) {
     const stored = localStorage.getItem(draftKey(template));
     if (!stored) return;
-    const value = JSON.parse(stored), wrapper = value?.draftVersion === 2;
+    const value = JSON.parse(stored), wrapper = [2, 3].includes(value?.draftVersion);
     const restored = parseProfile(wrapper ? JSON.stringify(value.profile) : stored);
     if (templateOf(restored) !== template) throw new Error('本地草稿模板不匹配。');
-    const image = await imageFromDataUrl(restored.avatar);
-    const edit = wrapper && restored.avatar ? PassportAvatarEditor.validateEdit(value.avatarEditor) : null;
+    if (value?.draftVersion === 3) for (const key of ['_legacyAvatar', '_legacySize', '_legacyOutput']) restored[key] = value.profile[key] === true;
+    const edit = wrapper && restored.avatar && value.avatarEditor ? PassportAvatarEditor.validateEdit(value.avatarEditor) : null;
+    if (edit && restored._legacySize && value.draftVersion === 2) {
+      const source = new Image(); source.src = edit.source; await source.decode();
+      // An old editor may have synthesized its source from the already
+      // processed slot. Only a larger local source can restore lost detail.
+      if (source.naturalWidth > AV_W || source.naturalHeight > AV_H) {
+        restored.avatar = await PassportAvatarEditor.processed(edit, avatarSize(restored));
+        restored._legacyAvatar = false; restored._legacySize = false;
+      }
+    }
+    const image = await imageFromDataUrl(restored.avatar, restored);
     // Do not replace even the in-memory draft until both JSON and avatar validation finish.
     drafts[template] = { profile: restored, image, edit };
   }
@@ -682,7 +697,7 @@
           setDeviceStatus(`正在读取 profile.json：${received} / ${total} 字节`);
         });
         const imported = parseProfile(new TextDecoder('utf-8', { fatal: true }).decode(data));
-        const img = await imageFromDataUrl(imported.avatar);
+        const img = await imageFromDataUrl(imported.avatar, imported);
         if (job.cancelled || readJob !== job || !(embedded ? getArkDevice()?.connected() : device?.gatt?.connected))
           throw new Error('读取已取消或设备已断开。');
         return { imported, img };
@@ -809,17 +824,9 @@
     if (transfer?.cancelled) throw new Error('操作已取消');
     return data.length === 5 && data[0] === 1 ? u32(data, 1) : 0;
   }
-  function choosePassportBin(flags, fullscreen, i006, mode, bin) {
-    if (i006 && (flags & CAP_I006_PASS)) return { bin, label: 'I006 512 色', fallback: false };
-    if (fullscreen && !(flags & CAP_FULLSCREEN_PASS)) throw new Error('设备不支持全屏学生证，请升级固件');
-    if (i006) {
-      const fallbackMode = flags & CAP_COLOR_PASS ? 'color' : (mode === 'grayscale' ? 'grayscale' : 'mono');
-      const pixels = g.getImageData(0, 0, STUDENT_W, STUDENT_H);
-      return { bin: encodeStudentFfui(pixels, fallbackMode),
-        label: fallbackMode === 'color' ? '六色 ColorFast' : '黑白 FFUI', fallback: true };
-    }
-    if (mode === 'color' && !(flags & CAP_COLOR_PASS)) throw new Error('设备不支持彩色通行证，请升级固件');
-    return { bin, label: mode === 'color' ? '六色 ColorFast' : '黑白 FFUI', fallback: false };
+  function choosePassportBin(flags, kind, output, bin) {
+    PassportProfile.capability(flags, kind, output);
+    return { bin, label: output === 'i006' ? 'I006 512 色' : 'ColorFast 8bpp' };
   }
   async function verifyPassport(transportCtx, job, expected) {
     const expectedText = new TextDecoder().decode(expected);
@@ -851,10 +858,10 @@
     $('cancel').disabled = false;
     $('progress').value = 0;
     const preferredBin = profileBin(), json = jsonBytes();
-    const fullscreen = isStudent(), i006 = usesStudentI006(), mode = profile.avatarMode;
+    const kind = profile.kind, output = profile.output;
     const upload = async (transportCtx) => {
-      const flags = fullscreen || mode === 'color' ? await readPassCapabilities(transportCtx) : 0;
-      const { bin, label, fallback } = choosePassportBin(flags, fullscreen, i006, mode, preferredBin);
+      const flags = await readPassCapabilities(transportCtx);
+      const { bin, label } = choosePassportBin(flags, kind, output, preferredBin);
       const total = bin.length + json.length;
       const sendOne = (name, bytes, base) => transportCtx
         ? transportCtx.uploadFile(name, bytes, (sent) => {
@@ -871,14 +878,14 @@
       if (job.cancelled) throw new Error('传输已取消。');
       job.jsonDone = true;
       setDeviceStatus('两个文件已发送；正在回读 profile.json 校验…');
-      return { ...await verifyPassport(transportCtx, job, json), label, fallback };
+      return { ...await verifyPassport(transportCtx, job, json), label };
     };
     try {
       setDeviceStatus('开始发送 profile.bin…');
       const verification = embedded ? await getArkDevice().run('发送通行证', upload) : await upload(null);
       if (job.cancelled) throw new Error('传输已取消。');
-      const output = verification.fallback ? `设备不支持 I006，已改用${verification.label}。` : `已发送${verification.label}位图。`;
-      setDeviceStatus(output + (verification.ok
+      const resultText = `已发送${verification.label}位图。`;
+      setDeviceStatus(resultText + (verification.ok
         ? '两个文件已发送，回读一致。请在设备上按确认加载；屏幕位图仍待实体确认。'
         : `两个文件已发送，但回读未确认（${verification.error}）。请在设备上按确认加载。`));
     } catch (error) {
@@ -894,6 +901,10 @@
       validate(); refreshDeviceControls();
       if (!embedded) updateNameControls();
     }
+  }
+  function removeAvatar() {
+    profile.avatar = null; profile._legacyAvatar = false; profile._legacySize = false;
+    avatarImage = null; avatarEdit = null; persist(); draw(); setFileStatus('头像已移除。');
   }
   async function init() {
     if (embedded) {
@@ -936,22 +947,22 @@
     });
     const outputSelect = $('student-output');
     outputSelect.addEventListener('change', () => {
-      if (!isStudent() || editingLocked || ![DEFAULT_STUDENT_OUTPUT, 'ffui'].includes(outputSelect.value)) {
-        outputSelect.value = profile.studentOutput || DEFAULT_STUDENT_OUTPUT;
-        return;
-      }
-      profile.studentOutput = outputSelect.value;
-      persist(); draw();
+      if (!isStudent() || editingLocked) { outputSelect.value = profile.output; return; }
+      changeOutput(outputSelect.value);
     });
-    $('avatar-mode').addEventListener('change', changeAvatarMode);
+    $('avatar-mode').addEventListener('change', () => changeOutput($('avatar-mode').value));
     $('avatar').addEventListener('change', async (event) => {
       try { await avatarFromFile(event.target.files[0]); }
       catch (error) { setFileStatus(`头像处理失败：${error.message}`); }
       event.target.value = '';
     });
     $('edit-avatar').addEventListener('click',()=>editAvatar().catch(e=>setFileStatus(`头像处理失败：${e.message}`)));
-    $('remove-avatar').addEventListener('click', () => { profile.avatar = null; avatarImage = null; avatarEdit = null; persist(); draw(); setFileStatus('头像已移除。'); });
-    $('export-json').addEventListener('click', () => { download(new Blob([jsonBytes()], { type: 'application/json' }), 'profile.json'); setFileStatus('已导出编辑数据。'); });
+    $('remove-avatar').addEventListener('click', removeAvatar);
+    $('export-json').addEventListener('click', () => {
+      if (profile._legacyAvatar || profile._legacyOutput) { setFileStatus('旧稿仍保留在本地。请先重选彩色原图或移除头像，并明确选择输出后再导出 v3。'); return; }
+      try { download(new Blob([jsonBytes()], { type: 'application/json' }), 'profile.json'); setFileStatus('已导出 v3 编辑数据（仅彩色槽图，不含本地源图）。'); }
+      catch (error) { setFileStatus(error.message); }
+    });
     $('import-json').addEventListener('change', async (event) => {
       const file = event.target.files[0];
       if (!file || editingLocked) return;
@@ -959,7 +970,7 @@
       try {
         if (file.size > 350000) throw new Error('JSON 超过 350 KB。');
         const imported = parseProfile(await file.text());
-        const img = await imageFromDataUrl(imported.avatar);
+        const img = await imageFromDataUrl(imported.avatar, imported);
         acceptImported(imported, img);
         setFileStatus(valid ? '已导入 JSON 并切换至对应模板，可继续编辑。' : '已导入 JSON；请修正标红字段后再导出位图。');
       } catch (error) { setFileStatus(`导入失败：${error.message} 当前编辑资料和两种草稿均未改变。`); }

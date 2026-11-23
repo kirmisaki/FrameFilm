@@ -27,12 +27,14 @@ class FirmwareDownloader {
         if (cancelled.get() || Thread.currentThread().isInterrupted) throw CancellationException("固件下载已取消")
     }
 
-    fun download(url: String, destination: File, size: Long, sha256: String?, progress: (Long) -> Unit) {
+    fun download(url: String, destination: File, size: Long, sha256: String?,
+                 validateUrl: (String) -> Unit = {}, progress: (Long) -> Unit) {
         try {
             var target = URL(url)
             for (redirect in 0..8) {
                 checkCancelled()
                 require(target.protocol == "https") { "固件下载必须使用 HTTPS" }
+                validateUrl(target.toExternalForm())
                 val http = target.openConnection() as HttpURLConnection
                 connection = http
                 http.connectTimeout = 15_000

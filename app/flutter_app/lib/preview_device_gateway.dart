@@ -151,6 +151,8 @@ class PreviewDeviceGateway implements DeviceGateway {
         settingsMessage: _connected ? _settingsMessage : null,
         abc9PreviewSupported: _connected,
         studentPassportSupported: _connected,
+        studentColorFastSupported: _connected && scenario != PreviewScenario.legacyFirmware,
+        colorPassportSupported: _connected && scenario != PreviewScenario.legacyFirmware,
         battery: _connected ? 86 : null,
         width: _connected ? 720 : null,
         height: _connected ? 480 : null,
@@ -277,8 +279,30 @@ class PreviewDeviceGateway implements DeviceGateway {
         if (utf8.encode(json).length > 350000) {
           throw ArgumentError('通行证文件大小无效');
         }
-        if (_isStudentPassport(json)) {
+        final profile = jsonDecode(json) as Map;
+        final student = _isStudentProfile(profile);
+        final modern = profile['version'] == 3;
+        if (modern && !const {'i006', 'colorfast'}.contains(profile['output'])) {
+          throw ArgumentError('通行证输出格式无效');
+        }
+        final fast = modern && profile['output'] == 'colorfast';
+        if (modern && (!student || fast) && scenario == PreviewScenario.legacyFirmware) {
+          throw StateError('当前模拟固件不支持此通行证格式');
+        }
+        if (student && !fast) {
           validateAbc9Film(bin);
+        } else if (student) {
+          if (bin.length != 345632 || bin[9] != 0x03) {
+            throw ArgumentError('ColorFast 学生证文件无效');
+          }
+        } else if (modern) {
+          final hasAvatar = profile['avatar'] != null;
+          final size = 33456 + (hasAvatar ? 128 * 160 * (fast ? 1 : 2) : 0);
+          if (profile['kind'] != 'operator' || bin.length != size ||
+              bin[4] != 3 || bin[5] != (fast ? 0x03 : 0x7f) ||
+              bin[10] != (hasAvatar ? 1 : 0)) {
+            throw ArgumentError('紧凑通行证文件无效');
+          }
         } else if (bin.length != 33456 && bin.length != 133776) {
           throw ArgumentError('通行证文件大小无效');
         }
@@ -813,9 +837,12 @@ class PreviewDeviceGateway implements DeviceGateway {
     _timer = Timer.periodic(stepDuration, (_) => advance());
   }
 
+  bool _isStudentProfile(Map data) => data['version'] == 2 ||
+      (data['version'] == 3 && data['kind'] == 'student');
+
   bool _isStudentPassport(String json) {
     final data = jsonDecode(json);
-    return data is Map && data['version'] == 2;
+    return data is Map && _isStudentProfile(data);
   }
 
   void _startPassport({

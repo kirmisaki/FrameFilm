@@ -219,6 +219,10 @@ void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode);
 /* Experimental Format 0x7F ABC9 body: LE16 A[8:6]/B[5:3]/C[2:0].
  * Validate the complete frame before initializing or refreshing the panel. */
 esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size);
+/* Pure, synchronous row source. Must stay stable for validation and all phases.
+ * HAL validates all codes before panel access and uses only one row scratch. */
+typedef void (*hal_epd_abc9_row_fn)(void *context, unsigned row, uint16_t *codes);
+esp_err_t hal_epd_display_abc9_rows(hal_epd_abc9_row_fn read_row, void *context);
 #endif
 
 /**

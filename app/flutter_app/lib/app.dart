@@ -231,23 +231,6 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     'transportPreference': transferPreference.name,
   };
 
-  Widget mediaSendMode() => Align(
-    alignment: Alignment.centerLeft,
-    child: SegmentedButton<TransferPreference>(
-      segments: const [
-        ButtonSegment(value: TransferPreference.auto, label: Text('自动传输')),
-        ButtonSegment(value: TransferPreference.ble, label: Text('蓝牙模式')),
-      ],
-      selected: {transferPreference},
-      onSelectionChanged:
-          transferPreferenceReady &&
-              !device.snapshot.transfer.active &&
-              !device.snapshot.passportBusy
-          ? (selection) => changeTransferPreference(selection.single)
-          : null,
-    ),
-  );
-
   @override
   void initState() {
     super.initState();
@@ -541,7 +524,6 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     1 => framePage(context),
     2 => filmPage(context),
     3 => [
-      if (device.gateway.supported && device.snapshot.connected) mediaSendMode(),
       panel(
         context,
         child: AnimationWorkshop(
@@ -658,7 +640,6 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         padding: EdgeInsets.only(bottom: 12),
         child: Text('图片转换为真实文件；当前连接和发送为模拟操作。'),
       ),
-    if (device.gateway.supported && device.snapshot.connected) mediaSendMode(),
     FrameQuickPage(
       controller: frameQuick,
       pickImages: frame_media.pickFramePhotos,
@@ -839,10 +820,9 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     final editable =
         available && !(transfer.canRetry && !transfer.cleanupCompleted);
     final bleEligible = file?.blePhotoCompatible == true;
-    final useBle = transferPreference == TransferPreference.ble ||
-        (bleEligible && prefersBlePhoto);
+    final useBle = prefersBlePhoto;
+    final bleUnavailable = useBle && file != null && !bleEligible;
     return [
-      if (supported && snapshot.connected) mediaSendMode(),
       FrameEditor(
         controller: frameEditor,
         canImportFilm: device.canImportFilm,
@@ -871,9 +851,10 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             Text(
               !supported
                   ? '当前平台仅供界面预览。文件导入与传输需要 Android 原生客户端。'
-                   : transferPreference == TransferPreference.ble &&
-                         file != null && !bleEligible
-                   ? '当前 Ark 固件不支持通过蓝牙发送此文件。可升级固件或切回自动传输。'
+                  : bleUnavailable
+                  ? (transferPreference == TransferPreference.ble
+                        ? '当前 Ark 固件不支持通过蓝牙发送此文件。可升级固件或在设置切回自动传输。'
+                        : '自动模式选用了蓝牙，但当前 Ark 固件不支持通过蓝牙发送此文件。')
                   : useBle
                   ? '使用已连接的 Ark 蓝牙发送此文件，无需 Wi-Fi。'
                   : '导入已有 .film 文件，通过已连接的 Ark 建立 Wi-Fi 直传。',
@@ -915,8 +896,7 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
                           file != null &&
                           snapshot.connected &&
                            transferPreferenceReady &&
-                           (transferPreference != TransferPreference.ble ||
-                               bleEligible) &&
+                           !bleUnavailable &&
                            !(transfer.kind == 'film' &&
                                transfer.canRetry &&
                                transfer.transport == (useBle ? 'ble' : 'wifi'))
@@ -1472,7 +1452,9 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     if (raw is String) {
       try {
         final data = jsonDecode(raw);
-        studentReadback = data is Map && data['version'] == 2;
+        studentReadback = data is Map &&
+            (data['version'] == 2 ||
+                (data['version'] == 3 && data['kind'] == 'student'));
       } on FormatException {
         // The editor reports its own profile validation errors.
       }
@@ -1495,7 +1477,6 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         ? () => device.command('retryPassport')
         : null;
     return [
-      if (device.gateway.supported && snapshot.connected) mediaSendMode(),
       if (device.gateway is PreviewDeviceGateway)
         const Text('模拟设备：发送仅保存到演示内存，重置演示会清除；本地草稿单独保留。'),
       if (device.errorMessage != null)
@@ -1523,7 +1504,8 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
                 controller: studentPassportEditor,
                 canOperate: device.canEditSettings,
                 supported: snapshot.studentPassportSupported,
-                 canSend: passportSendReady,
+                colorFastSupported: snapshot.studentColorFastSupported,
+                canSend: passportSendReady,
                 busy: busy,
                 operation: operation,
                 onRead: read,
@@ -1535,7 +1517,8 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             : PassportEditor(
                 controller: passportEditor,
                 canOperate: device.canEditSettings,
-                 canSend: passportSendReady,
+                colorPassportSupported: snapshot.colorPassportSupported,
+                canSend: passportSendReady,
                 busy: busy,
                 operation: {
                   ...operation,
@@ -1758,7 +1741,9 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
           title: const Text('蓝牙兼容模式'),
            subtitle: const Text('开启后使用蓝牙发送图片、动画和通行证；关闭后自动选择。'),
           value: transferPreference == TransferPreference.ble,
-          onChanged: device.gateway.supported
+          onChanged: device.gateway.supported &&
+              transferPreferenceReady && !frameQuick.busy && !animation.busy &&
+              !device.snapshot.transfer.active && !device.snapshot.passportBusy
               ? (enabled) => changeTransferPreference(
                   enabled ? TransferPreference.ble : TransferPreference.auto,
                 )

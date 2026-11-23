@@ -10,6 +10,7 @@
 
 #include "esp_heap_caps.h"
 #include "hal_epd_abc9.h"
+#include "hal_pass_profile.h"
 #include "sys_log.h"
 #include "ui_ops.h"
 #include "ui_display.h"
@@ -22,13 +23,12 @@
 #include "app_pass.h"
 
 #define APP_PASS_TAG          "app_pass"
-#define PASS_PROFILE_PATH     "/sdcard/app/pass/profile.bin"
+#define PASS_PROFILE_PATH     PASS_PROFILE_FILE_PATH
 #define PASS_PROFILE_W        (440u)
 #define PASS_PROFILE_H        (608u)
 #define PASS_FULLSCREEN_W     (480u)
 #define PASS_FULLSCREEN_H     (720u)
 #define PASS_PROFILE_ROW      (PASS_FULLSCREEN_W / 8u)
-#define PASS_FFUI_HEADER      (16u)
 #define PASS_RULE_W          (240)
 #define PASS_WORD_LS         (8)
 #define PASS_FOOT_HINT       "单击刷新  双击确认退出  长按休眠"
@@ -45,6 +45,8 @@ typedef struct {
     uint16_t width, height;
     uint8_t color;
     uint8_t abc9; /* Native 720x480 LE16 body, never converted through LVGL. */
+    uint8_t fast, compact, avatar;
+    uint32_t body_size;
     uint8_t pixels[];
 } pass_card_t;
 
@@ -74,7 +76,7 @@ static const char *pass_profile_path(void)
 static pass_load_result_t pass_load_card(pass_card_t **out)
 {
     const char *path = pass_profile_path();
-    uint8_t header[PASS_FFUI_HEADER];
+    PassProfileInfo_t info;
     uint8_t row[PASS_PROFILE_ROW];
     size_t payload_size, pixel_count;
     unsigned width, height;
@@ -88,50 +90,38 @@ static pass_load_result_t pass_load_card(pass_card_t **out)
     fp = fopen(path, "rb");
     if(fp == NULL) return errno == ENOENT ? PASS_LOAD_MISSING : PASS_LOAD_FAILED;
 
-    if(fread(header, 1, sizeof(header), fp) != sizeof(header)) goto done;
-#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
-    if(memcmp(header, "FFUI", 4) != 0)
+    if(!hal_pass_profile_inspect(fp, &info)) goto done;
+    if(info.format == PASS_FMT_ABC9 || info.format == PASS_FMT_FAST ||
+       info.format == PASS_FMT_COMPACT_ABC9 || info.format == PASS_FMT_COMPACT_FAST)
     {
-        uint8_t film_header[EPD_ABC9_HEADER_BYTES];
-        memcpy(film_header, header, sizeof(header));
-        if(fread(film_header + sizeof(header), 1, sizeof(film_header) - sizeof(header), fp) !=
-           sizeof(film_header) - sizeof(header) || !hal_epd_abc9_header_valid(film_header) ||
-           fseek(fp, 0, SEEK_END) != 0 || ftell(fp) != (long)EPD_ABC9_FILE_BYTES ||
-           fseek(fp, EPD_ABC9_HEADER_BYTES, SEEK_SET) != 0) goto done;
-        /* One body only, owned by the page. Keep the previous card until the
-           complete replacement is read and validated; no extra full-frame copy. */
-        card = heap_caps_malloc(sizeof(*card) + EPD_ABC9_BODY_BYTES, MALLOC_CAP_SPIRAM);
+        const int compact = info.format == PASS_FMT_COMPACT_ABC9 || info.format == PASS_FMT_COMPACT_FAST;
+        /* Keep compact planes packed; the display compositor supplies their
+           pixels. Do not give I1 to LVGL's image decoder: it expands to ARGB8888
+           (over 1MB scratch), defeating the N4R2 row-fed path. */
+        card = heap_caps_malloc(sizeof(*card) + info.body_size, MALLOC_CAP_SPIRAM);
         if(card == NULL) goto done;
         memset(card, 0, sizeof(*card));
-        card->width = PASS_FULLSCREEN_W;
-        card->height = PASS_FULLSCREEN_H;
+        card->width = info.width; card->height = info.height;
         card->color = 1;
-        card->abc9 = 1;
-        if(fread(card->pixels, 1, EPD_ABC9_BODY_BYTES, fp) != EPD_ABC9_BODY_BYTES ||
-           !hal_epd_abc9_codes_valid(card->pixels, EPD_ABC9_BODY_BYTES)) goto done;
+        card->abc9 = info.format == PASS_FMT_ABC9;
+        card->fast = info.format == PASS_FMT_FAST;
+        card->compact = compact;
+        card->avatar = info.avatar_planes;
+        card->body_size = info.body_size;
+        uint8_t *body = card->pixels;
+        if(fread(body, 1, info.body_size, fp) != info.body_size ||
+           !hal_pass_profile_codes(&info, body, 0, info.body_size)) goto done;
+        if(compact)
+        {
+            /* Retain the selected compact mode independently of native ABC9. */
+            card->fast = info.format == PASS_FMT_COMPACT_FAST;
+        }
         goto loaded;
     }
-#endif
-    if(memcmp(header, "FFUI", 4) != 0 ||
-       !((header[4] == 1 && header[5] == 1) ||
-         (header[4] == 2 && header[5] == 2)) ||
-       memcmp(&header[10], (const uint8_t[6]){0}, 6) != 0)
-    {
-        goto done;
-    }
-    width = (unsigned)(header[6] | (header[7] << 8));
-    height = (unsigned)(header[8] | (header[9] << 8));
-    if(!((width == PASS_PROFILE_W && height == PASS_PROFILE_H) ||
-         (width == PASS_FULLSCREEN_W && height == PASS_FULLSCREEN_H))) goto done;
-    color = header[4] == 2;
+    width = info.width; height = info.height;
+    color = info.format == PASS_FMT_SIX;
     pixel_count = (size_t)width * height;
-    payload_size = color ? pixel_count / 2u : pixel_count / 8u;
-    if(fseek(fp, 0, SEEK_END) != 0 ||
-       ftell(fp) != (long)(PASS_FFUI_HEADER + payload_size) ||
-       fseek(fp, PASS_FFUI_HEADER, SEEK_SET) != 0)
-    {
-        goto done;
-    }
+    payload_size = info.body_size;
 
     card = (pass_card_t *)heap_caps_malloc(sizeof(*card) +
              (color ? payload_size : pixel_count)
@@ -140,20 +130,15 @@ static pass_load_result_t pass_load_card(pass_card_t **out)
 #endif
              , MALLOC_CAP_SPIRAM);
     if(card == NULL) goto done;
+    memset(card, 0, sizeof(*card));
     card->color = color;
     card->abc9 = 0;
     card->width = width;
     card->height = height;
     if(color)
     {
-        if(fread(card->pixels, 1, payload_size, fp) != payload_size) goto done;
-        for(size_t i = 0; i < payload_size; ++i)
-        {
-            const uint8_t v = card->pixels[i];
-            const uint8_t a = v >> 4, b = v & 0x0F;
-            if(!((a == 0 || a == 1 || a == 2 || a == 3 || a == 5 || a == 6) &&
-                 (b == 0 || b == 1 || b == 2 || b == 3 || b == 5 || b == 6))) goto done;
-        }
+        if(fread(card->pixels, 1, payload_size, fp) != payload_size ||
+           !hal_pass_profile_codes(&info, card->pixels, 0, payload_size)) goto done;
     }
     else
     {
@@ -205,9 +190,7 @@ static pass_load_result_t pass_load_card(pass_card_t **out)
         card->dsc.data = out_rgb;
     }
 #endif
-#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
 loaded:
-#endif
     *out = card;
     card = NULL;
     result = PASS_LOAD_OK;
@@ -299,6 +282,15 @@ static void pass_layout(const pass_card_t *card)
                     card != NULL ? card->height : PASS_PROFILE_H);
 }
 
+static const lv_image_dsc_t *pass_image_source(const pass_card_t *card)
+{
+    if(card == NULL || card->abc9 || card->fast || card->compact) return NULL;
+#ifndef ARK_UI_SIMULATOR
+    if(card->color && !card->compact) return NULL;
+#endif
+    return &card->dsc;
+}
+
 static void pass_show_result(pass_load_result_t result)
 {
     pass_card_t *next = atomic_exchange(&m_pending, NULL);
@@ -306,9 +298,12 @@ static void pass_show_result(pass_load_result_t result)
     {
         pass_card_t *old = m_active;
         pass_layout(next);
-        if(next->abc9)
+        if(!next->compact && (next->abc9 || next->fast))
         {
-            if(ui_display_set_abc9_card(next->pixels, EPD_ABC9_BODY_BYTES) != 0)
+            int display_result = next->abc9 ?
+                ui_display_set_abc9_card(next->pixels, next->body_size) :
+                ui_display_set_fast_card(next->pixels, next->body_size);
+            if(display_result != 0)
             {
                 result = PASS_LOAD_FAILED;
                 pass_layout(old);
@@ -324,23 +319,19 @@ static void pass_show_result(pass_load_result_t result)
                position. The empty panel must not take part in this layout. */
             lv_obj_set_hidden(m_empty_panel, true);
             lv_obj_set_hidden(m_card_img, false);
-#ifdef ARK_UI_SIMULATOR
-            lv_image_set_src(m_card_img, &next->dsc);
-#else
-            lv_image_set_src(m_card_img, NULL);
-#endif
+            lv_image_set_src(m_card_img, pass_image_source(next));
             lv_obj_update_layout(m_card_img);
             lv_obj_get_coords(m_card_img, &area);
-            if(ui_display_set_color_card(next->pixels, area.x1, area.y1,
-                                         next->width, next->height) != 0)
+            int display_result = next->compact ?
+                ui_display_set_compact_card(next->pixels, next->body_size,
+                                            area.x1, area.y1, !next->fast, next->avatar) :
+                ui_display_set_color_card(next->pixels, area.x1, area.y1,
+                                          next->width, next->height);
+            if(display_result != 0)
             {
                 result = PASS_LOAD_FAILED;
                 pass_layout(old);
-#ifdef ARK_UI_SIMULATOR
-                lv_image_set_src(m_card_img, old != NULL && !old->abc9 ? &old->dsc : NULL);
-#else
-                if(old != NULL && !old->color) lv_image_set_src(m_card_img, &old->dsc);
-#endif
+                lv_image_set_src(m_card_img, pass_image_source(old));
                 heap_caps_free(next);
                 next = NULL;
             }
@@ -353,11 +344,7 @@ static void pass_show_result(pass_load_result_t result)
         if(next != NULL) m_active = next;
         if(next != NULL && old != NULL) {
 #if LV_CACHE_DEF_SIZE > 0
-#ifdef ARK_UI_SIMULATOR
-            if(!old->abc9) lv_image_cache_drop(&old->dsc);
-#else
-            if(!old->color) lv_image_cache_drop(&old->dsc);
-#endif
+            if(pass_image_source(old) != NULL) lv_image_cache_drop(&old->dsc);
 #endif
             heap_caps_free(old);
         }
@@ -450,11 +437,7 @@ static void pass_ui_destroy(void)
     m_result_note = NULL;
     if(m_active != NULL) {
 #if LV_CACHE_DEF_SIZE > 0
-#ifdef ARK_UI_SIMULATOR
-        if(!m_active->abc9) lv_image_cache_drop(&m_active->dsc);
-#else
-        if(!m_active->color) lv_image_cache_drop(&m_active->dsc);
-#endif
+        if(pass_image_source(m_active) != NULL) lv_image_cache_drop(&m_active->dsc);
 #endif
         heap_caps_free(m_active);
     }

@@ -7,6 +7,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('v1 schema round trip preserves incomplete draft', () {
     const p = PassportProfile(
+      version: 1,
+      avatarMode: 'mono',
       codename: '博士',
       numberUnset: true,
       signature: '测试\n第二行',
@@ -65,7 +67,7 @@ void main() {
     late PassportRaster raster;
     await tester.runAsync(() async {
       raster = await renderPassport(
-        const PassportProfile(codename: '博士', number: '001'),
+        const PassportProfile(version: 1, avatarMode: 'mono', codename: '博士', number: '001'),
       );
     });
     expect(raster.bin.length, 33456);

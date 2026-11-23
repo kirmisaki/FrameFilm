@@ -7,15 +7,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Baloo+2:wght@400..800&family=Noto+Sans+SC:wght@400..900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=student-template-5">
-  <script src="pixels.js?v=student-template-5" defer></script>
+  <link rel="stylesheet" href="style.css?v=pass-v3-1">
+  <script src="pixels.js?v=pass-v3-1" defer></script>
+  <script src="profile.js?v=pass-v3-1" defer></script>
   <script src="../ForFilm/js/source-fit.js" defer></script>
   <script src="../ForFilm/js/convert.js" defer></script>
-  <script src="avatar-editor.js?v=theme-coverage-2" defer></script>
+  <script src="avatar-editor.js?v=pass-v3-1" defer></script>
   <script src="../ForFilm/js/ark-512-profile.js" defer></script>
   <script src="../ForFilm/js/ark-512.js" defer></script>
   <script src="student-i006.js?v=1" defer></script>
-  <script src="app.js?v=student-i006-1" defer></script>
+  <script src="app.js?v=pass-v3-1" defer></script>
 </head>
 <body>
   <nav class="embedded-nav" aria-label="ForFilm 导航"><button id="back-to-connect" type="button" class="secondary">返回 ForFilm 连接页</button></nav>
@@ -41,9 +42,9 @@
         <label for="student-output">学生证输出</label>
         <select id="student-output" aria-describedby="student-base-status">
           <option value="i006">I006 512 色 · A 档灰水印（默认）</option>
-          <option value="ffui">兼容 FFUI · 按头像显示模式</option>
+          <option value="colorfast">ColorFast · 8bpp 双相彩色</option>
         </select>
-        <p class="hint">I006 只改变位图出图方式，不修改头像或编辑资料。发送时若设备不支持 I006，会使用设备支持的全屏 FFUI。</p>
+        <p class="hint">两种输出共用未量化彩色源。设备不支持所选模式时会阻止发送并提示升级，不会降级。</p>
       </div>
       <div class="fields">
         <div class="field avatar-field">
@@ -53,10 +54,13 @@
             <button id="remove-avatar" type="button" class="text-button">移除头像</button>
             <button id="edit-avatar" type="button" class="secondary">调整头像</button>
           </div>
-          <p class="hint">头像数据128×160，学生证按4:5放大显示；本地保留源图，可拖动、缩放、旋转和调整Film抖动，取消保留旧头像。</p>
-          <p class="hint">设备JSON仅含最终128×160头像；重新读取后可编辑该图像，完整构图请重新导入原图。源图和调整参数仅保存在本地草稿。</p>
-          <label for="avatar-mode">头像显示</label>
-          <select id="avatar-mode"><option value="mono">黑白 · 原有阈值</option><option value="grayscale">灰度 · 黑白网点</option><option value="color">彩色 · 六色</option></select>
+          <p class="hint">学生证直接裁切为 239×299，干员档案为 128×160；本地保留有界彩色源图，可拖动、缩放、旋转和调整曝光。取消不修改旧头像。</p>
+          <p class="hint">设备 JSON 仅含已调整、未量化的槽尺寸 PNG，不含源图或编辑参数。读取后可恢复彩色裁切；完整构图需本地草稿或重新选择原图。</p>
+          <div data-template="operator">
+            <label for="avatar-mode">干员头像输出</label>
+            <select id="avatar-mode"><option value="i006">I006 / 512 色（默认）</option><option value="colorfast">ColorFast · 8bpp 双相彩色</option></select>
+          </div>
+          <p class="status" id="migration-status" role="status"></p>
         </div>
         <div class="field">
           <label for="codename">代号 <span class="required">必填</span></label>
@@ -100,7 +104,7 @@
         <button id="download-png" type="button" class="secondary">下载 PNG 预览</button>
         <button id="download-bin" type="button" class="primary">下载 profile.bin</button>
       </div>
-      <p class="hint">干员档案导出 v1 JSON；学生证导出 v2 JSON。旧网页及 Flutter 客户端不支持学生证编辑，仍可能直接上传旧草稿覆盖设备卡面；换模板前请在新版网页读取并导出备份。</p>
+      <p class="hint">两种卡面均导出显式 kind / output 的 v3 JSON；可导入旧干员 v1 / 学生 v2。旧客户端不保证编辑 v3，请先更新客户端并备份资料。</p>
       <p id="file-status" class="status" role="status"></p>
 
       <div class="section-head actions-head"><span>03 / 设备连接</span><h2>发送到 Ark</h2></div>
@@ -129,8 +133,8 @@
       <div class="section-head"><span id="preview-dimensions">440 × 608 / 设备色彩</span><h2 id="preview-title">设备主体预览</h2></div>
       <div class="preview-frame"><canvas id="preview" width="440" height="608" role="img" aria-label="通行证主体预览" aria-describedby="student-base-status"></canvas></div>
       <p class="status" id="student-base-status" role="status"></p>
-      <p class="hint" id="student-orientation" hidden>学生证按 720 × 480 横版全屏编辑和下载 PNG。I006 BIN 使用面板原生 ABC9 排布；兼容 FFUI 则为 480 × 720。请将 Ark 逆时针横拿阅读。全屏不显示状态栏和底部提示，按键操作不变。预览是模型色彩，实际效果以屏幕为准。</p>
-      <p class="hint">预览即导出像素。灰度使用黑白网点；彩色使用六色资料，新版固件通过 ColorFast 彩色快刷显示，页面时间静态。快刷颜色以实机为准。设备状态栏与脚注由固件绘制，不包含在文件内。</p>
+      <p class="hint" id="student-orientation" hidden>学生证按 720 × 480 横版全屏编辑和下载 PNG。I006 为原生 ABC9；ColorFast 为原生 format 0x03 单帧，二者均为 720 × 480 面板排布。请将 Ark 逆时针横拿阅读。全屏不显示状态栏和底部提示，按键操作不变。预览是模型色彩，实际效果以屏幕为准。</p>
+      <p class="hint">预览来自同一次编码的实际索引。I006 与 ColorFast 均使用既有标定色板；模型色彩不等于实体屏幕保证。干员档案保留 440×608 I1 主体与独立彩色头像，设备状态栏与脚注不包含在文件内。</p>
     </section>
   </main>
 </body>

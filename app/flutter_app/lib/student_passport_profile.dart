@@ -6,6 +6,9 @@ import 'package:flutter/painting.dart';
 
 import 'frame_abc512.dart';
 import 'frame_codec.dart';
+import 'frame_algorithms.dart' show quantizeFramePixels, FrameAlgorithm;
+import 'frame_palettes.dart' show colorFastPalette;
+import 'passport_color.dart';
 import 'passport_profile.dart';
 
 const studentPassportPalettes = {
@@ -35,10 +38,15 @@ class StudentPassportProfile {
     this.studentNumberUnset = false,
     this.race = '',
     this.avatar,
-    this.avatarMode = 'mono',
+    this.avatarMode = 'color',
     this.palette = 'amiya',
-    this.studentOutput = 'i006',
-  });
+    String studentOutput = 'i006',
+    String? output,
+    this.version = 3,
+  }) : studentOutput = output ?? studentOutput;
+
+  final int version;
+  String get output => studentOutput;
 
   static const template = 'rhodes-academy-student';
   final String codename,
@@ -50,14 +58,27 @@ class StudentPassportProfile {
   final bool codenameUnset, studentNumberUnset;
   final String? avatar;
 
+  StudentPassportProfile withAvatar(String? avatar, {String? output}) => StudentPassportProfile(
+    codename: codename,
+    codenameUnset: codenameUnset,
+    studentNumber: studentNumber,
+    studentNumberUnset: studentNumberUnset,
+    race: race,
+    avatar: avatar,
+    palette: palette,
+    output: output ?? this.output,
+  );
+
   factory StudentPassportProfile.fromJson(String raw) {
     if (utf8.encode(raw).length > 350000) {
       throw const FormatException('JSON 超过 350 KB');
     }
     final value = jsonDecode(raw);
     if (value is! Map<String, dynamic> ||
-        value['version'] != 2 ||
-        value['template'] != template) {
+        value['version'] is! int ||
+        !(value['version'] == 2 || value['version'] == 3) ||
+        value['template'] != template ||
+        (value['version'] == 3 && value['kind'] != 'student')) {
       throw const FormatException('不支持的学生证模板或版本');
     }
     for (final field in _fields.entries) {
@@ -72,29 +93,24 @@ class StudentPassportProfile {
       throw const FormatException('尚未设置标记或头像类型无效');
     }
     final palette = value.containsKey('palette') ? value['palette'] : 'amiya';
-    final output = value.containsKey('studentOutput')
-        ? value['studentOutput']
-        : 'i006';
+    final modern = value['version'] == 3;
+    final output = modern ? value['output']
+        : value.containsKey('studentOutput') ? value['studentOutput'] : 'i006';
     if (!studentPassportPalettes.containsKey(palette) ||
-        !const ['i006', 'ffui'].contains(output)) {
+        !(modern ? passportOutputs : const ['i006', 'ffui']).contains(output) ||
+        (modern && value.containsKey('studentOutput') && value['studentOutput'] != output)) {
       throw const FormatException('学生证配色或输出模式无效');
     }
-    final avatar = PassportProfile.fromJson(
-      jsonEncode({
-        'version': 1,
-        'codename': '',
-        'codenameUnset': false,
-        'number': '',
-        'numberUnset': false,
-        'affiliation': '',
-        'signature': '',
-        'avatar': value['avatar'],
-        'avatarMode': value.containsKey('avatarMode')
-            ? value['avatarMode']
-            : 'mono',
-      }),
-    );
-    if (value.containsKey('avatarMode') && value['avatarMode'] == null) {
+    final avatar = value['avatar'];
+    if (avatar != null && avatar is! String) {
+      throw const FormatException('头像类型无效');
+    }
+    passportPngBytes(avatar as String?, modern ? 239 : 128, modern ? 299 : 160);
+    final mode = value.containsKey('avatarMode')
+        ? value['avatarMode']
+        : (modern ? 'color' : 'mono');
+    if (!(modern ? const ['color'] : const ['mono', 'grayscale', 'color'])
+        .contains(mode)) {
       throw const FormatException('头像显示模式无效');
     }
     return StudentPassportProfile(
@@ -103,19 +119,22 @@ class StudentPassportProfile {
       studentNumber: value['studentNumber'] as String,
       studentNumberUnset: value['studentNumberUnset'] as bool,
       race: value['race'] as String,
-      avatar: avatar.avatar,
-      avatarMode: avatar.avatarMode,
+      avatar: avatar,
+      avatarMode: mode as String,
       palette: palette as String,
       studentOutput: output as String,
+      version: value['version'] as int,
     );
   }
 
   String toJson() {
-    final json = const JsonEncoder.withIndent('  ').convert({
-      'version': 2,
+    return encodePassportJson({
+      'version': version,
+      if (version == 3) 'kind': 'student',
+      if (version == 3) 'output': output,
       'template': template,
       'palette': palette,
-      'studentOutput': studentOutput,
+      if (version == 2) 'studentOutput': studentOutput,
       'codename': codename,
       'codenameUnset': codenameUnset,
       'studentNumber': studentNumber,
@@ -124,7 +143,6 @@ class StudentPassportProfile {
       'avatar': avatar,
       'avatarMode': avatarMode,
     });
-    return '$json\n';
   }
 }
 
@@ -188,8 +206,28 @@ Map<String, String> studentPassportLayoutErrors(StudentPassportProfile p) {
   };
 }
 
-Future<ui.Image?> validateStudentPassportAvatar(StudentPassportProfile p) =>
-    validatePassportAvatar(PassportProfile(avatar: p.avatar));
+Future<ui.Image?> validateStudentPassportAvatar(
+  StudentPassportProfile p,
+) async {
+  final bytes = passportPngBytes(
+    p.avatar,
+    p.version == 3 ? 239 : 128,
+    p.version == 3 ? 299 : 160,
+  );
+  if (bytes == null) return null;
+  final codec = await ui.instantiateImageCodec(bytes);
+  try {
+    final image = (await codec.getNextFrame()).image;
+    if (image.width != (p.version == 3 ? 239 : 128) ||
+        image.height != (p.version == 3 ? 299 : 160)) {
+      image.dispose();
+      throw const FormatException('头像尺寸无效');
+    }
+    return image;
+  } finally {
+    codec.dispose();
+  }
+}
 
 Future<ui.Image> _decodeTemplate(Uint8List bytes) async {
   const magic = [137, 80, 78, 71, 13, 10, 26, 10];
@@ -224,6 +262,10 @@ Future<PassportRaster> renderStudentPassport(
   }
 
   checkCancelled();
+  if (!(profile.version == 2 || profile.version == 3) ||
+      (profile.version == 3 && !passportOutputs.contains(profile.output))) {
+    throw const FormatException('学生证版本或输出模式无效');
+  }
   final template = await _decodeTemplate(templatePng);
   late Uint8List base, composed;
   try {
@@ -248,20 +290,33 @@ Future<PassportRaster> renderStudentPassport(
       logical.setRange(target, target + 4, composed, source);
     }
   }
-  final codes = await quantizeAbc512(
-    logical,
-    _height,
-    _width,
-    continuousTone: true,
-    checkCancelled: checkCancelled,
-  );
-  _applyWatermark(codes, base, composed);
+  final abc = profile.output != 'colorfast';
+  final List<int> codes;
+  if (abc) {
+    final abcCodes = await quantizeAbc512(
+      logical,
+      _height,
+      _width,
+      continuousTone: true,
+      checkCancelled: checkCancelled,
+    );
+    _applyWatermark(abcCodes, base, composed);
+    codes = abcCodes;
+  } else {
+    codes = await quantizeFramePixels(
+      logical,
+      _height,
+      _width,
+      algorithm: FrameAlgorithm.colorFast55,
+      checkCancelled: checkCancelled,
+    );
+  }
   checkCancelled();
   final bin = packFramePixels(
     codes,
     width: _height,
     height: _width,
-    format: FrameFormat.abc512,
+    format: abc ? FrameFormat.abc512 : FrameFormat.colorFast55,
   );
   final readerCodes = Uint16List(_pixels);
   for (var y = 0; y < _height; y++) {
@@ -269,7 +324,14 @@ Future<PassportRaster> renderStudentPassport(
       readerCodes[y * _width + x] = codes[x * _height + _height - 1 - y];
     }
   }
-  paintAbc512Codes(composed, readerCodes);
+  if (abc) {
+    paintAbc512Codes(composed, readerCodes);
+  } else {
+    for (var i = 0; i < _pixels; i++) {
+      final rgb = colorFastPalette[readerCodes[i]];
+      composed.setRange(i * 4, i * 4 + 4, [...rgb, 255]);
+    }
+  }
   final png = await _encodePreview(composed);
   checkCancelled();
   return PassportRaster(bin, png);
@@ -296,9 +358,9 @@ Future<Uint8List> _drawStudent(
   if (avatar != null) {
     canvas.drawImageRect(
       avatar,
-      const Rect.fromLTWH(0, 0, 128, 160),
+      Rect.fromLTWH(0, 0, avatar.width.toDouble(), avatar.height.toDouble()),
       _avatarRect,
-      Paint()..filterQuality = FilterQuality.medium,
+      Paint()..filterQuality = FilterQuality.high,
     );
   }
   if (profile != null) {

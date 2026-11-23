@@ -45,6 +45,49 @@ Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('connected workspaces do not repeat media route controls', (
+    tester,
+  ) async {
+    final gateway = _Gateway();
+    addTearDown(gateway.events.close);
+    await tester.pumpWidget(FrameFilmApp(gateway: gateway));
+    gateway.events.add(DeviceSnapshot.fromMap({'connected': true}));
+    await tester.pumpAndSettle();
+    for (final page in ['Frame', 'Film', '动画', '通行证']) {
+      await openPage(tester, page);
+      expect(find.text('自动传输'), findsNothing);
+      expect(find.text('蓝牙模式'), findsNothing);
+    }
+    await openPage(tester, '设置');
+    final toggle = find.byKey(const Key('ble-compatibility-switch'));
+    await _scrollTo(tester, toggle);
+    expect(toggle, findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  test('passport format capabilities do not survive a different connection', () {
+    final device = DeviceSnapshot.fromMap({
+      'connected': true,
+      'deviceId': 'A',
+      'studentPassportSupported': true,
+      'studentColorFastSupported': true,
+      'colorPassportSupported': true,
+    });
+    final partial = DeviceSnapshot.fromMap({'connected': true, 'deviceId': 'A'})
+        .retainingTransfer(device);
+    expect(partial.studentColorFastSupported, isTrue);
+    expect(partial.colorPassportSupported, isTrue);
+    for (final next in [
+      {'connected': false},
+      {'connected': true, 'deviceId': 'B'},
+    ]) {
+      final snapshot = DeviceSnapshot.fromMap(next).retainingTransfer(device);
+      expect(snapshot.studentPassportSupported, isFalse);
+      expect(snapshot.studentColorFastSupported, isFalse);
+      expect(snapshot.colorPassportSupported, isFalse);
+    }
+  });
+
   testWidgets('manual mode persists and selects BLE for an ordinary Film', (
     tester,
   ) async {

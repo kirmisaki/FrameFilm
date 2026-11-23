@@ -125,7 +125,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private var filesMessage = "刷新设备当前目录"
     private var pending: Read? = null
     private data class PassportFiles(
-        val bin: File, val json: File, val expected: String, val color: Boolean,
+        val bin: File, val json: File, val expected: String, val format: PassportRasterFormat,
         val student: Boolean, val transport: String, val deviceAddress: String,
     ) {
         fun delete() { bin.delete(); json.delete() }
@@ -283,9 +283,9 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         "hardware" to if(connected) hardware?.snapshot() else null,
         "hardwareIdentitySupported" to (connected && hardwareSupported),
         "abc9PreviewSupported" to (connected && abc9PreviewSupported),
-        "studentPassportSupported" to (connected &&
-            passportCapability(runningCapabilities, CAP_PASSPORT_I006) &&
-            (passportWifiAvailable(runningCapabilities) || passportBleAvailable(runningCapabilities))),
+        "studentPassportSupported" to passportFormatAvailable(PassportRasterFormat.STUDENT_I006),
+        "studentColorFastSupported" to passportFormatAvailable(PassportRasterFormat.STUDENT_COLOR_FAST),
+        "colorPassportSupported" to passportFormatAvailable(PassportRasterFormat.OPERATOR_I006),
         "autoSleep" to autoSleep, "timedWake" to timedWake, "wakeMinutes" to wakeMinutes,
         "syncedAt" to syncedAt, "settingsMessage" to settingsMessage, "settingsBusy" to refreshing,
         "importing" to importing,
@@ -386,15 +386,15 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                     require(json.toByteArray(Charsets.UTF_8).size <= 8000000) { "本地草稿超过8MB" }
                     val draft = org.json.JSONObject(json)
                     val student = call.argument<String>("kind") == "student"
-                    if (student) {
-                        require(validatePassport(json).getInt("version") == 2) { "学生证草稿格式无效" }
-                    } else if (draft.optInt("draftVersion") == 2) {
-                        validatePassport(draft.getJSONObject("profile").toString())
+                    val wrapped = draft.optInt("draftVersion") == 2
+                    val profile = validatePassport(if (wrapped) draft.getJSONObject("profile").toString() else json)
+                    require(isStudentPassport(profile) == student) { "通行证草稿类型不匹配" }
+                    if (wrapped && !draft.isNull("avatarEditor")) {
                         val editor = draft.getJSONObject("avatarEditor")
                         val source = editor.getString("source")
                         require(source.startsWith("data:image/png;base64,") && source.length <= 6000000) { "头像源图无效" }
                         editor.getJSONObject("options")
-                    } else validatePassport(json)
+                    }
                     check(drafts.edit().putString(if (student) "student-json" else "json", json).commit()) { "草稿保存失败" }
                     result.success(null)
                 }
@@ -903,15 +903,30 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         }
         emit()
     }
+    private fun isStudentPassport(profile: org.json.JSONObject) =
+        profile.getInt("version") == 2 || (profile.getInt("version") == 3 && profile.optString("kind") == "student")
+
     private fun validatePassport(raw: String): org.json.JSONObject {
         require(raw.toByteArray(Charsets.UTF_8).size in 1..350000) { "资料大小无效" }
         val value = org.json.JSONObject(raw)
         val version = (value.opt("version") as? Number)?.toDouble()
-        require(version == 1.0 || version == 2.0) { "资料版本不支持" }
-        val student = version == 2.0
+        require(version == 1.0 || version == 2.0 || version == 3.0) { "资料版本不支持" }
+        val student = isStudentPassport(value)
+        if (version == 3.0) {
+            require(value.opt("kind") in setOf("student", "operator") &&
+                value.opt("output") in setOf("i006", "colorfast") &&
+                (!value.has("avatarMode") || value.opt("avatarMode") == "color")) { "彩色通行证类型或输出格式不支持" }
+        }
         if (student) {
             require(value.optString("template") == "rhodes-academy-student") { "学生证模板类型不支持" }
-            require(value.optString("studentOutput", "i006") in setOf("i006", "ffui")) { "学生证输出格式不支持" }
+            require(!value.has("palette") || value.opt("palette") in setOf(
+                "amiya", "sniper", "medic", "vanguard", "guard", "defender", "caster", "supporter", "specialist")) {
+                "学生证配色无效"
+            }
+            require(version != 3.0 || !value.has("studentOutput") || value.opt("studentOutput") == value.opt("output")) {
+                "学生证输出声明不一致"
+            }
+            if (version == 2.0) require(value.optString("studentOutput", "i006") in setOf("i006", "ffui")) { "学生证输出格式不支持" }
         }
         val fields = if (student) mapOf("codename" to 32, "studentNumber" to 12, "race" to 60)
             else mapOf("codename" to 32, "number" to 36, "affiliation" to 60, "signature" to 200)
@@ -922,7 +937,18 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         val numberUnset = if (student) "studentNumberUnset" else "numberUnset"
         require(value.get("codenameUnset") is Boolean && value.get(numberUnset) is Boolean) { "未设置标记无效" }
         require(value.has("avatar") && (value.isNull("avatar") || value.get("avatar") is String)) { "头像字段无效" }
-        require(!value.has("avatarMode") || value.get("avatarMode") in setOf("mono", "grayscale", "color")) { "头像显示模式无效" }
+        if (version == 3.0 && !value.isNull("avatar")) {
+            val avatar = value.getString("avatar")
+            val prefix = "data:image/png;base64,"
+            require(avatar.startsWith(prefix) && avatar.length <= 300000) { "头像必须是大小受限的 PNG" }
+            val bytes = java.util.Base64.getDecoder().decode(avatar.substring(prefix.length))
+            require(bytes.size >= 33 && bytes.copyOfRange(0, 16).contentEquals(byteArrayOf(
+                -119, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82))) { "头像 PNG 文件头无效" }
+            require(u32(bytes, 16) == (if (student) 239L else 128L) &&
+                u32(bytes, 20) == (if (student) 299L else 160L)) { "头像尺寸与通行证版式不匹配" }
+        } else if (version != 3.0) {
+            require(!value.has("avatarMode") || value.get("avatarMode") in setOf("mono", "grayscale", "color")) { "头像显示模式无效" }
+        }
         return value
     }
 
@@ -1025,6 +1051,10 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private fun passportCapability(caps: ByteArray?, bit: Long) =
         caps != null && caps.size == 5 && caps[0] == 1.toByte() && (u32(caps, 1) and bit) != 0L
 
+    private fun passportFormatAvailable(format: PassportRasterFormat) = connected &&
+        passportCapability(runningCapabilities, format.capability) &&
+        (passportWifiAvailable(runningCapabilities) || passportBleAvailable(runningCapabilities))
+
     private fun passportWifiAvailable(caps: ByteArray?) = passportCapability(caps, CAP_PASSPORT_WIFI)
 
     private fun passportBleAvailable(caps: ByteArray?) =
@@ -1058,23 +1088,23 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         val raw = requireNotNull(call.argument<String>("json")) { "缺少资料 JSON" }
         val profile = validatePassport(raw)
         val bin = requireNotNull(call.argument<ByteArray>("bin")) { "缺少位图" }
-        val student = profile.getInt("version") == 2
-        val color = !student && profile.optString("avatarMode", "mono") == "color"
-        if (student) {
-            require(profile.optString("studentOutput", "i006") == "i006" && bin.size == Abc9Preview.FILE_BYTES) {
-                "学生证需要 I006 512 色位图"
+        val student = isStudentPassport(profile)
+        val version = profile.getInt("version")
+        val format = when {
+            version == 3 && student -> if (profile.getString("output") == "colorfast")
+                PassportRasterFormat.STUDENT_COLOR_FAST else PassportRasterFormat.STUDENT_I006
+            version == 3 -> if (profile.getString("output") == "colorfast")
+                PassportRasterFormat.OPERATOR_COLOR_FAST else PassportRasterFormat.OPERATOR_I006
+            student -> {
+                require(profile.optString("studentOutput", "i006") == "i006") { "旧学生证请重新选择彩色输出" }
+                PassportRasterFormat.STUDENT_I006
             }
-        } else {
-            val version = if (color) 2.toByte() else 1.toByte()
-            require(bin.size == (if (color) 133776 else 33456) && bin.copyOfRange(0, 6).contentEquals(byteArrayOf(70,70,85,73,version,version)) &&
-                (bin[6].toInt() and 255) == 184 && (bin[7].toInt() and 255) == 1 &&
-                (bin[8].toInt() and 255) == 96 && (bin[9].toInt() and 255) == 2 &&
-                bin.copyOfRange(10,16).all { it == 0.toByte() }) { "位图必须为 440×608 FFUI v1 单色或 v2 六色文件，且与头像模式一致" }
-            val colorCodes = setOf(0, 1, 2, 3, 5, 6)
-            if (color) require(bin.asSequence().drop(16).all {
-                val b = it.toInt() and 255
-                (b ushr 4) in colorCodes && (b and 15) in colorCodes
-            }) { "彩色资料包含无效颜色编码" }
+            profile.optString("avatarMode", "mono") == "color" -> PassportRasterFormat.LEGACY_SIX_COLOR
+            else -> PassportRasterFormat.LEGACY_MONO
+        }
+        format.validate(bin, !profile.isNull("avatar"))
+        check(format.capability == 0L || passportCapability(runningCapabilities, format.capability)) {
+            "当前设备不支持${format.label}，请刷新设备信息或升级固件"
         }
         val json = raw.toByteArray(Charsets.UTF_8)
         passportPermission = true
@@ -1087,11 +1117,11 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             val files: PassportFiles
             try {
                 binFile.writeBytes(bin)
-                if (student) Abc9Preview.validate(binFile)
+                if (format == PassportRasterFormat.STUDENT_I006) Abc9Preview.validate(binFile)
                 val createdJson = File.createTempFile("passport-json-", ".json", cache)
                 jsonFile = createdJson
                 createdJson.writeBytes(json)
-                files = PassportFiles(binFile, createdJson, raw, color, student, transport, deviceAddress)
+                files = PassportFiles(binFile, createdJson, raw, format, student, transport, deviceAddress)
             } catch (error: Exception) {
                 binFile.delete(); jsonFile?.delete()
                 throw error
@@ -1133,10 +1163,8 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 else passportWifiAvailable(capabilities)
             if (!routeAvailable) {
                 finishPassport("error", "设备未确认所选的通行证传输方式，请重连后重试")
-            } else if (files.color && !passportCapability(capabilities, 1L)) {
-                finishPassport("error", "设备不支持彩色通行证，请升级固件")
-            } else if (files.student && !passportCapability(capabilities, CAP_PASSPORT_I006)) {
-                finishPassport("error", "设备不支持 I006 全屏学生证，请升级 Ark 固件")
+            } else if (files.format.capability != 0L && !passportCapability(capabilities, files.format.capability)) {
+                finishPassport("error", "设备不支持${files.format.label}，请升级 Ark 固件")
             } else startPassportFile(job, files, 0)
         }
         pending?.let { read ->
@@ -1539,23 +1567,30 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private fun downloadFirmware(call: MethodCall, result: MethodChannel.Result) {
         checkReplace()
         val url = requireNotNull(call.argument<String>("url")) { "缺少固件下载地址" }
-        val displayName = call.argument<String>("name")
+        val displayName = requireNotNull(call.argument<String>("name")) { "缺少固件资产名称" }
         val expectedTarget = requireNotNull(call.argument<String>("targetId")) { "缺少明确硬件目标，不能猜测 N4R2" }
         require(ArkHardware.knownTarget(expectedTarget)) { "尚未识别该硬件型号，不能自动选择固件" }
-        require(displayName != null && displayName.endsWith(".bin") &&
-            displayName.none { it == '/' || it.code == 92 }) { "请选择对应型号的原始 app.bin 资产" }
-        val target = java.net.URI(url)
-        require(target.scheme == "https" && target.host.equals("github.com", true) &&
-            (target.rawPath?.startsWith("/kirmisaki/FrameFilm/releases/download/") == true ||
-                target.rawPath?.startsWith("/Rafael-Ikaros/FrameFilm/releases/download/") == true ||
-                target.rawPath?.startsWith("/Rafael-ban/FrameFilm/releases/download/") == true) &&
-            target.rawPath?.endsWith("/$displayName") == true) { "固件必须来自 kirmisaki/FrameFilm（兼容旧 Rafael-Ikaros / Rafael-ban）Release" }
+        val variant = expectedTarget.substringAfterLast('-')
+        require(displayName == "frame_film_ark-$variant.bin") { "请选择对应型号的原始 app.bin 资产" }
+        val repo = requireNotNull(AppReleasePolicy.repositoryForPackage(activity.packageName.removeSuffix(".debug"))) {
+            "当前包不支持在线获取固件，可使用本地导入"
+        }
+        @Suppress("DEPRECATION")
+        val configured = activity.packageManager.getApplicationInfo(activity.packageName,
+            android.content.pm.PackageManager.GET_META_DATA).metaData?.getString(AppReleasePolicy.REPOSITORY_METADATA)
+        require(configured == repo && call.argument<String>("repository") == repo) { "固件仓库与当前 App 渠道不匹配" }
+        val tag = requireNotNull(call.argument<String>("tag")) { "缺少固件 Release 标签" }
+        val metadata = requireNotNull(call.argument<String>("metadataUrl")) { "缺少固件清单地址" }
+        AppReleasePolicy.requireAsset(metadata, repo, tag, "framefilm-ark-firmware.json")
+        AppReleasePolicy.requireAsset(url, repo, tag, displayName)
         val size = requireNotNull(call.argument<Number>("size")) { "缺少固件大小" }.toLong()
         require(size in 1..FirmwareDownloader.MAX_SIZE) { "固件大小必须在 1 B 至 16 MiB 之间" }
-        val sha256 = call.argument<String>("sha256")
-        require(sha256 == null || sha256.matches(Regex("[a-fA-F0-9]{64}"))) { "固件 SHA256 格式无效" }
-        val expectedElf = call.argument<String>("elfSha256")
-        require(expectedElf == null || expectedElf.matches(Regex("[a-fA-F0-9]{64}"))) { "清单 ELF SHA256 格式无效" }
+        val sha256 = requireNotNull(call.argument<String>("sha256")) { "缺少固件 SHA256" }
+        require(sha256.matches(Regex("[a-fA-F0-9]{64}"))) { "固件 SHA256 格式无效" }
+        val expectedElf = requireNotNull(call.argument<String>("elfSha256")) { "缺少清单 ELF SHA256" }
+        require(expectedElf.matches(Regex("[a-fA-F0-9]{64}"))) { "清单 ELF SHA256 格式无效" }
+        require(hardware?.targetId?.let { it == expectedTarget } != false) { "固件目标与当前连接的设备不匹配" }
+        val deviceAddress = session.connectedAddress
         val job = Download(FirmwareDownloader(), result)
         download = job
         importing = true
@@ -1569,7 +1604,9 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 temporary = file
                 job.file = file
                 var lastProgress = 0L
-                job.downloader.download(url, file, size, sha256) { received ->
+                job.downloader.download(url, file, size, sha256, validateUrl = {
+                    AppReleasePolicy.requireRedirect(it, repo, tag, displayName)
+                }) { received ->
                     val now = android.os.SystemClock.elapsedRealtime()
                     if (received == size || now - lastProgress >= 150) {
                         lastProgress = now
@@ -1593,7 +1630,15 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 job.downloader.checkCancelled()
                 main.post {
                     if (closed || download !== job) file.delete()
-                    else {
+                    else if (session.connectedAddress != deviceAddress ||
+                        hardware?.targetId?.let { it != expectedTarget } == true) {
+                        file.delete()
+                        download = null
+                        importing = false
+                        firmwareDownload = downloadState("error", size, size, "连接或目标已变化，请重新查询；原固件保留", false)
+                        emit()
+                        result.success(snapshot())
+                    } else {
                         replaceFirmware(file, image, displayName)
                         download = null
                         importing = false
@@ -1976,7 +2021,6 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
 
     private companion object {
         const val CAP_PASSPORT_WIFI = 1L shl 1
-        const val CAP_PASSPORT_I006 = 1L shl 11
         const val PERMISSION_REQUEST = 4207
         const val SAVE_FILM = 4212
         const val PICK_FILM = 4208

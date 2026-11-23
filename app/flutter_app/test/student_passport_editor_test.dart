@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,7 +58,7 @@ void main() {
     expect(find.text('卡面预览'), findsOneWidget);
     expect(find.text('导入 PNG 底图'), findsNothing);
     final colorSelector = tester.widget<DropdownButton<String>>(
-      find.byType(DropdownButton<String>),
+      find.byKey(const Key('student-palette')),
     );
     expect(colorSelector.value, 'amiya');
     expect(
@@ -76,7 +78,7 @@ void main() {
     expect(commands.last.arguments['kind'], 'student');
     expect(controller.profile!.codename, 'Amiya');
     tester
-        .widget<DropdownButton<String>>(find.byType(DropdownButton<String>))
+        .widget<DropdownButton<String>>(find.byKey(const Key('student-palette')))
         .onChanged!('sniper');
     await tester.pump();
     expect(controller.profile!.palette, 'sniper');
@@ -111,7 +113,9 @@ void main() {
     expect(readCount, 2);
     expect(controller.profile!.codename, 'Student');
     expect(
-      StudentPassportProfile.fromJson(commands.last.arguments['json']).codename,
+      StudentPassportProfile.fromJson(
+        jsonEncode(jsonDecode(commands.last.arguments['json'])['profile']),
+      ).codename,
       'Student',
     );
   });

@@ -89,7 +89,7 @@ App: 0.4.1+5
 - 本次 Ark 固件或 App 的变更说明。
 ```
 
-发布 ID 是独立且唯一的 `年.月.日.序号`，日期需与标题一致；`App:` 必须等于本次源码 `app/flutter_app/pubspec.yaml` 的 `version:`。固件单独更新可沿用同一个 APK 版本与构建号；App 有新版本则先提高 `pubspec.yaml` 的构建号。标题会显示 `Ark 发布 ID · App 版本+构建号`。
+发布 ID 是独立且唯一的 `年.月.日.序号`，日期需与标题一致；`App:` 必须等于本次源码 `app/flutter_app/pubspec.yaml` 的 `version:`。固件单独更新只有复用逐字节相同 APK 时可沿用版本与构建号；App 有修改或重新构建字节不同则先提高 `pubspec.yaml` 的构建号。标题会显示 `Ark 发布 ID · App 版本+构建号`。
 
 推送到 `main` 时，只有**新出现的最新正式节**会触发发布：plan job 先创建指向本次源码的 `ark-发布ID` tag，Android 与固件都从该 tag 构建，两个 job 成功后才发布。没有新增正式节的 push 及 PR 只运行 CI。只改已有正式节的文字不会重新发布。首次发布之前保持 `Unreleased` 即可。
 
@@ -109,6 +109,18 @@ App: 0.4.1+5
 
 ### App 的签名发行渠道
 
-App 更新源与设备固件源分别处理。`FRAMEFILM_APP_RELEASE_REPO` 是 Flutter 的编译参数，默认 `kirmisaki/FrameFilm`；`ark-builds.yml` 将当前 `GITHUB_REPOSITORY` 传入，保证各仓库产出的 APK 继续查询同一签名渠道的应用发布。设备 OTA 更新仍查询官方仓库。
+`FRAMEFILM_APP_RELEASE_REPO` 同时决定 Flutter App 更新与在线固件源。省略的本地配置默认 `Rafael-Ikaros/FrameFilm`（开发版 `org.framefilm.ark.flutter.dev`）；正式仓仅 `kirmisaki/FrameFilm`（正式版 `org.framefilm.ark.flutter`）。Dart、Gradle 与发布工具仅接受这两个精确仓库（大小写规范化），显式未知仓库不得默认为开发版。CI 继续传入当前 `GITHUB_REPOSITORY`，不增加 productFlavor、不改签名密钥或 provider authority。
+
+Android 以运行包和 manifest 中的编译仓库一致性决定唯一更新源，自更新页没有渠道选择，不安装另一包。debug 追加 `.debug`，不能用于发行 APK 自更新；明确配置的 debug 可测试对应仓在线固件。两个 release 包继续并存。旧 fork 若占用正式包名或签名不同，另装开发版，数据不自动迁移。App 版本候选不用于推断设备硬件，固件仍按实际硬件、OTA 大小、SHA 与 ELF 校验，清单和镜像须来自同仓同 tag 的精确 GitHub 资产；不影响 ForFilm Pages 或经典固件源。
+
+### APK 发行连续性检查
+
+`generate_app_release.cjs` 用 Android `aapt` / `apksigner verify --print-certs` 检查实际 APK：仓库→包名、pubspec 版本、minSdk 28 / targetSdk 35、非 debuggable、单发行签名证书，再生成包含 repository/tag、大小、SHA-256 和公开证书指纹的 JSON。`validate_app_release.cjs` 在上传与发布前重新核对附件，并在计划发布时读取本仓已发布的公开 metadata，拒绝降低 versionCode 或用相同 versionCode 替换不同 APK 字节；历史相反包名会跳过。固件单独发布若沿用构建号，APK 必须与既有发布逐字节一致，否则提高构建号发布新版本。不得复用编号发布修正版。
+
+- 正式仓使用本文 2026-10-31 已公开记录的证书 SHA-256 `9a623e563ef3198ee0b0bd34e3b017af69a20d013bfae093906fdf8b3de79299`，不更换 key。
+- 开发仓使用 [ark-2026.11.24.3 的已签名开发版 APK](https://github.com/Rafael-Ikaros/FrameFilm/releases/tag/ark-2026.11.24.3) 核实的证书 SHA-256 `e5c1b5305670858656fce38cea82614838992aa3326ef3166546af4f9da7245e`。两个渠道的公开指纹均记录在发布工具中，CI 使用各仓已有的签名 Secrets 生成 APK 并比对证书。
+- 仍只使用已有四项 `ANDROID_KEYSTORE_*` / `ANDROID_KEY_*` 签名 Secrets。无签名普通 CI 只产 debug 验证件；正式发布不回退 debug。该变更未读取私钥、未配置变量、未触发云端工作流或发布。
+
+本地无网络规则测试：`node --test app/flutter_app/tool/app_release.test.cjs app/flutter_app/tool/ark_release_plan.test.cjs`。`app_release_policy_test.kt` 是独立 JVM URL/渠道 probe；Flutter 更新页、metadata、固件来源测试在 `app/flutter_app/test/{app_update,release_repository,firmware_hardware}_test.dart`。本轮 Flutter SDK 执行被权限阻止，因此不将这些 Dart 用例记为通过，实体安装及另一包数据保持仍待后续授权验收。
 
 本机使用 Rafael-Ikaros 的原发行密钥时，先设置 `$env:FRAMEFILM_APP_RELEASE_REPO='Rafael-Ikaros/FrameFilm'`，再运行 `app/flutter_app/tool/flutter.ps1 build apk --release`；脚本会传入相应 dart-define。直接调用 Flutter 时，显式增加 `--dart-define=FRAMEFILM_APP_RELEASE_REPO=Rafael-Ikaros/FrameFilm`。构建仓库配置不会更换密钥；发布者仍需继续使用原签名，避免旧用户安装失败。

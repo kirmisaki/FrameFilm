@@ -11,7 +11,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('student JSON keeps its v2 schema and defaults', () {
-    final raw = jsonDecode(const StudentPassportProfile().toJson()) as Map;
+    final raw = jsonDecode(const StudentPassportProfile(version: 2, avatarMode: 'mono').toJson()) as Map;
     raw.remove('palette');
     raw.remove('studentOutput');
     final profile = StudentPassportProfile.fromJson(jsonEncode(raw));

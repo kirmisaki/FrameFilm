@@ -313,7 +313,7 @@
 
 | 通道 | 名称 | 请求 | 响应 |
 |---|---|---|---|
-| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit3=按文件名打开图片、bit4=Ark SoftAP 直传、bit5=实验 ABC9 512 色预览播放、bit6=硬件身份查询、bit7=NFC 卡包（仅 N16R8）、bit8=按目录/文件名管理文件（0x60/0x61 + 0x5B 目录3）、bit9=返回键双击截图（/sdcard/screenshot，仅 `CONFIG_ARK_SCREENSHOT=y` 固件）、bit10=480×720 全屏通行证（单色/六色；六色还需 bit0）、bit11=I006 ABC9 通行证 app profile、bit12=校验式 BLE OTA（0x6A–0x6E）、bit13=需设备确认的 BLE SD 文件上传 |
+| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit3=按文件名打开图片、bit4=Ark SoftAP 直传、bit5=实验 ABC9 512 色预览播放、bit6=硬件身份查询、bit7=NFC 卡包（仅 N16R8）、bit8=按目录/文件名管理文件（0x60/0x61 + 0x5B 目录3）、bit9=返回键双击截图（/sdcard/screenshot，仅 `CONFIG_ARK_SCREENSHOT=y` 固件）、bit10=480×720 全屏通行证（单色/六色；六色还需 bit0）、bit11=I006 ABC9 通行证 app profile、bit12=校验式 BLE OTA（0x6A–0x6E）、bit13=需设备确认的 BLE SD 文件上传、bit14=全屏 ColorFast 学生证、bit15=紧凑 I006/ColorFast 干员档案 |
 
 ### 3.16 Ark 通用 WiFi 文件上传（0x5A）
 
@@ -1568,7 +1568,7 @@ SUM  = (0x55 + 0x4E + 0x01 + 0x02) & 0xFF = 0xA6
 
 bit5 仅在 `CONFIG_ARK_EPD_ABC_PREVIEW=y`（默认）或 `CONFIG_ARK_EPD_ABC_DIAG=y`、实际 ABC9 播放路径已编译时宣告；bit0–bit4 的既有含义不变。此位只表示通用 `.film` 播放路径能播放 [实验 ABC9 容器](../film/film.md#私有-abc9-实验容器)：Format `0x7F`、720×480 单帧、`ABC9` 标记、691232 字节，LE16 低9位 A/B/C 码；不声明已完成512实色校准，也不启用诊断图生成或其他 lab 模式。客户端只有收到该位才开放实验预览上传与播放；旧固件或无该位时保留既有出图选项。
 
-当前 Ark 固件额外设置 bit8（`0x00000100`，按目录/文件名列表、删除、分块读取：0x5B 目录 3 + 0x60 + 0x61）、bit9（`0x00000200`，返回键双击截图到 `/sdcard/screenshot`）及 bit10（`0x00000400`，480×720 全屏通行证，包含 v1 单色与 v2 六色；六色还必须同时具备 bit0）。bit9 只在 `CONFIG_ARK_SCREENSHOT=y` 时设置：n4r2 默认关闭截图（同时关闭 0x61 读取），两个 ABC 开关均关闭时 flags 为 `0x0000355F`；n16r8 保持开启，含 NFC bit7、两个 ABC 开关均关闭时 flags 为 `0x000037DF`。现有 ABC9 播放路径启用时同时加 bit5 与 **bit11（`0x00000800`，I006 ABC9 通行证 app profile）**：默认 n4r2 flags 为 `0x00003D7F`，默认 n16r8 为 `0x00003FFF`。n4r2 与 n16r8 均提供 bit12（`0x00001000`，校验式 BLE OTA）和 bit13（`0x00002000`，需设备确认的 BLE SD 文件上传）。capVersion 仍为 1，命令号与既有能力位不变。**浏览器必须检查 bit11 才能把 I006 ABC9 用作 `profile.bin`，不能从 bit5、bit0、bit10、面板 ID 或版本号推断此能力**；没有 bit11 时保留 FFUI 回退，480×720 FFUI 回退仍要求 bit10，六色另需 bit0。没有 bit10 的旧固件只接受旧尺寸。
+当前 Ark 固件额外设置 bit8（`0x00000100`，按目录/文件名列表、删除、分块读取：0x5B 目录 3 + 0x60 + 0x61）、bit9（`0x00000200`，返回键双击截图到 `/sdcard/screenshot`）及 bit10（`0x00000400`，480×720 全屏通行证，包含 v1 单色与 v2 六色；六色还必须同时具备 bit0）。bit9 只在 `CONFIG_ARK_SCREENSHOT=y` 时设置：n4r2 默认关闭截图（同时关闭 0x61 读取），两个 ABC 开关均关闭时 flags 为 `0x0000355F`；n16r8 保持开启，含 NFC bit7、两个 ABC 开关均关闭时 flags 为 `0x000037DF`。现有 ABC9 播放路径启用时同时加 bit5 与 **bit11（`0x00000800`，I006 ABC9 通行证 app profile）**：默认 n4r2 flags 为 `0x00003D7F`，默认 n16r8 为 `0x00003FFF`。n4r2 与 n16r8 均提供 bit12（`0x00001000`，校验式 BLE OTA）和 bit13（`0x00002000`，需设备确认的 BLE SD 文件上传）。capVersion 仍为 1，命令号与既有能力位不变。**浏览器必须检查 bit11 才能把 I006 ABC9 用作 `profile.bin`，不能从 bit5、bit0、bit10、面板 ID 或版本号推断此能力**。新增 bit14 (`0x00004000`) 表示原生全屏 ColorFast 学生证，bit15 (`0x00008000`) 表示两种紧凑彩色干员档案均可解码。上述 flags 为新增 bit14/15 前的值；固件按实际编译能力叠加新位。新彩色编辑器缺目标位时不发送、不静默改成 FFUI。非当前编辑器生成的旧 FFUI 仍可显示，不支持 bit10 的旧固件只接受旧尺寸。
 
 通行证卡片文件仍放在 `/sdcard/app/pass/profile.bin`。学生证默认 **I006 continuous + A 水印** 由 Web 生成最终 A/B/C 码，直接上传既有 **691232B `.film` ABC9 容器**并存为该路径：32B film 头 + 691200B LE16 像素；头声明正文 691200B、物理宽高 720×480、Format `0x7F`、FrameCount=1、偏移12–15为 `ABC9`。正文每像素低9位 `A[8:6]/B[5:3]/C[2:0]`，高7位必须为零，已是原生横屏逐行存储，固件不再旋转、量化或重算水印。固件完整检查头、实际文件长度与所有码值后才替换当前卡片；复用现有 HAL ABC9 的一次清屏 + 原三相 Qual 播放，页面仅持有一份 native 正文、不另建整屏彩色缓冲。首次显示、成功单击重载与输出恢复时各播放一次；普通 LVGL invalidation、时间/电量/连接状态更新不会重复全刷或覆写单色外壳。长按休眠仍为 KEEP，文件读取、校验或分配失败保留内存中最后成功的卡片。3.2.5 版本号不变，能力由 bit11 宣告；不新增公共 film 格式或 BLE 通道。
 
@@ -1577,7 +1577,13 @@ bit5 仅在 `CONFIG_ARK_EPD_ABC_PREVIEW=y`（默认）或 `CONFIG_ARK_EPD_ABC_DI
 - v1/format1：每字节 MSB 起 8 个黑白像素（1=黑）。440×608 正文 33440B，整文件 33456B；480×720 正文 43200B，整文件 43216B。
 - v2/format2：每字节高 nibble 为左像素，色码为黑0、白1、黄2、红3、蓝5、绿6。440×608 正文 133760B，整文件 133776B；480×720 正文 172800B，整文件 172816B。
 
-旧版 440×608 继续居中显示在通行证外壳内，位置 `(20,57)` 不变。480×720 从 `(0,0)` 覆盖完整逻辑屏幕，不显示状态栏、底栏或额外页边距；单色走 LVGL I1/mono 路径，六色直接合成到整屏 ColorFast 8bpp 索引缓冲并快刷，不经黑白降色。退出页面或从彩色切回单色时清除彩色合成状态。单击确认刷新、双击确认退出、长按休眠 KEEP 的语义不变；读取缺失、损坏或不支持的资料时保留当前成功显示的卡片（全屏卡片不叠加错误文字），没有旧卡时显示原空状态。文件版本、format 与应用 ID 均不变。
+旧版 440×608 继续居中显示在通行证外壳内，位置 `(20,57)` 不变。480×720 从 `(0,0)` 覆盖完整逻辑屏幕，不显示状态栏、底栏或额外页边距；单色走 LVGL I1/mono 路径，六色直接合成到整屏 ColorFast 8bpp 索引缓冲并快刷，不经黑白降色。退出页面或从彩色切回单色时清除彩色合成状态。单击确认刷新、双击确认退出、长按休眠 KEEP 的语义不变；读取缺失、损坏或不支持的资料时保留当前成功显示的卡片（全屏卡片不叠加错误文字），没有旧卡时显示原空状态。既有 v1/v2 格式及应用 ID 不变。
+
+**ColorFast 学生证（bit14）**使用标准单帧 Format `0x03`：32 B Film 头（720×480、ColorCount=0、FrameCount=0/1、长度 345600）和 345600 B 原生逐行索引（0–63）。复用普通 ColorFast 双相 HAL，不使用六色 FFUI 调色板，也不重复旋转。
+
+**紧凑干员档案（bit15）**使用 16 B `FFUI` v3 头：偏移 4=3，偏移 5=`0x7F`（I006）或 `0x03`（ColorFast），偏移 6、8 为 LE16 440、608；偏移 10=0/1（无/有头像），11–15 为 0。头后是 33440 B 逻辑逐行 I1（MSB 为左像素、1=黑），有头像时再跟 `(20,143)` 的 128×160 逻辑逐行头像码：I006 为 LE16 0–511，ColorFast 为 u8 0–63。状态栏和底部提示仍由 UI 外壳提供。ColorFast 与 I006 使用自己的面板波形，不会静默转成旧六色卡。
+
+新版 `profile.json` 标记 `version:3`、`kind: student|operator`、`output: i006|colorfast`，头像槽尺寸分别为 239×299 和 128×160；`0x53` 的分块与 350000 字节上限不变。`profile.bin` 单独在 SD 提交和卡片加载时校验；写入 BIN 与 JSON 不构成双文件事务，JSON 回读也不等同于刷新确认。
 
 ### 4.16 Ark 通用 WiFi 文件上传（0x5A）
 

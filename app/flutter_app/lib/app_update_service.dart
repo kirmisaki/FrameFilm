@@ -49,6 +49,7 @@ class AppUpdateService {
     if (data is! List) throw const FormatException('GitHub 发布响应格式无效');
 
     AppRelease? newest;
+    final versions = <int, AppRelease>{};
     for (final release in data) {
       if (release is! Map ||
           release['draft'] == true ||
@@ -65,9 +66,10 @@ class AppUpdateService {
       final metadata = _asset(assets, channel, tag, metadataName);
       if (apk == null || metadata == null) continue;
 
-      final metadataResponse = await _client
-          .get(Uri.parse(metadata.url))
-          .timeout(const Duration(seconds: 20));
+      final metadataResponse = await getReleaseAsset(
+        _client, Uri.parse(metadata.url), repository: channel.repository,
+        tag: tag, name: metadataName,
+      );
       _checkResponse(metadataResponse);
       final details = jsonDecode(metadataResponse.body);
       if (details is Map &&
@@ -78,6 +80,9 @@ class AppUpdateService {
         continue;
       }
       if (details is! Map ||
+          (details['repository'] != null &&
+              details['repository'] != channel.repository) ||
+          (details['tag'] != null && details['tag'] != tag) ||
           details['packageName'] != channel.packageName ||
           details['apkName'] != apkName ||
           details['size'] != apk.size ||
@@ -88,7 +93,8 @@ class AppUpdateService {
           details['minSdk'] is! int ||
           (details['minSdk'] as int) <= 0 ||
           details['sha256'] is! String ||
-          !_digest.hasMatch(details['sha256'] as String)) {
+          !_digest.hasMatch(details['sha256'] as String) ||
+          (apk.digest != null && apk.digest != 'sha256:${(details['sha256'] as String).toLowerCase()}')) {
         throw const FormatException('应用发布元数据无效');
       }
       final candidate = AppRelease(
@@ -102,6 +108,13 @@ class AppUpdateService {
         size: apk.size,
         sha256: (details['sha256'] as String).toLowerCase(),
       );
+      final previous = versions[candidate.versionCode];
+      if (previous != null &&
+          (candidate.sha256 != previous.sha256 || candidate.size != previous.size ||
+           candidate.versionName != previous.versionName || candidate.minSdk != previous.minSdk)) {
+        throw const FormatException('同一 versionCode 对应冲突的 APK 元数据');
+      }
+      versions[candidate.versionCode] = candidate;
       if (newest == null ||
           candidate.versionCode > newest.versionCode ||
           (candidate.versionCode == newest.versionCode &&
@@ -112,41 +125,33 @@ class AppUpdateService {
     return newest;
   }
 
-  static ({String url, int size})? _asset(
+  static ({String url, int size, String? digest})? _asset(
     List assets,
     AppReleaseChannel channel,
     String tag,
     String expectedName,
   ) {
-    final repository = channel.repository.toLowerCase().split('/');
-    for (final asset in assets) {
-      if (asset is! Map || asset['name'] != expectedName) continue;
-      final rawUrl = asset['browser_download_url'];
-      final rawSize = asset['size'];
-      if (rawUrl is! String || rawSize is! int || rawSize <= 0) continue;
-      final uri = Uri.tryParse(rawUrl);
-      if (uri == null ||
-          uri.scheme != 'https' ||
-          uri.host != 'github.com' ||
-          uri.userInfo.isNotEmpty ||
-          uri.port != 443 ||
-          uri.hasQuery ||
-          uri.hasFragment) {
-        continue;
-      }
-      final path = uri.pathSegments;
-      if (path.length != 6 ||
-          path[0].toLowerCase() != repository[0] ||
-          path[1].toLowerCase() != repository[1] ||
-          path[2] != 'releases' ||
-          path[3] != 'download' ||
-          path[4] != tag ||
-          path[5] != expectedName) {
-        continue;
-      }
-      return (url: rawUrl, size: rawSize);
+    final matches = assets.whereType<Map>()
+        .where((asset) => asset['name'] == expectedName).toList();
+    if (matches.length > 1) {
+      throw FormatException('发布含重复资产 $expectedName');
     }
-    return null;
+    if (matches.isEmpty) return null;
+    final asset = matches.single;
+    final rawUrl = asset['browser_download_url'];
+    final rawSize = asset['size'];
+    final uri = rawUrl is String ? Uri.tryParse(rawUrl) : null;
+    if (uri == null || rawSize is! int || rawSize <= 0 ||
+        !isReleaseAssetUri(uri, repository: channel.repository, tag: tag, name: expectedName)) {
+      throw FormatException('$expectedName 的来源或大小无效');
+    }
+    final digest = asset['digest'];
+    if (digest != null && digest != '' &&
+        (digest is! String || !RegExp(r'^sha256:[a-fA-F0-9]{64}$').hasMatch(digest))) {
+      throw FormatException('$expectedName 的发布 SHA-256 无效');
+    }
+    return (url: rawUrl as String, size: rawSize,
+      digest: digest == null || digest == '' ? null : (digest as String).toLowerCase());
   }
 
   static void _checkResponse(http.Response response) {

@@ -12,28 +12,26 @@ class InstalledAppInfo {
     required this.packageName,
     required this.versionName,
     required this.versionCode,
-    this.channelVersions = const {},
+    this.repository,
+    this.updateAllowed = false,
   });
 
   factory InstalledAppInfo.fromMap(Map data) => InstalledAppInfo(
     packageName: data['packageName'] as String? ?? '',
     versionName: data['versionName'] as String? ?? '',
     versionCode: (data['versionCode'] as num?)?.toInt() ?? 0,
-    channelVersions: {
-      for (final entry in (data['channelVersions'] as Map? ?? const {}).entries)
-        if (entry.key is String && entry.value is num)
-          entry.key as String: (entry.value as num).toInt(),
-    },
+    repository: data['repository'] as String?,
+    updateAllowed: data['updateAllowed'] == true,
   );
 
   final String packageName, versionName;
   final int versionCode;
-  final Map<String, int> channelVersions;
+  final String? repository;
+  final bool updateAllowed;
 
-  int? versionFor(AppReleaseChannel channel) =>
-      packageName == channel.packageName
-      ? versionCode
-      : channelVersions[channel.packageName];
+  AppReleaseChannel? get channel => AppReleaseChannel.forPackage(packageName);
+  bool get ownsReleaseSource => updateAllowed && channel != null &&
+      channel == AppReleaseChannel.current && repository == channel!.repository;
 }
 
 class AppUpdateState {
@@ -45,6 +43,8 @@ class AppUpdateState {
     this.canCancel = false,
     this.canInstall = false,
     this.packageName,
+    this.versionName,
+    this.versionCode,
   });
 
   factory AppUpdateState.fromMap(Map data) => AppUpdateState(
@@ -55,10 +55,13 @@ class AppUpdateState {
     canCancel: data['canCancel'] == true,
     canInstall: data['canInstall'] == true,
     packageName: data['packageName'] as String?,
+    versionName: data['versionName'] as String?,
+    versionCode: (data['versionCode'] as num?)?.toInt(),
   );
 
   final String phase, message;
-  final String? packageName;
+  final String? packageName, versionName;
+  final int? versionCode;
   final int received, total;
   final bool canCancel, canInstall;
   bool get active => phase == 'downloading' || phase == 'validating';
@@ -108,6 +111,8 @@ class ChannelAppUpdatePlatform implements AppUpdatePlatform {
   @override
   Future<AppUpdateState> download(AppRelease release) =>
       _state('downloadAppUpdate', {
+        'repository': release.channel.repository,
+        'minSdk': release.minSdk,
         'url': release.url,
         'name': AppUpdateService.apkName,
         'size': release.size,
@@ -145,42 +150,21 @@ class AppUpdateController extends ChangeNotifier {
   String message = '';
   InstalledAppInfo? installed;
   AppRelease? release;
-  AppReleaseChannel _selectedChannel = AppReleaseChannel.current;
-  AppReleaseChannel get selectedChannel => _selectedChannel;
+  AppReleaseChannel get channel => AppReleaseChannel.current;
   AppUpdateState _transferState = const AppUpdateState();
   AppUpdateState get state =>
-      _transferState.packageName == selectedChannel.packageName
+      (preview || installed?.ownsReleaseSource == true) &&
+          _transferState.packageName == channel.packageName
       ? _transferState
       : const AppUpdateState();
 
   bool get supported => _platform.supported;
-  bool get canSelectChannel => !checking && !acting && !_transferState.active;
-  bool get canCheck => canSelectChannel;
-  bool get otherChannel => selectedChannel != AppReleaseChannel.current;
-  int? get _targetVersion => installed?.versionFor(selectedChannel);
-  bool get canDownload =>
-      release != null &&
-      canCheck &&
-      (state.phase == 'idle' ||
-          state.phase == 'error' ||
-          state.phase == 'cancelled') &&
-      ((preview &&
-              (_targetVersion == null ||
-                  release!.isNewerThan(_targetVersion!))) ||
-          (supported &&
-              installed != null &&
-              (otherChannel ||
-                  installed!.packageName == selectedChannel.packageName) &&
-              (_targetVersion == null ||
-                  release!.isNewerThan(_targetVersion!))));
-
-  void selectChannel(AppReleaseChannel channel) {
-    if (!canSelectChannel || _disposed || channel == selectedChannel) return;
-    _selectedChannel = channel;
-    release = null;
-    message = '';
-    _changed();
-  }
+  bool get canCheck => !checking && !acting && !_transferState.active;
+  bool get canDownload => release?.channel == channel && canCheck &&
+      (state.phase == 'idle' || state.phase == 'error' || state.phase == 'cancelled') &&
+      ((preview && release!.isNewerThan(installed?.versionCode ?? 0)) ||
+       (supported && installed?.ownsReleaseSource == true &&
+        release!.isNewerThan(installed!.versionCode)));
 
   void _changed() {
     if (!_disposed) notifyListeners();
@@ -204,6 +188,7 @@ class AppUpdateController extends ChangeNotifier {
   Future<void> refreshNative() async {
     if (preview || !supported || _disposed) return;
     try {
+      installed = null;
       installed = await _platform.getInfo();
       if (!acting) {
         final revision = _stateRevision;
@@ -227,11 +212,18 @@ class AppUpdateController extends ChangeNotifier {
     }
     if (!canCheck || _disposed) return;
     checking = true;
+    release = null;
     message = '正在查询 GitHub Releases…';
     _changed();
     try {
-      if (supported) await refreshNative();
-      final found = await _service.latest(selectedChannel);
+      if (supported) {
+        await refreshNative();
+        if (installed?.ownsReleaseSource != true) {
+          message = '当前运行包或编译仓库不匹配发行渠道，不能自更新。旧 fork 请另行安装开发版，数据不会自动迁移。';
+          return;
+        }
+      }
+      final found = await _service.latest(channel);
       if (_disposed) return;
       release = found;
       if (found == null) {
@@ -240,13 +232,7 @@ class AppUpdateController extends ChangeNotifier {
         message = '网页版仅可查看发布；安装版本未知，下载与安装需在 Android App 内操作。';
       } else if (installed == null) {
         message = '无法读取当前安装版本，请重试。';
-      } else if (!otherChannel &&
-          installed!.packageName != selectedChannel.packageName) {
-        message = '当前是 ${installed!.packageName} 调试包，请使用对应签名的安装包。';
-      } else if (_targetVersion == null) {
-        message =
-            '可安装 ${selectedChannel.label} ${found.versionName}（${found.versionCode}）。';
-      } else if (found.isNewerThan(_targetVersion!)) {
+      } else if (found.isNewerThan(installed!.versionCode)) {
         message = '发现新版 ${found.versionName}（${found.versionCode}）。';
       } else {
         message = '当前已是最新版本（按 versionCode 比较）。';
@@ -262,7 +248,7 @@ class AppUpdateController extends ChangeNotifier {
   void loadDownloadDemo() {
     if (!preview || !canCheck || _disposed) return;
     release = AppRelease(
-      channel: selectedChannel,
+      channel: channel,
       tag: '本地演示',
       versionName: '0.4.10',
       versionCode: 14,
@@ -273,7 +259,7 @@ class AppUpdateController extends ChangeNotifier {
       sha256: '',
     );
     _transferState = const AppUpdateState();
-    message = _targetVersion == release!.versionCode
+    message = installed?.versionCode == release!.versionCode
         ? '演示设备上已安装最新版。'
         : '发现演示版 ${release!.versionName}，可体验下载与安装。';
     _changed();
@@ -338,7 +324,7 @@ class AppUpdateController extends ChangeNotifier {
     if (preview) {
       _demoTimer?.cancel();
       _transferState = AppUpdateState(
-        packageName: selectedChannel.packageName,
+        packageName: channel.packageName,
         phase: 'cancelled',
         received: state.received,
         total: state.total,
@@ -369,20 +355,11 @@ class AppUpdateController extends ChangeNotifier {
     }
     if (preview) {
       final target = release;
-      final current = installed;
       if (target == null) return;
       installed = InstalledAppInfo(
-        packageName: AppReleaseChannel.current.packageName,
-        versionName: otherChannel
-            ? current?.versionName ?? '0.4.9'
-            : target.versionName,
-        versionCode: otherChannel
-            ? current?.versionCode ?? 13
-            : target.versionCode,
-        channelVersions: {
-          ...?current?.channelVersions,
-          target.channel.packageName: target.versionCode,
-        },
+        packageName: channel.packageName,
+        versionName: target.versionName,
+        versionCode: target.versionCode,
       );
       _transferState = const AppUpdateState();
       message = '已完成${target.channel.label}的模拟安装。';
@@ -485,24 +462,13 @@ class _AppUpdatePanelState extends State<AppUpdatePanel>
           const SizedBox(height: 8),
           Text('当前应用渠道：$releaseChannelLabel'),
           const SizedBox(height: 8),
-          SegmentedButton<AppReleaseChannel>(
-            segments: [
-              for (final channel in AppReleaseChannel.values)
-                ButtonSegment(value: channel, label: Text(channel.label)),
-            ],
-            selected: {c.selectedChannel},
-            onSelectionChanged: c.canSelectChannel
-                ? (selection) => c.selectChannel(selection.single)
-                : null,
-          ),
-          Text(c.selectedChannel.repository),
-          const Text('在应用内下载 APK，无需打开 GitHub 页面。下载完成后，由 Android 系统确认安装。'),
-          if (c.otherChannel)
-            Text(
-              '所选渠道的应用与当前应用独立安装，可同时保留。已有${c.selectedChannel.label}时，安装会更新该应用。',
-            ),
+          Text(c.channel.repository),
+          if (c.installed != null) Text('运行包：${c.installed!.packageName}'),
+          const Text('仅更新当前应用；两版独立并存，不在此安装另一渠道。下载完成后由 Android 系统确认安装。'),
           if (c.preview) const Text('演示模式：查询、下载和安装使用模拟数据。'),
-          if (!c.preview && !c.supported) const Text('网页版可查询所选渠道的发布，当前安装版本未知。'),
+          if (!c.preview && !c.supported) const Text('网页版可查询编译渠道的发布，当前安装版本未知。'),
+          if (c.state.canInstall && c.state.versionCode != null)
+            Text('已验证缓存：${c.state.versionName}（${c.state.versionCode}），可离线打开安装器。'),
           Text(
             c.installed == null
                 ? '当前版本：未知'
@@ -538,8 +504,6 @@ class _AppUpdatePanelState extends State<AppUpdatePanel>
                   child: Text(
                     c.state.phase == 'error' || c.state.phase == 'cancelled'
                         ? '重新下载'
-                        : c.otherChannel
-                        ? '下载${c.selectedChannel.label} APK'
                         : '应用内下载更新',
                   ),
                 ),

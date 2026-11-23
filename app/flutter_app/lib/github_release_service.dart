@@ -17,13 +17,15 @@ class GitHubFirmwareRelease {
     required this.asset,
     required this.hardware,
     required this.displayVersion,
+    required this.repository,
   });
-  final String name, tag, url, sha256, elfSha256, asset, displayVersion;
+  final String name, tag, url, sha256, elfSha256, asset, displayVersion, repository;
   final DateTime publishedAt;
   final int size;
   final HardwareIdentity hardware;
   static GitHubFirmwareRelease demoFor(HardwareIdentity hardware) =>
       GitHubFirmwareRelease(
+        repository: releaseRepository,
         name: 'DEMO 在线固件（演示）',
         tag: 'DEMO',
         publishedAt: DateTime.utc(2026, 10, 8),
@@ -39,6 +41,9 @@ class GitHubFirmwareRelease {
       );
   static final demo = demoFor(HardwareIdentity.n4r2);
   Map<String, Object?> get downloadArguments => {
+    'repository': repository,
+    'tag': tag,
+    'metadataUrl': releaseAssetUri(repository, tag, 'framefilm-ark-firmware.json').toString(),
     'url': url,
     'name': asset,
     'size': size,
@@ -54,10 +59,12 @@ class GitHubReleaseService {
     : _client = client ?? http.Client();
   final http.Client _client;
   static final _sha = RegExp(r'^[0-9a-fA-F]{64}$');
-  Future<Object?> _get(Uri url) async {
-    final response = await _client
-        .get(url, headers: {'Accept': 'application/vnd.github+json'})
-        .timeout(const Duration(seconds: 20));
+  Future<Object?> _get(Uri url, {String? tag, String? name}) async {
+    final response = tag != null && name != null
+        ? await getReleaseAsset(_client, url, repository: releaseRepository, tag: tag, name: name)
+        : await _client
+            .get(url, headers: {'Accept': 'application/vnd.github+json'})
+            .timeout(const Duration(seconds: 20));
     if (response.statusCode == 403 || response.statusCode == 429) {
       throw Exception('GitHub 请求受限，请稍后重试（${response.statusCode}）');
     }
@@ -77,6 +84,8 @@ class GitHubReleaseService {
     final asset = _asset(release, 'framefilm-ark-firmware.json');
     final manifest = await _get(
       Uri.parse(asset['browser_download_url'] as String),
+      tag: release['tag_name'] as String,
+      name: 'framefilm-ark-firmware.json',
     );
     return selectFirmware(release, manifest, hardware!);
   }
@@ -116,8 +125,8 @@ class GitHubReleaseService {
           assets.single['browser_download_url']?.toString() ?? '',
         );
     if (url == null ||
-        url.scheme != 'https' ||
-        url.host.isEmpty ||
+        !isReleaseAssetUri(url, repository: releaseRepository,
+          tag: release['tag_name']?.toString() ?? '', name: name) ||
         asset['size'] is! int ||
         (asset['size'] as int) <= 0) {
       throw FormatException('$name 的下载地址或大小无效，请联系维护者修复发布');
@@ -182,6 +191,7 @@ class GitHubReleaseService {
     }
     final asset = _asset(release, entry['asset'] as String);
     return GitHubFirmwareRelease(
+      repository: releaseRepository,
       name: release['name']?.toString() ?? '',
       tag: release['tag_name']?.toString() ?? '',
       publishedAt: DateTime.parse(release['published_at'] as String),
