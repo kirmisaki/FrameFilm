@@ -1453,14 +1453,15 @@ static void tg_on_key(input_press_type_t key)
     switch(m_screen)
     {
     case TG_SCR_PET:
+        /* 方向与主菜单一致：上 = 下一项（向右），下 = 上一项（向左） */
         if(key == INPUT_PRESS_UP)
         {
-            m_icon = (uint8_t)((m_icon + TG_ICON_NUM - 1) % TG_ICON_NUM);
+            m_icon = (uint8_t)((m_icon + 1) % TG_ICON_NUM);
             tg_refresh();
         }
         else if(key == INPUT_PRESS_DOWN)
         {
-            m_icon = (uint8_t)((m_icon + 1) % TG_ICON_NUM);
+            m_icon = (uint8_t)((m_icon + TG_ICON_NUM - 1) % TG_ICON_NUM);
             tg_refresh();
         }
         else if(key == INPUT_PRESS_SHORT)
