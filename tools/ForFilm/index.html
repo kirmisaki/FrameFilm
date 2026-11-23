@@ -1330,7 +1330,7 @@
                                 <option value="local">本地文件</option>
                             </select>
                         </div>
-                        <button class="secondary-button" id="fw-detect-btn" type="button" onclick="detectSerialDevice()">检测串口</button>
+                        <button class="secondary-button" id="fw-detect-btn" type="button" onclick="detectSerialDevice()" title="固定使用 115200，不写入 Flash；设备会复位">检测串口</button>
                     </div>
                     <div class="action-controls" id="fw-online-options">
                         <div class="field fw-select-field">
@@ -1369,7 +1369,7 @@
                     <div id="fw-file-list" class="fw-file-list" hidden></div>
                     <div class="fw-options">
                         <div class="field fw-select-field">
-                            <label for="fw-baud">波特率</label>
+                            <label for="fw-baud">烧录波特率</label>
                             <select id="fw-baud">
                                 <option value="115200">115200（最稳）</option>
                                 <option value="460800" selected>460800（推荐）</option>
