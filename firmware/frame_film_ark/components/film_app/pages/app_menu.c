@@ -103,6 +103,9 @@ static const menu_item_t MENU_ITEMS[APP_MENU_ENTRY_NUM] = {
     { "模板",   "TPL", "显示实时推送的天气与日历内容",   "实时内容", "接收手机推送",       UI_ICON_TEMPLATE },
     { "时钟",   "CLK", "查看设备时间、日期与星期",       "时间显示", "保持设备时间同步",   UI_ICON_CLOCK },
     { "动图",   "ANI", "播放多帧画面，支持调整速度",     "连续播放", "设置中调整播放参数", UI_ICON_ANIMATION },
+#if (SYS_NFC_ENABLE == 1)
+    { "宠物",   "PET", "养育电子宠物：喂食 / 游戏 / 管教", "电子宠物", "上下选图标 确认执行", UI_ICON_TAMAGO },
+#endif
     { "设置",   "SET", "设备信息、连接与系统参数",       "系统管理", "确认键修改当前选项", UI_ICON_SETTINGS },
 };
 static const menu_item_t MENU_ITEMS_EN[APP_MENU_ENTRY_NUM] = {
@@ -114,6 +117,9 @@ static const menu_item_t MENU_ITEMS_EN[APP_MENU_ENTRY_NUM] = {
     {"TEMPLATE", "TPL", "LIVE PUSH CONTENT / WEATHER, CALENDAR", "DIRECT", "MONO SESSION REBUILD", UI_ICON_TEMPLATE},
     {"CLOCK", "CLK", "DEVICE TIME / DATE AND WEEKDAY", "UI", "UI PAGE (LOW COST)", UI_ICON_CLOCK},
     {"ANIMATION", "ANI", "FRAME ANIMATION / ADJUSTABLE RATE", "DIRECT", "MONO SESSION REBUILD", UI_ICON_ANIMATION},
+#if (SYS_NFC_ENABLE == 1)
+    {"TAMAGO", "PET", "RAISE A PET / FEED, PLAY, DISCIPLINE", "UI", "UP/DOWN PICK, ENTER RUN", UI_ICON_TAMAGO},
+#endif
     {"SETTINGS", "SET", "DEVICE INFO AND SYSTEM PARAMETERS", "UI", "UI PAGE (LOW COST)", UI_ICON_SETTINGS},
 };
 
