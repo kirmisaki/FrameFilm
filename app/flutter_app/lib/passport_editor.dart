@@ -30,9 +30,11 @@ class PassportEditor extends StatefulWidget {
     this.saveDraft,
     this.pickAvatar,
     this.controller,
+    this.canSend = true,
   });
   final PassportEditorController? controller;
   final bool canOperate, busy;
+  final bool canSend;
   final Map<String, Object?> operation;
   final Future<void> Function() onRead;
   final Future<void> Function(String, Uint8List) onSave;
@@ -455,6 +457,7 @@ class _PassportEditorState extends State<PassportEditor> {
             FilledButton(
               onPressed:
                   widget.canOperate &&
+                      widget.canSend &&
                       !_locked &&
                       errors.isEmpty &&
                       _raster != null &&
@@ -465,7 +468,7 @@ class _PassportEditorState extends State<PassportEditor> {
                       return widget.onSave(json, bin);
                     })
                   : null,
-              child: const Text('WiFi 发送资料'),
+               child: const Text('发送资料'),
             ),
             if (op['canRetry'] == true)
               OutlinedButton(
@@ -496,7 +499,7 @@ class _PassportEditorState extends State<PassportEditor> {
         if (_status.isNotEmpty) Text(_status),
         const SizedBox(height: 8),
         const Text(
-          'App 通过 WiFi 直传档案画面和资料，蓝牙用于控制和回读。取消后等待清理完成；重试会从上次上传的第一份文件开始。需要支持 WiFi 文件上传的固件。',
+           '档案可通过 Wi-Fi 或蓝牙发送。设备保存后会回读资料，取消后请等待清理完成。',
         ),
       ],
     );

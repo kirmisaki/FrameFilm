@@ -542,6 +542,7 @@ class FrameQuickPage extends StatefulWidget {
     required this.pickImages,
     required this.captureImage,
     required this.sendFilm,
+    this.sendBatchFilm,
     required this.cancelSend,
     required this.canSend,
     this.battery,
@@ -551,6 +552,7 @@ class FrameQuickPage extends StatefulWidget {
   final PickFrameImages pickImages;
   final CaptureFrameImage captureImage;
   final SendFrameFilm sendFilm;
+  final SendFrameFilm? sendBatchFilm;
   final CancelFrameSend cancelSend;
   final bool canSend;
   final int? battery;
@@ -779,7 +781,7 @@ class _FrameQuickPageState extends State<FrameQuickPage> {
           icon: const Icon(Icons.add_photo_alternate_outlined),
           label: const Text('一次选多张'),
         ),
-        const Text('可多选，按顺序逐张转换并写入设备。当前 WiFi 传输每张完成后都会显示。'),
+        const Text('可多选，按顺序逐张转换并发送到设备。'),
         const SizedBox(height: 16),
         Text('待传片单 · ${c.batch.length} 张'),
         if (c.batch.isEmpty) const Text('还没有选择照片'),
@@ -813,7 +815,10 @@ class _FrameQuickPageState extends State<FrameQuickPage> {
         FilledButton.icon(
           onPressed: c.busy || !widget.canSend || !c.hasPendingBatch
               ? null
-              : () => c.sendBatch(_batchPrefix.text, widget.sendFilm),
+              : () => c.sendBatch(
+                  _batchPrefix.text,
+                  widget.sendBatchFilm ?? widget.sendFilm,
+                ),
           icon: const Icon(Icons.send_outlined),
           label: const Text('开始批量上传'),
         ),

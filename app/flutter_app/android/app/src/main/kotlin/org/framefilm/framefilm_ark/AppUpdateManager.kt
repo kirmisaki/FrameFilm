@@ -24,6 +24,13 @@ internal class AppUpdateManager(private val activity: Activity, private val chan
     private val worker = Executors.newSingleThreadExecutor()
     private val directory = File(activity.cacheDir, "app-update").apply { mkdirs() }
     private val apk = File(directory, "update.apk")
+    private val prepared = activity.getSharedPreferences("app-update", Activity.MODE_PRIVATE)
+    private data class Release(
+        val packageName: String,
+        val versionCode: Long,
+        val versionName: String,
+        val size: Long,
+    )
     @Volatile private var closed = false
     private class Job() {
         val cancelled = AtomicBoolean(false)
@@ -39,15 +46,26 @@ internal class AppUpdateManager(private val activity: Activity, private val chan
     }
     private var job: Job? = null
     private var ready = false
+    private var target: Release? = null
     private var state: Map<String, Any?> = state("idle", 0, 0, "从 GitHub Release 检查 App 更新")
 
     init {
         directory.listFiles()?.filter { it.name.endsWith(".part") }?.forEach { it.delete() }
         if (apk.exists()) {
-            runCatching { inspect(apk) }.onSuccess { info ->
+            runCatching {
+                val release = Release(
+                    requireNotNull(prepared.getString("packageName", null)),
+                    prepared.getLong("versionCode", 0),
+                    requireNotNull(prepared.getString("versionName", null)),
+                    prepared.getLong("size", 0),
+                )
+                val info = inspect(apk, release)
+                target = release
+                info
+            }.onSuccess { info ->
                 ready = true
                 state = state("ready", apk.length(), apk.length(), "已恢复下载的 App 安装包") + info
-            }.onFailure { apk.delete() }
+            }.onFailure { clearPrepared() }
         }
     }
 
@@ -57,48 +75,80 @@ internal class AppUpdateManager(private val activity: Activity, private val chan
     fun appInfo(): Map<String, Any?> {
         val info = activity.packageManager.getPackageInfo(activity.packageName, 0)
         return mapOf("packageName" to info.packageName, "versionName" to info.versionName,
-            "versionCode" to info.longVersionCode, "canRequestPackageInstalls" to activity.packageManager.canRequestPackageInstalls())
+            "versionCode" to info.longVersionCode,
+            "channelVersions" to repositories.keys.mapNotNull { name ->
+                installedPackage(name, 0)?.let { name to it.longVersionCode }
+            }.toMap(),
+            "canRequestPackageInstalls" to activity.packageManager.canRequestPackageInstalls())
     }
 
     private fun state(phase: String, received: Long, total: Long, message: String,
                       canCancel: Boolean = false): Map<String, Any?> = mapOf(
         "phase" to phase, "received" to received, "total" to total, "message" to message,
-        "canCancel" to canCancel, "canInstall" to ready)
+        "canCancel" to canCancel, "canInstall" to ready, "packageName" to target?.packageName)
+
+    private fun clearPrepared() {
+        apk.delete()
+        prepared.edit().clear().apply()
+    }
 
     @Suppress("DEPRECATION")
-    private fun inspect(file: File): Map<String, Any?> {
+    private fun installedPackage(packageName: String, flags: Int) = try {
+        activity.packageManager.getPackageInfo(packageName, flags)
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun inspect(file: File, release: Release): Map<String, Any?> {
         val pm = activity.packageManager
+        require(file.length() == release.size) { "APK 大小与 Release 不一致" }
         val archive = requireNotNull(pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)) { "下载文件不是有效 APK" }
-        val installed = pm.getPackageInfo(activity.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-        require(archive.packageName == installed.packageName) { "APK 包名与当前 App 不一致（${installed.packageName} → ${archive.packageName}）；开发版 .dev 与正式版不能覆盖更新，请使用对应渠道安装包" }
+        require(archive.packageName == release.packageName) { "APK 包名与所选渠道不一致（${release.packageName} → ${archive.packageName}）" }
+        require(archive.longVersionCode == release.versionCode && archive.versionName == release.versionName) { "APK 版本与 Release 不一致" }
         require((archive.applicationInfo?.minSdkVersion ?: 28) <= android.os.Build.VERSION.SDK_INT) { "新版本不支持当前 Android 系统" }
-        require(archive.longVersionCode > installed.longVersionCode) { "当前 App 已是相同或更新版本" }
         val signing = requireNotNull(archive.signingInfo) { "APK 缺少签名信息" }
-        val current = requireNotNull(installed.signingInfo) { "无法读取当前 App 签名" }
-        val currentSigners = current.apkContentsSigners.toSet()
-        val compatible = if (current.hasMultipleSigners() || signing.hasMultipleSigners()) {
-            currentSigners == signing.apkContentsSigners.toSet()
-        } else {
-            currentSigners.all { it in signing.signingCertificateHistory.toSet() }
+        require(signing.apkContentsSigners.isNotEmpty()) { "APK 缺少签名证书" }
+        installedPackage(release.packageName, PackageManager.GET_SIGNING_CERTIFICATES)?.let { installed ->
+            require(archive.longVersionCode > installed.longVersionCode) { "所选渠道已安装相同或更新版本" }
+            val current = requireNotNull(installed.signingInfo) { "无法读取已安装应用的签名" }
+            val currentSigners = current.apkContentsSigners.toSet()
+            val compatible = if (current.hasMultipleSigners() || signing.hasMultipleSigners()) {
+                currentSigners == signing.apkContentsSigners.toSet()
+            } else {
+                currentSigners.all { it in signing.signingCertificateHistory.toSet() }
+            }
+            require(compatible) { "APK 签名与所选渠道已安装应用的签名不兼容，请使用相同签名的 Release" }
         }
-        require(compatible) { "APK 签名与当前 App 不兼容，无法覆盖安装；若项目已更换发行签名，请先卸载旧版（会清除 App 本地资料）再安装，或使用与已安装版本相同签名的 Release" }
         return mapOf("packageName" to archive.packageName, "versionName" to archive.versionName, "versionCode" to archive.longVersionCode)
     }
 
     fun download(call: MethodCall, result: MethodChannel.Result) {
         check(job == null) { "App 更新下载正在进行" }
+        val packageName = requireNotNull(call.argument<String>("packageName")) { "缺少渠道包名" }
+        val repository = requireNotNull(repositories[packageName]) { "应用更新渠道无效" }
+        val tag = requireNotNull(call.argument<String>("tag")) { "缺少 Release 标签" }
         val url = requireNotNull(call.argument<String>("url")) { "缺少 APK 下载地址" }
         val uri = java.net.URI(url)
+        val path = uri.rawPath?.split("/") ?: emptyList()
         require(uri.scheme == "https" && uri.host.equals("github.com", true) &&
-            (uri.rawPath?.startsWith("/kirmisaki/FrameFilm/releases/download/") == true ||
-                uri.rawPath?.startsWith("/Rafael-Ikaros/FrameFilm/releases/download/") == true ||
-                uri.rawPath?.startsWith("/Rafael-ban/FrameFilm/releases/download/") == true) &&
-            uri.path?.endsWith(".apk", true) == true) { "App 必须来自 kirmisaki/FrameFilm（兼容旧 Rafael-Ikaros / Rafael-ban）GitHub Release APK" }
+            (uri.port == -1 || uri.port == 443) && uri.rawUserInfo == null &&
+            uri.rawQuery == null && uri.rawFragment == null && path.size == 7 &&
+            "${path[1]}/${path[2]}".equals(repository, true) &&
+            path[3] == "releases" && path[4] == "download" &&
+            tag.isNotEmpty() && Uri.decode(path[5]) == tag &&
+            path[6] == "framefilm-ark-flutter.apk") { "APK 必须来自所选渠道的 GitHub Release" }
         val size = requireNotNull(call.argument<Number>("size")).toLong()
         require(size in 1..MAX_SIZE) { "APK 大小必须在 1 B 至 100 MiB 之间" }
-        val sha256 = call.argument<String>("sha256")
-        require(sha256 == null || sha256.matches(Regex("[a-fA-F0-9]{64}"))) { "APK SHA256 格式无效" }
-        ready = false; apk.delete()
+        val versionCode = requireNotNull(call.argument<Number>("versionCode")).toLong()
+        val versionName = requireNotNull(call.argument<String>("versionName"))
+        require(versionCode > 0 && versionName.isNotEmpty()) { "Release 版本无效" }
+        val sha256 = requireNotNull(call.argument<String>("sha256"))
+        require(sha256.matches(Regex("[a-fA-F0-9]{64}"))) { "APK SHA256 格式无效" }
+        val release = Release(packageName, versionCode, versionName, size)
+        target = release
+        ready = false
+        clearPrepared()
         val active = Job(); job = active
         state = state("downloading", 0, size, "正在从 GitHub 下载 App", true); changed()
         result.success(state)
@@ -109,7 +159,7 @@ internal class AppUpdateManager(private val activity: Activity, private val chan
                 val file = File.createTempFile("app-", ".part", directory); temporary = file; active.file = file
                 copy(active, url, file, size, sha256)
                 main.post { if (!closed && job === active) { state = state("validating", size, size, "正在检查 APK 包名、版本与签名", true); changed() } }
-                val info = inspect(file)
+                val info = inspect(file, release)
                 active.check()
                 main.post {
                     if (closed || job !== active) file.delete()
@@ -118,6 +168,12 @@ internal class AppUpdateManager(private val activity: Activity, private val chan
                             file.delete(); job = null
                             state = state("error", size, size, "无法保存下载的 APK，请重试")
                         } else {
+                            prepared.edit()
+                                .putString("packageName", release.packageName)
+                                .putLong("versionCode", release.versionCode)
+                                .putString("versionName", release.versionName)
+                                .putLong("size", release.size)
+                                .apply()
                             job = null; ready = true
                             state = state("ready", size, size, "App 安装包已准备好，请确认安装") + info
                         }
@@ -135,7 +191,7 @@ internal class AppUpdateManager(private val activity: Activity, private val chan
         }
     }
 
-    private fun copy(active: Job, address: String, file: File, size: Long, expected: String?) {
+    private fun copy(active: Job, address: String, file: File, size: Long, expected: String) {
         var target = URL(address)
         for (redirect in 0..8) {
             active.check()
@@ -173,7 +229,7 @@ internal class AppUpdateManager(private val activity: Activity, private val chan
                 } }
                 require(received == size) { "APK 下载不完整，请重试" }
                 val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
-                require(expected == null || actual.equals(expected, true)) { "APK SHA256 与 Release 不一致" }
+                require(actual.equals(expected, true)) { "APK SHA256 与 Release 不一致" }
                 active.check(); return
             } finally { http.disconnect(); active.connection = null }
         }
@@ -188,8 +244,18 @@ internal class AppUpdateManager(private val activity: Activity, private val chan
     }
 
     fun install(result: MethodChannel.Result) {
-        check(ready && apk.isFile && job == null) { "请先下载兼容的新版本 APK" }
-        inspect(apk)
+        check(ready && job == null) { "请先下载兼容的新版本 APK" }
+        val release = checkNotNull(target)
+        try {
+            inspect(apk, release)
+        } catch (error: Exception) {
+            ready = false
+            clearPrepared()
+            state = state("error", 0, 0, error.message ?: "安装包无法使用，请重新下载")
+            changed()
+            result.success(state)
+            return
+        }
         if (!activity.packageManager.canRequestPackageInstalls()) {
             activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")))
             state = state + mapOf("phase" to "permission_required", "message" to "请在系统设置允许此 App 安装应用，返回后点击安装")
@@ -212,5 +278,11 @@ internal class AppUpdateManager(private val activity: Activity, private val chan
         // A prepared APK remains readable while the system installer is open.
         // Next launch restores compatible ready APKs and deletes obsolete files.
     }
-    companion object { const val MAX_SIZE = 100L * 1024 * 1024 }
+    companion object {
+        const val MAX_SIZE = 100L * 1024 * 1024
+        private val repositories = mapOf(
+            "org.framefilm.ark.flutter" to "kirmisaki/FrameFilm",
+            "org.framefilm.ark.flutter.dev" to "Rafael-Ikaros/FrameFilm",
+        )
+    }
 }

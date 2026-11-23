@@ -14,7 +14,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
-        android:label="FrameFilm Ark Flutter"
+        android:label="${framefilmAppLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <provider
@@ -61,6 +61,8 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <package android:name="org.framefilm.ark.flutter" />
+        <package android:name="org.framefilm.ark.flutter.dev" />
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

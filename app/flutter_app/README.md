@@ -4,11 +4,32 @@ Flutter 共用界面、Android BLE 桥接与 film / 固件 Wi-Fi Direct 传输�
 
 ## 当前范围
 
-### App 统一 WiFi 上传（当前开发）
+### 发布渠道
 
-Android App 的文件上传统一使用 Wi-Fi Direct：Frame（含批量）、Film 和动画使用既有 film 直传，固件升级使用 WiFi OTA，通行证位图及 JSON 使用新增的指定路径文件直传。BLE 保留连接、控制、状态查询与资料回读。ForFilm 网页上传保持 BLE，未增加 WiFi 上传入口。
+本地构建默认使用开发版。CI 用构建仓库设定 App 更新、在线固件和项目链接的来源。
 
-通行证要求固件 `0x59` 能力 bit1；不支持时提示先升级固件，不自动退回 BLE。App 依次上传 `app/pass/profile.bin`、`app/pass/profile.json`，逐个等待设备保存与网络清理，再回读 JSON 核对。两文件不是原子事务；中断会显示部分完成状态，“重试上次上传”使用缓存从第一份文件重传。临时文件在替换、成功或退出后释放，进程重启清理遗留缓存。编译与模拟测试不代表真实 WiFi/SD/屏幕验收。
+| 渠道 | GitHub 仓库 | Android 包名 |
+| --- | --- | --- |
+| 开发版 | `Rafael-Ikaros/FrameFilm` | `org.framefilm.ark.flutter.dev` |
+| 正式版 | `kirmisaki/FrameFilm` | `org.framefilm.ark.flutter` |
+
+两版可以并存，各自检查本渠道的更新。早期 fork APK 沿用正式版包名，首次迁移时需下载开发版 APK 另行安装，两份应用的数据各自保存。
+
+### 学生证
+
+在通行证页选择「学生证」，即可预览卡面并编辑头像、代号、学号和种族。App 内置 720×480 底图和九套配色，默认「阿米娅」。配色随学生证草稿保存，切换时保留照片与资料。底图源自 M_STA 制作的罗德岛学院证件 PSD，原设计归鹰角网络/HYPERGRYPH。
+
+生成的卡面使用 I006 512 色与 A 档水印。Ark 需支持 I006 通行证（`0x59` bit11），并支持 Wi-Fi 上传或带回执的蓝牙 SD 写入。
+
+### Android 传输方式
+
+默认自动模式优先使用已知可用的 Wi-Fi。连接后可在图片、Film、动画、通行证页面选择「蓝牙模式」。支持带回执的蓝牙 SD 写入（`0x59` bit13）的 Ark 可通过蓝牙接收普通图、高级色彩、批量图片、动图及两种通行证。旧固件仍可通过已有蓝牙通道接收普通单帧二值或六色图片。
+
+新版固件逐包确认已写入的字节，提交后还会核对 SD 目录。旧固件只能以目录项确认保存。写入结果不明时会保留待确认状态，避免重复发送。
+
+固件可选 Wi-Fi 或蓝牙升级。蓝牙备选要求设备提供新版校验式 OTA 能力（`0x59` bit12），并返回可核验的硬件型号和 OTA 分区容量。设备校验镜像长度、SHA-256 和硬件目标后才接受激活，App 在重连后核对完整构建指纹。旧固件可先用现有 Wi-Fi 升级或 USB 安装兼容版本。
+
+App 依次上传 `app/pass/profile.bin`、`app/pass/profile.json`，确认设备保存后再逐字节回读 JSON。中途失败会显示部分完成状态。「重试上次上传」沿用原设备和传输方式，从第一份文件重传。
 
 本轮验证：通行证取消、重试和清理未确认时的恢复入口共 3 项 Flutter 测试通过；通行证上传与 Film/OTA 页面隔离测试通过；原始文件 HTTP 字节及路径 host probe 通过；ESP-IDF 5.5.2 固件构建通过。Android 使用当前 Flutter Gradle wrapper 检查 arm64 Kotlin 编译，未打包或安装 APK。实机仍需同时更新 App 与固件后验证两文件上传、取消与重试。
 
@@ -77,7 +98,7 @@ $env:JAVA_HOME = 'C:/Program Files/Java/jdk-25' # 本机安装路径；其他电
 python -m http.server 8770 --bind 127.0.0.1 --directory D:/dev-tool/FrameFilm-build/flutter/web
 ```
 
-模拟模式顶部始终显示“模拟设备 / 演示数据，不会连接或修改真实设备”。连接页扫描并连接模拟 Ark 后，在 Film 页选择演示文件并直传，或到设置页选择演示固件并检查升级；无需连接手机或 Ark。
+模拟模式顶部始终显示“模拟设备 / 演示数据，不会连接或修改真实设备”。连接模拟 Ark 后，可用 App 的同一套入口体验图片传输与设备文件管理、动画、通行证、设备设置、Wi-Fi 或蓝牙固件升级，以及正式版和开发版的应用更新。
 
 - 正常流程：演示进度、提交及 OTA 重启后确认；传输期间可取消并从头重试。
 - 传输失败（重试恢复）：首次传输中断，清理后重试成功。
@@ -85,7 +106,7 @@ python -m http.server 8770 --bind 127.0.0.1 --directory D:/dev-tool/FrameFilm-bu
 - 相同构建（跳过升级）：演示无需升级的结果，不启动传输。
 - 切换场景或点击“重置演示”会取消演示计时器，并清空模拟连接、文件及传输状态。页面关闭释放模拟器。
 
-演示文件仅为内存元信息，不读取本地文件，不发送真实 BLE/WiFi/OTA 命令。模拟验证用于页面与状态交互，不代表硬件功能通过；真实文件解析、权限、蓝牙、Wi-Fi Direct 和 Flash 升级仍需 Android 构建及实机验收。动画编辑和高级图片算法仍是后续功能。GitHub 在线固件功能见下节。
+设备文件、升级包和安装结果由模拟设备提供。照片导入、卡面预览和图像导出可使用浏览器本地文件。Android 权限对话框、系统安装器和真实无线连接需在 Android 上验收。
 
 ## 验证记录（2026-10-08）
 
@@ -236,7 +257,7 @@ SZ 使用计算时间片控制让出，避免每 32 像素强制 timer 导致 We
 ## 设置、关于与 App 更新（2026-10-09，C8）
 
 - 连接信息显示在连接页；设置页依次容纳设备文件、设备设置、遥控、固件升级、界面主题、App 更新与关于；关于位于最底。关于页署名 App 开发维护 · Rafael-ban，提供 [作者 GitHub 主页](https://github.com/Rafael-ban)、[项目源码](https://github.com/Rafael-ban/FrameFilm)、反馈入口和 GPL-3.0 许可展示。
-- 设置 → 应用更新从公开 GitHub Releases 最近 20 个正式发布中查找精确的 `framefilm-ark-flutter.apk` 与 `framefilm-ark-flutter.json`。发布源固定为 `kirmisaki/FrameFilm`（下载地址兼容旧 `Rafael-Ikaros`、`Rafael-ban`）。元数据记录 APK 包名、versionName、versionCode、最低系统版本、大小和 SHA-256；用 Android 当前安装包的 `versionCode` 判断是否有新版本，固件升级仍按实际 ELF 指纹判断。Web 仅查询，演示设备模式只模拟下载和安装。更换发行签名后，旧签名安装包需卸载后重新安装一次。
+- 设置 → 应用更新可查询正式版和开发版。两版分别读取 `kirmisaki/FrameFilm` 与 `Rafael-Ikaros/FrameFilm` 的发布。Android 对所选渠道的安装包比较版本号并校验包名、签名、大小和 SHA-256。两版包名独立，可以并存。当前 App 的在线固件来源与其构建渠道一致。
 - Android 更新流程显示下载字节进度，支持取消和失败后重新下载；下载后核对大小、SHA-256、APK 包名、系统版本、versionCode 与现有 App 签名，再由用户打开 Android 系统安装器确认安装。需要安装未知应用权限时跳转系统设置，返回后可继续。下载包暂存在 App 缓存，清除未完成临时文件；已准备好的兼容包可在下次启动恢复。安装是否完成仍以系统结果为准。
 - CI 手动发布须先配置 `ARK_DEBUG_KEYSTORE_BASE64`，使用与现有 App 相同的临时 debug 签名；缺少该 Secret 时发布构建失败。提交 `4fa8e77` 已推送，[Actions #37910525382](https://github.com/Rafael-ban/FrameFilm/actions/runs/37910525382) 的 APK 与 Ark 固件构建均通过；APK 为 0.4.0+4，最低 Android 9，59,475,012 字节。此次未发布 Release，App 内覆盖安装尚未验收。此前 C7 的算法、动画、设备文件与主题检查仍按上方矩阵的验证边界理解，不代表全部 UI 逐像素一致。
 
@@ -244,4 +265,4 @@ SZ 使用计算时间片控制让出，避免每 32 像素强制 timer 导致 We
 
 设置 → 应用更新 → 检查更新 → 应用内下载更新 → 打开系统安装器。Android 复用已有 AppUpdateManager 下载 APK，无需跳转 GitHub 网页；下载显示百分比与 MiB，支持取消及从头重试。下载/校验期间暂停检查更新，防止界面上的发布信息与当前下载任务混淆。
 
-Web `?preview=1` 的“体验下载流程”提供明确标注的本地演示安装包，可在没有正式 Release 时检查进度、取消、重试、准备安装界面；不会进行真实 APK 下载或安装。真实更新仍须仓库 Release 提供 APK 与 JSON 元数据，且安装包签名与当前 App 兼容。Android 系统安装确认不能由网页模拟验收代替。
+Web `?preview=1` 使用本地演示发布，可以切换渠道、检查更新、下载、取消、重试并模拟安装。真实更新由对应仓库 Release 提供 APK 与 JSON 元数据，实际安装由 Android 系统确认。

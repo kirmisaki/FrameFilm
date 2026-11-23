@@ -8,6 +8,7 @@ import 'package:framefilm_ark/app.dart';
 import 'package:framefilm_ark/device_gateway.dart';
 import 'package:framefilm_ark/github_release_service.dart';
 import 'package:framefilm_ark/preview_device_gateway.dart';
+import 'package:framefilm_ark/release_repository.dart';
 
 import 'widget_test.dart' show FakeGateway, openPage;
 
@@ -59,10 +60,7 @@ void main() {
           client: MockClient((request) async {
             requests++;
             if (request.url.host == 'api.github.com') {
-              expect(
-                request.url.path,
-                '/repos/kirmisaki/FrameFilm/releases',
-              );
+              expect(request.url.path, '/repos/$releaseRepository/releases');
               return http.Response(
                 jsonEncode([
                   release(date: '2027-01-01', prerelease: true),

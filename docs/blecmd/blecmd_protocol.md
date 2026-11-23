@@ -313,7 +313,7 @@
 
 | 通道 | 名称 | 请求 | 响应 |
 |---|---|---|---|
-| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit3=按文件名打开图片、bit4=Ark SoftAP 直传、bit5=实验 ABC9 512 色预览播放、bit6=硬件身份查询、bit7=NFC 卡包（仅 N16R8）、bit8=按目录/文件名管理文件（0x60/0x61 + 0x5B 目录3）、bit9=返回键双击截图（/sdcard/screenshot，仅 `CONFIG_ARK_SCREENSHOT=y` 固件）、bit10=480×720 全屏通行证（单色/六色；六色还需 bit0）、bit11=I006 ABC9 通行证 app profile |
+| 0x59 | CAPABILITIES_GET | 空 | 版本 1(u8) + flags(u32 BE)，bit0=彩色通行证、bit1=通用 WiFi 文件上传、bit2=只读 SD 目录与统计、bit3=按文件名打开图片、bit4=Ark SoftAP 直传、bit5=实验 ABC9 512 色预览播放、bit6=硬件身份查询、bit7=NFC 卡包（仅 N16R8）、bit8=按目录/文件名管理文件（0x60/0x61 + 0x5B 目录3）、bit9=返回键双击截图（/sdcard/screenshot，仅 `CONFIG_ARK_SCREENSHOT=y` 固件）、bit10=480×720 全屏通行证（单色/六色；六色还需 bit0）、bit11=I006 ABC9 通行证 app profile、bit12=校验式 BLE OTA（0x6A–0x6E）、bit13=需设备确认的 BLE SD 文件上传 |
 
 ### 3.16 Ark 通用 WiFi 文件上传（0x5A）
 
@@ -566,7 +566,14 @@ DEC: 10000 bytes
 - 上传先写临时文件，同名替换保留一份旧文件用于恢复。失败的上传不进入播放列表，也不发布 `SYS_EVT_FILE_SAVED`。显式路径上传保持不刷新列表、不发布该事件的原有语义。
 - `.film` 提交前核对文件头、720×480 尺寸、编码格式、帧数及主体长度；显式路径的非 `.film` 资源不套用图片格式校验。按帧数分流到另一目录时，保留来源目录的同名旧文件，并以静默保存事件通知，避免误显示旧内容。
 - BLE 与 WiFi 共用一个保存任务；另一来源正在保存时，新保存请求失败，调用方需在空闲后重试。
-- 命令号、请求格式和静默保存 flag 不变，本次未增加文件命令的应用层 ACK。GATT 写入成功仅表示传输层接收，**不代表 SD 保存成功或屏幕已经显示**；现有客户端可能仍按发送进度提示完成，实际结果需结合设备日志和文件列表确认。
+- 空请求 FILE_START 保留旧行为。该模式的 GATT 写入成功只表示传输层接收，SD 保存结果可通过设备日志或文件列表确认。
+
+**Ark 需设备确认的 SD 文件上传**（0x59 bit13）
+
+- `FILE_START(0x03) DATA=[0x01]` 开启本次上传，需要 SD 已挂载。`DATA=[0x02]` 取消本次上传，在空闲状态也可使用。每次开始会撤销上一笔未完成的 BLE 文件保存。
+- 开始后，`FILE_NAME(0x00)` 使用 UTF-8 文件名或相对路径，结尾必须含一个 NUL。`FILE_LEN(0x01)` 仍为 u32 大端长度，`FILE_DATA(0x02)` 为 1–192 字节原始数据（同时受 ATT MTU − 7 限制），`FILE_STOP(0x04)` 沿用空请求和 `[0x00]` / `[0x01]` 播放标志。
+- 每个命令在原通道返回 `status(1) + received(u32 BE)`。状态为 0 成功、1 忙或会话状态不符、2 参数或长度错误、3 SD、写入或提交失败。START、NAME、LEN 成功时累计字节为 0；DATA 成功时为设备实际写入的累计字节；STOP 成功时为已关闭并提交到 SD 的文件总字节数。客户端逐包等待确认。断线清理未提交的会话，超时或取消后从头重传。若 STOP 的确认丢失，可先查文件是否已经提交。
+- 此模式始终落盘，适用于单帧、动图、批量和通行证资源。普通文件名按校验后的帧数分流到图库或动图库，更新列表。显式相对路径保存到指定位置，通行证资源使用 `app/pass/profile.bin` 或 `app/pass/profile.json`。文件提交确认与面板显示是两个步骤。
 
 ---
 
@@ -1561,7 +1568,7 @@ SUM  = (0x55 + 0x4E + 0x01 + 0x02) & 0xFF = 0xA6
 
 bit5 仅在 `CONFIG_ARK_EPD_ABC_PREVIEW=y`（默认）或 `CONFIG_ARK_EPD_ABC_DIAG=y`、实际 ABC9 播放路径已编译时宣告；bit0–bit4 的既有含义不变。此位只表示通用 `.film` 播放路径能播放 [实验 ABC9 容器](../film/film.md#私有-abc9-实验容器)：Format `0x7F`、720×480 单帧、`ABC9` 标记、691232 字节，LE16 低9位 A/B/C 码；不声明已完成512实色校准，也不启用诊断图生成或其他 lab 模式。客户端只有收到该位才开放实验预览上传与播放；旧固件或无该位时保留既有出图选项。
 
-当前 Ark 固件额外设置 bit8（`0x00000100`，按目录/文件名列表、删除、分块读取：0x5B 目录 3 + 0x60 + 0x61）、bit9（`0x00000200`，返回键双击截图到 `/sdcard/screenshot`）及 bit10（`0x00000400`，480×720 全屏通行证，包含 v1 单色与 v2 六色；六色还必须同时具备 bit0）。bit9 只在 `CONFIG_ARK_SCREENSHOT=y` 时设置：n4r2 默认关闭截图（同时关闭 0x61 读取），两个 ABC 开关均关闭时 flags 为 `0x0000055F`；n16r8 保持开启，含 NFC bit7、两个 ABC 开关均关闭时 flags 为 `0x000007DF`。现有 ABC9 播放路径启用时同时加 bit5 与 **bit11（`0x00000800`，I006 ABC9 通行证 app profile）**：默认 n4r2 flags 为 `0x00000D7F`，默认 n16r8 为 `0x00000FFF`。capVersion 仍为 1，命令号与既有能力位不变。**浏览器必须检查 bit11 才能把 I006 ABC9 用作 `profile.bin`，不能从 bit5、bit0、bit10、面板 ID 或版本号推断此能力**；没有 bit11 时保留 FFUI 回退，480×720 FFUI 回退仍要求 bit10，六色另需 bit0。没有 bit10 的旧固件只接受旧尺寸。
+当前 Ark 固件额外设置 bit8（`0x00000100`，按目录/文件名列表、删除、分块读取：0x5B 目录 3 + 0x60 + 0x61）、bit9（`0x00000200`，返回键双击截图到 `/sdcard/screenshot`）及 bit10（`0x00000400`，480×720 全屏通行证，包含 v1 单色与 v2 六色；六色还必须同时具备 bit0）。bit9 只在 `CONFIG_ARK_SCREENSHOT=y` 时设置：n4r2 默认关闭截图（同时关闭 0x61 读取），两个 ABC 开关均关闭时 flags 为 `0x0000355F`；n16r8 保持开启，含 NFC bit7、两个 ABC 开关均关闭时 flags 为 `0x000037DF`。现有 ABC9 播放路径启用时同时加 bit5 与 **bit11（`0x00000800`，I006 ABC9 通行证 app profile）**：默认 n4r2 flags 为 `0x00003D7F`，默认 n16r8 为 `0x00003FFF`。n4r2 与 n16r8 均提供 bit12（`0x00001000`，校验式 BLE OTA）和 bit13（`0x00002000`，需设备确认的 BLE SD 文件上传）。capVersion 仍为 1，命令号与既有能力位不变。**浏览器必须检查 bit11 才能把 I006 ABC9 用作 `profile.bin`，不能从 bit5、bit0、bit10、面板 ID 或版本号推断此能力**；没有 bit11 时保留 FFUI 回退，480×720 FFUI 回退仍要求 bit10，六色另需 bit0。没有 bit10 的旧固件只接受旧尺寸。
 
 通行证卡片文件仍放在 `/sdcard/app/pass/profile.bin`。学生证默认 **I006 continuous + A 水印** 由 Web 生成最终 A/B/C 码，直接上传既有 **691232B `.film` ABC9 容器**并存为该路径：32B film 头 + 691200B LE16 像素；头声明正文 691200B、物理宽高 720×480、Format `0x7F`、FrameCount=1、偏移12–15为 `ABC9`。正文每像素低9位 `A[8:6]/B[5:3]/C[2:0]`，高7位必须为零，已是原生横屏逐行存储，固件不再旋转、量化或重算水印。固件完整检查头、实际文件长度与所有码值后才替换当前卡片；复用现有 HAL ABC9 的一次清屏 + 原三相 Qual 播放，页面仅持有一份 native 正文、不另建整屏彩色缓冲。首次显示、成功单击重载与输出恢复时各播放一次；普通 LVGL invalidation、时间/电量/连接状态更新不会重复全刷或覆写单色外壳。长按休眠仍为 KEEP，文件读取、校验或分配失败保留内存中最后成功的卡片。3.2.5 版本号不变，能力由 bit11 宣告；不新增公共 film 格式或 BLE 通道。
 
@@ -1769,6 +1776,22 @@ LIST 单条记录：`id, kind, uid_len, sak, atqa(2), uid(7), flags, name_len, n
 图片、模板、动图等直绘页面没有 UI 帧缓冲，不会生成截图。
 
 客户端读取截图列表用 0x5B 的 `dir=3`，下载用 0x61，删除用 0x60。
+
+### 4.23 Ark 校验式 BLE OTA（0x6A–0x6E）
+
+客户端先确认 0x59 bit12，使用 0x5D 查询硬件身份，使用 0x56 检查 OTA 槽容量和当前构建的 ELF SHA-256。升级文件须匹配硬件变体，BEGIN 中的 SHA-256 为完整 OTA `.bin` 文件的哈希。
+
+| 通道 | 操作 | 请求 DATA |
+|---|---|---|
+| 0x6A | BEGIN | `size(u32 BE) + file_sha256(32B)` |
+| 0x6B | DATA | `offset(u32 BE) + bytes(1..188)` |
+| 0x6C | FINISH | 空 |
+| 0x6D | APPLY | 空 |
+| 0x6E | CANCEL | 空 |
+
+同通道响应 DATA 为 `status(1) + received(u32 BE)`。状态为 0 成功、1 忙或会话状态不符、2 参数错误或偏移不符、3 写入或验证失败。客户端逐包等待确认，DATA 偏移须等于已确认的累计字节数，每包数据最多为 `min(188, ATT_MTU - 11)` 字节。BEGIN 需要 ATT MTU ≥43。确认超时后取消或断开重连再从头开始。
+
+FINISH 核对完整长度、文件 SHA-256、ESP 镜像和硬件目标，通过后等待 APPLY。APPLY 更改启动分区，发送确认后延迟重启。客户端重连后以 0x56 的 ELF SHA-256 确认实际运行的构建。APPLY 前，断开、入睡、CANCEL、写入或验证失败、120 秒无有效请求均清理暂存会话。空闲时 CANCEL 也返回成功。校验式 BLE OTA 与 Wi-Fi 直传、传统 BLE OTA 互斥。两种 Ark 配置均未启用 bootloader 自动回滚。
 
 ## 5. 校验和计算
 

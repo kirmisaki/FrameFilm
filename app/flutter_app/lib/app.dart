@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -9,11 +10,13 @@ import 'about_panel.dart';
 import 'preview_device_gateway.dart';
 import 'github_release_service.dart';
 import 'passport_editor.dart';
+import 'student_passport_editor.dart';
 import 'frame_editor.dart';
 import 'animation_workshop.dart';
 import 'device_files.dart';
 import 'forfilm_theme.dart';
 import 'interface_theme_preferences.dart';
+import 'transfer_preferences.dart';
 import 'workbench_widgets.dart';
 import 'workbench_page_transition.dart';
 import 'frame_io.dart' as frame_io;
@@ -21,9 +24,15 @@ import 'frame_quick_page.dart';
 import 'frame_media.dart' as frame_media;
 
 class FrameFilmApp extends StatefulWidget {
-  const FrameFilmApp({super.key, this.gateway, this.themePreferences});
+  const FrameFilmApp({
+    super.key,
+    this.gateway,
+    this.themePreferences,
+    this.transferPreferences,
+  });
   final DeviceGateway? gateway;
   final InterfaceThemePreferences? themePreferences;
+  final TransferPreferences? transferPreferences;
 
   @override
   State<FrameFilmApp> createState() => _FrameFilmAppState();
@@ -38,6 +47,8 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
   String? releaseMessage;
   int releaseQuery = 0;
   Future<void> checkReleases() async {
+    final hardware = device.firmwareTarget;
+    if (hardware == null) return;
     final query = ++releaseQuery;
     final connection = device.connectionSession;
     setState(() {
@@ -45,14 +56,14 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
       releaseMessage = null;
       onlineFirmware = null;
     });
-    final hardware = device.firmwareTarget;
     try {
-      final release = await releases.latest(hardware: hardware);
+      final release = device.gateway is PreviewDeviceGateway
+          ? GitHubFirmwareRelease.demoFor(hardware)
+          : await releases.latest(hardware: hardware);
       if (mounted &&
           device.snapshot.connected &&
           query == releaseQuery &&
           connection == device.connectionSession &&
-          hardware != null &&
           device.firmwareTarget?.matches(hardware) == true) {
         setState(() {
           onlineFirmware = release;
@@ -80,11 +91,20 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
   Future<void> themeSave = Future<void>.value();
   late final InterfaceThemePreferences themePreferences =
       widget.themePreferences ?? const LocalInterfaceThemePreferences();
+  late final TransferPreferences transferPreferences =
+      widget.transferPreferences ?? const LocalTransferPreferences();
+  TransferPreference transferPreference = TransferPreference.auto;
+  bool transferPreferenceReady = false;
+  String? transferPreferenceMessage;
+  int transferPreferenceRevision = 0;
+  Future<void> transferPreferenceSave = Future<void>.value();
   int page = 0;
   final scrollControllers = List.generate(6, (_) => ScrollController());
   bool loading = false;
   Timer? loadingTimer;
   final passportEditor = PassportEditorController();
+  final studentPassportEditor = StudentPassportEditorController();
+  bool editStudentPassport = false;
   final frameEditor = FrameEditorController();
   final frameQuick = FrameQuickController();
   final animation = AnimationWorkshopController();
@@ -170,6 +190,64 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     });
   }
 
+  Future<void> loadTransferPreference() async {
+    final revision = transferPreferenceRevision;
+    var preference = TransferPreference.auto;
+    try {
+      preference = await transferPreferences.load();
+    } catch (_) {
+      // Use the Wi-Fi-first default when local settings are unavailable.
+    }
+    if (!mounted || revision != transferPreferenceRevision) return;
+    setState(() {
+      transferPreference = preference;
+      transferPreferenceReady = true;
+    });
+  }
+
+  void changeTransferPreference(TransferPreference preference) {
+    final revision = ++transferPreferenceRevision;
+    setState(() {
+      transferPreference = preference;
+      transferPreferenceReady = true;
+      transferPreferenceMessage = null;
+    });
+    transferPreferenceSave = transferPreferenceSave.then((_) async {
+      try {
+        await transferPreferences.save(preference);
+      } catch (_) {
+        if (mounted && revision == transferPreferenceRevision) {
+          setState(() => transferPreferenceMessage = '本次设置已生效，但未能保存到本机。');
+        }
+      }
+    });
+  }
+
+  bool get prefersBlePhoto =>
+      transferPreference == TransferPreference.ble ||
+      device.snapshot.effectivePhotoTransport == 'ble';
+
+  Map<String, Object?> get transferArguments => {
+    'transportPreference': transferPreference.name,
+  };
+
+  Widget mediaSendMode() => Align(
+    alignment: Alignment.centerLeft,
+    child: SegmentedButton<TransferPreference>(
+      segments: const [
+        ButtonSegment(value: TransferPreference.auto, label: Text('自动传输')),
+        ButtonSegment(value: TransferPreference.ble, label: Text('蓝牙模式')),
+      ],
+      selected: {transferPreference},
+      onSelectionChanged:
+          transferPreferenceReady &&
+              !device.snapshot.transfer.active &&
+              !device.snapshot.passportBusy
+          ? (selection) => changeTransferPreference(selection.single)
+          : null,
+    ),
+  );
+
   @override
   void initState() {
     super.initState();
@@ -181,6 +259,13 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     );
     device.addListener(onDeviceChanged);
     unawaited(loadThemePreference());
+    if (widget.transferPreferences != null ||
+        device.gateway is PlatformDeviceGateway) {
+      unawaited(loadTransferPreference());
+    } else {
+      // Preview and injected gateways have no native preference channel.
+      transferPreferenceReady = true;
+    }
   }
 
   void onQuickChanged() {
@@ -456,13 +541,15 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     1 => framePage(context),
     2 => filmPage(context),
     3 => [
+      if (device.gateway.supported && device.snapshot.connected) mediaSendMode(),
       panel(
         context,
         child: AnimationWorkshop(
           controller: animation,
           pickImages: frame_media.pickFramePhotos,
           captureImage: () => frame_media.captureFramePhoto(context),
-          sendFilm: sendFrame,
+           sendFilm: (bytes, name) =>
+               sendFrame(bytes, name, mediaDirectory: 'animation'),
           cancelSend: cancelFrameSend,
           saveFilm: frame_io.canDownloadFrame ? frame_io.downloadFrame : null,
           connected: device.snapshot.connected && device.canImportFilm,
@@ -507,21 +594,49 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     await device.command('cancelTransfer');
   }
 
-  Future<void> sendFrame(Uint8List bytes, String name) async {
+  Future<void> sendFrame(
+    Uint8List bytes,
+    String name, {
+    String? mediaDirectory,
+  }) async {
     if (!device.snapshot.connected) throw StateError('请先连接 Ark');
+    if (!transferPreferenceReady) throw StateError('正在读取传输偏好，请稍后再发送。');
     final epoch = ++frameSendEpoch;
+    final connection = device.connectionSession;
+    final arguments = {
+      ...transferArguments,
+      'mediaDirectory': ?mediaDirectory,
+    };
     await importFrame(bytes, name);
     if (epoch != frameSendEpoch) throw StateError('发送已取消');
-    await device.command('startTransfer');
+    if (connection != device.connectionSession) {
+      throw StateError('设备连接已变化，请重新确认发送');
+    }
+    final before = device.snapshot.transfer;
+    await device.command('startTransfer', arguments);
     if (device.errorMessage != null) throw StateError(device.errorMessage!);
     final completed = Completer<void>();
+    final startDeadline = Timer(const Duration(seconds: 20), () {
+      if (!completed.isCompleted) {
+        completed.completeError(StateError('未收到传输启动状态，请先查看设备状态。'));
+      }
+    });
+    int? attemptId;
     void changed() {
       if (completed.isCompleted) return;
       final t = device.snapshot.transfer;
-      if (t.kind != 'film' || t.active) return;
+      if (identical(t, before) ||
+          t.phase == 'idle' ||
+          t.kind != 'film' ||
+          (t.attemptId != null && t.attemptId == before.attemptId)) {
+        return;
+      }
+      startDeadline.cancel();
+      attemptId ??= t.attemptId;
+      if ((attemptId != null && t.attemptId != attemptId) || t.active) return;
       if (t.success && t.cleanupCompleted) {
         completed.complete();
-      } else if (t.cleanupCompleted || !device.snapshot.connected) {
+      } else {
         completed.completeError(StateError(t.message));
       }
     }
@@ -529,11 +644,10 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     device.addListener(changed);
     try {
       changed();
-      await completed.future.timeout(const Duration(minutes: 4));
-    } on TimeoutException {
-      await cancelFrameSend();
-      rethrow;
+      // The coordinator enforces transport-specific deadlines.
+      await completed.future;
     } finally {
+      startDeadline.cancel();
       device.removeListener(changed);
     }
   }
@@ -544,11 +658,13 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         padding: EdgeInsets.only(bottom: 12),
         child: Text('图片转换为真实文件；当前连接和发送为模拟操作。'),
       ),
+    if (device.gateway.supported && device.snapshot.connected) mediaSendMode(),
     FrameQuickPage(
       controller: frameQuick,
       pickImages: frame_media.pickFramePhotos,
       captureImage: () => frame_media.captureFramePhoto(context),
       sendFilm: sendFrame,
+      sendBatchFilm: sendFrame,
       cancelSend: cancelFrameSend,
       canSend: device.canImportFilm && device.snapshot.connected,
       battery: device.snapshot.battery,
@@ -722,7 +838,11 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         !transfer.canConfirm;
     final editable =
         available && !(transfer.canRetry && !transfer.cleanupCompleted);
+    final bleEligible = file?.blePhotoCompatible == true;
+    final useBle = transferPreference == TransferPreference.ble ||
+        (bleEligible && prefersBlePhoto);
     return [
+      if (supported && snapshot.connected) mediaSendMode(),
       FrameEditor(
         controller: frameEditor,
         canImportFilm: device.canImportFilm,
@@ -744,14 +864,19 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'film 文件 · Wi-Fi 直传',
+              useBle ? 'film 文件 · 蓝牙传输' : 'film 文件 · Wi-Fi 直传',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
             Text(
-              supported
-                  ? '导入已有 .film 文件，通过已连接的 Ark 建立 Wi-Fi Direct 传输。'
-                  : '当前平台仅供界面预览。文件导入与 Wi-Fi Direct 直传需要 Android 原生客户端。',
+              !supported
+                  ? '当前平台仅供界面预览。文件导入与传输需要 Android 原生客户端。'
+                   : transferPreference == TransferPreference.ble &&
+                         file != null && !bleEligible
+                   ? '当前 Ark 固件不支持通过蓝牙发送此文件。可升级固件或切回自动传输。'
+                  : useBle
+                  ? '使用已连接的 Ark 蓝牙发送此文件，无需 Wi-Fi。'
+                  : '导入已有 .film 文件，通过已连接的 Ark 建立 Wi-Fi 直传。',
             ),
             const SizedBox(height: 20),
             Text(
@@ -789,11 +914,19 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
                       editable &&
                           file != null &&
                           snapshot.connected &&
-                          !(transfer.kind == 'film' && transfer.canRetry)
-                      ? () => device.command('startTransfer')
+                           transferPreferenceReady &&
+                           (transferPreference != TransferPreference.ble ||
+                               bleEligible) &&
+                           !(transfer.kind == 'film' &&
+                               transfer.canRetry &&
+                               transfer.transport == (useBle ? 'ble' : 'wifi'))
+                      ? () => device.command(
+                          'startTransfer',
+                           transferArguments,
+                        )
                       : null,
-                  icon: const Icon(Icons.wifi),
-                  label: const Text('Wi-Fi 直传'),
+                  icon: Icon(useBle ? Icons.bluetooth : Icons.wifi),
+                  label: Text(useBle ? '蓝牙发送' : 'Wi-Fi 直传'),
                 ),
                 OutlinedButton(
                   key: const Key('clear-film'),
@@ -846,6 +979,7 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         ? snapshot.importedFirmware != null
         : snapshot.importedFile != null;
     final supported = device.gateway.supported;
+    final ble = transfer.transport == 'ble';
     final available =
         supported &&
         !device.busy &&
@@ -859,18 +993,28 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
       'preparing' => '准备直传',
       'connecting' => '建立 Wi-Fi 连接',
       'downloading' => '设备接收中',
+      'sending' => '正在通过蓝牙发送',
+      'erasing' => '等待固件分区准备',
+      'interrupted' => transfer.confirmation == 'staging_cleanup'
+          ? '待确认固件暂存已清理'
+          : '请先手动重启设备',
+      'verifying' => firmware ? '校验固件' : '核对 SD 图片目录',
       'restoring' => firmware ? '校验固件 / 恢复 Wi-Fi' : '设备保存 / 恢复 Wi-Fi',
       'validating' => '检查目标固件',
       'ready' => '固件已校验',
       'applying' => '提交升级',
       'rebooting' => '等待设备重启',
-      'confirming' => '核对运行构建',
-      'unconfirmed' => '升级结果待确认',
+      'confirming' => firmware ? '核对运行构建' : '核对 SD 图片目录',
+      'unconfirmed' => firmware ? '升级结果待确认' : '已发送，保存待确认',
       'cancelling' => '正在取消',
-      'cleanup' => '清理临时连接',
+      'cleanup' => ble ? '结束蓝牙传输' : '清理临时连接',
       'done' =>
         transfer.success && transfer.cleanupCompleted
-            ? (firmware ? '固件构建已确认' : '传输完成')
+            ? (firmware
+                  ? '固件构建已确认'
+                  : ble
+                  ? '已在 SD 目录确认文件'
+                  : '传输完成')
             : '等待完成确认',
       'cancelled' => '已取消',
       'error' => '传输未完成',
@@ -886,6 +1030,9 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         ),
         const SizedBox(height: 12),
         Text(transfer.message),
+        if (transfer.phase != 'idle') Text(ble ? '本次传输：蓝牙' : '本次传输：Wi-Fi'),
+        if (ble && transfer.confirmation == 'directory_presence')
+          const Text('目录已找到本次文件，未回读文件内容或确认屏幕显示。'),
         if (globalTransfer.kind != kind &&
             (globalTransfer.active || globalTransfer.canConfirm))
           Text(firmware ? '设备正在传输 film，请等待传输结束。' : '设备正在升级固件，请在设置页处理。'),
@@ -905,7 +1052,9 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             transfer.phase == 'error') ...[
           const SizedBox(height: 12),
           Text(
-            transfer.cleanupCompleted
+            ble
+                ? (transfer.cleanupCompleted ? '蓝牙传输已结束' : '蓝牙传输尚未结束，请查看上方原因。')
+                : transfer.cleanupCompleted
                 ? '临时服务与连接清理已确认'
                 : '清理尚未确认，请查看上方原因；可重试以重新处理连接。',
           ),
@@ -924,11 +1073,58 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             ),
             if (transfer.canConfirm)
               FilledButton(
-                key: const Key('confirm-firmware'),
+                key: Key(
+                  firmware ? 'confirm-firmware' : 'confirm-photo-transfer',
+                ),
                 onPressed: supported && !device.busy && !transfer.active
-                    ? () => device.command('confirmFirmwareTransfer')
+                    ? () => device.command(
+                        firmware
+                            ? 'confirmFirmwareTransfer'
+                            : 'confirmTransfer',
+                      )
                     : null,
-                child: const Text('重连并确认升级'),
+                child: Text(firmware ? '重连并确认升级' : '重新核对 SD 目录'),
+              ),
+            if (firmware && ble && transfer.confirmation == 'legacy_restart')
+              OutlinedButton(
+                onPressed: supported && snapshot.connected && !device.busy
+                    ? () async {
+                        final accepted = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('确认原设备已手动重启'),
+                            content: const Text(
+                              '重新连接蓝牙不能清除旧 OTA。请先手动重启原 Ark，再确认；此操作不发送固件。',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('取消'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('已手动重启'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (mounted && accepted == true) {
+                          await device.command(
+                            'acknowledgeBleFirmwareRestart',
+                            {'manuallyRestarted': true},
+                          );
+                        }
+                      }
+                    : null,
+                child: const Text('确认已手动重启'),
+              ),
+            if (transfer.canConfirm && !firmware)
+              OutlinedButton(
+                key: const Key('dismiss-photo-confirmation'),
+                onPressed: supported && !device.busy && !transfer.active
+                    ? () => device.command('dismissPhotoConfirmation')
+                    : null,
+                child: const Text('关闭待确认（不重新发送）'),
               ),
             FilledButton.tonal(
               key: const Key('retry-transfer'),
@@ -955,7 +1151,17 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     return embedded ? content : panel(context, child: content);
   }
 
-  Future<void> startFirmware(BuildContext context, {bool retry = false}) async {
+  Future<void> startFirmware(
+    BuildContext context, {
+    bool retry = false,
+    bool overBle = false,
+  }) async {
+    final firmwareBle = retry
+        ? device.snapshot.transfer.transport == 'ble'
+        : overBle;
+    if (firmwareBle && !device.snapshot.bleFirmwareAvailable) {
+      return;
+    }
     final target = device.firmwareTarget;
     final file = device.snapshot.importedFirmware;
     final connection = device.connectionSession;
@@ -993,10 +1199,10 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         device.snapshot.importedFirmware?.elfSha256 != file.elfSha256) {
       return;
     }
-    await device.command(
-      retry ? 'retryTransfer' : 'startFirmwareTransfer',
-      legacy ? {'legacyHardwareTarget': target.targetId} : null,
-    );
+    await device.command(retry ? 'retryTransfer' : 'startFirmwareTransfer', {
+      if (!retry) 'transportPreference': firmwareBle ? 'ble' : 'wifi',
+      if (legacy) 'legacyHardwareTarget': target.targetId,
+    });
   }
 
   Widget firmwarePanel(BuildContext context) {
@@ -1016,6 +1222,16 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
         !transfer.active &&
         !transfer.canConfirm &&
         !(transfer.canRetry && !transfer.cleanupCompleted);
+    final canStart =
+        editable &&
+        file != null &&
+        trustedHardware &&
+        compatibleFile;
+    bool canStartWith(String transport) =>
+        canStart &&
+        !(transfer.kind == 'firmware' &&
+            transfer.canRetry &&
+            transfer.transport == transport);
     return panel(
       context,
       child: Column(
@@ -1062,23 +1278,13 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             runSpacing: 12,
             children: [
               OutlinedButton(
-                key: const Key('check-github'),
+                key: Key(device.gateway is PreviewDeviceGateway
+                    ? 'demo-online-firmware' : 'check-github'),
                 onPressed: checkingReleases || !trustedHardware
                     ? null
                     : checkReleases,
                 child: Text(checkingReleases ? '正在查询…' : '检查 GitHub 发布'),
               ),
-              if (device.gateway is PreviewDeviceGateway)
-                OutlinedButton(
-                  key: const Key('demo-online-firmware'),
-                  onPressed: () => setState(() {
-                    onlineFirmware = trustedHardware
-                        ? GitHubFirmwareRelease.demoFor(hardware)
-                        : null;
-                    releaseMessage = null;
-                  }),
-                  child: const Text('演示在线固件'),
-                ),
             ],
           ),
           if (releaseMessage != null) Text(releaseMessage!),
@@ -1087,7 +1293,7 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             Text('已选固件：${release.asset} · ${release.hardware.label}'),
             Text('发布于 ${release.publishedAt.toLocal()} · ${release.size} 字节'),
             Text('下载后核对清单 SHA-256、ELF 构建指纹及设备型号。'),
-            const Text('发布版本仅供展示；升级以 ELF 构建指纹判定。下载完成只导入，仍需点击“检查并升级”。'),
+            const Text('下载完成后，选择 Wi-Fi 或蓝牙升级。'),
             OutlinedButton(
               key: const Key('download-firmware'),
               onPressed:
@@ -1122,10 +1328,12 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
           ],
           const SizedBox(height: 12),
           Text(
-            supported
-                ? '导入 Ark 应用固件 .bin，通过 Wi-Fi 直传升级。设备重启并核对构建指纹后，才会确认完成。'
-                : '固件导入与升级需要 Android 客户端。',
+            !supported
+                ? '固件导入与升级需要 Android 客户端。'
+                : '选择传输方式后开始升级。设备重启并核对构建指纹后，才会确认完成。',
           ),
+          if (snapshot.connected && !snapshot.bleFirmwareAvailable)
+            const Text('当前连接不支持蓝牙升级，可使用 Wi-Fi。'),
           const SizedBox(height: 16),
           Text(file?.name ?? '尚未选择固件', key: const Key('firmware-file-name')),
           if (file != null) ...[
@@ -1158,15 +1366,17 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
               FilledButton.icon(
                 key: const Key('start-firmware'),
                 onPressed:
-                    editable &&
-                        file != null &&
-                        trustedHardware &&
-                        compatibleFile &&
-                        !(transfer.kind == 'firmware' && transfer.canRetry)
-                    ? () => startFirmware(context)
-                    : null,
+                    canStartWith('wifi') ? () => startFirmware(context) : null,
                 icon: const Icon(Icons.system_update_alt),
-                label: const Text('检查并升级'),
+                label: const Text('Wi-Fi 升级'),
+              ),
+              OutlinedButton.icon(
+                key: const Key('start-firmware-ble'),
+                onPressed: canStartWith('ble') && snapshot.bleFirmwareAvailable
+                    ? () => startFirmware(context, overBle: true)
+                    : null,
+                icon: const Icon(Icons.bluetooth),
+                label: const Text('蓝牙升级'),
               ),
               OutlinedButton(
                 key: const Key('clear-firmware'),
@@ -1247,37 +1457,105 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     ),
   ];
 
-  List<Widget> passportPage(BuildContext context) => [
-    if (device.gateway is PreviewDeviceGateway)
-      const Text('模拟设备：发送仅保存到演示内存，重置演示会清除；本地草稿单独保留。'),
-    if (device.errorMessage != null)
-      Text(
-        device.errorMessage!,
-        style: TextStyle(color: Theme.of(context).colorScheme.error),
+  List<Widget> passportPage(BuildContext context) {
+    final snapshot = device.snapshot;
+    final busy = snapshot.passportBusy || device.busy;
+    final operation = snapshot.passport;
+    final passportSendReady =
+        transferPreferenceReady &&
+        (transferPreference == TransferPreference.ble
+            ? operation['bleAvailable'] != false
+            : operation['wifiAvailable'] != false ||
+                  operation['bleAvailable'] == true);
+    final raw = operation['json'];
+    bool studentReadback = false;
+    if (raw is String) {
+      try {
+        final data = jsonDecode(raw);
+        studentReadback = data is Map && data['version'] == 2;
+      } on FormatException {
+        // The editor reports its own profile validation errors.
+      }
+    }
+    Future<void> read() => device.command('readPassport');
+    Future<void> save(String json, Uint8List bin) =>
+        device.command('savePassport', {
+          'json': json,
+          'bin': bin,
+          ...transferArguments,
+        });
+    void cancel() => device.command('cancelPassport');
+    void open() => device.command('openDevicePage', {'appId': 6});
+    final retry =
+        snapshot.connected &&
+            !device.busy &&
+            !snapshot.settingsBusy &&
+            !snapshot.transfer.active &&
+            !snapshot.transfer.canConfirm
+        ? () => device.command('retryPassport')
+        : null;
+    return [
+      if (device.gateway.supported && snapshot.connected) mediaSendMode(),
+      if (device.gateway is PreviewDeviceGateway)
+        const Text('模拟设备：发送仅保存到演示内存，重置演示会清除；本地草稿单独保留。'),
+      if (device.errorMessage != null)
+        Text(
+          device.errorMessage!,
+          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: false, label: Text('干员档案')),
+            ButtonSegment(value: true, label: Text('学生证')),
+          ],
+          selected: {editStudentPassport},
+          onSelectionChanged: busy
+              ? null
+              : (value) => setState(() => editStudentPassport = value.single),
+        ),
       ),
-    panel(
-      context,
-      child: PassportEditor(
-        controller: passportEditor,
-        canOperate: device.canEditSettings,
-        busy: device.snapshot.passportBusy || device.busy,
-        operation: device.snapshot.passport,
-        onRead: () => device.command('readPassport'),
-        onSave: (json, bin) =>
-            device.command('savePassport', {'json': json, 'bin': bin}),
-        onCancel: () => device.command('cancelPassport'),
-        onRetry:
-            device.snapshot.connected &&
-                !device.busy &&
-                !device.snapshot.settingsBusy &&
-                !device.snapshot.transfer.active &&
-                !device.snapshot.transfer.canConfirm
-            ? () => device.command('retryPassport')
-            : null,
-        onOpen: () => device.command('openDevicePage', {'appId': 6}),
+      panel(
+        context,
+        child: editStudentPassport
+            ? StudentPassportEditor(
+                controller: studentPassportEditor,
+                canOperate: device.canEditSettings,
+                supported: snapshot.studentPassportSupported,
+                 canSend: passportSendReady,
+                busy: busy,
+                operation: operation,
+                onRead: read,
+                onSave: save,
+                onCancel: cancel,
+                onRetry: retry,
+                onOpen: open,
+              )
+            : PassportEditor(
+                controller: passportEditor,
+                canOperate: device.canEditSettings,
+                 canSend: passportSendReady,
+                busy: busy,
+                operation: {
+                  ...operation,
+                  if (studentReadback) ...{
+                    'json': null,
+                    'revision': null,
+                    if (operation['phase'] == 'done')
+                      'message': '设备最近回读的是学生证。可切换到学生证读取资料。',
+                  },
+                  if (operation['kind'] == 'student') 'canRetry': false,
+                },
+                onRead: read,
+                onSave: save,
+                onCancel: cancel,
+                onRetry: retry,
+                onOpen: open,
+              ),
       ),
-    ),
-  ];
+    ];
+  }
 
   Widget remotePanel(BuildContext context) {
     Widget key(String label, int value, IconData icon) => OutlinedButton.icon(
@@ -1468,6 +1746,36 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     );
   }
 
+  Widget transferPreferencePanel(BuildContext context) => panel(
+    context,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('传输方式', style: Theme.of(context).textTheme.titleLarge),
+        SwitchListTile.adaptive(
+          key: const Key('ble-compatibility-switch'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('蓝牙兼容模式'),
+           subtitle: const Text('开启后使用蓝牙发送图片、动画和通行证；关闭后自动选择。'),
+          value: transferPreference == TransferPreference.ble,
+          onChanged: device.gateway.supported
+              ? (enabled) => changeTransferPreference(
+                  enabled ? TransferPreference.ble : TransferPreference.auto,
+                )
+              : null,
+        ),
+        if (device.snapshot.connected) ...[
+          Text(prefersBlePhoto ? '单张照片：蓝牙' : '单张照片：Wi-Fi'),
+          if (transferPreference == TransferPreference.auto &&
+              device.snapshot.transferTransportReason != null)
+            Text(device.snapshot.transferTransportReason!),
+        ],
+         const Text('固件升级可以单独选择传输方式。正在进行的任务会继续使用原链路。'),
+        if (transferPreferenceMessage != null) Text(transferPreferenceMessage!),
+      ],
+    ),
+  );
+
   Widget themePanel(BuildContext context) => panel(
     context,
     child: Column(
@@ -1561,6 +1869,8 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     remotePanel(context),
     const SizedBox(height: 20),
     firmwarePanel(context),
+    const SizedBox(height: 20),
+    transferPreferencePanel(context),
     const SizedBox(height: 20),
     themePanel(context),
     const SizedBox(height: 20),

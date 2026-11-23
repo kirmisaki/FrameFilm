@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:framefilm_ark/app_update.dart';
 import 'package:framefilm_ark/app_update_service.dart';
+import 'package:framefilm_ark/release_repository.dart';
 
 class UnsupportedAppPlatform implements AppUpdatePlatform {
   @override
@@ -22,6 +23,35 @@ class UnsupportedAppPlatform implements AppUpdatePlatform {
   Future<AppUpdateState> install() => throw UnimplementedError();
 }
 
+class TestAndroidAppPlatform extends UnsupportedAppPlatform {
+  final channelVersions = <String, int>{};
+  AppRelease? downloaded;
+
+  @override
+  bool get supported => true;
+
+  @override
+  Future<InstalledAppInfo> getInfo() async => InstalledAppInfo(
+    packageName: AppReleaseChannel.current.packageName,
+    versionName: '1.0',
+    versionCode: 100,
+    channelVersions: channelVersions,
+  );
+
+  @override
+  Future<AppUpdateState> getState() async => const AppUpdateState();
+
+  @override
+  Future<AppUpdateState> download(AppRelease release) async {
+    downloaded = release;
+    return AppUpdateState(
+      phase: 'ready',
+      canInstall: true,
+      packageName: release.channel.packageName,
+    );
+  }
+}
+
 void main() {
   testWidgets('preview downloader cancels, retries and prepares installation', (
     tester,
@@ -36,6 +66,12 @@ void main() {
     final release = controller.release;
     controller.loadDownloadDemo();
     expect(controller.release, same(release));
+    final initialChannel = controller.selectedChannel;
+    final otherChannel = AppReleaseChannel.values.firstWhere(
+      (channel) => channel != initialChannel,
+    );
+    controller.selectChannel(otherChannel);
+    expect(controller.selectedChannel, initialChannel);
     await controller.cancel();
     expect(controller.state.phase, 'cancelled');
     expect(controller.canDownload, isTrue);
@@ -48,7 +84,16 @@ void main() {
     expect(controller.state.progress, 1);
     expect(controller.state.canInstall, isTrue);
     await controller.install();
-    expect(controller.message, contains('未安装应用'));
+    expect(controller.message, contains('模拟安装'));
+    expect(controller.installed?.versionCode, 14);
+    await controller.check();
+    expect(controller.canDownload, isFalse);
+    controller.selectChannel(otherChannel);
+    expect(controller.release, isNull);
+    expect(controller.state.canInstall, isFalse);
+    controller.selectChannel(initialChannel);
+    expect(controller.state.canInstall, isFalse);
+    expect(controller.installed?.versionFor(initialChannel), 14);
     controller.dispose();
   });
 
@@ -84,8 +129,11 @@ void main() {
     ],
   };
 
-  Map<String, Object?> manifest(int versionCode) => {
-    'packageName': AppUpdateService.applicationId,
+  Map<String, Object?> manifest(
+    int versionCode, {
+    AppReleaseChannel channel = AppReleaseChannel.stable,
+  }) => {
+    'packageName': channel.packageName,
     'versionName': '0.$versionCode.0',
     'versionCode': versionCode,
     'apkName': apk,
@@ -94,45 +142,61 @@ void main() {
     'minSdk': 28,
   };
 
-  for (final owner in [
-    'kirmisaki',
-    'Rafael-Ikaros',
-    'Rafael-ban',
-    'unrelated-owner',
-  ]) {
-    test('release asset repository allowlist: $owner', () async {
-      final service = AppUpdateService(
-        client: MockClient((request) async {
-          if (request.url.host == 'api.github.com') {
+  for (final channel in AppReleaseChannel.values) {
+    test(
+      'uses exact Release repository and assets for ${channel.name}',
+      () async {
+        final owner = channel.repository.split('/').first;
+        final otherOwner = AppReleaseChannel.values
+            .firstWhere((other) => other != channel)
+            .repository
+            .split('/')
+            .first;
+        final service = AppUpdateService(
+          client: MockClient((request) async {
+            if (request.url.host == 'api.github.com') {
+              expect(request.url.path, '/repos/${channel.repository}/releases');
+              return http.Response(
+                jsonEncode([
+                  release(
+                    'wrong-source',
+                    '2026-01-01T00:00:00Z',
+                    owner: otherOwner,
+                  ),
+                  {
+                    ...release(
+                      'wrong-tag',
+                      '2026-01-01T00:00:00Z',
+                      owner: owner,
+                    ),
+                    'tag_name': 'listed-tag',
+                  },
+                  release('v4', '2026-01-01T00:00:00Z', owner: owner),
+                ]),
+                200,
+              );
+            }
+            expect(request.url.host, 'github.com');
             expect(
               request.url.path,
-              '/repos/${AppUpdateService.repository}/releases',
+              '/$owner/FrameFilm/releases/download/v4/$metadata',
             );
             return http.Response(
-              jsonEncode([release('v4', '2026-01-01T00:00:00Z', owner: owner)]),
+              jsonEncode(manifest(4, channel: channel)),
               200,
             );
-          }
-          expect(request.url.host, 'github.com');
-          expect(
-            request.url.path,
-            '/$owner/FrameFilm/releases/download/v4/$metadata',
-          );
-          return http.Response(jsonEncode(manifest(4)), 200);
-        }),
-      );
-      final found = await service.latest();
-      if (owner == 'unrelated-owner') {
-        expect(found, isNull);
-      } else {
+          }),
+        );
+        final found = await service.latest(channel);
+        expect(found?.channel, channel);
         expect(
           found?.url,
           'https://github.com/$owner/FrameFilm/releases/download/v4/$apk',
         );
         expect(found?.sha256, sha);
-      }
-      service.dispose();
-    });
+        service.dispose();
+      },
+    );
   }
 
   test('selects exact Flutter APK by versionCode, not release date', () async {
@@ -163,12 +227,49 @@ void main() {
         );
       }),
     );
-    final found = await service.latest();
+    final found = await service.latest(AppReleaseChannel.stable);
     expect(found?.tag, 'old-high-code');
     expect(found?.versionCode, 8);
     expect(found?.isNewerThan(7), isTrue);
     expect(found?.isNewerThan(8), isFalse);
     service.dispose();
+  });
+
+  test('ignores older packages from the other app channel', () async {
+    const channel = AppReleaseChannel.development;
+    final service = AppUpdateService(
+      client: MockClient((request) async {
+        if (request.url.host == 'api.github.com') {
+          return http.Response(
+            jsonEncode([
+              release(
+                'this-channel',
+                '2026-11-24T00:00:00Z',
+                owner: 'Rafael-Ikaros',
+              ),
+              release(
+                'other-channel',
+                '2026-11-09T00:00:00Z',
+                owner: 'Rafael-Ikaros',
+              ),
+            ]),
+            200,
+          );
+        }
+        final other = request.url.path.contains('other-channel');
+        return http.Response(
+          jsonEncode(
+            manifest(
+              other ? 99 : 14,
+              channel: other ? AppReleaseChannel.stable : channel,
+            ),
+          ),
+          200,
+        );
+      }),
+    );
+    addTearDown(service.dispose);
+    expect((await service.latest(channel))?.versionCode, 14);
   });
 
   test(
@@ -189,7 +290,7 @@ void main() {
           ),
         ),
       );
-      expect(await empty.latest(), isNull);
+      expect(await empty.latest(AppReleaseChannel.stable), isNull);
       empty.dispose();
 
       final invalid = AppUpdateService(
@@ -204,7 +305,10 @@ void main() {
           ),
         ),
       );
-      await expectLater(invalid.latest(), throwsFormatException);
+      await expectLater(
+        invalid.latest(AppReleaseChannel.stable),
+        throwsFormatException,
+      );
       invalid.dispose();
     },
   );
@@ -226,6 +330,7 @@ void main() {
       service: service,
       platform: UnsupportedAppPlatform(),
     );
+    controller.selectChannel(AppReleaseChannel.stable);
     await controller.check();
     expect(controller.release?.versionCode, 4);
     expect(controller.installed, isNull);
@@ -233,5 +338,45 @@ void main() {
     expect(controller.message, contains('网页版'));
     controller.dispose();
     service.dispose();
+  });
+
+  test('other channel uses its own installed version and ready APK', () async {
+    final current = AppReleaseChannel.current;
+    final target = AppReleaseChannel.values.firstWhere(
+      (item) => item != current,
+    );
+    final platform = TestAndroidAppPlatform();
+    final owner = target.repository.split('/').first;
+    final service = AppUpdateService(
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode(
+            request.url.host == 'api.github.com'
+                ? [release('v4', '2026-01-01T00:00:00Z', owner: owner)]
+                : manifest(4, channel: target),
+          ),
+          200,
+        ),
+      ),
+    );
+    final controller = AppUpdateController(
+      service: service,
+      platform: platform,
+    );
+    addTearDown(service.dispose);
+    addTearDown(controller.dispose);
+    expect(controller.selectedChannel, current);
+    controller.selectChannel(target);
+    platform.channelVersions[target.packageName] = 5;
+    await controller.check();
+    expect(controller.canDownload, isFalse);
+    platform.channelVersions.clear();
+    await controller.check();
+    expect(controller.canDownload, isTrue);
+    await controller.download();
+    expect(platform.downloaded!.channel, target);
+    expect(controller.state.canInstall, isTrue);
+    controller.selectChannel(current);
+    expect(controller.state.canInstall, isFalse);
   });
 }

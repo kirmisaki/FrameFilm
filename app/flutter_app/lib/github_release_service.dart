@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'hardware_identity.dart';
+import 'release_repository.dart';
 
 class GitHubFirmwareRelease {
   const GitHubFirmwareRelease({
@@ -70,11 +71,7 @@ class GitHubReleaseService {
     if (hardware?.trusted != true) {
       throw StateError(HardwareIdentity.unavailableMessage);
     }
-    final data = await _get(
-      Uri.https('api.github.com', '/repos/kirmisaki/FrameFilm/releases', {
-        'per_page': '100',
-      }),
-    );
+    final data = await _get(releaseListUri(100));
     final release = _latestFormal(data);
     if (release == null) return null;
     final asset = _asset(release, 'framefilm-ark-firmware.json');

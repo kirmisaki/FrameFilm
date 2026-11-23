@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -18,6 +19,15 @@ val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: releaseProperties.ge
 val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: releaseProperties.getProperty("keyPassword")
 val hasReleaseSigning = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
     .all { !it.isNullOrBlank() }
+val releaseRepoDefine = "FRAMEFILM_APP_RELEASE_REPO="
+val releaseRepository = providers.gradleProperty("dart-defines").orNull.orEmpty()
+    .split(',')
+    .filter { it.isNotBlank() }
+    .map { String(Base64.getDecoder().decode(it), Charsets.UTF_8) }
+    .firstOrNull { it.startsWith(releaseRepoDefine) }
+    ?.removePrefix(releaseRepoDefine) ?: "Rafael-Ikaros/FrameFilm"
+val isDevelopmentRelease = !releaseRepository.equals("kirmisaki/FrameFilm", ignoreCase = true)
+val stableApplicationId = "org.framefilm.ark.flutter"
 gradle.taskGraph.whenReady {
     if (allTasks.any { it.project == project && it.name in listOf("packageRelease", "signReleaseBundle") }) {
         require(hasReleaseSigning) {
@@ -36,8 +46,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "org.framefilm.ark.flutter"
+        applicationId = if (isDevelopmentRelease) "$stableApplicationId.dev" else stableApplicationId
+        manifestPlaceholders["framefilmAppLabel"] = if (isDevelopmentRelease) "FrameFilm Ark 开发版" else "FrameFilm Ark"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 28
@@ -62,8 +72,8 @@ android {
     }
     buildTypes {
         debug {
-            applicationIdSuffix = ".dev"
-            versionNameSuffix = "-dev"
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
         }
         release {
             signingConfig = signingConfigs.getByName("release")

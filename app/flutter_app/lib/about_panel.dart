@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'external_link.dart';
+import 'release_repository.dart';
 import 'workbench_widgets.dart';
 
 bool _licenseRegistered = false;
@@ -39,9 +40,10 @@ class AboutPanel extends StatelessWidget {
         const SizedBox(height: 16),
         Text('FrameFilm Ark', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
+        Text('发布渠道 · $releaseChannelLabel'),
         const Text('为彩色电子纸制作、管理与传递画面。'),
         const Divider(height: 32),
-        const Text('App 开发维护 · Rafael-ban'),
+        const Text('App 开发维护 · Rafael-Ikaros'),
         const SizedBox(height: 4),
         const Text('基于 FrameFilm 开源项目，感谢原项目作者与所有贡献者。'),
         const SizedBox(height: 16),
@@ -50,21 +52,18 @@ class AboutPanel extends StatelessWidget {
           runSpacing: 8,
           children: [
             OutlinedButton.icon(
-              onPressed: () => _open(context, 'https://github.com/Rafael-ban'),
+              onPressed: () =>
+                  _open(context, 'https://github.com/Rafael-Ikaros'),
               icon: const Icon(Icons.person_outline),
               label: const Text('作者主页'),
             ),
             OutlinedButton.icon(
-              onPressed: () =>
-                  _open(context, 'https://github.com/Rafael-ban/FrameFilm'),
+              onPressed: () => _open(context, releaseRepositoryUrl),
               icon: const Icon(Icons.code),
               label: const Text('项目源码'),
             ),
             OutlinedButton.icon(
-              onPressed: () => _open(
-                context,
-                'https://github.com/Rafael-ban/FrameFilm/issues',
-              ),
+              onPressed: () => _open(context, '$releaseRepositoryUrl/issues'),
               icon: const Icon(Icons.feedback_outlined),
               label: const Text('反馈问题'),
             ),

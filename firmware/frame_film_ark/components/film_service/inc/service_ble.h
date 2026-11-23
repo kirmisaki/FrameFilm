@@ -140,6 +140,12 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_NFC_COVER_BEGIN                 (0x67)
 #define BLE_FILM_TRANS_CH_NFC_COVER_DATA                  (0x68)
 #define BLE_FILM_TRANS_CH_NFC_COVER_COMMIT                (0x69)
+
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_BEGIN              (0x6A)
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_DATA               (0x6B)
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_FINISH             (0x6C)
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_APPLY              (0x6D)
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_CANCEL             (0x6E)
 #define BLE_NFC_CHUNK_MAX                                 (180)
 
 /* 蓝牙设备名 = 编译期前缀 "FRAMEFILMARK-" (13B) + 可配置后缀 (1..16B)，完整名上限 29B

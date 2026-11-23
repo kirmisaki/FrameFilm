@@ -42,9 +42,14 @@ extension type _File(JSObject _) implements JSObject {
 }
 
 const _key = 'framefilm-ark-pass-profile-v1';
+const _studentKey = 'framefilm-ark-pass-student-v2';
 Future<String?> loadPassportDraft() async => _storage.getItem(_key);
 Future<void> savePassportDraft(String json) async =>
     _storage.setItem(_key, json);
+Future<String?> loadStudentPassportDraft() async =>
+    _storage.getItem(_studentKey);
+Future<void> saveStudentPassportDraft(String json) async =>
+    _storage.setItem(_studentKey, json);
 Future<Uint8List?> pickPassportAvatar() {
   final result = Completer<Uint8List?>();
   final input = _create('input');

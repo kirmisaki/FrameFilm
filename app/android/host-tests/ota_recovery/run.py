@@ -17,11 +17,20 @@ ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 GRADLE_HOME = Path(os.environ.get("GRADLE_USER_HOME", Path.home() / ".gradle"))
 CACHE = GRADLE_HOME / "caches" / "modules-2" / "files-2.1"
-VERSION = "2.2.20"  # app/android/build.gradle.kts
+# Default follows app/android; an explicit override permits offline host checks
+# with an already cached compiler without changing either Android build.
+VERSION = os.environ.get("FRAMEFILM_HOST_KOTLIN_VERSION", "2.2.20")
 SOURCES = [
     ROOT / "android/app/src/main/java/org/framefilm/ark/Abc9Preview.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/ArkSession.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/DirectTransferCoordinator.kt",
+    ROOT / "android/app/src/main/java/org/framefilm/ark/TransferCoordinator.kt",
+    ROOT / "android/app/src/main/java/org/framefilm/ark/BleTransferCoordinator.kt",
+    ROOT / "android/app/src/main/java/org/framefilm/ark/VerifiedBleFileCoordinator.kt",
+    ROOT / "android/app/src/main/java/org/framefilm/ark/TransferPolicy.kt",
+    HERE / "BleTransferHostTest.kt",
+    ROOT / "android/app/src/main/java/org/framefilm/ark/BleFirmwareCoordinator.kt",
+    HERE / "BleFirmwareHostTest.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/TransferSnapshot.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/ArkFirmware.kt",
     ROOT / "android/app/src/main/java/org/framefilm/ark/FirmwareDownloader.kt",
@@ -47,6 +56,14 @@ def cached_file(group: str, artifact: str, version: str, suffix: str) -> Path:
 
 def compiler_runtime() -> tuple[Path, list[Path]]:
     compiler = cached_file("org.jetbrains.kotlin", "kotlin-compiler-embeddable", VERSION, "jar")
+    # Some offline caches retain jars but not POMs. The caller may supply the
+    # compiler's explicit cached runtime classpath; never fetch or guess it here.
+    runtime = os.environ.get("FRAMEFILM_HOST_COMPILER_RUNTIME")
+    if runtime:
+        dependencies = [Path(item) for item in runtime.split(os.pathsep)]
+        if not all(item.is_file() for item in dependencies):
+            raise RuntimeError("An explicitly supplied Kotlin runtime jar is missing")
+        return compiler, dependencies
     pom = cached_file("org.jetbrains.kotlin", "kotlin-compiler-embeddable", VERSION, "pom")
     namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
     dependencies = []
@@ -60,7 +77,9 @@ def compiler_runtime() -> tuple[Path, list[Path]]:
 
 
 def run() -> None:
-    java = shutil.which("java")
+    java_home = os.environ.get("JAVA_HOME")
+    java_candidate = Path(java_home) / "bin" / ("java.exe" if os.name == "nt" else "java") if java_home else None
+    java = str(java_candidate) if java_candidate and java_candidate.is_file() else shutil.which("java")
     if not java:
         raise RuntimeError("Java executable was not found")
     if any(not source.is_file() for source in SOURCES):
@@ -86,7 +105,8 @@ def run() -> None:
             check=True,
             cwd=ROOT,
         )
-        for main_class in ("org.framefilm.ark.OtaRecoveryHostTestKt",
+        for main_class in ("org.framefilm.ark.OtaRecoveryHostTestKt", "org.framefilm.ark.BleTransferHostTestKt",
+                           "org.framefilm.ark.BleFirmwareHostTestKt",
                            "org.framefilm.ark.ArkFirmwareTest", "org.framefilm.ark.FirmwareDownloaderTest"):
             subprocess.run(
                 [java, "-cp", os.pathsep.join(map(str, [output, stdlib])), main_class],
