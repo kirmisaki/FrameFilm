@@ -30,13 +30,14 @@ function validateApkInfo(info, signature, channel, versionName, versionCode, cer
       identity[3] !== versionName || minSdk !== 28 || targetSdk !== 35 || /application-debuggable/.test(info)) {
     throw Error(`APK must be non-debuggable ${channel.packageName} ${versionName}+${versionCode}, minSDK 28 / targetSDK 35`);
   }
-  const signers = [...signature.matchAll(/^Signer #\d+ certificate SHA-256 digest:\s*([a-fA-F0-9]{64})\s*$/gm)]
-    .map((match) => match[1].toLowerCase());
+  const signers = signature.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? [];
   if (signers.length !== 1) {
     throw Error(`Expected one APK signing certificate from apksigner; found ${signers.length}`);
   }
-  if (signers[0] !== certificate) {
-    throw Error(`APK signing certificate SHA-256 ${signers[0]} does not match the public ${channel.repository} baseline ${certificate}`);
+  const signer = new crypto.X509Certificate(signers[0]);
+  const fingerprint = crypto.createHash('sha256').update(signer.raw).digest('hex');
+  if (fingerprint !== certificate) {
+    throw Error(`APK signing certificate SHA-256 ${fingerprint} does not match the public ${channel.repository} baseline ${certificate}`);
   }
   return { packageName: identity[1], versionName, versionCode, minSdk };
 }
@@ -75,7 +76,7 @@ function generate(apk, output) {
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
   if (!sdk) throw Error('Set ANDROID_HOME to inspect the APK');
   const info = execFileSync(buildTool(sdk, 'aapt'), ['dump', 'badging', apk], { encoding: 'utf8' });
-  const signature = execFileSync(buildTool(sdk, 'apksigner'), ['verify', '--print-certs', apk], {
+  const signature = execFileSync(buildTool(sdk, 'apksigner'), ['verify', '--print-certs-pem', apk], {
     encoding: 'utf8', shell: process.platform === 'win32',
   });
   const identity = validateApkInfo(info, signature, channel, version[1], Number(version[2]), certificate);

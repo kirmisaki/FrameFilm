@@ -1,5 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { X509Certificate } = require('node:crypto');
+const { rootCertificates } = require('node:tls');
 const {
   channelFor, validateApkInfo, validateHistory,
 } = require('./generate_app_release.cjs');
@@ -14,7 +16,8 @@ const app = {
 function badging(channel = dev, { code = 15, debug = false, min = 28, target = 35 } = {}) {
   return `package: name='${channel.packageName}' versionCode='${code}' versionName='0.4.11'\nsdkVersion:'${min}'\ntargetSdkVersion:'${target}'\n${debug ? 'application-debuggable' : ''}`;
 }
-const signature = `Signer #1 certificate SHA-256 digest: ${sha}\n`;
+const signature = rootCertificates[0];
+const signerFingerprint = new X509Certificate(signature).fingerprint256.replaceAll(':', '').toLowerCase();
 
 test('fixed canonical repositories, explicit unknown is not development', () => {
   assert.equal(channelFor('KIRMISAKI/FRAMEFILM'), stable);
@@ -28,14 +31,15 @@ test('each release channel pins its existing public certificate', () => {
   assert.equal(dev.certificate, 'e5c1b5305670858656fce38cea82614838992aa3326ef3166546af4f9da7245e');
 });
 test('actual APK package, SDK, version and signer must match distribution', () => {
-  assert.equal(validateApkInfo(badging(), signature, dev, '0.4.11', 15, sha).packageName, dev.packageName);
+  const verifierOutput = `Verified APK certificate:\n${signature}\n`;
+  assert.equal(validateApkInfo(badging(), verifierOutput, dev, '0.4.11', 15, signerFingerprint).packageName, dev.packageName);
   for (const info of [badging(stable), badging(dev, { code: 14 }), badging(dev, { min: 27 }),
     badging(dev, { target: 34 }), badging(dev, { debug: true })]) {
-    assert.throws(() => validateApkInfo(info, signature, dev, '0.4.11', 15, sha), /APK must/);
+    assert.throws(() => validateApkInfo(info, signature, dev, '0.4.11', 15, signerFingerprint), /APK must/);
   }
   assert.throws(() => validateApkInfo(badging(), '', dev, '0.4.11', 15, sha), /found 0/);
   assert.throws(() => validateApkInfo(badging(), signature, dev, '0.4.11', 15, 'b'.repeat(64)), /does not match/);
-  assert.throws(() => validateApkInfo(badging(), signature + signature.replace('#1', '#2'), dev, '0.4.11', 15, sha), /found 2/);
+  assert.throws(() => validateApkInfo(badging(), `${signature}\n${rootCertificates[1]}`, dev, '0.4.11', 15, signerFingerprint), /found 2/);
 });
 test('published version continuity allows only identical-byte reuse, skips opposite historical package', () => {
   validateHistory(app, [{ ...app, versionCode: 14 }]);
