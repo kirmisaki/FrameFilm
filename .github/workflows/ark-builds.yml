@@ -244,6 +244,7 @@ jobs:
       - name: Check published own-channel version continuity
         if: needs.plan.outputs.publish == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
           VERSION_NAME: ${{ needs.plan.outputs.version_name }}
           VERSION_CODE: ${{ needs.plan.outputs.version_code }}

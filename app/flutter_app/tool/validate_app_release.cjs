@@ -37,9 +37,11 @@ async function metadataAsset(raw, repository, tag) {
 }
 async function history(repository) {
   const previous = [];
+  const headers = { Accept: 'application/vnd.github+json' };
+  if (process.env.GH_TOKEN) headers.Authorization = `Bearer ${process.env.GH_TOKEN}`;
   for (let page = 1; ; page++) {
     const response = await fetch(`https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`, {
-      redirect: 'error', headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(20000),
+      redirect: 'error', headers, signal: AbortSignal.timeout(20000),
     });
     if (!response.ok) throw Error(`GitHub history lookup failed: ${response.status}`);
     const releases = await response.json();
