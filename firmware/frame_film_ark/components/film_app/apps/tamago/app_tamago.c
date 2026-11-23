@@ -77,9 +77,10 @@
 #define TG_RULE1_Y              (24)
 #define TG_NAME_Y               (32)
 #define TG_NAME_H               (56)
-#define TG_HEART1_Y             (96)
-#define TG_HEART2_Y             (114)
-#define TG_HEART_H              (14)
+/* 心数行：容器高度必须 >= 14px 字库的行高（18），否则文字底部会被裁掉 */
+#define TG_HEART1_Y             (94)
+#define TG_HEART2_Y             (116)
+#define TG_HEART_H              (18)
 #define TG_STAGE_Y              (138)
 #define TG_STAGE_H              (250)
 #define TG_MSG_Y                (396)
@@ -931,7 +932,8 @@ static void tg_marks(lv_obj_t *parent, int32_t w, int32_t h)
 
 static void tg_heart_cell(lv_obj_t *parent, int32_t x, lv_obj_t **out)
 {
-    lv_obj_t *o = tg_box(parent, x, 0, 20, 12);
+    /* 行高 18，格子 12 高，下移 3 让它在文字行里垂直居中 */
+    lv_obj_t *o = tg_box(parent, x, 3, 20, 12);
 
     lv_obj_set_style_border_width(o, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(o, lv_color_black(), LV_PART_MAIN);
@@ -960,8 +962,9 @@ static void tg_build_pet(void)
     row = tg_box(m_body, 0, TG_NAME_Y, TG_BODY_W, TG_NAME_H);
     m_lbl_name = tg_label(row, app_font_hero(), lv_color_black(), "TAMAGO");
     lv_obj_set_pos(m_lbl_name, 0, 0);
+    /* 三行（代数/年龄/体重），每行 18px 共 54px，需贴顶放，否则末行会被 56px 的铭牌行裁掉 */
     m_lbl_sub = tg_label(row, app_font_small(), lv_color_black(), "");
-    lv_obj_align(m_lbl_sub, LV_ALIGN_TOP_RIGHT, 0, 6);
+    lv_obj_align(m_lbl_sub, LV_ALIGN_TOP_RIGHT, 0, 0);
 
     /* ---- 饥饿 / 快乐心数 ---- */
     row = tg_box(m_body, 0, TG_HEART1_Y, TG_BODY_W, TG_HEART_H);
@@ -979,7 +982,7 @@ static void tg_build_pet(void)
     }
     for(i = 0; i < TG_DISC_NUM; i++)
     {
-        o = tg_box(row, 200 + i * 18, 2, 14, 8);
+        o = tg_box(row, 200 + i * 18, 5, 14, 8);
         lv_obj_set_style_border_width(o, 1, LV_PART_MAIN);
         lv_obj_set_style_border_color(o, lv_color_black(), LV_PART_MAIN);
         lv_obj_set_style_bg_color(o, lv_color_black(), LV_PART_MAIN);
@@ -990,7 +993,7 @@ static void tg_build_pet(void)
         lv_obj_t *manners = tg_label(row, app_font_small(), lv_color_black(),
                                      tg_text("教养", "MANNERS"));
 
-        lv_obj_set_pos(manners, 152, 1);
+        lv_obj_set_pos(manners, 152, 0);
     }
 
     /* ---- 舞台 ---- */
