@@ -134,6 +134,7 @@ ASSETS = [
     ("ui_def_icon_clock",     "icon",  "ui_def_icon_clock.png",     (ICON, ICON),        "clock",     "stretch"),
     ("ui_def_icon_animation", "icon",  "ui_def_icon_animation.png", (ICON, ICON),        "animation", "stretch"),
     ("ui_def_icon_settings",  "icon",  "ui_def_icon_settings.png",  (ICON, ICON),        "settings",  "stretch"),
+    ("ui_def_icon_tamago",    "icon",  "ui_def_icon_tamago.png",    (ICON, ICON),        "tamago",    "stretch"),
     ("ui_def_badge",          "badge", "ui_def_badge.png",          (BADGE_W, BADGE_H),  "_ui",       "stretch"),
 ]
 

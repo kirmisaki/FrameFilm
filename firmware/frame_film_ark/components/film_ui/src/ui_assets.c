@@ -102,6 +102,7 @@ static ui_asset_slot_t m_icons[UI_ICON_NUM] = {
     { .code = "clock",     .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_clock     },
     { .code = "animation", .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_animation },
     { .code = "settings",  .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_settings  },
+    { .code = "tamago",    .w = UI_ICON_W, .h = UI_ICON_H, .def = ui_def_icon_tamago    },
 };
 
 static ui_asset_slot_t m_badge = {
