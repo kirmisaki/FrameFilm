@@ -1,12 +1,16 @@
 # Ark UI fonts
 
-The firmware uses three generated, compact 1-bpp font files in `firmware/frame_film_ark/components/film_ui/src/`:
+The firmware uses generated, compact 1-bpp font files in `firmware/frame_film_ark/components/film_ui/src/`:
 
 | File | LVGL symbols | Scope |
 | --- | --- | --- |
-| `ui_fonts_body.c` | `ui_font_14`, `ui_font_18` | Shared body text; printable ASCII + every non-ASCII string literal in Ark UI |
-| `ui_fonts_title.c` | `ui_font_24`, `ui_font_36` | Shared title subsets (menu names, "已休眠", "通行证") |
+| `ui_fonts_body.c` | `ui_font_14`, `ui_font_18` | n4r2 body text: printable ASCII + non-ASCII literals of framework pages and always-built apps |
+| `ui_fonts_body_nfc.c` | `ui_font_14`, `ui_font_18` | n16r8: same, plus every string literal of the NFC-only apps (`wallet`, `tamago`) |
+| `ui_fonts_title.c` | `ui_font_24`, `ui_font_36` | n4r2 title subsets (menu names, "已休眠", "通行证") |
+| `ui_fonts_title_nfc.c` | `ui_font_24`, `ui_font_36` | n16r8: the same plus the pet app's title/hero strings |
 | `ui_fonts_wallet.c` | `ui_font_wallet_name` | n16r8 only; GB2312 level-1 card-name font |
+
+`film_ui/CMakeLists.txt` picks `*_nfc.c` when `CONFIG_ARK_HAS_NFC` is on and the plain files otherwise — the two variants define the same symbols and are never compiled together. The split exists because n4r2's 1900K app partition cannot hold the NFC-only text (~10 KB at body sizes, ~3 KB at title sizes).
 
 The generator rasterizes the official Adobe Source Han Sans CN subset at its native target size, with threshold 128 and no grayscale or scaling at runtime.
 
@@ -14,10 +18,10 @@ The generator rasterizes the official Adobe Source Han Sans CN subset at its nat
 | --- | --- | ---: | ---: | ---: |
 | `ui_font_14` | Bold | 16 px | 18 px | 4 px |
 | `ui_font_18` | Bold | 18 px | 22 px | 4 px |
-| `ui_font_24` | Medium | 24 px | 28 px | 4 px |
-| `ui_font_36` | Medium | 36 px | 40 px | 4 px |
+| `ui_font_24` | Bold | 24 px | 28 px | 4 px |
+| `ui_font_36` | Bold | 36 px | 40 px | 4 px |
 
-The 14 and 18 fonts collect printable ASCII and non-ASCII string literals from Ark app pages, shell, core, and content apps, including settings options and clock labels. The 24 and 36 fonts retain explicit title subsets to keep firmware size small. Regenerate after changing displayed text; the generated C files are committed so offline builds need no OTF files or Pillow.
+The 14 and 18 fonts collect printable ASCII and non-ASCII string literals from Ark app pages, shell, core, and content apps, including settings options and clock labels. The 24 and 36 fonts retain explicit title subsets (`LARGE_TEXT` / `LARGE_TEXT_NFC` in the generator) to keep firmware size small — when adding a string drawn with `app_font_title()` / `app_font_hero()` / `app_font_menu_name()`, add its characters there. Regenerate after changing displayed text; the generated C files are committed so offline builds need no OTF files or Pillow.
 
 `ui_fonts_wallet.c` is the variant-specific font: it adds all GB2312 level-1 characters (3755 common hanzi) at 18 px so wallet card names renamed over BLE can contain common Chinese. It is only compiled into NFC builds (`CONFIG_ARK_HAS_NFC`, i.e. n16r8); n4r2 keeps its 1900K app partition free of the extra ~210 KB.
 

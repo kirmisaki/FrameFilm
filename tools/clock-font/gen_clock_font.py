@@ -30,6 +30,7 @@ GLYPHS = ["-"] + [str(d) for d in range(10)] + [":"]
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 TTF_CANDIDATES = [
+    os.path.join(REPO_ROOT, "assets", "fonts", "Montserrat-Medium.ttf"),
     os.path.join(REPO_ROOT, "tools", "clock-font", "Montserrat-Medium.ttf"),
     os.path.join(REPO_ROOT, "firmware", "frame_film", "managed_components", "lvgl__lvgl",
                  "scripts", "generators", "built_in_font", "Montserrat-Medium.ttf"),

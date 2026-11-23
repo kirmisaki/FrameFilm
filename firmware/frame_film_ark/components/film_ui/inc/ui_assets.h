@@ -43,6 +43,7 @@ typedef enum {
     UI_ICON_CLOCK,
     UI_ICON_ANIMATION,
     UI_ICON_SETTINGS,
+    UI_ICON_TAMAGO,        // 电子宠物（n16r8，菜单独立图标）
     UI_ICON_NUM,
 } ui_icon_id_t;
 

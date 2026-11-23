@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Portrait Animator · 阿米娅动图生成器</title>
+<style>
+:root{--bg:#101014;--ink:#e6e6e8;--dim:#6a6a70;--accent:#4af3c3;--paper:#fff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:13px/1.5 'SF Mono',Consolas,'Microsoft YaHei UI',monospace;padding:24px;min-height:100vh}
+h1{font-size:18px;font-weight:600;margin-bottom:4px;letter-spacing:.02em}
+h2{font-size:13px;font-weight:600;margin:16px 0 8px;color:var(--accent);letter-spacing:.05em;text-transform:uppercase}
+p.dim{color:var(--dim);font-size:12px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:24px}
+.panel{background:#18181e;border:1px solid #282830;border-radius:8px;padding:16px}
+.ctrl{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12px}
+.ctrl label{min-width:120px;color:var(--dim)}
+.ctrl input[type=range]{flex:1;accent-color:var(--accent)}
+.ctrl input[type=number]{width:64px;background:#22222a;border:1px solid #30303a;color:var(--ink);padding:3px 5px;border-radius:3px;font-family:inherit}
+.ctrl select{flex:1;background:#22222a;border:1px solid #30303a;color:var(--ink);padding:3px 5px;border-radius:3px}
+.ctrl button{background:#22222a;border:1px solid #3a3a44;color:var(--ink);padding:4px 10px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:12px}
+.ctrl button:hover{border-color:var(--accent);color:var(--accent)}
+.ctrl button.primary{background:var(--accent);color:#0a0a0e;border-color:var(--accent)}
+.ctrl button.primary:hover{opacity:.9}
+.drop{border:2px dashed #3a3a44;border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:.15s;margin-bottom:12px}
+.drop.hover{border-color:var(--accent);background:rgba(74,243,195,.06)}
+.drop canvas,.drop img{max-width:100%;max-height:120px;display:block;margin:8px auto}
+.canvas-wrap{position:relative;background:var(--paper);border:1px solid #30303a;border-radius:6px;overflow:hidden}
+.canvas-wrap canvas{display:block;width:100%;height:auto}
+.frame-row{display:flex;gap:4px;overflow-x:auto;padding:8px;background:#0c0c10;border-radius:6px;border:1px solid #22222a}
+.frame-row canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:var(--paper);border:1px solid #22222a;border-radius:3px}
+.preview-stage{display:flex;flex-direction:column;gap:8px}
+.preview-stage .big{background:var(--paper);border:1px solid #30303a;border-radius:6px;padding:12px;text-align:center}
+.preview-stage canvas{image-rendering:pixelated;image-rendering:crisp-edges}
+.frame-label{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:4px}
+.sprite-info{background:#0c0c10;border:1px solid #22222a;border-radius:6px;padding:10px;font-size:12px}
+.sprite-info code{color:var(--accent)}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<h1>Portrait Animator · 阿米娅动图生成器</h1>
+<p class="dim">输入一张 PNG 立绘 → 生成多帧动画序列 → Floyd-Steinberg 抖动到 1-bit → 导出 sprite sheet。零依赖，纯浏览器。</p>
+
+<div class="grid">
+
+  <!-- 左侧：输入 + 动画参数 -->
+  <div>
+    <div class="panel">
+      <h2>① 输入图片</h2>
+      <div class="drop" id="drop">
+        <div style="color:var(--accent);font-size:20px">⬇</div>
+        <div>拖 PNG 到这里 或 点击选择</div>
+        <input type="file" id="file" accept="image/png" hidden>
+        <canvas id="thumb" width="200" height="200" style="display:none;margin-top:8px"></canvas>
+      </div>
+
+      <h2>② 画布参数</h2>
+      <div class="ctrl"><label>帧尺寸</label><input type="number" id="fw" value="96"> × <input type="number" id="fh" value="96"> px</div>
+      <div class="ctrl"><label>动画类型</label>
+        <select id="animType">
+          <option value="breath">呼吸（6帧）</option>
+          <option value="blink">眨眼（6帧）</option>
+          <option value="earwiggle">兔耳颤动（8帧）</option>
+          <option value="idle">待机复合（18帧·呼吸+眨眼+耳颤）</option>
+          <option value="sleep">睡眠（6帧·闭眼+慢摆）</option>
+          <option value="sick">生病（8帧·快抖）</option>
+          <option value="tilt">歪头（6帧）</option>
+        </select>
+      </div>
+      <div class="ctrl"><label>目标尺寸</label>
+        <select id="target">
+          <option value="96">96×96 （Ark 电子纸预览）</option>
+          <option value="64">64×64</option>
+          <option value="48">48×48 （固件目标）</option>
+          <option value="128">128×128</option>
+        </select>
+      </div>
+
+      <h2>③ 抖动参数</h2>
+      <div class="ctrl"><label>抖动算法</label>
+        <select id="dither">
+          <option value="fs">Floyd-Steinberg</option>
+          <option value="atkinson">Atkinson</option>
+          <option value="threshold">阈值无抖动</option>
+        </select>
+      </div>
+      <div class="ctrl"><label>黑白阈值</label><input type="range" id="thresh" min="100" max="200" value="140"></div>
+      <div class="ctrl"><label>亮度</label><input type="range" id="bright" min="0.5" max="1.5" value="1" step="0.05"></div>
+      <div class="ctrl"><label>对比度</label><input type="range" id="contrast" min="0.5" max="2" value="1.2" step="0.05"></div>
+
+      <h2>④ 背景融合</h2>
+      <p class="dim">原图白底会自动替换成透明（阈值以下的白色 → alpha=0）</p>
+      <div class="ctrl"><label>白底阈值</label><input type="range" id="whiteThresh" min="200" max="255" value="240"></div>
+
+      <h2>⑤ 动作裁剪框</h2>
+      <p class="dim">预览上的选框决定了从原图裁出的耳朵/眼睛区域。</p>
+      <div class="ctrl"><label>左眼 (x,y,w,h)</label>
+        <input type="number" id="leX" value="180"><input type="number" id="leY" value="215">
+        <input type="number" id="leW" value="50"><input type="number" id="leH" value="40">
+      </div>
+      <div class="ctrl"><label>右眼 (x,y,w,h)</label>
+        <input type="number" id="reX" value="270"><input type="number" id="reY" value="215">
+        <input type="number" id="reW" value="50"><input type="number" id="reH" value="40">
+      </div>
+      <div class="ctrl"><label>左耳 (x,y,w,h)</label>
+        <input type="number" id="leax" value="30"><input type="number" id="leay" value="40">
+        <input type="number" id="leaw" value="150"><input type="number" id="leah" value="200">
+      </div>
+      <div class="ctrl"><label>右耳 (x,y,w,h)</label>
+        <input type="number" id="reax" value="320"><input type="number" id="reay" value="40">
+        <input type="number" id="reaw" value="150"><input type="number" id="reah" value="200">
+      </div>
+      <div class="ctrl"><label>主体中心 (x,y)</label>
+        <input type="number" id="cx" value="250"><input type="number" id="cy" value="250">
+      </div>
+
+      <div class="ctrl" style="margin-top:16px">
+        <button class="primary" id="genBtn">▶ 生成 Sprite Sheet</button>
+        <button id="animBtn">▶ 播放动画</button>
+        <button id="stopBtn">■ 停止</button>
+      </div>
+      <div class="ctrl">
+        <button id="dlPng">⬇ 导出 PNG Sheet</button>
+        <button id="dlJson">⬇ 导出 JSON 元数据</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧：预览 + 输出 -->
+  <div>
+    <div class="panel">
+      <h2>A. 原图预览 + 裁剪框</h2>
+      <div class="canvas-wrap">
+        <canvas id="preview" width="400" height="400"></canvas>
+      </div>
+      <p class="dim" style="margin-top:6px">蓝色框=眼睛 | 红色框=耳朵 | 十字=主体中心</p>
+    </div>
+
+    <div class="panel preview-stage">
+      <h2>B. 动画预览</h2>
+      <div class="big">
+        <canvas id="animPreview" width="96" height="96" style="width:180px;height:180px;background:var(--paper)"></canvas>
+        <div class="frame-label">
+          <span id="animLabel">等待生成...</span>
+          <span id="animStatus">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>C. Sprite Sheet（1-bit）</h2>
+      <div class="frame-row" id="frameRow"><span class="dim">还没生成。点左侧 "▶ 生成 Sprite Sheet"。</span></div>
+      <div class="sprite-info" id="spriteInfo" style="margin-top:8px">
+        <code>{ frames: 0, size: 0×0, total: 0px }</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ---------- 全局状态 ---------- */
+var S = {
+  img: null,
+  imgLoaded: false,
+  frames: [],         // [{canvas, frameIdx}]
+  animIdx: 0,
+  animTimer: 0,
+  ditherCache: null
+};
+
+/* ---------- 拖放 + 选图 ---------- */
+var drop = document.getElementById('drop');
+var file = document.getElementById('file');
+drop.addEventListener('click', () => file.click());
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('hover'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('hover'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('hover');
+  if(e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]);
+});
+file.addEventListener('change', e => { if(e.target.files[0]) loadImage(e.target.files[0]); });
+
+function loadImage(f){
+  var url = URL.createObjectURL(f);
+  var img = new Image();
+  img.onload = () => {
+    S.img = img; S.imgLoaded = true;
+    drop.innerHTML = '';
+    var t = document.getElementById('thumb');
+    t.width = 120; t.height = 120;
+    t.getContext('2d').drawImage(img, 0, 0, 120, 120);
+    drop.appendChild(t);
+    drawPreview();
+    updateFrameLabel();
+  };
+  img.src = url;
+}
+
+/* ---------- 预览画布（原图 + 裁剪框 + 十字） ---------- */
+function drawPreview(){
+  if(!S.imgLoaded) return;
+  var cv = document.getElementById('preview');
+  var ctx = cv.getContext('2d');
+  ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0, 0, 400, 400);
+  /* 等比缩放图到 400×400 */
+  var s = Math.min(400 / S.img.naturalWidth, 400 / S.img.naturalHeight);
+  var dw = S.img.naturalWidth * s, dh = S.img.naturalHeight * s;
+  ctx.drawImage(S.img, (400 - dw)/2, (400 - dh)/2, dw, dh);
+
+  var cx = (400 - dw)/2, cy = (400 - dh)/2;
+  var map = (v) => Math.round(v * s);
+
+  /* 主体中心十字 */
+  ctx.strokeStyle = '#f44'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx + map(val('cx')) - 6, cy + map(val('cy')));
+  ctx.lineTo(cx + map(val('cx')) + 6, cy + map(val('cy')));
+  ctx.moveTo(cx + map(val('cx')), cy + map(val('cy')) - 6);
+  ctx.lineTo(cx + map(val('cx')), cy + map(val('cy')) + 6);
+  ctx.stroke();
+
+  /* 左眼/右眼（蓝框） */
+  ctx.strokeStyle = '#4af3c3'; ctx.lineWidth = 2;
+  ctx.strokeRect(cx + map(val('leX')), cy + map(val('leY')), map(val('leW')), map(val('leH')));
+  ctx.strokeRect(cx + map(val('reX')), cy + map(val('reY')), map(val('reW')), map(val('reH')));
+
+  /* 左耳/右耳（红框） */
+  ctx.strokeStyle = '#f44'; ctx.lineWidth = 2;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeRect(cx + map(val('leax')), cy + map(val('leay')), map(val('leaw')), map(val('leah')));
+  ctx.strokeRect(cx + map(val('reax')), cy + map(val('reay')), map(val('reaw')), map(val('reah')));
+  ctx.setLineDash([]);
+}
+
+function val(id){ return parseInt(document.getElementById(id).value, 10); }
+['fw','fh','animType','target','dither','thresh','bright','contrast','whiteThresh',
+ 'leX','leY','leW','leH','reX','reY','reW','reH','leax','leay','leaw','leah',
+ 'reax','reay','reaw','reah','cx','cy'].forEach(id => {
+  var el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('input', () => { drawPreview(); });
+  el.addEventListener('change', () => { drawPreview(); });
+});
+
+/* ---------- Floyd-Steinberg / Atkinson 抖动 ---------- */
+function ditherCanvas(srcCanvas, mode, bright, contrast, whiteThresh){
+  var src = srcCanvas.getContext('2d').getImageData(0, 0, srcCanvas.width, srcCanvas.height);
+  var d = src.data;
+  var W = srcCanvas.width, H = srcCanvas.height;
+  /* 转灰度 + 应用亮度/对比度 */
+  for(var i = 0; i < d.length; i += 4){
+    var r = d[i], g = d[i+1], b = d[i+2];
+    var lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    /* 白底 → 透明（alpha=0 的保持 0，否则白底 255,255,255） */
+    if(r > whiteThresh && g > whiteThresh && b > whiteThresh){
+      d[i] = d[i+1] = d[i+2] = 255; d[i+3] = 0;
+      continue;
+    }
+    /* 亮度对比度 */
+    lum = (lum - 128) * contrast + 128;
+    lum = lum * bright;
+    /* 白底融合：接近白底的提升亮度 */
+    lum = Math.max(0, Math.min(255, lum));
+    d[i] = d[i+1] = d[i+2] = lum; d[i+3] = 255;
+  }
+  /* 抖动 */
+  var thresh = parseInt(document.getElementById('thresh').value, 10);
+  var out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  var outCtx = out.getContext('2d');
+  var outData = outCtx.createImageData(W, H);
+  var od = outData.data;
+
+  for(var y = 0; y < H; y++){
+    for(var x = 0; x < W; x++){
+      var idx = (y * W + x) * 4;
+      if(d[idx+3] === 0){
+        od[idx] = od[idx+1] = od[idx+2] = 255; od[idx+3] = 0;
+        continue;
+      }
+      var oldV = d[idx];
+      var newV = oldV < thresh ? 0 : 255;
+      od[idx] = od[idx+1] = od[idx+2] = newV; od[idx+3] = 255;
+      var err = oldV - newV;
+      if(mode === 'fs'){
+        /* Floyd-Steinberg */
+        if(x+1 < W)   d[idx+4] += err * 7/16;
+        if(y+1 < H){
+          if(x > 0)   d[(y+1)*W*4 + (x-1)*4] += err * 3/16;
+          d[(y+1)*W*4 + x*4] += err * 5/16;
+          if(x+1 < W) d[(y+1)*W*4 + (x+1)*4] += err * 1/16;
+        }
+      } else if(mode === 'atkinson'){
+        /* Atkinson */
+        var e = err / 8;
+        if(x+1 < W) d[idx+4] += e;
+        if(x+2 < W) d[idx+8] += e;
+        if(y+1 < H){
+          if(x > 0)   d[(y+1)*W*4 + (x-1)*4] += e;
+          d[(y+1)*W*4 + x*4] += e;
+          if(x+1 < W) d[(y+1)*W*4 + (x+1)*4] += e;
+        }
+        if(y+2 < H) d[(y+2)*W*4 + x*4] += e;
+      }
+    }
+  }
+  outCtx.putImageData(outData, 0, 0);
+  return out;
+}
+
+/* ---------- 单帧合成：裁主体 + 裁耳朵 + 旋转合成 ---------- */
+function composeFrame(frameW, frameH, t, params){
+  /* t ∈ [0, 1] 表示当前帧在动画周期中的位置 */
+  var out = document.createElement('canvas');
+  out.width = frameW; out.height = frameH;
+  var ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+
+  var img = S.img;
+  var icx = img.naturalWidth / 2, icy = img.naturalHeight / 2;
+
+  /* —— 动画参数（整体） —— */
+  var breathT = Math.sin(t * Math.PI * 2);           /* 呼吸：±1 */
+  var wiggleT = Math.sin(t * Math.PI * 2 * 4);       /* 耳颤：4 倍频 */
+  var tiltT   = Math.sin(t * Math.PI * 2 * 0.3);     /* 歪头：慢摆 */
+
+  var bodyScale  = 1 + breathT * 0.02;
+  var bodyDy     = breathT * frameH * 0.04;
+  var bodyRot    = tiltT * 0.04;                    /* ±2° */
+
+  /* —— 主体：整体缩放 + 位移 + 旋转 —— */
+  ctx.save();
+  ctx.translate(frameW/2, frameH/2 + bodyDy);
+  ctx.rotate(bodyRot);
+  ctx.scale(bodyScale, bodyScale);
+  /* 画主体（除耳朵以外的部分）：直接缩放到 canvas */
+  var scale = Math.min(frameW / img.naturalWidth, frameH / img.naturalHeight) * 1.3;
+  var drawW = img.naturalWidth * scale;
+  var drawH = img.naturalHeight * scale;
+  ctx.drawImage(img, -drawW/2, -drawH/2, drawW, drawH);
+  ctx.restore();
+
+  /* —— 左耳：独立裁剪 + 旋转贴回 —— */
+  var leftAng  = Math.sin(t * Math.PI * 2 * 5) * 0.12;  /* ±7° 独立颤 */
+  var leBox = { sx: val('leax'), sy: val('leay'), sw: val('leaw'), sh: val('leah') };
+  var leCxOnImg = leBox.sx + leBox.sw / 2 - icx;        /* 相对于 img 中心 */
+  var leCyOnImg = leBox.sy + leBox.sh / 2 - icy;
+  var LE_CENTER_FRAME_X = frameW * 0.30;
+  var LE_CENTER_FRAME_Y = frameH * 0.28;
+  ctx.save();
+  ctx.translate(LE_CENTER_FRAME_X, LE_CENTER_FRAME_Y);
+  ctx.rotate(leftAng);
+  var leS = Math.min(frameW / img.naturalWidth, frameH / img.naturalHeight) * 1.3;
+  ctx.drawImage(img, leBox.sx, leBox.sy, leBox.sw, leBox.sh,
+                -leBox.sw * leS / 2, -leBox.sh * leS / 2,
+                leBox.sw * leS, leBox.sh * leS);
+  ctx.restore();
+
+  /* —— 右耳：独立裁剪 + 旋转贴回 —— */
+  var rightAng = Math.sin(t * Math.PI * 2 * 5 + 0.3) * 0.10;
+  var reBox = { sx: val('reax'), sy: val('reay'), sw: val('reaw'), sh: val('reah') };
+  ctx.save();
+  ctx.translate(frameW - LE_CENTER_FRAME_X, LE_CENTER_FRAME_Y);
+  ctx.rotate(rightAng);
+  ctx.drawImage(img, reBox.sx, reBox.sy, reBox.sw, reBox.sh,
+                -reBox.sw * leS / 2, -reBox.sh * leS / 2,
+                reBox.sw * leS, reBox.sh * leS);
+  ctx.restore();
+
+  return out;
+}
+
+/* ---------- 眨眼遮罩：遮掉眼睛画闭眼弧线 ---------- */
+function applyBlinkMask(frameCanvas, t){
+  var ctx = frameCanvas.getContext('2d');
+  var W = frameCanvas.width, H = frameCanvas.height;
+  var blinkCycle = (t * 6) % 1; /* 每 6 帧一个眨眼周期 */
+  if(blinkCycle > 0.6 && blinkCycle < 0.85){
+    var blinkP = (blinkCycle - 0.6) / 0.25; /* 0→1→0 */
+    blinkP = blinkP < 0.5 ? blinkP * 2 : (1 - blinkP) * 2;
+    if(blinkP > 0.02){
+      /* 用矩形遮罩把眼睛擦掉，再画闭眼弧线 */
+      ctx.save();
+      var ey = H * 0.50;
+      var exLeft  = W * 0.32, exRight = W * 0.68;
+      /* 遮掉：黑色实心矩形 覆盖眼睛区域 */
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(exLeft  - 18, ey - 20, 36, 30);
+      ctx.fillRect(exRight - 18, ey - 20, 36, 30);
+      /* 画闭眼弧线 */
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2 + blinkP * 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(exLeft,  ey, 8, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(exRight, ey, 8, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+/* ---------- 睡眠遮罩：全闭眼 + 降亮 ---------- */
+function applySleepMask(frameCanvas, t){
+  var ctx = frameCanvas.getContext('2d');
+  var W = frameCanvas.width, H = frameCanvas.height;
+  /* 闭眼 */
+  ctx.save();
+  var ey = H * 0.50;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(W * 0.32 - 18, ey - 20, 36, 30);
+  ctx.fillRect(W * 0.68 - 18, ey - 20, 36, 30);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(W * 0.32, ey, 8, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  ctx.beginPath(); ctx.arc(W * 0.68, ey, 8, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  /* Zzz */
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#000';
+  var zz = ['Z', 'z', 'z'];
+  for(var i = 0; i < 3; i++){
+    ctx.fillText(zz[i], W * 0.72 + i * 5, H * 0.12 + i * 4);
+  }
+  ctx.restore();
+}
+
+/* ---------- 生病遮罩：叠加红色骷髅（用 1-bit 矢量画） ---------- */
+function applySickMask(frameCanvas){
+  var ctx = frameCanvas.getContext('2d');
+  ctx.save();
+  ctx.fillStyle = '#000';
+  var cx = 16, cy = 18, s = 1;
+  ctx.beginPath(); ctx.ellipse(cx, cy, 7*s, 6*s, 0, 0, Math.PI*2); ctx.strokeStyle = '#000'; ctx.lineWidth = 2*s; ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(cx - 2.5*s, cy + 1*s, 1.4*s, 1.8*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + 2.5*s, cy + 1*s, 1.4*s, 1.8*s, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillRect(cx - 2*s, cy + 6*s, 4*s, 1.4*s);
+  ctx.restore();
+}
+
+/* ---------- 生成完整动画序列 ---------- */
+function genFrames(){
+  if(!S.imgLoaded){ alert('先拖入 PNG 立绘'); return; }
+
+  var animType = document.getElementById('animType').value;
+  var fw = parseInt(document.getElementById('target').value, 10);
+  var fh = fw;
+  var ditherMode = document.getElementById('dither').value;
+  var bright = parseFloat(document.getElementById('bright').value);
+  var contrast = parseFloat(document.getElementById('contrast').value);
+  var wt = parseInt(document.getElementById('whiteThresh').value, 10);
+
+  var frames = [];
+  var NUM_FRAMES;
+
+  switch(animType){
+    case 'breath':     NUM_FRAMES = 6;  break;
+    case 'blink':      NUM_FRAMES = 6;  break;
+    case 'earwiggle':  NUM_FRAMES = 8;  break;
+    case 'idle':       NUM_FRAMES = 18; break;
+    case 'sleep':      NUM_FRAMES = 6;  break;
+    case 'sick':       NUM_FRAMES = 8;  break;
+    case 'tilt':       NUM_FRAMES = 6;  break;
+  }
+
+  for(var i = 0; i < NUM_FRAMES; i++){
+    var t = i / NUM_FRAMES;
+    /* 合成（RGB） */
+    var raw = composeFrame(fw, fh, t, {});
+
+    /* 动画类型特化处理 */
+    if(animType === 'blink' || animType === 'idle'){
+      applyBlinkMask(raw, t);
+    } else if(animType === 'sleep'){
+      applySleepMask(raw, t);
+    } else if(animType === 'sick'){
+      applySickMask(raw);
+    }
+
+    /* 抖动到 1-bit */
+    var dithered = ditherCanvas(raw, ditherMode, bright, contrast, wt);
+    frames.push(dithered);
+  }
+
+  S.frames = frames;
+  renderSpriteSheet();
+  resetAnim();
+}
+
+/* ---------- Sprite sheet 渲染到底部行 ---------- */
+function renderSpriteSheet(){
+  var row = document.getElementById('frameRow');
+  row.innerHTML = '';
+  S.frames.forEach(function(cv, i){
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center';
+    cv.style.cssText = 'border:1px solid #22222a;border-radius:3px;background:var(--paper)';
+    cv.style.width = '72px'; cv.style.height = '72px';
+    var label = document.createElement('span');
+    label.textContent = 'F' + i;
+    label.style.cssText = 'font-size:10px;color:#666;margin-top:2px';
+    wrap.appendChild(cv); wrap.appendChild(label);
+    row.appendChild(wrap);
+  });
+  var first = S.frames[0];
+  document.getElementById('spriteInfo').innerHTML =
+    `<code>{ frames: ${S.frames.length}, frame: ${first.width}×${first.height}, total: ${first.width * S.frames.length}×${first.height}px }</code>`;
+  updateFrameLabel();
+}
+
+/* ---------- 导出 ---------- */
+document.getElementById('dlPng').addEventListener('click', () => {
+  if(!S.frames.length) return;
+  var fw = S.frames[0].width, fh = S.frames[0].height;
+  var sheet = document.createElement('canvas');
+  sheet.width = fw * S.frames.length; sheet.height = fh;
+  var ctx = sheet.getContext('2d');
+  S.frames.forEach((cv, i) => ctx.drawImage(cv, i * fw, 0));
+  var url = sheet.toDataURL('image/png');
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = `amiya_${document.getElementById('animType').value}_${fw}x${fh}.png`;
+  a.click();
+});
+
+document.getElementById('dlJson').addEventListener('click', () => {
+  var fw = S.frames[0].width, fh = S.frames[0].height;
+  var meta = {
+    name: 'amiya_' + document.getElementById('animType').value,
+    frameW: fw, frameH: fh,
+    frameCount: S.frames.length,
+    fps: 6,
+    dither: document.getElementById('dither').value,
+    note: 'Sprite sheet frames tiled horizontally. Play by slicing sheet frameWidth apart.'
+  };
+  var blob = new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = meta.name + '.json';
+  a.click();
+});
+
+/* ---------- 预览动画播放 ---------- */
+var rafHandle = 0, lastT = 0;
+function resetAnim(){
+  S.animIdx = 0;
+  var preview = document.getElementById('animPreview');
+  if(!S.frames.length){ preview.getContext('2d').clearRect(0, 0, preview.width, preview.height); }
+  updateFrameLabel();
+}
+function tickAnim(ts){
+  if(!S.frames.length){ rafHandle = requestAnimationFrame(tickAnim); return; }
+  var preview = document.getElementById('animPreview');
+  var ctx = preview.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, preview.width, preview.height);
+  ctx.drawImage(S.frames[S.animIdx % S.frames.length], 0, 0, preview.width, preview.height);
+  if(ts - lastT > 160){    /* ~6fps */
+    lastT = ts;
+    S.animIdx++;
+    updateFrameLabel();
+  }
+  rafHandle = requestAnimationFrame(tickAnim);
+}
+function updateFrameLabel(){
+  var nameMap = { breath:'呼吸', blink:'眨眼', earwiggle:'兔耳颤动', idle:'待机复合', sleep:'睡眠', sick:'生病', tilt:'歪头' };
+  var n = S.frames.length ? S.frames.length : 0;
+  document.getElementById('animLabel').textContent =
+    S.frames.length ? `${nameMap[document.getElementById('animType').value]} · F${(S.animIdx % n) + 1}/${n}` : '等待生成...';
+}
+
+document.getElementById('genBtn').addEventListener('click', genFrames);
+document.getElementById('animBtn').addEventListener('click', () => { resetAnim(); tickAnim(0); });
+document.getElementById('stopBtn').addEventListener('click', () => { if(rafHandle){ cancelAnimationFrame(rafHandle); rafHandle = 0; } });
+
+/* ---------- init ---------- */
+drawPreview();
+rafHandle = requestAnimationFrame(tickAnim);
+</script>
+</body>
+</html>

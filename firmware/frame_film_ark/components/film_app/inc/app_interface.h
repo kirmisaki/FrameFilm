@@ -58,18 +58,20 @@ typedef enum {
                            // （service_param_app_current_set / app 参数 blob），
                            // 中间插入会让老设备上的 id 含义整体错位
     APP_ID_WALLET,         // 卡包（NFC，仅 n16r8；UI 层显示）
+    APP_ID_TAMAGO,         // 拓麻歌子（养育玩法，仅 n16r8；UI 层显示）
     APP_ID_MAX,
 } app_id_t;
 
 /**
  * @brief 主菜单轮播的条目数
  *
- * 轮播 = 5 个 app 卡片（图片 / 通行证 / 模板 / 时钟 / 动图）+ 系统设置；
+ * 轮播 = 内容 app 卡片（图片 / 通行证 / [卡包] / 模板 / 时钟 / 动图 / [宠物]）+ 系统设置；
  * APP_ID_MENU 自身不是可选项（它就是菜单）。
  * 显示顺序由 app_manager 的 m_menu_entries 定义，UI 页面侧的视觉表需与其一致。
+ * 卡包与宠物只在 n16r8（SYS_NFC_ENABLE）出现。
  */
 #if (SYS_NFC_ENABLE == 1)
-#define APP_MENU_ENTRY_NUM      (7)
+#define APP_MENU_ENTRY_NUM      (8)
 #else
 #define APP_MENU_ENTRY_NUM      (6)
 #endif

@@ -36,9 +36,24 @@ set(private_include "core"
 
 set(requires film_service film_hal film_sys film_ui)
 
+# 需要 EMBED 进 flash 的二进制资源（当前只有宠物帧序列）
+set(embed_files "")
+
 if(CONFIG_ARK_HAS_NFC)
     list(APPEND srcs "apps/wallet/app_wallet.c" "apps/wallet/app_wallet_store.c")
     list(APPEND private_include "apps/wallet")
+    # 电子宠物（n16r8）：状态动画用视频抽帧的 1-bit 序列，蛋/墓碑用程序化精灵兜底
+    list(APPEND srcs "apps/tamago/app_tamago.c"
+                     "apps/tamago/tamago_sprite.c"
+                     "apps/tamago/tamago_frames.c")
+    list(APPEND private_include "apps/tamago")
+    list(APPEND embed_files
+         "apps/tamago/frames/frames_idle.bin"
+         "apps/tamago/frames/frames_happy.bin"
+         "apps/tamago/frames/frames_eat.bin"
+         "apps/tamago/frames/frames_sick.bin"
+         "apps/tamago/frames/frames_sleep.bin"
+         "apps/tamago/frames/frames_evolve.bin")
 endif()
 
 if(CONFIG_ARK_SCREENSHOT)
@@ -48,4 +63,5 @@ endif()
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS ${public_include} ${private_include}
                        REQUIRES ${requires}
+                       EMBED_FILES ${embed_files}
                       )

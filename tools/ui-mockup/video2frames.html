@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Video → 1-bit Frames（Tamago 固件素材）</title>
+<style>
+:root{--bg:#0f0f13;--ink:#e8e8ea;--dim:#777;--acc:#3ddc97;--paper:#fff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:13px/1.5 Consolas,'Microsoft YaHei UI',monospace;padding:22px}
+h1{font-size:16px;margin-bottom:4px}
+p.d{color:var(--dim);font-size:12px;margin-bottom:14px}
+.row{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.panel{background:#17171d;border:1px solid #26262e;border-radius:8px;padding:14px;min-width:300px}
+label{display:block;color:var(--dim);font-size:12px;margin:8px 0 3px}
+input,select,button{font-family:inherit;font-size:12px}
+input[type=file],input[type=number],select{width:100%;background:#20202a;border:1px solid #2e2e38;color:var(--ink);padding:5px;border-radius:4px}
+button{background:#20202a;border:1px solid #3a3a46;color:var(--ink);padding:7px 12px;border-radius:4px;cursor:pointer;margin-top:10px}
+button.p{background:var(--acc);color:#0a0a0e;border-color:var(--acc);font-weight:700}
+button:disabled{opacity:.45;cursor:default}
+video{max-width:320px;background:#000;border-radius:4px}
+#out{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
+#out canvas{width:96px;height:96px;image-rendering:pixelated;background:var(--paper);border:1px solid #2a2a34}
+#log{margin-top:10px;color:var(--acc);font-size:12px;white-space:pre-wrap}
+code{color:var(--acc)}
+</style>
+</head>
+<body>
+<h1>Video → 1-bit Frames</h1>
+<p class="d">把 Tamago 状态视频抽成固件可播放的 1-bit 帧序列：抽帧 → 居中裁方 → Floyd-Steinberg → 打包 → 上传落盘。</p>
+
+<div class="row">
+  <div class="panel">
+    <label>视频文件</label>
+    <input id="file" type="file" accept="video/mp4,video/*">
+    <label>状态名（决定落盘文件名）</label>
+    <select id="state">
+      <option value="idle">idle 待机</option>
+      <option value="happy">happy 高兴</option>
+      <option value="eat">eat 吃饭</option>
+      <option value="sick">sick 生病</option>
+      <option value="sleep">sleep 睡觉</option>
+      <option value="evolve">evolve 进化</option>
+    </select>
+    <label>输出尺寸（px，正方形；舞台高 250，建议 ≤240）</label>
+    <input id="size" type="number" value="240" min="64" max="360" step="8">
+    <label>帧数（均匀取样；视频约 4s，16 帧 ≈ 4fps 原速）</label>
+    <input id="frames" type="number" value="16" min="4" max="32">
+    <label>抖动算法</label>
+    <select id="dither">
+      <option value="bayer" selected>Bayer 4×4 有序半调（ForFilm MonoFast 同款）</option>
+      <option value="gammaFS">Gamma Floyd-Steinberg（ForFilm 单帧同款）</option>
+      <option value="gammaAtkinson">Gamma Atkinson</option>
+      <option value="fs">Floyd-Steinberg（sRGB）</option>
+      <option value="atkinson">Atkinson（sRGB）</option>
+    </select>
+    <label>抖动强度（0.4 – 1.2）</label>
+    <input id="strength" type="number" value="1" min="0.4" max="1.2" step="0.05">
+    <label>预处理对比度（1.0 = 与 ForFilm 动画一致；1.2 = ForFilm 单帧）</label>
+    <input id="contrast" type="number" value="1" min="0.6" max="2.5" step="0.05">
+    <label>白底压平阈值（255 = 不钳位）</label>
+    <input id="white" type="number" value="255" min="150" max="255">
+    <label>黑端压平阈值（0 = 不钳位）</label>
+    <input id="black" type="number" value="0" min="0" max="120">
+    <label>黑白阈值（抖动时的中位点）</label>
+    <input id="thresh" type="number" value="128" min="60" max="220">
+    <label>平涂压平（0 = 保留灰度网点；调高会变硬黑白）</label>
+    <input id="flatten" type="number" value="0" min="0" max="1" step="0.05">
+    <label>上传地址</label>
+    <input id="upload" value="/save">
+    <button id="go" class="p">▶ 抽帧并上传</button>
+    <div id="log">等待视频…</div>
+  </div>
+
+  <div class="panel">
+    <video id="v" controls muted playsinline></video>
+    <div id="out"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const V = $('v');
+const SIZE = () => parseInt($('size').value, 10) || 200;
+const N = () => parseInt($('frames').value, 10) || 8;
+
+let srcFile = null;
+
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if(!f) return;
+  srcFile = f;
+  V.src = URL.createObjectURL(f);
+  $('log').textContent = '已载入：' + f.name + '\n时长待解析…';
+  V.onloadedmetadata = () => {
+    $('log').textContent = '已载入：' + f.name +
+      '\n时长 ' + V.duration.toFixed(2) + 's，将抽 ' + N() + ' 帧 → ' + SIZE() + 'px';
+  };
+});
+
+function seekTo(t){
+  return new Promise((resolve, reject) => {
+    const done = () => { V.removeEventListener('seeked', done); resolve(); };
+    V.addEventListener('seeked', done);
+    setTimeout(() => reject(new Error('seek timeout')), 4000);
+    V.currentTime = Math.min(t, Math.max(0, V.duration - 0.05));
+  });
+}
+
+const BAYER4 = [
+   0,  8,  2, 10,
+  12,  4, 14,  6,
+   3, 11,  1,  9,
+  15,  7, 13,  5
+];
+
+/* sRGB ↔ 线性光（与 ForFilm convert.js 的 SRGB_TO_LINEAR_LUT 同一公式） */
+function srgbToLinear(v){
+  v /= 255;
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+function linearToSrgbByte(v){
+  const s = v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+  return Math.max(0, Math.min(255, Math.round(s * 255)));
+}
+
+/**
+ * 抽帧 → 1-bit。
+ *
+ * 管线对齐 ForFilm 单帧默认：
+ *   1. adjustContrast(1.2)：围绕 128 拉伸（亮度是通道线性组合，等价于逐通道）
+ *   2. 白/黑端钳位：压平视频压缩噪声，避免白底被抖成灰
+ *   3. 误差扩散在**线性光空间**计算（ForFilm gammaFloydSteinbergDither 的做法），
+ *      判定仍在 sRGB 空间 —— 暗部层次比纯 sRGB 抖动干净得多
+ *   4. 蛇形扫描（ForFilm 的“蛇形 FS”），消除纵向条纹
+ *
+ * 返回 Uint8Array：每像素 1 bit（1 = 黑），MSB 优先、行优先。
+ */
+function ditherTo1bit(imgData, w, h, thresh){
+  const mode = $('dither').value;
+  const whiteCut = parseInt($('white').value, 10) || 245;
+  const blackCut = parseInt($('black').value, 10) || 18;
+  const contrast = parseFloat($('contrast').value) || 1.2;
+  const strength = Math.max(0.1, Math.min(2, parseFloat($('strength').value) || 1));
+  const flatten = Math.max(0, Math.min(1, parseFloat($('flatten').value) || 0));
+
+  const n = w * h;
+  const src = imgData.data;
+  const lum = new Float32Array(n);
+
+  for(let i = 0; i < n; i++){
+    const o = i * 4;
+    let L = 0.299 * src[o] + 0.587 * src[o + 1] + 0.114 * src[o + 2];
+    L = (L - 128) * contrast + 128;
+    /* 平涂压平：S 曲线把中间调推向两端，平涂色块保持纯黑/纯白，
+       只有真正的边缘渐变才留给抖动（动画线稿的关键） */
+    if(flatten > 0){
+      const t = Math.max(-1, Math.min(1, (L - 128) / 127));
+      const s = Math.sign(t) * Math.pow(Math.abs(t), 1 - 0.5 * flatten);
+      L = 128 + s * 127;
+    }
+    if(L >= whiteCut) L = 255;
+    else if(L <= blackCut) L = 0;
+    lum[i] = L < 0 ? 0 : (L > 255 ? 255 : L);
+  }
+
+  const packed = new Uint8Array((n + 7) >> 3);
+  const mark = (i) => { packed[i >> 3] |= (0x80 >> (i & 7)); };
+
+  if(mode === 'bayer'){
+    /* ForFilm animation.js 的 animQuantizeMono：4×4 Bayer 有序半调
+     *   lum += (matrix - 8) * 8   → 阈值等效在 64..184 之间摆动
+     * 有序网点在平涂区形成规则细点，观感比误差扩散细腻（“印刷感”） */
+    for(let y = 0; y < h; y++){
+      for(let x = 0; x < w; x++){
+        const i = y * w + x;
+        const m = BAYER4[(y & 3) * 4 + (x & 3)];
+        if(lum[i] + (m - 8) * 8 < 128) mark(i);
+      }
+    }
+    return packed;
+  }
+
+  const gamma = (mode === 'gammaFS' || mode === 'gammaAtkinson');
+  const atk = (mode === 'gammaAtkinson' || mode === 'atkinson');
+
+  const buf = new Float32Array(n);
+  for(let i = 0; i < n; i++){
+    buf[i] = gamma ? srgbToLinear(lum[i]) : lum[i];
+  }
+
+  for(let y = 0; y < h; y++){
+    const rev = (y & 1) === 1;      /* 蛇形扫描 */
+    for(let k = 0; k < w; k++){
+      const x = rev ? (w - 1 - k) : k;
+      const i = y * w + x;
+      const v = buf[i];
+      /* 判定在 sRGB（感知）空间，误差在线性光空间（gamma 模式） */
+      const black = gamma ? (linearToSrgbByte(v) < thresh) : (v < thresh);
+      if(black) mark(i);
+
+      const target = gamma ? (black ? 0 : 1) : (black ? 0 : 255);
+      const err = (v - target) * strength;
+
+      const add = (dx, dy, f) => {
+        const nx = x + (rev ? -dx : dx);
+        const ny = y + dy;
+        if(nx < 0 || nx >= w || ny >= h) return;
+        buf[ny * w + nx] += err * f;
+      };
+
+      if(atk){
+        add(1, 0, 1 / 8); add(2, 0, 1 / 8);
+        add(-1, 1, 1 / 8); add(0, 1, 1 / 8); add(1, 1, 1 / 8);
+        add(0, 2, 1 / 8);
+      } else {
+        add(1, 0, 7 / 16);
+        add(-1, 1, 3 / 16); add(0, 1, 5 / 16); add(1, 1, 1 / 16);
+      }
+    }
+  }
+  return packed;
+}
+
+async function convert(){
+  if(!srcFile || !V.duration){ $('log').textContent = '请先选择视频'; return; }
+  const w = SIZE(), h = w, n = N(), th = parseInt($('thresh').value, 10) || 128;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  const out = $('out');
+  out.innerHTML = '';
+
+  const per = (w * h + 7) >> 3;
+  const blob = new Uint8Array(per * n);
+
+  $('go').disabled = true;
+  for(let i = 0; i < n; i++){
+    const t = V.duration * (i + 0.5) / n;
+    await seekTo(t);
+    // 居中裁方（视频本身多为方形；非方形时取中心正方形）
+    const vw = V.videoWidth, vh = V.videoHeight;
+    const side = Math.min(vw, vh);
+    const sx = (vw - side) / 2, sy = (vh - side) / 2;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(V, sx, sy, side, side, 0, 0, w, h);
+
+    const packed = ditherTo1bit(ctx.getImageData(0, 0, w, h), w, h, th);
+    blob.set(packed, i * per);
+
+    // 预览
+    const pc = document.createElement('canvas');
+    pc.width = w; pc.height = h;
+    const pctx = pc.getContext('2d');
+    const img = pctx.createImageData(w, h);
+    for(let p = 0; p < w * h; p++){
+      const bit = (packed[p >> 3] >> (7 - (p & 7))) & 1;
+      const v = bit ? 0 : 255;
+      img.data[p * 4] = img.data[p * 4 + 1] = img.data[p * 4 + 2] = v;
+      img.data[p * 4 + 3] = 255;
+    }
+    pctx.putImageData(img, 0, 0);
+    out.appendChild(pc);
+
+    $('log').textContent = `抽帧 ${i + 1}/${n} …`;
+  }
+
+  const state = $('state').value;
+  const url = $('upload').value + '?name=frames_' + state + '.bin';
+  try{
+    const resp = await fetch(url, { method: 'POST', body: blob });
+    const txt = await resp.text();
+    $('log').textContent = `✅ ${state}: ${n} 帧 × ${w}×${h}（${per}B/帧，共 ${blob.length}B）\n${txt}`;
+    await fetch($('upload').value + '?name=frames_' + state + '.json', {
+      method: 'POST',
+      body: JSON.stringify({ state, w, h, frames: n, bytesPerFrame: per })
+    });
+  }catch(err){
+    $('log').textContent = '❌ 上传失败：' + err.message;
+  }
+  $('go').disabled = false;
+}
+
+$('go').addEventListener('click', () => { convert().catch(e => {
+  $('log').textContent = '❌ ' + e.message;
+  $('go').disabled = false;
+}); });
+</script>
+</body>
+</html>

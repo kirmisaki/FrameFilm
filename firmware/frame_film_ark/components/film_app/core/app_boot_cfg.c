@@ -225,6 +225,7 @@ app_id_t app_boot_cfg_resolve_target(void)
     case APP_START_SETTINGS:  target = APP_ID_SETTINGS;  break;
     case APP_START_PASS:      target = APP_ID_PASS;      break;
     case APP_START_WALLET:    target = APP_ID_WALLET;    break;
+    case APP_START_TAMAGO:    target = APP_ID_TAMAGO;    break;
 
     case APP_START_IMAGE:
     default:

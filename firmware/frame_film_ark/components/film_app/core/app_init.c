@@ -58,6 +58,7 @@
 #include "app_pass.h"
 #if (SYS_NFC_ENABLE == 1)
 #include "app_wallet.h"
+#include "app_tamago.h"
 #endif
 #include "app_boot.h"
 #include "app_boot_cfg.h"
@@ -140,6 +141,7 @@ void film_app_init(void)
     app_manager_register(&g_app_pass_entry);    // 通行证占位页（菜单第 2 项，功能待开发）
 #if (SYS_NFC_ENABLE == 1)
     app_manager_register(&g_app_wallet_entry);  // 卡包（仅 n16r8）
+    app_manager_register(&g_app_tamago_entry);  // 电子宠物（仅 n16r8）
 #endif
 #endif
 #endif
