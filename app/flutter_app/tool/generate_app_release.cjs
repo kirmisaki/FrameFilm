@@ -32,8 +32,11 @@ function validateApkInfo(info, signature, channel, versionName, versionCode, cer
   }
   const signers = [...signature.matchAll(/^Signer #\d+ certificate SHA-256 digest:\s*([a-fA-F0-9]{64})\s*$/gm)]
     .map((match) => match[1].toLowerCase());
-  if (signers.length !== 1 || signers[0] !== certificate) {
-    throw Error('APK signing certificate does not match the public distribution baseline; do not change the key');
+  if (signers.length !== 1) {
+    throw Error(`Expected one APK signing certificate from apksigner; found ${signers.length}`);
+  }
+  if (signers[0] !== certificate) {
+    throw Error(`APK signing certificate SHA-256 ${signers[0]} does not match the public ${channel.repository} baseline ${certificate}`);
   }
   return { packageName: identity[1], versionName, versionCode, minSdk };
 }

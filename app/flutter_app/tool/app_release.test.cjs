@@ -33,9 +33,9 @@ test('actual APK package, SDK, version and signer must match distribution', () =
     badging(dev, { target: 34 }), badging(dev, { debug: true })]) {
     assert.throws(() => validateApkInfo(info, signature, dev, '0.4.11', 15, sha), /APK must/);
   }
-  assert.throws(() => validateApkInfo(badging(), '', dev, '0.4.11', 15, sha), /certificate/);
-  assert.throws(() => validateApkInfo(badging(), signature, dev, '0.4.11', 15, 'b'.repeat(64)), /certificate/);
-  assert.throws(() => validateApkInfo(badging(), signature + signature.replace('#1', '#2'), dev, '0.4.11', 15, sha), /certificate/);
+  assert.throws(() => validateApkInfo(badging(), '', dev, '0.4.11', 15, sha), /found 0/);
+  assert.throws(() => validateApkInfo(badging(), signature, dev, '0.4.11', 15, 'b'.repeat(64)), /does not match/);
+  assert.throws(() => validateApkInfo(badging(), signature + signature.replace('#1', '#2'), dev, '0.4.11', 15, sha), /found 2/);
 });
 test('published version continuity allows only identical-byte reuse, skips opposite historical package', () => {
   validateHistory(app, [{ ...app, versionCode: 14 }]);
