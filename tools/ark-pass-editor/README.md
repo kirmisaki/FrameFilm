@@ -24,7 +24,7 @@ Ark 固件 3.2.5 起支持下方「设备名称」区域：连接后自动读取
 | 先锋 | `vanguard` |
 | 近卫 | `guard` |
 | 重装 | `defender` |
-| 术师 | `caster` |
+| 术士 | `caster` |
 | 辅助 | `supporter` |
 | 特种 | `specialist` |
 

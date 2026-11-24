@@ -18,7 +18,7 @@ const studentPassportPalettes = {
   'vanguard': '先锋',
   'guard': '近卫',
   'defender': '重装',
-  'caster': '术师',
+  'caster': '术士',
   'supporter': '辅助',
   'specialist': '特种',
 };

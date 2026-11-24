@@ -17,7 +17,7 @@
   const DEFAULT_STUDENT_OUTPUT = 'i006';
   const studentPalettes = new Map([
     ['amiya', '阿米娅'], ['sniper', '狙击'], ['medic', '医疗'], ['vanguard', '先锋'],
-    ['guard', '近卫'], ['defender', '重装'], ['caster', '术师'], ['supporter', '辅助'], ['specialist', '特种']
+    ['guard', '近卫'], ['defender', '重装'], ['caster', '术士'], ['supporter', '辅助'], ['specialist', '特种']
   ]);
   const studentBases = new Map();
   const studentBaseUrl = (palette) => `student-palettes/fullscreen/${palette}.png`;
