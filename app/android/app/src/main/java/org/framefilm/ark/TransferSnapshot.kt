@@ -13,4 +13,7 @@ data class TransferSnapshot(
     val targetVersion: String? = null,
     val targetBuild: String? = null,
     val canConfirm: Boolean = false,
+    val transport: String = "wifi",
+    val attemptId: Int? = null,
+    val confirmation: String? = null,
 )

@@ -609,6 +609,7 @@ low  = ((index0 & 7) << 4) | (index1 & 7);
 - **色板**：客户端按 ColorFast RGB 表选择物理索引，当前候选列表以 `tools/ForFilm/js/convert.js` 为准。不要将占位索引 `0`-`2` 当作白底；同屏色卡使用索引 `21` 作为 ColorFast 白底。
 - **主体大小**：`W×H` 字节。
 - **刷新**：ColorFast 采用 2 相刷新（fast_color_phase1 → fast_color_phase2），速度更快但色准略低于 ColorQual。
+- **Ark 通行证**：有 `0x59` bit14 的固件可把同一份 720×480 单帧 ColorFast 文件用作学生证 `app/pass/profile.bin`，不转六色。紧凑干员档案使用单独的 FFUI v3 包装及 bit15；它不是普通 `.film`，详见 [通行证协议](../blecmd/blecmd_protocol.md#415-ark-能力查询0x59与彩色通行证)。
 
 ### 10.6 色板参考
 

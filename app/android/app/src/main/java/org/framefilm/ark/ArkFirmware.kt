@@ -12,6 +12,10 @@ data class ArkFirmware(val version: String, val project: String, val elfSha256: 
             "下载镜像的实际硬件目标 ${hardware?.targetId ?: "未描述"} 与所选 $expectedTarget 不匹配"
         }
     }
+    fun requireManifestElf(expected: String?) {
+        require(expected == null || expected.matches(Regex("[a-fA-F0-9]{64}"))) { "清单 ELF SHA256 格式无效" }
+        require(expected == null || elfSha256.equals(expected, ignoreCase = true)) { "固件 ELF SHA256 与发布清单不一致" }
+    }
     companion object {
         fun inspect(file: File): ArkFirmware {
             require(file.length() in 288..FirmwareDownloader.MAX_SIZE) { "固件大小无效" }

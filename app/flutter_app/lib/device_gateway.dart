@@ -52,17 +52,23 @@ class ImportedFilm {
     required this.size,
     this.width,
     this.height,
+    this.blePhotoCompatible,
+    this.mediaDirectory,
   });
   factory ImportedFilm.fromMap(Map data) => ImportedFilm(
     name: data['name'] as String? ?? 'film',
     size: (data['size'] as num?)?.toInt() ?? 0,
     width: (data['width'] as num?)?.toInt(),
     height: (data['height'] as num?)?.toInt(),
+    blePhotoCompatible: data['blePhotoCompatible'] as bool?,
+    mediaDirectory: data['mediaDirectory'] as String?,
   );
   final String name;
   final int size;
   final int? width;
   final int? height;
+  final bool? blePhotoCompatible;
+  final String? mediaDirectory;
 }
 
 class ImportedFirmware {
@@ -126,6 +132,9 @@ class FilmTransfer {
     this.targetVersion,
     this.targetBuild,
     this.canConfirm = false,
+    this.transport = 'wifi',
+    this.attemptId,
+    this.confirmation,
   });
   factory FilmTransfer.fromMap(Map data) => FilmTransfer(
     phase: data['phase'] as String? ?? 'idle',
@@ -140,6 +149,9 @@ class FilmTransfer {
     targetVersion: data['targetVersion'] as String?,
     targetBuild: data['targetBuild'] as String?,
     canConfirm: data['canConfirm'] == true,
+    transport: data['transport'] == 'ble' ? 'ble' : 'wifi',
+    attemptId: (data['attemptId'] as num?)?.toInt(),
+    confirmation: data['confirmation'] as String?,
   );
   final String phase;
   final String message;
@@ -153,12 +165,18 @@ class FilmTransfer {
   final String? targetVersion;
   final String? targetBuild;
   final bool canConfirm;
+  final String transport;
+  final int? attemptId;
+  final String? confirmation;
   bool get active =>
       canCancel ||
       const {
         'preparing',
         'connecting',
         'downloading',
+        'sending',
+        'erasing',
+        'verifying',
         'restoring',
         'cancelling',
         'cleanup',
@@ -197,6 +215,9 @@ class DeviceSnapshot {
     this.files = const {},
     this.connected = false,
     this.abc9PreviewSupported = false,
+    this.studentPassportSupported = false,
+    this.studentColorFastSupported = false,
+    this.colorPassportSupported = false,
     this.hardware,
     this.deviceId,
     this.hardwareIdentitySupported = false,
@@ -227,6 +248,10 @@ class DeviceSnapshot {
     this.hasFirmwareState = false,
     this.hasImportingState = false,
     this.hasTransferState = false,
+    this.effectivePhotoTransport = 'wifi',
+    this.effectiveFirmwareTransport = 'wifi',
+    this.transferTransportReason,
+    this.bleFirmwareAvailable = false,
   });
 
   factory DeviceSnapshot.fromMap(Map<Object?, Object?> data) {
@@ -236,6 +261,9 @@ class DeviceSnapshot {
           : const {},
       connected: data['connected'] == true,
       abc9PreviewSupported: data['abc9PreviewSupported'] == true,
+      studentPassportSupported: data['studentPassportSupported'] == true,
+      studentColorFastSupported: data['studentColorFastSupported'] == true,
+      colorPassportSupported: data['colorPassportSupported'] == true,
       hardware: data['hardware'] is Map
           ? HardwareIdentity.fromMap(data['hardware'] as Map)
           : null,
@@ -284,12 +312,21 @@ class DeviceSnapshot {
       hasFirmwareState: data.containsKey('importedFirmware'),
       hasImportingState: data.containsKey('importing'),
       hasTransferState: data.containsKey('transfer'),
+      effectivePhotoTransport: data['effectivePhotoTransport'] == 'ble'
+          ? 'ble'
+          : 'wifi',
+      effectiveFirmwareTransport: data['effectiveFirmwareTransport'] == 'ble'
+          ? 'ble'
+          : 'wifi',
+      transferTransportReason: data['transferTransportReason'] as String?,
+      bleFirmwareAvailable: data['bleFirmwareAvailable'] == true,
     );
   }
 
   final Map<String, Object?> files;
   final bool connected;
   final bool abc9PreviewSupported;
+  final bool studentPassportSupported, studentColorFastSupported, colorPassportSupported;
   final HardwareIdentity? hardware;
   final String? deviceId;
   final bool hardwareIdentitySupported;
@@ -322,9 +359,13 @@ class DeviceSnapshot {
   final bool hasFirmwareState;
   final bool hasImportingState;
   final bool hasTransferState;
+  final String effectivePhotoTransport, effectiveFirmwareTransport;
+  final String? transferTransportReason;
+  final bool bleFirmwareAvailable;
 
   DeviceSnapshot retainingTransfer(DeviceSnapshot previous) {
     final keepConnected = hasConnectionState ? connected : previous.connected;
+    final sameDevice = deviceId == null || deviceId == previous.deviceId;
     return DeviceSnapshot(
       firmwareDownload: hasDownloadState || firmwareDownload.phase != 'idle'
           ? firmwareDownload
@@ -354,6 +395,21 @@ class DeviceSnapshot {
           (presentKeys.contains('abc9PreviewSupported')
               ? abc9PreviewSupported
               : abc9PreviewSupported || previous.abc9PreviewSupported),
+      studentPassportSupported:
+          keepConnected &&
+          (presentKeys.contains('studentPassportSupported') || !sameDevice
+              ? studentPassportSupported
+              : studentPassportSupported || previous.studentPassportSupported),
+      studentColorFastSupported:
+          keepConnected &&
+          (presentKeys.contains('studentColorFastSupported') || !sameDevice
+              ? studentColorFastSupported
+              : studentColorFastSupported || previous.studentColorFastSupported),
+      colorPassportSupported:
+          keepConnected &&
+          (presentKeys.contains('colorPassportSupported') || !sameDevice
+              ? colorPassportSupported
+              : colorPassportSupported || previous.colorPassportSupported),
       advertisedName: !keepConnected
           ? null
           : presentKeys.contains('advertisedName')
@@ -361,6 +417,26 @@ class DeviceSnapshot {
           : advertisedName ?? previous.advertisedName,
       message: message,
       devices: devices,
+      effectivePhotoTransport: !keepConnected
+          ? 'wifi'
+          : presentKeys.contains('effectivePhotoTransport')
+          ? effectivePhotoTransport
+          : previous.effectivePhotoTransport,
+      effectiveFirmwareTransport: !keepConnected
+          ? 'wifi'
+          : presentKeys.contains('effectiveFirmwareTransport')
+          ? effectiveFirmwareTransport
+          : previous.effectiveFirmwareTransport,
+      transferTransportReason: !keepConnected
+          ? null
+          : presentKeys.contains('transferTransportReason')
+          ? transferTransportReason
+          : previous.transferTransportReason,
+      bleFirmwareAvailable:
+          keepConnected &&
+          (presentKeys.contains('bleFirmwareAvailable')
+              ? bleFirmwareAvailable
+              : previous.bleFirmwareAvailable),
       name: !keepConnected
           ? null
           : presentKeys.contains('name')
@@ -452,6 +528,7 @@ class PlatformDeviceGateway implements DeviceGateway {
   Future<void> invoke(String method, [Map<String, Object?>? arguments]) async {
     if (supported) await _methods.invokeMethod<Object?>(method, arguments);
   }
+
 }
 
 class DeviceController extends ChangeNotifier {
@@ -544,8 +621,9 @@ class DeviceController extends ChangeNotifier {
       if (_disposed ||
           !automaticFilesPending ||
           !_automaticFilesInitialized ||
-          !canEditSettings)
+          !canEditSettings) {
         return;
+      }
       final session = _connectionSession;
       automaticFilesPending = false;
       automaticFilesLoading = true;
@@ -601,8 +679,9 @@ class DeviceController extends ChangeNotifier {
             snapshot.importing ||
             snapshot.firmwareDownload.canCancel ||
             snapshot.transfer.active ||
-            snapshot.transfer.canConfirm))
+            snapshot.transfer.canConfirm)) {
       return;
+    }
     if (deviceSettingsMethods.contains(method) && !canEditSettings) return;
     final cancellingPassport = method == 'cancelPassport';
     if (snapshot.passportBusy && method != 'snapshot' && !cancellingPassport) {
@@ -613,7 +692,13 @@ class DeviceController extends ChangeNotifier {
     final cancelling =
         method == 'cancelTransfer' || cancellingDownload || cancellingPassport;
     if (!gateway.supported || (busy && !cancelling)) return;
+    final reconnectingBle =
+        (snapshot.transfer.kind == 'film' ||
+            snapshot.transfer.transport == 'ble') &&
+        !snapshot.transfer.active &&
+        const {'scan', 'connect', 'disconnect'}.contains(method);
     if ((snapshot.transfer.active || snapshot.transfer.canConfirm) &&
+        !reconnectingBle &&
         const {
           'pickFilm',
           'clearFilm',
@@ -671,7 +756,7 @@ class DeviceController extends ChangeNotifier {
             !snapshot.connected)) {
       return;
     }
-    if (method == 'confirmFirmwareTransfer' &&
+    if ((method == 'confirmFirmwareTransfer' || method == 'confirmTransfer') &&
         (!snapshot.transfer.canConfirm || snapshot.transfer.active)) {
       return;
     }

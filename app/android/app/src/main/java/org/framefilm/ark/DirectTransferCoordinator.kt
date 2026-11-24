@@ -19,7 +19,7 @@ class DirectTransferCoordinator(
     private val reconnect: (() -> Unit)? = null,
     private val targetPath: String? = null,
     private val legacyHardwareTarget: String? = null,
-) {
+) : TransferCoordinator {
     interface Listener { fun onSnapshot(snapshot: TransferSnapshot) }
 
     private val main = Handler(Looper.getMainLooper())
@@ -86,11 +86,11 @@ class DirectTransferCoordinator(
     private var applied = false
     private var awaitingConfirmation = false
     private var reconnectTask: Runnable? = null
-    val needsConfirmation: Boolean get() = awaitingConfirmation
-    val isActive: Boolean get() = active || cleaning
-    val expectsBleResume: Boolean get() = useAp && plannedBlePause && active && !applied
+    override val needsConfirmation: Boolean get() = awaitingConfirmation
+    override val isActive: Boolean get() = active || cleaning
+    override val expectsBleResume: Boolean get() = useAp && plannedBlePause && active && !applied
     private val deviceSessionSubmitted: Boolean get() = startSubmitted || apPrepareSubmitted
-    val cleanupConfirmed: Boolean get() = p2pClean && (!deviceSessionSubmitted || terminal)
+    override val cleanupConfirmed: Boolean get() = p2pClean && (!deviceSessionSubmitted || terminal)
 
     private fun startHttpSession(ssid: String, password: String, address: Inet4Address) {
         if (!active || stopping) return
@@ -130,7 +130,7 @@ class DirectTransferCoordinator(
         } catch (error: Exception) { stop("手机 HTTP 服务启动失败：${error.message}") }
     }
 
-    fun start() = onMain {
+    override fun start() = onMain {
         if (active || cleaning) return@onMain
         if (!ble.isReady) { emit("error", "请先连接 Ark", canRetry = true); return@onMain }
         if (!file.isFile || file.length() !in 1..0xffffffffL) {
@@ -456,9 +456,9 @@ class DirectTransferCoordinator(
         }
     }
 
-    fun cancel() = onMain { if (active && !applied) stop("用户取消直传", cancelled = true) }
+    override fun cancel() = onMain { if (active && !applied) stop("用户取消直传", cancelled = true) }
 
-    fun onBleDisconnected() = onMain {
+    override fun onBleDisconnected() = onMain {
         if (applied && awaitingConfirmation) {
             if (active) { emit("rebooting", "Ark 重启中，等待同一设备重连"); scheduleReconnect() }
         } else if (expectsBleResume) {
@@ -501,7 +501,7 @@ class DirectTransferCoordinator(
         }
     }
 
-    fun onBleReady() = onMain {
+    override fun onBleReady() = onMain {
         if (expectsBleResume) {
             reconnectTask?.let(main::removeCallbacks)
             reconnectTask = null
@@ -526,7 +526,7 @@ class DirectTransferCoordinator(
         }
     }
 
-    fun confirmFirmware() = onMain {
+    override fun confirmFirmware() = onMain {
         if (!awaitingConfirmation || active) return@onMain
         active = true
         stopping = false
@@ -634,7 +634,7 @@ class DirectTransferCoordinator(
     }
 
     /** Called before another attempt; never creates a new group until the old session converges. */
-    fun ensureSettled(callback: (Boolean, String) -> Unit) = onMain {
+    override fun ensureSettled(callback: (Boolean, String) -> Unit) = onMain {
         if (isActive) { callback(false, "上一轮仍在进行"); return@onMain }
         fun settleGroup() {
             if (p2pClean && (useAp || !p2p.hasPendingCleanup)) { callback(true, "上一轮已清理"); return }

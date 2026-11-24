@@ -30,9 +30,14 @@ class PassportEditor extends StatefulWidget {
     this.saveDraft,
     this.pickAvatar,
     this.controller,
+    this.canSend = true,
+    this.colorPassportSupported = false,
   });
   final PassportEditorController? controller;
   final bool canOperate, busy;
+  final bool canSend;
+  final bool
+  colorPassportSupported; // Capability 0x59 bit15 (both compact modes).
   final Map<String, Object?> operation;
   final Future<void> Function() onRead;
   final Future<void> Function(String, Uint8List) onSave;
@@ -52,7 +57,9 @@ class _PassportEditorState extends State<PassportEditor> {
   };
   bool _codeUnset = false, _numberUnset = false, _working = false;
   String? _avatar;
-  String _avatarMode = 'mono';
+  String _avatarMode = 'color';
+  String _output = 'i006';
+  bool _legacyAvatar = false;
   PassportAvatarEdit? _avatarEdit;
   String _status = '';
   PassportRaster? _raster;
@@ -70,6 +77,8 @@ class _PassportEditorState extends State<PassportEditor> {
     numberUnset: _numberUnset,
     avatar: _avatar,
     avatarMode: _avatarMode,
+    output: _output,
+    version: _legacyAvatar ? 1 : 3,
   );
   @override
   void initState() {
@@ -167,7 +176,18 @@ class _PassportEditorState extends State<PassportEditor> {
       _codeUnset = p.codenameUnset;
       _numberUnset = p.numberUnset;
       _avatar = p.avatar;
-      _avatarMode = p.avatarMode;
+      _legacyAvatar =
+          p.version < 3 &&
+          p.avatar != null &&
+          p.avatarMode != 'color' &&
+          (edit == null || edit.source == p.avatar);
+      _avatarMode = _legacyAvatar ? p.avatarMode : 'color';
+      _output = p.output;
+      if (_legacyAvatar)
+        _status = '旧头像已黑白化，无法恢复颜色；请重新选择原图或移除头像后发送。';
+      else if (p.version < 3 && p.avatar != null && edit == null) {
+        _status = '沿用旧彩色小图；重新选择原图才能恢复更多细节。';
+      }
     });
     _refresh();
   }
@@ -200,10 +220,28 @@ class _PassportEditorState extends State<PassportEditor> {
 
   Future<void> _refresh() async {
     final generation = ++_generation;
-    final profile = _profile;
-    // Keep the last complete raster visible until its replacement is ready.
+    // Keep the last complete raster visible, but never send an older generation.
+    bool cancelled() => !mounted || generation != _generation;
     try {
-      final raster = await renderPassport(profile);
+      final edit = _avatarEdit;
+      if (edit != null && !_legacyAvatar) {
+        final color = await renderAvatarEdit(
+          edit,
+          _output,
+          quantize: false,
+          checkCancelled: () {
+            if (cancelled()) throw StateError('预览已取消');
+          },
+        );
+        if (cancelled()) return;
+        if (_avatar != color.crop || _legacyAvatar) {
+          _avatar = color.crop;
+          _avatarMode = 'color';
+          _legacyAvatar = false;
+          _persist();
+        }
+      }
+      final raster = await renderPassport(_profile, isCancelled: cancelled);
       if (mounted && generation == _generation) {
         setState(() {
           _raster = raster;
@@ -233,6 +271,10 @@ class _PassportEditorState extends State<PassportEditor> {
   }
 
   Future<void> _editAvatar([PassportAvatarEdit? replacement]) async {
+    if (_legacyAvatar && replacement == null) {
+      setState(() => _status = '旧头像已黑白化，请导入原图；调整旧图不能恢复颜色。');
+      return;
+    }
     final edit =
         replacement ??
         _avatarEdit ??
@@ -240,45 +282,20 @@ class _PassportEditorState extends State<PassportEditor> {
     if (edit == null) return;
     final result = await showDialog<({PassportAvatarEdit edit, String png})>(
       context: context,
-      builder: (_) => PassportAvatarDialog(edit: edit, mode: _avatarMode),
+      builder: (_) => PassportAvatarDialog(edit: edit, mode: _output),
     );
     if (mounted && result != null) {
       _avatarEdit = result.edit;
       _avatar = result.png;
+      _avatarMode = 'color';
+      _legacyAvatar = false;
       _changed();
     }
   }
 
-  Future<void> _changeAvatarMode(String mode) async {
-    if (_avatar == null) {
-      _avatarMode = mode;
-      _changed();
-      return;
-    }
-    final previousMode = _avatarMode;
-    setState(() {
-      _working = true;
-      _avatarMode = mode;
-    });
+  void _changeOutput(String output) {
+    _output = output;
     _changed();
-    try {
-      final edit = _avatarEdit ?? PassportAvatarEdit(_avatar!);
-      final rendered = await renderAvatarEdit(edit, mode);
-      if (mounted) {
-        _avatarEdit = edit;
-        _avatar = rendered.processed;
-        _avatarMode = mode;
-        _changed();
-      }
-    } catch (e) {
-      if (mounted) {
-        _avatarMode = previousMode;
-        _changed();
-        setState(() => _status = '头像处理失败：$e');
-      }
-    } finally {
-      if (mounted) setState(() => _working = false);
-    }
   }
 
   Future<void> _read() async {
@@ -396,6 +413,8 @@ class _PassportEditorState extends State<PassportEditor> {
                   : () {
                       _avatar = null;
                       _avatarEdit = null;
+                      _avatarMode = 'color';
+                      _legacyAvatar = false;
                       _changed();
                     },
               child: const Text('移除头像'),
@@ -404,30 +423,28 @@ class _PassportEditorState extends State<PassportEditor> {
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          key: ValueKey(_avatarMode),
-          initialValue: _avatarMode,
-          decoration: const InputDecoration(labelText: '头像显示'),
+          key: ValueKey('operator-$_output'),
+          initialValue: _output,
+          decoration: const InputDecoration(labelText: '输出模式'),
           items: const [
-            DropdownMenuItem(value: 'mono', child: Text('黑白 · 原有阈值')),
-            DropdownMenuItem(value: 'grayscale', child: Text('灰度 · 黑白网点')),
-            DropdownMenuItem(value: 'color', child: Text('彩色 · 六色')),
+            DropdownMenuItem(value: 'i006', child: Text('I006 / 512 色')),
+            DropdownMenuItem(value: 'colorfast', child: Text('ColorFast')),
           ],
           onChanged: _locked
               ? null
               : (value) {
-                  _changeAvatarMode(value!);
+                  _changeOutput(value!);
                 },
         ),
         if (_avatar != null)
           const Text('设备资料只含最终128×160头像；需要重新构图完整画面时，请导入原图。调整弹窗应用后才更新草稿。'),
         const SizedBox(height: 8),
         Text(
-          _avatarMode == 'color'
-              ? '设备六色预览 · 页面时间静态；新版固件使用 ColorFast 彩色快刷'
-              : _avatarMode == 'grayscale'
-              ? '设备黑白预览 · 灰度通过黑白网点表现'
-              : '最终黑白预览 · 440×608',
+          '设备像素预览 · 440×608 · ${_output == 'i006' ? 'I006 / 512 色' : 'ColorFast'}',
         ),
+        if (_legacyAvatar) const Text('旧头像已黑白化，请重选原图或移除；不会自动恢复颜色。'),
+        if (!widget.colorPassportSupported)
+          const Text('当前设备不支持新版彩色档案，请升级固件；仍可编辑并保存草稿。'),
         Center(
           child: SizedBox(
             width: 330,
@@ -455,6 +472,9 @@ class _PassportEditorState extends State<PassportEditor> {
             FilledButton(
               onPressed:
                   widget.canOperate &&
+                      widget.canSend &&
+                      widget.colorPassportSupported &&
+                      !_legacyAvatar &&
                       !_locked &&
                       errors.isEmpty &&
                       _raster != null &&
@@ -465,12 +485,15 @@ class _PassportEditorState extends State<PassportEditor> {
                       return widget.onSave(json, bin);
                     })
                   : null,
-              child: const Text('WiFi 发送资料'),
+              child: const Text('发送资料'),
             ),
             if (op['canRetry'] == true)
               OutlinedButton(
                 key: const Key('retry-passport'),
-                onPressed: !_locked && widget.onRetry != null
+                onPressed:
+                    !_locked &&
+                        widget.colorPassportSupported &&
+                        widget.onRetry != null
                     ? () => _run(widget.onRetry!)
                     : null,
                 child: const Text('重试上次上传'),
@@ -495,9 +518,7 @@ class _PassportEditorState extends State<PassportEditor> {
         if (op['message'] is String) Text(op['message'] as String),
         if (_status.isNotEmpty) Text(_status),
         const SizedBox(height: 8),
-        const Text(
-          'App 通过 WiFi 直传档案画面和资料，蓝牙用于控制和回读。取消后等待清理完成；重试会从上次上传的第一份文件开始。需要支持 WiFi 文件上传的固件。',
-        ),
+        const Text('档案可通过 Wi-Fi 或蓝牙发送。设备保存后会回读资料，取消后请等待清理完成。'),
       ],
     );
   }

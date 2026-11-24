@@ -1395,9 +1395,7 @@ static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *he
 
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
     case 0x7F:  // Experimental ABC9 input, never a public film2 format.
-        if (header->frameCount != 1 || header->screenWidth != EPD_WIDTH ||
-            header->screenHeight != EPD_HEIGHT || memcmp(header->reserved, "ABC9", 4) != 0)
-            return ESP_ERR_INVALID_ARG;
+        if (!hal_epd_abc9_header_valid(filmData)) return ESP_ERR_INVALID_ARG;
         frameSize = EPD_WIDTH * EPD_HEIGHT * 2u;
         break;
 #endif
@@ -2194,7 +2192,8 @@ void hal_epd_display_8bpp_mode(const unsigned char *index8Data, uint8_t mode)
 }
 
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
-static void epd_abc9_write_plane(const uint8_t *pixels, uint8_t shift)
+static void epd_abc9_write_plane(hal_epd_abc9_row_fn read_row, void *context,
+                                  uint16_t *codes, uint8_t shift)
 {
     EPD_PROFILE_STAGE_BEGIN(RAM);
     uint8_t line[EPD_INPUT_LINE];
@@ -2202,44 +2201,45 @@ static void epd_abc9_write_plane(const uint8_t *pixels, uint8_t shift)
     epd_wait_busy(BUSY_TIMEOUT_INIT_MS);
     for (int row = 0; row < EPD_HEIGHT; row++)
     {
+        read_row(context, row, codes);
         for (int x = 0; x < EPD_WIDTH; x += 2)
-        {
-            uint16_t a = pixels[0] | ((uint16_t)pixels[1] << 8);
-            uint16_t b = pixels[2] | ((uint16_t)pixels[3] << 8);
-            line[x / 2] = (uint8_t)((((a >> shift) & 7) << 4) | ((b >> shift) & 7));
-            pixels += 4;
-        }
+            line[x / 2] = (uint8_t)((((codes[x] >> shift) & 7) << 4) |
+                                    ((codes[x + 1] >> shift) & 7));
         EPD_W21_WriteDATA_Bulk(line, EPD_INPUT_LINE);
     }
     EPD_PROFILE_STAGE_END(RAM);
 }
 
-esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size)
+static int epd_abc9_rows_valid(hal_epd_abc9_row_fn read_row, void *context, uint16_t *codes)
 {
-    if (pixels == NULL || size != EPD_WIDTH * EPD_HEIGHT * 2u)
-        return ESP_ERR_INVALID_ARG;
-    /* Check all high bits BEFORE display_init/full_clear/any REF. */
-    for (uint32_t i = 1; i < size; i += 2)
+    for(unsigned y = 0; y < EPD_HEIGHT; ++y)
     {
-        if (pixels[i] & 0xFE)
-        {
-            sys_loge(EPD_TAG, "ABC9 rejected pixel %lu: high bits set", (unsigned long)(i / 2));
-            return ESP_ERR_INVALID_ARG;
-        }
+        read_row(context, y, codes);
+        for(unsigned x = 0; x < EPD_WIDTH; ++x)
+            if(codes[x] > 511) return 0;
     }
+    return 1;
+}
+
+esp_err_t hal_epd_display_abc9_rows(hal_epd_abc9_row_fn read_row, void *context)
+{
+    uint16_t codes[EPD_WIDTH]; /* One shared logical-code row for validation + all phases. */
+    /* Validate the entire stable source BEFORE init/full_clear/any REF. */
+    if(read_row == NULL || !epd_abc9_rows_valid(read_row, context, codes))
+        return ESP_ERR_INVALID_ARG;
     EPD_PROFILE_BEGIN("abc9_lab");
     epd_lock();
     hal_epd_display_init();
     epd_spectra_init();
     epd_spectra_full_clear();
     epd_spectra_wave(qual_phase1);
-    epd_abc9_write_plane(pixels, 6);
+    epd_abc9_write_plane(read_row, context, codes, 6);
     epd_spectra_refresh(true, false);
     epd_spectra_wave(qual_phase2);
-    epd_abc9_write_plane(pixels, 3);
+    epd_abc9_write_plane(read_row, context, codes, 3);
     epd_spectra_refresh(false, false);
     epd_spectra_wave(qual_phase3);
-    epd_abc9_write_plane(pixels, 0);
+    epd_abc9_write_plane(read_row, context, codes, 0);
     epd_spectra_refresh(false, true);
     m_spectra_state = 0;
     epd_unlock();
@@ -2247,6 +2247,19 @@ esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size)
     EPD_PROFILE_END();
     sys_logi(EPD_TAG, "ABC9 lab complete clear=1 qual_ref=3 RAM=A/B/C");
     return ESP_OK;
+}
+
+static void epd_abc9_native_row(void *context, unsigned row, uint16_t *codes)
+{
+    const uint8_t *pixels = (const uint8_t *)context + row * EPD_WIDTH * 2u;
+    for(unsigned x = 0; x < EPD_WIDTH; ++x)
+        codes[x] = (uint16_t)pixels[x * 2u] | ((uint16_t)pixels[x * 2u + 1u] << 8);
+}
+
+esp_err_t hal_epd_display_abc9(const uint8_t *pixels, uint32_t size)
+{
+    if(pixels == NULL || size != EPD_ABC9_BODY_BYTES) return ESP_ERR_INVALID_ARG;
+    return hal_epd_display_abc9_rows(epd_abc9_native_row, (void *)pixels);
 }
 #endif
 

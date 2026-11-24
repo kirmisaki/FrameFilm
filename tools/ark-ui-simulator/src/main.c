@@ -19,6 +19,7 @@
 #include "simulator.h"
 
 static uint8_t menu_sel;
+static bool sleep_keep;
 
 static void show_menu(void)
 {
@@ -65,8 +66,25 @@ static void press_key(input_press_type_t key)
 {
     const app_ui_ops_t *ops = simulator_current_ops();
     const app_entry_t *entry = simulator_current_entry();
+    if(sleep_keep) {
+        if(key == INPUT_PRESS_SHORT) {
+            lv_display_enable_invalidation(lv_display_get_default(), true);
+            sleep_keep = false;
+            show_boot();
+        }
+        return;
+    }
     if(ops == app_sleep_ops() && key == INPUT_PRESS_SHORT) { show_boot(); return; }
-    if(key == INPUT_PRESS_LONG) { show_sleep(); return; }
+    if(key == INPUT_PRESS_LONG) {
+        if(entry && entry->sleep_face == APP_SLEEP_FACE_KEEP) {
+            lv_display_t *display = lv_display_get_default();
+            lv_refr_now(display);
+            lv_display_enable_invalidation(display, false);
+            sleep_keep = true;
+        }
+        else show_sleep();
+        return;
+    }
     if(key == INPUT_PRESS_DOUBLE) { show_menu(); return; }
     if(entry == &g_app_menu_entry) {
         if(key == INPUT_PRESS_UP) menu_sel = (menu_sel + 1) % APP_MENU_ENTRY_NUM;
@@ -271,71 +289,140 @@ static int save_prts_preview(lv_display_t *display, const char *dir)
     return result == 0 ? 0 : 1;
 }
 
-static int check_color_card(const char *step, int expected_calls)
+/* Asymmetric per-pixel fixtures expose offsets, scaling, cropping and nibble order. */
+static uint8_t pass_test_code(int x, int y, int w, int h, int color)
 {
-    const simulator_color_card_t card = simulator_color_card();
-    const int expected_y = SHELL_BODY_TOP +
-        (720 - SHELL_BODY_TOP - SHELL_BODY_BOTTOM - 608) / 2;
-    if(card.calls == expected_calls &&
-       (expected_calls == 0 || (card.x == SHELL_BODY_PAD_X && card.y == expected_y &&
-                                card.w == 440 && card.h == 608))) {
-        fprintf(stderr, "%s: %d call(s) at (%d,%d) %dx%d\n",
-                step, card.calls, card.x, card.y, card.w, card.h);
-        return 0;
+    static const uint8_t codes[] = {0, 1, 2, 3, 5, 6};
+    if(x == 0 || y == 0 || x == w - 1 || y == h - 1) return 0;
+    return color ? codes[(x / 31 + y / 37) % 6] : (uint8_t)((x / 13 + y / 17) & 1);
+}
+
+static int write_pass_fixture(const char *path, int w, int h, int color)
+{
+    const uint8_t header[16] = {'F', 'F', 'U', 'I', color ? 2 : 1, color ? 2 : 1,
+                              w & 255, w >> 8, h & 255, h >> 8};
+    FILE *fp = fopen(path, "wb");
+    if(!fp) return 1;
+    int result = fwrite(header, 1, sizeof(header), fp) != sizeof(header);
+    for(int y = 0; y < h && !result; y++) {
+        for(int x = 0; x < w; x += color ? 2 : 8) {
+            uint8_t byte = 0;
+            for(int i = 0; i < (color ? 2 : 8); i++) {
+                const uint8_t code = pass_test_code(x + i, y, w, h, color);
+                if(color) byte |= code << (i ? 0 : 4);
+                else if(code == 0) byte |= 0x80u >> i;
+            }
+            if(fputc(byte, fp) == EOF) { result = 1; break; }
+        }
     }
-    fprintf(stderr, "%s: expected %d centered overlay call(s), got %d at (%d,%d) %dx%d\n",
-            step, expected_calls, card.calls, card.x, card.y, card.w, card.h);
-    return 1;
+    return fclose(fp) != 0 || result;
+}
+
+static int check_pass_pixels(lv_display_t *display, int w, int h, int color)
+{
+    const int ox = w == 480 ? 0 : 20, oy = h == 720 ? 0 : 57;
+    const int i1 = lv_display_get_color_format(display) == LV_COLOR_FORMAT_I1;
+    static const uint8_t rgb[7][3] = {
+        {0, 0, 0}, {255, 255, 255}, {219, 198, 57}, {180, 71, 32},
+        {0, 0, 0}, {21, 60, 135}, {123, 149, 112}
+    };
+    for(int i = 0; i < 12; i++) { lv_timer_handler(); simulator_process_requests(); SDL_Delay(10); }
+    lv_refr_now(display);
+    SDL_Surface *surface = NULL;
+    if(!i1) {
+        surface = SDL_CreateRGBSurfaceWithFormat(0, 480, 720, 32, SDL_PIXELFORMAT_ARGB8888);
+        if(!surface) return 1;
+        if(SDL_RenderReadPixels(lv_sdl_window_get_renderer(display), NULL, SDL_PIXELFORMAT_ARGB8888,
+                                surface->pixels, surface->pitch) != 0) { SDL_FreeSurface(surface); return 1; }
+    }
+    int result = 0;
+    for(int y = 0; y < h && !result; y++) {
+        for(int x = 0; x < w; x++) {
+            const uint8_t code = pass_test_code(x, y, w, h, color);
+            if(i1) {
+                const int white = (preview_i1_buf[8 + (y + oy) * 60 + (x + ox) / 8] >>
+                                   (7 - (x + ox) % 8)) & 1;
+                result = white != code;
+            }
+            else {
+                uint8_t r, g, b;
+                const uint32_t pixel = ((uint32_t *)((uint8_t *)surface->pixels + (y + oy) * surface->pitch))[x + ox];
+                SDL_GetRGB(pixel, surface->format, &r, &g, &b);
+                result = r != rgb[code][0] || g != rgb[code][1] || b != rgb[code][2];
+            }
+            if(result) { fprintf(stderr, "pixel mismatch at (%d,%d), %dx%d color=%d\n", x, y, w, h, color); break; }
+        }
+    }
+    if(surface) SDL_FreeSurface(surface);
+    const simulator_color_card_t card = simulator_color_card();
+    if(card.active != color || (color && (card.x != ox || card.y != oy || card.w != w || card.h != h))) result = 1;
+    fprintf(stderr, "%dx%d %s pixels/placement: %s\n", w, h, color ? "color" : "mono", result ? "FAIL" : "PASS");
+    return result;
 }
 
 static int check_pass_layout(lv_display_t *display, const char *preview_dir)
 {
     char path[] = "/tmp/ark-pass-layout-XXXXXX";
-    char missing_path[sizeof(path) + 8];
-    const uint8_t header[16] = {'F', 'F', 'U', 'I', 2, 2, 0xB8, 0x01, 0x60, 0x02};
-    uint8_t row[440 / 2];
     int fd = mkstemp(path);
-    if(fd < 0) { perror("mkstemp"); return 1; }
-    FILE *fp = fdopen(fd, "wb");
-    if(!fp) { close(fd); unlink(path); return 1; }
-    int result = fwrite(header, 1, sizeof(header), fp) != sizeof(header);
-    for(int y = 0; y < 608 && !result; y++) {
-        for(int x = 0; x < 440; x += 2) {
-            const int border = x < 3 || x >= 438 || y < 3 || y >= 605;
-            const int corner = (x < 22 || x >= 418) && (y < 22 || y >= 586);
-            const uint8_t code = border ? 0 : corner ? (y < 22 ? 3 : 5) : 1;
-            row[x / 2] = (uint8_t)((code << 4) | code);
+    if(fd < 0) return 1;
+    close(fd);
+    int result = 0;
+    const int i1 = lv_display_get_color_format(display) == LV_COLOR_FORMAT_I1;
+    if(preview_dir && ensure_preview_dir(preview_dir) != 0) result = 1;
+    unsetenv("ARK_PASS_PROFILE");
+    simulator_show(g_app_pass_entry.ui_ops, &g_app_pass_entry);
+    /* Empty -> legacy -> full -> legacy exercises geometry restoration in both directions. */
+    for(int color = i1 ? 0 : 1; color >= 0 && !result; color--) {
+        for(int size = 0; size < 3 && !result; size++) {
+            const int w = size == 1 ? 480 : 440, h = size == 1 ? 720 : 608;
+            result |= write_pass_fixture(path, w, h, color);
+            setenv("ARK_PASS_PROFILE", path, 1);
+            press_key(INPUT_PRESS_SHORT);
+            simulator_process_requests();
+            result |= check_pass_pixels(display, w, h, color);
+            if(preview_dir) {
+                char name[64];
+                snprintf(name, sizeof(name), "pass-%s-%dx%d", color ? "color" : "mono", w, h);
+                result |= i1 ? save_i1_frame(display, preview_dir, name) : save_frame(display, preview_dir, name);
+            }
+            /* Failed reload keeps every old pixel, not just the color overlay pointer. */
+            setenv("ARK_PASS_PROFILE", "/missing-ark-pass-test.bin", 1);
+            press_key(INPUT_PRESS_SHORT);
+            simulator_process_requests();
+            result |= check_pass_pixels(display, w, h, color);
+            /* Invalid dimensions, truncated payload, extra bytes, reserved header, bad color code. */
+            for(int bad = 0; bad < 5 && !result; bad++) {
+                result |= write_pass_fixture(path, w, h, color);
+                FILE *fp = fopen(path, "r+b");
+                if(!fp) { result = 1; break; }
+                if(bad == 0) { fseek(fp, 6, SEEK_SET); fputc(0, fp); }
+                if(bad == 1) result |= ftruncate(fileno(fp), 17) != 0;
+                if(bad == 2) { fseek(fp, 0, SEEK_END); fputc(0, fp); }
+                if(bad == 3) { fseek(fp, 10, SEEK_SET); fputc(1, fp); }
+                if(bad == 4) { fseek(fp, color ? 16 : 4, SEEK_SET); fputc(color ? 0x44 : 2, fp); }
+                fclose(fp);
+                setenv("ARK_PASS_PROFILE", path, 1);
+                press_key(INPUT_PRESS_SHORT);
+                simulator_process_requests();
+                result |= check_pass_pixels(display, w, h, color);
+            }
+            result |= write_pass_fixture(path, w, h, color);
+            press_key(INPUT_PRESS_SHORT);
+            simulator_process_requests();
+            result |= check_pass_pixels(display, w, h, color);
+            press_key(INPUT_PRESS_LONG);
+            if(!sleep_keep) result = 1;
+            result |= check_pass_pixels(display, w, h, color);
+            press_key(INPUT_PRESS_SHORT); /* Wake -> boot destroys the old page/compose state. */
+            if(sleep_keep || simulator_color_card().active) result = 1;
+            show_menu();
+            menu_sel = 1;
+            press_key(INPUT_PRESS_SHORT); /* Same shared Ark page route as normal navigation. */
+            result |= check_pass_pixels(display, w, h, color);
         }
-        result = fwrite(row, 1, sizeof(row), fp) != sizeof(row);
     }
-    if(fclose(fp) != 0) result = 1;
-    if(result) { unlink(path); return 1; }
-
-    setenv("ARK_PASS_PROFILE", path, 1);
-    simulator_reset_color_card();
-    simulator_show(g_app_pass_entry.ui_ops, &g_app_pass_entry);
-    result |= check_color_card("first color", 1);
-    if(preview_dir != NULL) {
-        if(ensure_preview_dir(preview_dir) != 0) result = 1;
-        else result |= save_frame(display, preview_dir, "pass-color-layout");
-    }
-
-    snprintf(missing_path, sizeof(missing_path), "%s.missing", path);
-    setenv("ARK_PASS_PROFILE", missing_path, 1);
-    simulator_reset_color_card();
-    simulator_show(g_app_pass_entry.ui_ops, &g_app_pass_entry);
-    result |= check_color_card("empty", 0);
-
-    setenv("ARK_PASS_PROFILE", path, 1);
-    g_app_pass_entry.ui_ops->on_key(INPUT_PRESS_SHORT);
-    simulator_process_requests();
-    result |= check_color_card("empty to color", 1);
-
-    simulator_reset_color_card();
-    g_app_pass_entry.ui_ops->on_key(INPUT_PRESS_SHORT);
-    simulator_process_requests();
-    result |= check_color_card("color reload", 1);
-
+    press_key(INPUT_PRESS_DOUBLE);
+    if(simulator_current_entry() != &g_app_menu_entry || menu_sel != 1 || simulator_color_card().active) result = 1;
     simulator_show(NULL, NULL);
     unlink(path);
     fprintf(stderr, "pass layout %s\n", result ? "FAIL" : "PASS");
@@ -359,6 +446,10 @@ int main(int argc, char **argv)
         }
         return save_font_preview(argv[2]);
     }
+    if(argc >= 2 && argc <= 3 && strcmp(argv[1], "--pass-mono-check") == 0) {
+        lv_display_t *display = create_i1_display();
+        return display ? check_pass_layout(display, argc == 3 ? argv[2] : NULL) : 1;
+    }
     lv_display_t *display = lv_sdl_window_create(480, 720);
     if(!display) { fputs("LVGL SDL window failed\n", stderr); return 1; }
     lv_sdl_window_set_title(display, "FrameFilm Ark UI simulator");
@@ -366,6 +457,13 @@ int main(int argc, char **argv)
         return check_pass_layout(display, argc == 3 ? argv[2] : NULL);
     if(argc == 3 && strcmp(argv[1], "--prts-preview") == 0) {
         return save_prts_preview(display, argv[2]);
+    }
+    if(argc == 3 && strcmp(argv[1], "--pass-preview") == 0) {
+        if(ensure_preview_dir(argv[2]) != 0) return 1;
+        simulator_show(g_app_pass_entry.ui_ops, &g_app_pass_entry);
+        int result = save_frame(display, argv[2], "pass-profile");
+        simulator_show(NULL, NULL);
+        return result != 0;
     }
     show_boot();
 
@@ -396,6 +494,12 @@ int main(int argc, char **argv)
         result |= save_frame(display, argv[2], "menu-return");
         press_key(INPUT_PRESS_SHORT);
         if(simulator_current_entry() != &g_app_pass_entry) result = -1;
+        press_key(INPUT_PRESS_LONG);
+        press_key(INPUT_PRESS_DOUBLE);
+        if(!sleep_keep || simulator_current_entry() != &g_app_pass_entry) result = -1;
+        result |= save_frame(display, argv[2], "pass-sleep");
+        press_key(INPUT_PRESS_SHORT);
+        if(sleep_keep || simulator_current_ops() != app_boot_ops()) result = -1;
         simulator_show(g_app_settings_entry.ui_ops, &g_app_settings_entry);
         simulator_process_requests();
         press_key(INPUT_PRESS_UP);
@@ -415,7 +519,8 @@ int main(int argc, char **argv)
         result |= save_frame(display, argv[2], "clock");
         press_key(INPUT_PRESS_DOUBLE);
         if(menu_sel != 3) result = -1;
-        show_sleep();
+        press_key(INPUT_PRESS_LONG);
+        if(sleep_keep || simulator_current_ops() != app_sleep_ops()) result = -1;
         result |= save_frame(display, argv[2], "sleep");
         press_key(INPUT_PRESS_SHORT);
         if(simulator_current_ops() != app_boot_ops()) result = -1;
@@ -456,7 +561,7 @@ int main(int argc, char **argv)
         int shortcut = keys[SDL_SCANCODE_1] ? 1 : keys[SDL_SCANCODE_2] ? 2 :
                        keys[SDL_SCANCODE_3] ? 3 : keys[SDL_SCANCODE_4] ? 4 :
                        keys[SDL_SCANCODE_5] ? 5 : keys[SDL_SCANCODE_6] ? 6 : 0;
-        if(shortcut && shortcut != old_shortcut) {
+        if(!sleep_keep && shortcut && shortcut != old_shortcut) {
             if(shortcut == 1) show_boot();
             if(shortcut == 2) show_menu();
             if(shortcut == 3) simulator_show(g_app_settings_entry.ui_ops, &g_app_settings_entry);

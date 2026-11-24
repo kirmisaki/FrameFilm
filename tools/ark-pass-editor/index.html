@@ -7,12 +7,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Baloo+2:wght@400..800&family=Noto+Sans+SC:wght@400..900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=theme-coverage-2">
-  <script src="pixels.js" defer></script>
+  <link rel="stylesheet" href="style.css?v=pass-v3-1">
+  <script src="pixels.js?v=pass-v3-1" defer></script>
+  <script src="profile.js?v=pass-v3-1" defer></script>
   <script src="../ForFilm/js/source-fit.js" defer></script>
   <script src="../ForFilm/js/convert.js" defer></script>
-  <script src="avatar-editor.js?v=theme-coverage-2" defer></script>
-  <script src="app.js?v=theme-coverage-2" defer></script>
+  <script src="avatar-editor.js?v=pass-v3-1" defer></script>
+  <script src="../ForFilm/js/ark-512-profile.js" defer></script>
+  <script src="../ForFilm/js/ark-512.js" defer></script>
+  <script src="student-i006.js?v=1" defer></script>
+  <script src="app.js?v=pass-v3-1" defer></script>
 </head>
 <body>
   <nav class="embedded-nav" aria-label="ForFilm 导航"><button id="back-to-connect" type="button" class="secondary">返回 ForFilm 连接页</button></nav>
@@ -26,6 +30,22 @@
     <section class="editor" aria-labelledby="edit-title">
       <button type="button" class="preview-jump" id="preview-jump">查看设备预览 ↓</button>
       <div class="section-head"><span>01 / 档案资料</span><h2 id="edit-title">编辑资料</h2></div>
+      <div class="field template-field">
+        <label for="template-select">卡面模板</label>
+        <select id="template-select"><option value="operator">干员档案</option><option value="rhodes-academy-student">罗德岛学院学生证</option></select>
+        <p class="hint">两种模板分别保留本地草稿及头像构图；设备仅保存一份活动卡面。学生证使用本地 PSD 导出的静态底图，头像和文字资料可编辑。</p>
+      </div>
+      <div class="field template-field" data-template="rhodes-academy-student" hidden>
+        <label for="student-palette">学生证配色</label>
+        <select id="student-palette" aria-describedby="student-base-status"></select>
+        <p class="hint">使用 PSD 原配色，仅替换底图，保留头像和档案资料。</p>
+        <label for="student-output">学生证输出</label>
+        <select id="student-output" aria-describedby="student-base-status">
+          <option value="i006">I006 512 色 · A 档灰水印（默认）</option>
+          <option value="colorfast">ColorFast · 8bpp 双相彩色</option>
+        </select>
+        <p class="hint">两种输出共用未量化彩色源。设备不支持所选模式时会阻止发送并提示升级，不会降级。</p>
+      </div>
       <div class="fields">
         <div class="field avatar-field">
           <label for="avatar">头像</label>
@@ -34,10 +54,13 @@
             <button id="remove-avatar" type="button" class="text-button">移除头像</button>
             <button id="edit-avatar" type="button" class="secondary">调整头像</button>
           </div>
-          <p class="hint">头像框128×160；本地保留源图，可拖动、缩放、旋转和调整Film抖动，取消保留旧头像。</p>
-          <p class="hint">设备JSON仅含最终128×160头像；重新读取后可编辑该图像，完整构图请重新导入原图。源图和调整参数仅保存在本地草稿。</p>
-          <label for="avatar-mode">头像显示</label>
-          <select id="avatar-mode"><option value="mono">黑白 · 原有阈值</option><option value="grayscale">灰度 · 黑白网点</option><option value="color">彩色 · 六色</option></select>
+          <p class="hint">学生证直接裁切为 239×299，干员档案为 128×160；本地保留有界彩色源图，可拖动、缩放、旋转和调整曝光。取消不修改旧头像。</p>
+          <p class="hint">设备 JSON 仅含已调整、未量化的槽尺寸 PNG，不含源图或编辑参数。读取后可恢复彩色裁切；完整构图需本地草稿或重新选择原图。</p>
+          <div data-template="operator">
+            <label for="avatar-mode">干员头像输出</label>
+            <select id="avatar-mode"><option value="i006">I006 / 512 色（默认）</option><option value="colorfast">ColorFast · 8bpp 双相彩色</option></select>
+          </div>
+          <p class="status" id="migration-status" role="status"></p>
         </div>
         <div class="field">
           <label for="codename">代号 <span class="required">必填</span></label>
@@ -45,18 +68,30 @@
           <label class="unset"><input id="codename-unset" type="checkbox"> 代号尚未设置</label>
           <p class="validation" id="codename-error" aria-live="polite"></p>
         </div>
-        <div class="field">
+        <div class="field" data-template="operator">
           <label for="number">编号 <span class="required">必填</span></label>
           <input id="number" type="text" maxlength="36" autocomplete="off" placeholder="输入编号">
           <label class="unset"><input id="number-unset" type="checkbox"> 编号尚未设置</label>
           <p class="validation" id="number-error" aria-live="polite"></p>
         </div>
-        <div class="field">
+        <div class="field" data-template="operator">
           <label for="affiliation">所属</label>
           <input id="affiliation" type="text" maxlength="60" autocomplete="off" placeholder="可留空">
           <p class="validation" id="affiliation-error" aria-live="polite"></p>
         </div>
-        <div class="field">
+        <div class="field" data-template="rhodes-academy-student" hidden>
+          <label for="student-number">学号 <span class="required">必填</span></label>
+          <input id="student-number" type="text" maxlength="12" inputmode="numeric" autocomplete="off" placeholder="YYYYMMDDMMDD">
+          <label class="unset"><input id="student-number-unset" type="checkbox"> 学号尚未设置</label>
+          <p class="hint">12 位：实装日期 YYYYMMDD + 生日 MMDD（生日允许 02-29）。保留前导零，不自动生成。</p>
+          <p class="validation" id="student-number-error" aria-live="polite"></p>
+        </div>
+        <div class="field" data-template="rhodes-academy-student" hidden>
+          <label for="race">种族</label>
+          <input id="race" type="text" maxlength="60" autocomplete="off" placeholder="可留空；显示为未设置">
+          <p class="validation" id="race-error" aria-live="polite"></p>
+        </div>
+        <div class="field" data-template="operator">
           <label for="signature">签名</label>
           <textarea id="signature" rows="3" maxlength="200" placeholder="可留空；最多三行"></textarea>
           <p class="validation" id="signature-error" aria-live="polite"></p>
@@ -69,15 +104,16 @@
         <button id="download-png" type="button" class="secondary">下载 PNG 预览</button>
         <button id="download-bin" type="button" class="primary">下载 profile.bin</button>
       </div>
+      <p class="hint">两种卡面均导出显式 kind / output 的 v3 JSON；可导入旧干员 v1 / 学生 v2。旧客户端不保证编辑 v3，请先更新客户端并备份资料。</p>
       <p id="file-status" class="status" role="status"></p>
 
       <div class="section-head actions-head"><span>03 / 设备连接</span><h2>发送到 Ark</h2></div>
-      <p class="hint standalone-connection-hint">通过浏览器手动选择 FRAMEFILMARK。发送到固定路径 app/pass/profile.bin 与 app/pass/profile.json；读取会替换当前本地草稿。</p>
-      <p class="hint embedded-connection-hint">使用 ForFilm 已连接的 Ark。依次发送 profile.bin 和 profile.json；读取成功后才会替换当前本地草稿。</p>
+      <p class="hint standalone-connection-hint">通过浏览器手动选择 FRAMEFILMARK。发送到固定路径 app/pass/profile.bin 与 app/pass/profile.json；读取成功后切换并替换对应模板草稿，另一模板草稿保留。</p>
+      <p class="hint embedded-connection-hint">使用 ForFilm 已连接的 Ark。依次发送 profile.bin 和 profile.json；读取成功后才切换并替换对应模板草稿，另一模板草稿保留。</p>
       <div class="actions">
         <button id="connect" type="button" class="secondary">连接 Ark</button>
         <button id="send" type="button" class="primary" disabled>发送到设备</button>
-        <button id="read-device" type="button" class="secondary" disabled>读取设备资料（替换当前草稿）</button>
+        <button id="read-device" type="button" class="secondary" disabled>读取设备资料（替换对应模板草稿）</button>
         <button id="cancel" type="button" class="secondary" disabled>取消操作</button>
       </div>
       <progress id="progress" value="0" max="100" aria-label="传输进度"></progress>
@@ -94,9 +130,11 @@
 
     <section class="preview-panel" aria-labelledby="preview-title">
       <button type="button" class="preview-jump" id="preview-back">返回编辑 ↑</button>
-      <div class="section-head"><span>440 × 608 / 设备色彩</span><h2 id="preview-title">设备主体预览</h2></div>
-      <div class="preview-frame"><canvas id="preview" width="440" height="608" role="img" aria-label="通行证主体预览"></canvas></div>
-      <p class="hint">预览即导出像素。灰度使用黑白网点；彩色使用六色资料，新版固件通过 ColorFast 彩色快刷显示，页面时间静态。快刷颜色以实机为准。设备状态栏与脚注由固件绘制，不包含在文件内。</p>
+      <div class="section-head"><span id="preview-dimensions">440 × 608 / 设备色彩</span><h2 id="preview-title">设备主体预览</h2></div>
+      <div class="preview-frame"><canvas id="preview" width="440" height="608" role="img" aria-label="通行证主体预览" aria-describedby="student-base-status"></canvas></div>
+      <p class="status" id="student-base-status" role="status"></p>
+      <p class="hint" id="student-orientation" hidden>学生证按 720 × 480 横版全屏编辑和下载 PNG。I006 为原生 ABC9；ColorFast 为原生 format 0x03 单帧，二者均为 720 × 480 面板排布。请将 Ark 逆时针横拿阅读。全屏不显示状态栏和底部提示，按键操作不变。预览是模型色彩，实际效果以屏幕为准。</p>
+      <p class="hint">预览来自同一次编码的实际索引。I006 与 ColorFast 均使用既有标定色板；模型色彩不等于实体屏幕保证。干员档案保留 440×608 I1 主体与独立彩色头像，设备状态栏与脚注不包含在文件内。</p>
     </section>
   </main>
 </body>

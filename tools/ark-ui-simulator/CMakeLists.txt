@@ -20,8 +20,7 @@ set(CONFIG_LV_USE_THORVG OFF CACHE BOOL "" FORCE)
 set(LV_FETCH_DEPENDENCIES OFF CACHE BOOL "" FORCE)
 add_subdirectory("${LVGL_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/lvgl")
 
-add_executable(ark-ui-simulator
-    src/main.c
+set(ARK_UI_SOURCES
     src/simulator_platform.c
     "${ARK_ROOT}/components/film_app/pages/app_boot.c"
     "${ARK_ROOT}/components/film_app/pages/app_menu.c"
@@ -39,7 +38,8 @@ add_executable(ark-ui-simulator
     "${ARK_ROOT}/components/film_ui/src/ui_boot_logo.c"
     "${ARK_ROOT}/components/film_ui/src/ui_boot_typography.c"
 )
-target_include_directories(ark-ui-simulator PRIVATE
+add_executable(ark-ui-simulator src/main.c ${ARK_UI_SOURCES})
+set(ARK_UI_INCLUDES
     "${CMAKE_CURRENT_LIST_DIR}/stubs"
     "${ARK_ROOT}/components/film_app/inc"
     "${ARK_ROOT}/components/film_app/core"
@@ -52,5 +52,15 @@ target_include_directories(ark-ui-simulator PRIVATE
     "${ARK_ROOT}/components/film_hal/inc"
     "${ARK_ROOT}/components/film_service/inc"
 )
+target_include_directories(ark-ui-simulator PRIVATE ${ARK_UI_INCLUDES})
 target_link_libraries(ark-ui-simulator PRIVATE lvgl PkgConfig::SDL2)
 target_compile_definitions(ark-ui-simulator PRIVATE ARK_UI_SIMULATOR=1)
+
+# Host acceptance of the actual I1 -> mono/ColorFast renderer, not the RGB preview stub.
+add_executable(ark-pass-display-check EXCLUDE_FROM_ALL
+    tests/test_pass_display.c ${ARK_UI_SOURCES}
+    "${ARK_ROOT}/components/film_ui/src/ui_display.c")
+target_include_directories(ark-pass-display-check PRIVATE ${ARK_UI_INCLUDES})
+target_link_libraries(ark-pass-display-check PRIVATE lvgl PkgConfig::SDL2)
+target_compile_definitions(ark-pass-display-check PRIVATE
+    ARK_UI_SIMULATOR=1 ARK_UI_SIMULATOR_REAL_DISPLAY=1 CONFIG_ARK_EPD_ABC_PREVIEW=1)

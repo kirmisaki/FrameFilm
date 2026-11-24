@@ -8,7 +8,8 @@ import java.io.File
 import java.util.ArrayDeque
 
 /** Owns one Ark BLE connection and serializes ordinary writes around direct transfers. */
-class ArkSession(context: Context, private val listener: Listener) {
+class ArkSession(context: Context, private val listener: Listener,
+                 private val persistBleFirmware: (BleFirmwareCoordinator.Recovery?) -> Boolean = { false }) {
     interface Listener {
         fun onDevices(devices: List<BluetoothDevice>) { }
         fun onConnection(connected: Boolean, message: String) { }
@@ -20,7 +21,10 @@ class ArkSession(context: Context, private val listener: Listener) {
                                    val callback: (Result<Unit>) -> Unit)
     private data class TransferInput(val file: File, val fileName: String,
                                      val firmware: ArkFirmware? = null, val targetPath: String? = null,
-                                     val legacyHardwareTarget: String? = null)
+                                     val legacyHardwareTarget: String? = null,
+                                     val transport: String = "wifi", val attemptId: Int = 0,
+                                     val mediaDirectory: String? = null,
+                                     val verifiedBleFile: Boolean = false, val requiresAbc9: Boolean = false)
 
     private val main = Handler(Looper.getMainLooper())
     private val appContext = context.applicationContext
@@ -32,12 +36,16 @@ class ArkSession(context: Context, private val listener: Listener) {
     private var lastInput: TransferInput? = null
     private var settling = false
     private var disconnectAfterTransfer = false
+    private var reconnectSuppressed = false
     private var closing = false
     private var closed = false
     private var connectedDevice: BluetoothDevice? = null
-    private var coordinator: DirectTransferCoordinator? = null
+    private var coordinator: TransferCoordinator? = null
+    private var attemptSequence = (System.currentTimeMillis() and 0x3fffffff).toInt()
+    val retryTransport: String get() = lastInput?.transport ?: "wifi"
     private var transferOwnerAddress: String? = null
     private var lastTransferSnapshot: TransferSnapshot? = null
+    private var uncertainPhotoFile: File? = null
     private var readyAfterCleanup = false
     private val ble: ArkBleController = ArkBleController(context, object : ArkBleController.Listener {
         override fun onDevices(found: List<BluetoothDevice>) {
@@ -66,12 +74,14 @@ class ArkSession(context: Context, private val listener: Listener) {
             }
         }
         override fun onPacket(packet: ByteArray) {
+            (coordinator as? BleTransferCoordinator)?.onPacket(packet)
             // Transfer-side Wi-Fi snapshot getters can contain saved credentials.
             if (!closed && !transferActive) listener.onPacket(packet)
         }
     })
 
     val isReady: Boolean get() = ble.isReady
+    val negotiatedMtu: Int get() = ble.negotiatedMtu
     val connectedAddress: String? get() = if (isReady) connectedDevice?.address else null
     fun scannedName(address: String): String? = ble.scannedName(address)
     val transferActive: Boolean get() = pendingStart != null || settling || coordinator?.isActive == true
@@ -79,8 +89,14 @@ class ArkSession(context: Context, private val listener: Listener) {
     private fun publishTransfer(snapshot: TransferSnapshot, input: TransferInput? = lastInput) {
         val image = input?.firmware
         val published = snapshot.copy(
-            kind = when { input?.targetPath != null -> "file"; image != null -> "firmware"; else -> "film" },
-            targetVersion = image?.version, targetBuild = image?.elfSha256)
+            kind = when { input?.targetPath != null -> "file"; image != null -> "firmware"; input != null -> "film"; else -> snapshot.kind },
+            targetVersion = image?.version ?: snapshot.targetVersion,
+            targetBuild = image?.elfSha256 ?: snapshot.targetBuild,
+            transport = input?.transport ?: snapshot.transport, attemptId = input?.attemptId ?: snapshot.attemptId)
+        if (published.transport == "ble" && published.kind == "film") {
+            if (published.phase == "unconfirmed") uncertainPhotoFile = input?.file
+            else if (published.success && uncertainPhotoFile == input?.file) uncertainPhotoFile = null
+        }
         lastTransferSnapshot = published
         listener.onTransfer(published)
     }
@@ -152,7 +168,8 @@ class ArkSession(context: Context, private val listener: Listener) {
     }
 
     fun connect(address: String) = onMain {
-        if (closed || closing || transferActive || coordinator?.needsConfirmation == true) {
+        val restoringOriginal = coordinator is BleFirmwareCoordinator && address == transferOwnerAddress
+        if (closed || closing || transferActive || (coordinator?.needsConfirmation == true && !restoringOriginal)) {
             listener.onConnection(isReady, "直传、关闭或升级结果待确认期间不能切换设备")
             return@onMain
         }
@@ -166,6 +183,7 @@ class ArkSession(context: Context, private val listener: Listener) {
     }
 
     fun disconnect() = onMain {
+        reconnectSuppressed = true
         if (transferActive) {
             disconnectAfterTransfer = true
             cancelTransfer()
@@ -190,7 +208,7 @@ class ArkSession(context: Context, private val listener: Listener) {
     fun writePacket(packet: ByteArray, callback: (Result<Unit>) -> Unit) = onMain {
         val error = when {
             closed || closing -> "会话已关闭"
-            transferActive -> "直传期间不能发送普通 BLE 命令"
+            transferActive || coordinator?.cleanupConfirmed == false -> "传输或断连清理期间不能发送普通 BLE 命令"
             !ble.isReady -> "请先连接 Ark"
             packet.size !in 4..196 || packet[0].toInt() and 0xff != 0x55 -> "BLE 帧无效"
             (packet[2].toInt() and 0xff) + 4 != packet.size -> "BLE 帧长度不匹配"
@@ -233,24 +251,39 @@ class ArkSession(context: Context, private val listener: Listener) {
                     canRetry = input.file.isFile, cleanupCompleted = previous?.cleanupConfirmed ?: true))
                 if (closing) finishClose()
             } else {
-                val next = DirectTransferCoordinator(appContext, ble, input.file, input.fileName,
-                    object : DirectTransferCoordinator.Listener {
-                        override fun onSnapshot(snapshot: TransferSnapshot) {
-                            if (!closed) publishTransfer(snapshot)
-                            if (snapshot.phase in setOf("done", "cancelled", "error", "unconfirmed") &&
-                                coordinator?.isActive == false) {
-                                resumeReadyAfterCleanup()
-                                if (closing) finishClose()
-                                else if (disconnectAfterTransfer) {
-                                    disconnectAfterTransfer = false
-                                    ble.close()
-                                }
-                            }
+                val report: (TransferSnapshot) -> Unit = report@{ snapshot ->
+                    if (lastInput?.attemptId != input.attemptId) return@report
+                    if (!closed) publishTransfer(snapshot, input)
+                    if (snapshot.phase in setOf("done", "cancelled", "error", "unconfirmed", "interrupted") &&
+                        coordinator?.isActive == false) {
+                        resumeReadyAfterCleanup()
+                        if (closing) finishClose()
+                        else if (disconnectAfterTransfer) {
+                            disconnectAfterTransfer = false
+                            ble.close()
                         }
-                    }, input.firmware, reconnect = {
-                        val device = connectedDevice
-                        if (!closed && device != null && (!closing || coordinator?.expectsBleResume == true)) ble.connect(device)
-                    }, targetPath = input.targetPath, legacyHardwareTarget = input.legacyHardwareTarget)
+                    }
+                }
+                val reconnect: () -> Unit = {
+                    val device = connectedDevice
+                    if (!closed && !reconnectSuppressed && device != null && device.address == transferOwnerAddress &&
+                        lastInput?.attemptId == input.attemptId && !ble.isReady && !ble.isConnecting &&
+                        (!closing || coordinator?.expectsBleResume == true)) ble.connect(device)
+                }
+                val next: TransferCoordinator = if (input.transport == "ble" && input.firmware != null) {
+                    BleFirmwareCoordinator(ble, input.file, input.firmware, checkNotNull(transferOwnerAddress),
+                        { connectedAddress }, report, reconnect, persistBleFirmware)
+                } else if (input.transport == "ble" && input.verifiedBleFile) {
+                    val path = input.targetPath ?: "${checkNotNull(input.mediaDirectory)}/${input.fileName}"
+                    val directory = when (input.mediaDirectory) { "film" -> 1; "animation" -> 2; else -> null }
+                    VerifiedBleFileCoordinator(ble, input.file, path, directory, input.requiresAbc9, report, reconnect)
+                } else if (input.transport == "ble") {
+                    BleTransferCoordinator(ble, input.file, input.fileName, report, reconnect)
+                } else DirectTransferCoordinator(appContext, ble, input.file, input.fileName,
+                    object : DirectTransferCoordinator.Listener {
+                        override fun onSnapshot(snapshot: TransferSnapshot) = report(snapshot)
+                    }, input.firmware, reconnect = reconnect, targetPath = input.targetPath,
+                    legacyHardwareTarget = input.legacyHardwareTarget)
                 coordinator = next
                 next.start()
             }
@@ -258,19 +291,68 @@ class ArkSession(context: Context, private val listener: Listener) {
         if (previous == null) begin(true, "") else previous.ensureSettled(begin)
     }
 
-    fun startTransfer(file: File, fileName: String) = startInput(file, fileName, null)
+    fun startTransfer(file: File, fileName: String, transportPreference: String? = null,
+                      wifiSupport: TransferPolicy.WifiSupport = TransferPolicy.WifiSupport.UNKNOWN,
+                      mediaDirectory: String? = null, verifiedBleFile: Boolean = false, requiresAbc9: Boolean = false) =
+        startInput(file, fileName, null, transportPreference = transportPreference, wifiSupport = wifiSupport,
+            mediaDirectory = mediaDirectory, verifiedBleFile = verifiedBleFile, requiresAbc9 = requiresAbc9)
 
-    fun startFirmwareTransfer(file: File, firmware: ArkFirmware, legacyHardwareTarget: String? = null) =
-        startInput(file, "firmware.bin", firmware, legacyHardwareTarget = legacyHardwareTarget)
+    fun startFirmwareTransfer(file: File, firmware: ArkFirmware, legacyHardwareTarget: String? = null,
+                              transportPreference: String? = null,
+                              wifiSupport: TransferPolicy.WifiSupport = TransferPolicy.WifiSupport.UNKNOWN) =
+        startInput(file, "firmware.bin", firmware, legacyHardwareTarget = legacyHardwareTarget,
+            transportPreference = transportPreference, wifiSupport = wifiSupport)
 
     /** Transfer raw bytes to a path relative to the Ark SD-card root. */
-    fun startFileTransfer(file: File, targetPath: String) = startInput(file, file.name, null, targetPath)
+    fun startFileTransfer(file: File, targetPath: String, transportPreference: String? = null) =
+        startInput(file, file.name, null, targetPath, transportPreference = transportPreference,
+            verifiedBleFile = transportPreference == "ble")
 
-    fun confirmFirmwareTransfer() = onMain { coordinator?.confirmFirmware() }
+    fun confirmFirmwareTransfer() = onMain {
+        if (connectedDevice?.address != transferOwnerAddress || !ble.isReady)
+            listener.onConnection(ble.isReady, "请重连原 Ark 后只读核对结果")
+        else coordinator?.confirmFirmware()
+    }
+
+    fun dismissPhotoConfirmation() = onMain {
+        when (val attempt = coordinator) {
+            is BleTransferCoordinator -> attempt.dismissConfirmation()
+            is VerifiedBleFileCoordinator -> attempt.dismissConfirmation()
+            else -> Unit
+        }
+    }
+
+    fun restoreBleFirmware(recovery: BleFirmwareCoordinator.Recovery) = onMain {
+        if (closed || coordinator != null || transferActive) return@onMain
+        transferOwnerAddress = recovery.deviceAddress
+        val attempt = BleFirmwareCoordinator(ble, null, recovery.firmware, recovery.deviceAddress,
+            { connectedAddress }, { publishTransfer(it, null) }, {
+                val device = connectedDevice
+                if (!closed && !reconnectSuppressed && device?.address == recovery.deviceAddress &&
+                    !ble.isReady && !ble.isConnecting) ble.connect(device)
+            }, persistBleFirmware, recovery)
+        coordinator = attempt
+        attempt.start()
+    }
+
+    fun acknowledgeBleFirmwareRestart(callback: (Boolean) -> Unit) = onMain {
+        val attempt = coordinator as? BleFirmwareCoordinator
+        if (attempt == null || connectedAddress != transferOwnerAddress) callback(false)
+        else attempt.acknowledgeManualRestart(callback)
+    }
 
     private fun startInput(file: File, fileName: String, firmware: ArkFirmware?, targetPath: String? = null,
-                           legacyHardwareTarget: String? = null) = onMain {
-        val input = TransferInput(file, fileName, firmware, targetPath, legacyHardwareTarget)
+                           legacyHardwareTarget: String? = null, transportPreference: String? = null,
+                           retrying: Boolean = false,
+                           wifiSupport: TransferPolicy.WifiSupport = TransferPolicy.WifiSupport.UNKNOWN,
+                           mediaDirectory: String? = null, verifiedBleFile: Boolean = false,
+                           requiresAbc9: Boolean = false) = onMain {
+        val transport = TransferPolicy.decide(transportPreference, wifiSupport).transport
+        val id = ++attemptSequence
+        val name = if (transport == "ble" && firmware == null && targetPath == null && !retrying)
+            "b%04x.film".format(id and 0xffff) else fileName
+        val input = TransferInput(file, name, firmware, targetPath, legacyHardwareTarget, transport, id,
+            mediaDirectory, verifiedBleFile, requiresAbc9)
         if (closed || closing) {
             publishTransfer(TransferSnapshot("error", "会话已关闭",
                 cleanupCompleted = coordinator?.cleanupConfirmed ?: true), input)
@@ -279,6 +361,23 @@ class ArkSession(context: Context, private val listener: Listener) {
         if (transferActive || coordinator?.needsConfirmation == true) {
             listener.onConnection(ble.isReady, "已有直传正在进行或升级结果待确认")
             return@onMain
+        }
+        if (uncertainPhotoFile == file) {
+            listener.onConnection(ble.isReady, "上一轮可能已保存此照片，请先核对结果；不能重复发送同一任务")
+            return@onMain
+        }
+        if (transport == "ble" && targetPath != null && !verifiedBleFile) {
+            publishTransfer(TransferSnapshot("error", "通用文件/通行证只支持 Wi-Fi",
+                cleanupCompleted = coordinator?.cleanupConfirmed ?: true), input)
+            return@onMain
+        }
+        if (transport == "ble" && firmware == null && !verifiedBleFile) {
+            val invalid = runCatching { BlePhotoFormat.requireCompatible(file) }.exceptionOrNull()
+            if (invalid != null) {
+                publishTransfer(TransferSnapshot("error", invalid.message ?: "不支持的 BLE 照片",
+                    cleanupCompleted = coordinator?.cleanupConfirmed ?: true), input)
+                return@onMain
+            }
         }
         if (!file.isFile || file.length() !in 1..0xffffffffL) {
             publishTransfer(TransferSnapshot("error", when { targetPath != null -> "文件不存在或大小无效";
@@ -299,6 +398,7 @@ class ArkSession(context: Context, private val listener: Listener) {
                 canRetry = true, cleanupCompleted = coordinator?.cleanupConfirmed ?: true))
             return@onMain
         }
+        reconnectSuppressed = false
         pendingStart = input
         publishTransfer(TransferSnapshot("preparing", "等待普通 BLE 写入完成", total = file.length(), canCancel = true))
         pump()
@@ -321,7 +421,13 @@ class ArkSession(context: Context, private val listener: Listener) {
         if (input == null || !input.file.isFile) {
             publishTransfer(TransferSnapshot("error", "没有可重试的本地文件",
                 cleanupCompleted = coordinator?.cleanupConfirmed ?: true))
-        } else startInput(input.file, input.fileName, input.firmware, input.targetPath, legacyHardwareTarget)
+        } else if (connectedDevice?.address != transferOwnerAddress || !ble.isReady) {
+            listener.onConnection(ble.isReady, "请重连原设备后重试同一任务")
+        } else if (lastTransferSnapshot?.canRetry != true) {
+            listener.onConnection(ble.isReady, "此任务不能重发；若提交可能已发生，请只核对结果")
+        } else startInput(input.file, input.fileName, input.firmware, input.targetPath, legacyHardwareTarget,
+            transportPreference = input.transport, retrying = true, mediaDirectory = input.mediaDirectory,
+            verifiedBleFile = input.verifiedBleFile, requiresAbc9 = input.requiresAbc9)
     }
 
     private fun failQueuedWrites(message: String) {

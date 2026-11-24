@@ -229,9 +229,8 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
       <h4>Triangle Marker</h4><p>选择指针。实心=当前，空心=同级未选。列表项前缀、轮播两侧指向均用它。</p>
     </div>
     <div class="el">
-      <div class="box" style="padding:8px"><img src="../ui-assets/png/ui_def_badge.png" width="64" height="57" alt="BADGE"></div>
-      <h4>Identity Badge</h4><p>开机主视觉与休眠卡共用同一张图标。它是<b>SD 可替换资源</b>（<code>/sdcard/app/_ui/badge.bin</code>，
-        默认取自 <code>tools/ui-assets/png/icon1.png</code>，量化成 304×272 的 1bpp 位图），固件不缩放、尺寸必须精确匹配。</p>
+      <div class="box" style="padding:8px"><img src="../ui-assets/boot_logo_mono.png" width="64" height="54" alt="BOOT LOGO"></div>
+      <h4>Boot Logo</h4><p>开机与休眠共用 304×256 的内置品牌标识。独立的 SD 自定义徽章不替换这张图。</p>
     </div>
     <div class="el">
       <div class="box" style="padding:10px"><div style="width:100%">
@@ -347,7 +346,7 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
       <td>816 B</td>
     </tr>
     <tr>
-      <td>身份徽章（开机主视觉）</td>
+      <td>自定义徽章（独立于开机标识）</td>
       <td><code>/sdcard/app/_ui/badge.bin</code></td>
       <td><b>304 × 272</b></td>
       <td>10,352 B</td>
@@ -360,10 +359,7 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
     <code>0x06</code> width <code>u16</code>　<code>0x08</code> height <code>u16</code>　<code>0x0A</code> reserve <code>6B</code>　
     <code>0x10</code> 载荷<br>
     · 位序：每字节 8 像素，<b>MSB 在左</b>　· 极性：<code>1</code> = 黑、<code>0</code> = 白<br>
-    · 行字节数 = 宽 / 8（<b>宽必须是 8 的倍数</b>，这也是 80 与 304 的来由；徽章取 304
-      而非 300，是因为 300 不是 8 的倍数）<br>
-    · 徽章纵向 272 由源图 <code>icon1.png</code> 的宽高比（641:573）定，改尺寸须同时改
-      <code>gen_ui_assets.py</code> 的 <code>BADGE_W/H</code> 与固件 <code>ui_assets.h</code> 的 <code>UI_BADGE_W/H</code><br>
+    · 行字节数 = 宽 / 8（<b>宽必须是 8 的倍数</b>）<br>
     · 文件总长 = 16（头）+ 宽 × 高 / 8
   </div>
 
@@ -374,7 +370,7 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
   </div>
 
   <div class="note">
-    <b>校验与回退</b>：尺寸不符 / 文件缺失 / magic 或版本非法 → 回退到固件内置默认图，并打一条日志。
+    <b>校验与回退</b>：文件缺失或无效时，菜单图标回退到内置默认图，自定义徽章则不返回图像。
     <b>固件不做缩放</b>，尺寸必须精确匹配（避免在 MCU 上做位图缩放与重采样）。
   </div>
 
@@ -385,7 +381,7 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
 
   <div class="note">
     <b>为什么只开放这几处</b>：状态栏的电池 / WiFi / 蓝牙是 9~12px 的方块，用图元直接画更清晰、也更省 flash，
-    不值得做成资源；而菜单的 5 个图标与整机徽章是"唯一看得出作者风格"的位置，所以开放替换。
+    不值得做成资源；菜单图标可通过 SD 替换，自定义徽章读取接口独立保留。
   </div>
 
   <div class="note" style="border-left-color:#f2f3ee">
@@ -396,9 +392,9 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
 
   <div class="note">
     <b>生成方式</b>：<code>python tools/ui-assets/gen_ui_assets.py</code>（只用 Pillow，零外部工具）
-    一次产出两样东西，两者同一套画法，所以"默认样子"与"替换后样子"一致：<br>
-    ① SD 卡可替换资源 <code>assets/app/&lt;app&gt;/icon.bin</code>、<code>assets/app/_ui/badge.bin</code>（拷进 TF 卡即生效）<br>
-    ② 固件内置默认图 <code>components/film_ui/{inc/ui_defaults.h,src/ui_defaults.c}</code>
+    默认生成 SD 菜单图标 <code>assets/app/&lt;app&gt;/icon.bin</code> 和相应的固件内置图标。<br>
+    自定义徽章单独生成：<code>python tools/ui-assets/gen_ui_assets.py --badge custom.png badge.bin</code>，
+    再将输出放到 <code>/sdcard/app/_ui/badge.bin</code>。当前开机与休眠页不读取这份文件。
   </div>
 </section>
 
@@ -528,7 +524,7 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
   <h2 style="margin-top:32px">版式（整屏 480 × 720，无正文边距，y 为相对屏幕顶部的偏移）</h2>
   <table>
     <tr><th>行</th><th>y</th><th>h</th><th>内容</th><th>1-bit 实现</th></tr>
-    <tr><td><b>徽章</b></td><td>136</td><td>272</td><td>与 <b>BOOT 页同一张资源</b>（<code>/sdcard/app/_ui/badge.bin</code>，304×272）</td><td>SD 可替换 1bpp 位图，展开成 L8 后交给 LVGL</td></tr>
+    <tr><td><b>品牌标识</b></td><td>136</td><td>272</td><td>预览槽内居中放置与 <b>BOOT 页共用</b>的 304×256 品牌图</td><td>固件内置 I1 位图，不读 SD</td></tr>
     <tr><td>细线</td><td>452</td><td>1</td><td>宽 400，水平居中（左右各留 40）</td><td>实心细块</td></tr>
     <tr><td><b>状态字</b></td><td>473</td><td>58</td><td><b>STANDBY</b></td><td>Montserrat 48，字距 0.18em，居中</td></tr>
     <tr><td>细线</td><td>551</td><td>1</td><td>宽 400，水平居中</td><td>实心细块</td></tr>
@@ -563,7 +559,7 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
   <h2 style="margin-top:32px">数据从哪来</h2>
   <table>
     <tr><th>显示</th><th>来源</th><th>代价</th></tr>
-    <tr><td>徽章</td><td><code>ui_assets_badge()</code>，与 BOOT 页同一份</td><td>已存在，零新增</td></tr>
+    <tr><td>品牌标识</td><td>与 BOOT 页共用内置 I1 品牌图</td><td>不访问 SD</td></tr>
     <tr><td><code>STANDBY</code> / <code>PRESS ENTER TO WAKE</code></td><td>固定文案</td><td>零</td></tr>
     <tr><td><code>AUTO WAKE 15:32</code></td><td><code>g_service_param.sleep.sleep_auto</code> / <code>sleep_time</code> + 当前时间</td><td><b>需要新增一条数据管道</b>：页面在 ui_task，读不到 <code>g_service_param</code>。照 BOOT 页 <code>app_boot_set_telemetry()</code> 的做法 —— 由 app 任务侧在展示休眠页之前把 <code>[auto(1)][minutes(4)]</code> 设进去</td></tr>
     <tr><td>电量 / WiFi / 蓝牙</td><td><b>不显示</b></td><td>休眠页是"入睡前最后一帧"，<code>app_shell</code> 的往返可能来不及；且这些值在几秒后就失效了，显示反而是误导</td></tr>
@@ -579,7 +575,7 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
     <tr><th>项</th><th>结论</th></tr>
     <tr><td>字体</td><td>Montserrat 48 + UNSCII 8 —— 都是已编入的档位，不需要新增</td></tr>
     <tr><td>图元</td><td>只有实心细块与标签，<b>连实心三角都没有</b>（本页刻意不用指向性符号）</td></tr>
-    <tr><td>资源</td><td>复用 BOOT 的徽章资源，<b>不新增任何 SD 资源</b>；页脚那行是纯文字，不需要 SD 卡</td></tr>
+    <tr><td>资源</td><td>复用 BOOT 内置品牌图；页脚那行是纯文字，不需要 SD 卡</td></tr>
     <tr><td>刷新成本</td><td><b>一次全帧</b>，且之后设备就断电了 —— 这是全工程里最"划算"的一次刷新</td></tr>
     <tr><td>残影</td><td>休眠期间不刷新，没有残影问题；要留意的是<b>唤醒后</b>：这张卡的黑块会残到 BOOT 页上，而 BOOT 首帧本来就带一次整屏清场，正好把它洗掉</td></tr>
   </table>
@@ -704,14 +700,10 @@ kbd{font:11px/1 var(--font-mono);border:1px solid #4a4d52;background:#202224;col
                sleepAuto:true, sleepWake:'15:32'};
   var bootTimer = null;
 
-  /* ---------- 身份徽章（开机页主视觉 / 休眠卡图标） ----------
-     固件里它是**一张 SD 可替换资源**：`/sdcard/app/_ui/badge.bin`（FFUI 容器，1bpp），
-     默认取自 `tools/ui-assets/png/icon1.png`，由 gen_ui_assets.py 量化成 **304×272**。
-     所以设计稿直接引那张 PNG —— 与设备上看到的像素完全一致。
-     （早先这里用 JS 现画一套合成徽章，那张图固件里根本没有，稿与实现会对不上。） */
+  /* 开机与休眠共用现行内置品牌图，保留设计稿的旧槽位高度。 */
   function badgePx(w){
     var h = Math.round(w * 272 / 304);
-    return '<img src="../ui-assets/png/ui_def_badge.png" width="' + w + '" height="' + h + '" alt="BADGE">';
+    return '<img src="../ui-assets/boot_logo_mono.png" width="' + w + '" height="' + h + '" style="object-fit:contain" alt="BOOT LOGO">';
   }
 
   /* ---------- 1-bit 图标：纯几何、只用 currentColor ----------

@@ -16,7 +16,7 @@ cmake --build tools/ark-ui-simulator/build -j4
 ./tools/ark-ui-simulator/build/ark-ui-simulator
 ```
 
-操作：↑/↓ 切换菜单项或设置行；Enter 进入页面、修改设置；双击 Enter 返回菜单并高亮刚离开的应用；按住 Enter 一秒预览休眠卡。数字 1–6 依次直接预览开机、菜单、设置、休眠卡、通行证、时钟。Esc 关闭窗口。图片、模板、动图走固件直绘路径，尚未接入此模拟器。
+用 ↑/↓ 切换菜单项或设置行，按 Enter 进入页面或修改设置，双击 Enter 返回菜单并高亮刚离开的应用。按住 Enter 一秒模拟休眠，通行证页会留屏，休眠后轻按 Enter 唤醒。数字 1–6 依次直接预览开机、菜单、设置、休眠卡、通行证、时钟。Esc 关闭窗口。图片、模板、动图走固件直绘路径，尚未接入此模拟器。
 
 检查菜单字体的真实 I1 渲染时，用 `--menu-preview <目录>`：
 
@@ -51,7 +51,16 @@ ARK_PASS_PROFILE="$PWD/.output/ark/logs/pass-preview/profile.bin" \
   ./tools/ark-ui-simulator/build/ark-ui-simulator
 ```
 
-上例指向本机验证用样例文件；使用自己的资料时换成实际导出路径。按数字 5 打开通行证，单击 Enter 重新加载同一路径；没有配置文件时显示空状态，加载失败保留当前通行证。主体图为 440×608，支持原 1bit FFUI v1 与六色 4bpp FFUI v2，格式见 [`ark-pass-editor`](../ark-pass-editor/README.md)。实机把 v2 卡片与黑白外壳合成，映射为 ColorFast 8bpp 索引后两阶段快刷；原文件格式不变。模拟器使用这些索引的标定 RGB 预览，快刷颜色与原生六色存在差异。这里不模拟蓝牙、SD 或实机电子纸刷新耗时。
+上例指向本机验证用样例文件；使用自己的资料时换成实际导出路径。按数字 5 打开通行证，单击 Enter 重新加载同一路径；没有配置文件时显示空状态，加载失败保留当前通行证。支持旧版 440×608 与全屏 480×720，均支持原 1bit FFUI v1 与六色 4bpp FFUI v2，格式见 [`ark-pass-editor`](../ark-pass-editor/README.md)。旧尺寸保留状态栏与底栏，全屏尺寸从 `(0,0)` 原样铺满逻辑屏幕、隐藏外壳，不缩放或裁切。实机把 v2 卡片与黑白外壳合成，映射为 ColorFast 8bpp 索引后两阶段快刷；原文件版本/格式不变。模拟器使用这些索引的标定 RGB 预览，快刷颜色与原生六色存在差异。这里不模拟蓝牙、SD 或实机电子纸刷新耗时。
+
+单独保存资料截图时可以直接调用共享 Ark 通行证页面，不必跑完整导航：
+
+```sh
+ARK_PASS_PROFILE="/absolute/path/profile.bin" \
+  ./tools/ark-ui-simulator/build/ark-ui-simulator --pass-preview .output/ark/pass-preview
+```
+
+输出 `pass-profile.bmp`。在没有桌面的环境下可加 `SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software`；正常 SDL 窗口和此截图入口共用页面 create/reload/destroy 实现，不另画一套布局。
 
 检查彩色通行证的 LVGL 卡片定位时，运行独立回归入口（无需 `--smoke` 或自己的资料文件）：
 
@@ -59,12 +68,31 @@ ARK_PASS_PROFILE="$PWD/.output/ark/logs/pass-preview/profile.bin" \
 ./tools/ark-ui-simulator/build/ark-ui-simulator --pass-layout-check .output/ark/pass-layout
 ```
 
-它用临时六色资料检查首次显示、空状态后刷新、已有彩色卡刷新时传给 `ui_display_set_color_card` 的坐标，预期三次均为 `(20,57) 440×608`；可选目录保存 `pass-color-layout.bmp`，卡片有黑色边框及彩色四角便于看边界。此项只验证共享 C 页面逻辑与 LVGL 几何，不能代替实机面板的合成和刷新验收。
+它用临时单色/六色资料逐像素检查旧版 `(20,57) 440×608` 与全屏 `(0,0) 480×720`，覆盖空状态后刷新、两种尺寸互切、彩色切单色、重载失败保留旧图、5 类损坏输入、重试、KEEP 休眠/唤醒、菜单退出与再次进入。可选目录保存四张 `pass-{mono,color}-{宽}x{高}.bmp`。单独检查与实机相同的 LVGL I1 渲染（不经 SDL RGB）可运行：
+
+```sh
+./tools/ark-ui-simulator/build/ark-ui-simulator --pass-mono-check .output/ark/pass-mono
+```
+
+实际 ColorFast 合成链路另有显式构建的 host 验收目标（无需 SDL 窗口）：
+
+```sh
+cmake --build tools/ark-ui-simulator/build --target ark-pass-display-check -j4
+./tools/ark-ui-simulator/build/ark-pass-display-check
+```
+
+该目标编译共享通行证页面与固件 **`ui_display.c` 原实现**，仅 mock HAL 推屏与 FreeRTOS 单线程锁：逐像素核对四种资料的 90° 物理映射、六色到 ColorFast 索引、单色极性，检查彩色/单色/尺寸切换、菜单清除合成状态及 ColorFast 帧分配失败后的旧图/旧几何恢复和重试。同时覆盖 I006 原生 ABC9 `profile.bin`：完整 LE16 码值原样送 HAL、损坏/截断/尾随/分配失败保留旧卡、native 与 FFUI 切换、普通重绘及状态更新不重复全刷、显式重载与 output resume 各播放一次。可传入浏览器导出的 691232B 文件，逐字节检查实际正文到 HAL 的一致性：
+
+```sh
+./tools/ark-ui-simulator/build/ark-pass-display-check /absolute/path/profile.bin
+```
+
+ABC9 验收使用真实固件解析和显示仲裁、mock HAL；普通 SDL RGB 预览尚不模拟 ABC9 色彩（只预览既有 FFUI，不另造 A/B/C 色彩映射）。上述检查不能替代实机面板的颜色、刷新耗时、n4r2 PSRAM 峰值与深度休眠验收。
 
 模拟器把 LVGL 的内存分配接到桌面 C `malloc`，供快速切页预览；固件使用自己的 ESP-IDF heap 配置。两者的可用内存和分配失败行为不能互推。
 
 使用的是 [LVGL 官方 SDL 桌面驱动](https://docs.lvgl.io/master/integration/pc/sdl.html)。逻辑窗口为 480×720，符合 Ark `ui_conf.h`；实际电子纸仍需上机验证。
 
-本机中文页面版 `--smoke` 已通过：验证菜单选通行证、双击返回后仍选中原图标并再次进入，设置修改、设置及时钟返回索引，以及休眠卡唤醒。截图在项目根目录 `.output/ark/logs/full-cn-preview/`：`boot.bmp`、`menu.bmp`、`menu-return.bmp`、`pass.bmp`、`settings.bmp`、`clock.bmp`、`sleep.bmp`。这些截图验证页面渲染与最小导航，不代表实体屏幕验收。模拟器目前长按统一展示休眠卡，不能据此判断实机 app 内休眠的留屏行为；固件 app 内休眠会保留当前画面。
+`--smoke` 覆盖菜单选通行证、双击返回后的菜单位置、通行证休眠留屏和唤醒、设置修改、设置及时钟返回索引，以及菜单休眠卡和唤醒。通行证留屏截图为 `pass-sleep.bmp`。模拟器按当前 app 的 `sleep_face` 决定保留画面或显示休眠卡。实际电子纸留屏和深度休眠由实机验证。
 
 个人通行证版设置 `ARK_PASS_PROFILE` 后的 `--smoke` 也已通过，包含重载失败时保留旧图与恢复文件后重试，截图在 `.output/ark/logs/pass-device-preview/`，新增 `pass-reload-failed.bmp` 和 `pass-reload-retry.bmp`。

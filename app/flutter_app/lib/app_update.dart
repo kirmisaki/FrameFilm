@@ -5,22 +5,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_update_service.dart';
+import 'release_repository.dart';
 
 class InstalledAppInfo {
   const InstalledAppInfo({
     required this.packageName,
     required this.versionName,
     required this.versionCode,
+    this.repository,
+    this.updateAllowed = false,
   });
 
   factory InstalledAppInfo.fromMap(Map data) => InstalledAppInfo(
     packageName: data['packageName'] as String? ?? '',
     versionName: data['versionName'] as String? ?? '',
     versionCode: (data['versionCode'] as num?)?.toInt() ?? 0,
+    repository: data['repository'] as String?,
+    updateAllowed: data['updateAllowed'] == true,
   );
 
   final String packageName, versionName;
   final int versionCode;
+  final String? repository;
+  final bool updateAllowed;
+
+  AppReleaseChannel? get channel => AppReleaseChannel.forPackage(packageName);
+  bool get ownsReleaseSource => updateAllowed && channel != null &&
+      channel == AppReleaseChannel.current && repository == channel!.repository;
 }
 
 class AppUpdateState {
@@ -31,6 +42,9 @@ class AppUpdateState {
     this.message = '',
     this.canCancel = false,
     this.canInstall = false,
+    this.packageName,
+    this.versionName,
+    this.versionCode,
   });
 
   factory AppUpdateState.fromMap(Map data) => AppUpdateState(
@@ -40,9 +54,14 @@ class AppUpdateState {
     message: data['message'] as String? ?? '',
     canCancel: data['canCancel'] == true,
     canInstall: data['canInstall'] == true,
+    packageName: data['packageName'] as String?,
+    versionName: data['versionName'] as String?,
+    versionCode: (data['versionCode'] as num?)?.toInt(),
   );
 
   final String phase, message;
+  final String? packageName, versionName;
+  final int? versionCode;
   final int received, total;
   final bool canCancel, canInstall;
   bool get active => phase == 'downloading' || phase == 'validating';
@@ -92,10 +111,16 @@ class ChannelAppUpdatePlatform implements AppUpdatePlatform {
   @override
   Future<AppUpdateState> download(AppRelease release) =>
       _state('downloadAppUpdate', {
+        'repository': release.channel.repository,
+        'minSdk': release.minSdk,
         'url': release.url,
         'name': AppUpdateService.apkName,
         'size': release.size,
         'sha256': release.sha256,
+        'tag': release.tag,
+        'packageName': release.channel.packageName,
+        'versionCode': release.versionCode,
+        'versionName': release.versionName,
       });
 
   @override
@@ -120,26 +145,26 @@ class AppUpdateController extends ChangeNotifier {
   final AppUpdatePlatform _platform;
   Timer? _poller, _demoTimer;
   bool _started = false, _disposed = false, _polling = false;
+  int _stateRevision = 0;
   bool checking = false, acting = false;
   String message = '';
   InstalledAppInfo? installed;
   AppRelease? release;
-  AppUpdateState state = const AppUpdateState();
+  AppReleaseChannel get channel => AppReleaseChannel.current;
+  AppUpdateState _transferState = const AppUpdateState();
+  AppUpdateState get state =>
+      (preview || installed?.ownsReleaseSource == true) &&
+          _transferState.packageName == channel.packageName
+      ? _transferState
+      : const AppUpdateState();
 
   bool get supported => _platform.supported;
-  bool get canCheck => !checking && !acting && !state.active;
-  bool get canDownload =>
-      release != null &&
-      !checking &&
-      !acting &&
-      (state.phase == 'idle' ||
-          state.phase == 'error' ||
-          state.phase == 'cancelled') &&
-      (preview ||
-          (supported &&
-              installed != null &&
-              installed!.packageName == AppUpdateService.applicationId &&
-              release!.isNewerThan(installed!.versionCode)));
+  bool get canCheck => !checking && !acting && !_transferState.active;
+  bool get canDownload => release?.channel == channel && canCheck &&
+      (state.phase == 'idle' || state.phase == 'error' || state.phase == 'cancelled') &&
+      ((preview && release!.isNewerThan(installed?.versionCode ?? 0)) ||
+       (supported && installed?.ownsReleaseSource == true &&
+        release!.isNewerThan(installed!.versionCode)));
 
   void _changed() {
     if (!_disposed) notifyListeners();
@@ -148,15 +173,31 @@ class AppUpdateController extends ChangeNotifier {
   Future<void> initialize() async {
     if (_started) return;
     _started = true;
+    if (preview) {
+      installed = InstalledAppInfo(
+        packageName: AppReleaseChannel.current.packageName,
+        versionName: '0.4.9',
+        versionCode: 13,
+      );
+      _changed();
+      return;
+    }
     await refreshNative();
   }
 
   Future<void> refreshNative() async {
     if (preview || !supported || _disposed) return;
     try {
+      installed = null;
       installed = await _platform.getInfo();
-      state = await _platform.getState();
-      _watchState();
+      if (!acting) {
+        final revision = _stateRevision;
+        final snapshot = await _platform.getState();
+        if (revision == _stateRevision) {
+          _transferState = snapshot;
+          _watchState();
+        }
+      }
       _changed();
     } catch (error) {
       message = '读取应用版本失败：$error';
@@ -165,25 +206,32 @@ class AppUpdateController extends ChangeNotifier {
   }
 
   Future<void> check() async {
+    if (preview) {
+      loadDownloadDemo();
+      return;
+    }
     if (!canCheck || _disposed) return;
     checking = true;
+    release = null;
     message = '正在查询 GitHub Releases…';
     _changed();
     try {
-      if (!preview && supported) await refreshNative();
-      final found = await _service.latest();
+      if (supported) {
+        await refreshNative();
+        if (installed?.ownsReleaseSource != true) {
+          message = '当前运行包或编译仓库不匹配发行渠道，不能自更新。旧 fork 请另行安装开发版，数据不会自动迁移。';
+          return;
+        }
+      }
+      final found = await _service.latest(channel);
       if (_disposed) return;
       release = found;
       if (found == null) {
         message = '近 20 个正式发布中暂无可用的 Flutter APK。';
-      } else if (preview) {
-        message = '演示模式：查到真实发布；下载和安装仅模拟。';
       } else if (!supported) {
         message = '网页版仅可查看发布；安装版本未知，下载与安装需在 Android App 内操作。';
       } else if (installed == null) {
         message = '无法读取当前安装版本，请重试。';
-      } else if (installed!.packageName != AppUpdateService.applicationId) {
-        message = '当前是 ${installed!.packageName} 调试包，正式版 APK 无法直接覆盖。';
       } else if (found.isNewerThan(installed!.versionCode)) {
         message = '发现新版 ${found.versionName}（${found.versionCode}）。';
       } else {
@@ -200,17 +248,20 @@ class AppUpdateController extends ChangeNotifier {
   void loadDownloadDemo() {
     if (!preview || !canCheck || _disposed) return;
     release = AppRelease(
+      channel: channel,
       tag: '本地演示',
-      versionName: '演示安装包',
-      versionCode: 1,
+      versionName: '0.4.10',
+      versionCode: 14,
       minSdk: 28,
       publishedAt: DateTime(2026),
       url: '',
       size: 20 * 1024 * 1024,
       sha256: '',
     );
-    state = const AppUpdateState();
-    message = '演示安装包已准备；不会联网下载或安装真实 APK。';
+    _transferState = const AppUpdateState();
+    message = installed?.versionCode == release!.versionCode
+        ? '演示设备上已安装最新版。'
+        : '发现演示版 ${release!.versionName}，可体验下载与安装。';
     _changed();
   }
 
@@ -219,7 +270,8 @@ class AppUpdateController extends ChangeNotifier {
     if (!canDownload || target == null) return;
     if (preview) {
       _demoTimer?.cancel();
-      state = AppUpdateState(
+      _transferState = AppUpdateState(
+        packageName: target.channel.packageName,
         phase: 'downloading',
         total: target.size,
         message: '演示下载中，不会保存 APK',
@@ -231,7 +283,8 @@ class AppUpdateController extends ChangeNotifier {
         steps++;
         if (steps >= 20) {
           timer.cancel();
-          state = AppUpdateState(
+          _transferState = AppUpdateState(
+            packageName: target.channel.packageName,
             phase: 'ready',
             received: target.size,
             total: target.size,
@@ -239,7 +292,8 @@ class AppUpdateController extends ChangeNotifier {
             canInstall: true,
           );
         } else {
-          state = AppUpdateState(
+          _transferState = AppUpdateState(
+            packageName: target.channel.packageName,
             phase: 'downloading',
             received: target.size * steps ~/ 20,
             total: target.size,
@@ -252,9 +306,10 @@ class AppUpdateController extends ChangeNotifier {
       return;
     }
     acting = true;
+    _stateRevision++;
     _changed();
     try {
-      state = await _platform.download(target);
+      _transferState = await _platform.download(target);
       _watchState();
     } catch (error) {
       message = '下载未开始：$error';
@@ -265,10 +320,11 @@ class AppUpdateController extends ChangeNotifier {
   }
 
   Future<void> cancel() async {
-    if (!state.canCancel || _disposed) return;
+    if (!state.canCancel || _disposed || acting) return;
     if (preview) {
       _demoTimer?.cancel();
-      state = AppUpdateState(
+      _transferState = AppUpdateState(
+        packageName: channel.packageName,
         phase: 'cancelled',
         received: state.received,
         total: state.total,
@@ -277,13 +333,18 @@ class AppUpdateController extends ChangeNotifier {
       _changed();
       return;
     }
+    acting = true;
+    _stateRevision++;
+    _changed();
     try {
-      state = await _platform.cancel();
+      _transferState = await _platform.cancel();
       _watchState();
     } catch (error) {
       message = '取消失败：$error';
+    } finally {
+      acting = false;
+      _changed();
     }
-    _changed();
   }
 
   Future<void> install() async {
@@ -293,14 +354,23 @@ class AppUpdateController extends ChangeNotifier {
       return;
     }
     if (preview) {
-      message = '演示模式：已模拟打开 Android 安装器，未安装应用。';
+      final target = release;
+      if (target == null) return;
+      installed = InstalledAppInfo(
+        packageName: channel.packageName,
+        versionName: target.versionName,
+        versionCode: target.versionCode,
+      );
+      _transferState = const AppUpdateState();
+      message = '已完成${target.channel.label}的模拟安装。';
       _changed();
       return;
     }
     acting = true;
+    _stateRevision++;
     _changed();
     try {
-      state = await _platform.install();
+      _transferState = await _platform.install();
       _watchState();
     } catch (error) {
       message = '无法打开安装器：$error';
@@ -312,14 +382,17 @@ class AppUpdateController extends ChangeNotifier {
 
   void _watchState() {
     _poller?.cancel();
-    if (!state.active) return;
+    if (!_transferState.active || _disposed) return;
     _poller = Timer.periodic(const Duration(milliseconds: 300), (_) async {
-      if (_polling || _disposed) return;
+      if (_polling || _disposed || acting) return;
       _polling = true;
       try {
-        state = await _platform.getState();
+        final revision = _stateRevision;
+        final snapshot = await _platform.getState();
+        if (revision != _stateRevision || _disposed) return;
+        _transferState = snapshot;
         _changed();
-        if (!state.active) _poller?.cancel();
+        if (!_transferState.active) _poller?.cancel();
       } catch (error) {
         message = '更新状态读取失败：$error';
         _poller?.cancel();
@@ -387,9 +460,15 @@ class _AppUpdatePanelState extends State<AppUpdatePanel>
         children: [
           Text('应用更新', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
-          const Text('在应用内下载 APK，无需打开 GitHub 页面。下载完成后，由 Android 系统确认安装。'),
-          if (c.preview) const Text('演示模式：发布查询是真实数据；下载与安装仅模拟。'),
-          if (!c.preview && !c.supported) const Text('网页版仅可查询正式发布，当前安装版本未知。'),
+          Text('当前应用渠道：$releaseChannelLabel'),
+          const SizedBox(height: 8),
+          Text(c.channel.repository),
+          if (c.installed != null) Text('运行包：${c.installed!.packageName}'),
+          const Text('仅更新当前应用；两版独立并存，不在此安装另一渠道。下载完成后由 Android 系统确认安装。'),
+          if (c.preview) const Text('演示模式：查询、下载和安装使用模拟数据。'),
+          if (!c.preview && !c.supported) const Text('网页版可查询编译渠道的发布，当前安装版本未知。'),
+          if (c.state.canInstall && c.state.versionCode != null)
+            Text('已验证缓存：${c.state.versionName}（${c.state.versionCode}），可离线打开安装器。'),
           Text(
             c.installed == null
                 ? '当前版本：未知'
@@ -419,11 +498,6 @@ class _AppUpdatePanelState extends State<AppUpdatePanel>
                 onPressed: c.canCheck ? c.check : null,
                 child: Text(c.checking ? '查询中…' : '检查更新'),
               ),
-              if (c.preview)
-                OutlinedButton(
-                  onPressed: c.canCheck ? c.loadDownloadDemo : null,
-                  child: const Text('体验下载流程'),
-                ),
               if (c.canDownload)
                 FilledButton(
                   onPressed: c.download,

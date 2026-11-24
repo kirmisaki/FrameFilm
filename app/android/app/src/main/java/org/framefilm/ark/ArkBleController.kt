@@ -285,7 +285,11 @@ class ArkBleController(context: Context, private val listener: Listener) {
             armTimeout(waitMs, "BLE 命令响应超时", false) {
                 if (pending === request) {
                     pending = null
-                    callback(Result.failure(TimeoutException("BLE 0x${channel.toString(16)} 响应超时")))
+                    if (!request.writeDone) {
+                        // A late untagged characteristic-write callback must not complete the next command.
+                        closeGatt()
+                        callback(Result.failure(IllegalStateException("BLE 0x${channel.toString(16)} 写回调未确认，请重新连接")))
+                    } else callback(Result.failure(TimeoutException("BLE 0x${channel.toString(16)} 响应超时")))
                 }
             }
         }
@@ -299,7 +303,7 @@ class ArkBleController(context: Context, private val listener: Listener) {
         }
         val g = gatt ?: return@onMain callback(Result.failure(IllegalStateException("BLE 已断开")))
         val ch = characteristic ?: return@onMain callback(Result.failure(IllegalStateException("BLE 已断开")))
-        if (payload.size + 4 > mtu - 3) {
+        if (channel !in 0..255 || payload.size > 192 || payload.size + 4 > mtu - 3) {
             callback(Result.failure(IllegalStateException("BLE MTU 不足")))
             return@onMain
         }
@@ -316,6 +320,8 @@ class ArkBleController(context: Context, private val listener: Listener) {
         } else armTimeout(5_000, "BLE 写入超时", false) {
             if (writeOnly === callback) {
                 writeOnly = null
+                // Android does not tag write callbacks. Fence a late callback with a new GATT generation.
+                closeGatt()
                 callback(Result.failure(IllegalStateException("BLE 写入超时")))
             }
         }

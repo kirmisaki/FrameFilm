@@ -868,15 +868,11 @@ static int app_sleep_keeps_screen(void)
 /**
  * @brief 从 app 内进入休眠（长按确认键）：睡后画面由 app 的 sleep_face 声明
  *
- * 图片/动图是 KEEP —— 屏上那幅内容本来就是用户要留的；其余 app 默认 CARD，
- * 改画休眠卡。手动、闲置自动休眠、低电三条路径共用同一份声明。
+ * 手动、闲置自动休眠、低电三条路径共用各 app 的声明；未声明则改画休眠卡。
  *
- * 先停当前 app 有两层原因：
- *   ① 让它停止绘制 —— 动图在按帧率不停推帧、图片可能正在翻页；
- *   ② app_stop_current() 对 UI 层是**同步**等 page_exit 完成的，停完之后不可能有
- *      半帧在途。所以"留画面"这条路径不必像"画休眠卡"那样按时间兜一帧的时长
- *      （见 app_sleep.h），长按松手就能立刻断电。
- * 停 app 不会清屏：UI 层只是关掉输出闸门（屏上留最后一帧），DIRECT 层 on_exit 也不绘制。
+ * 先停当前 app，禁止后续绘制。对 UI 层，app_stop_current() 同步等待 page_exit
+ * 完成；停屏不会清屏。KEEP 保留最后一帧已上屏的内容，不会新画休眠卡，因而不需要
+ * 等待休眠卡首帧，但仍需等唤醒条件解除（见 app_sleep.h）。
  */
 static void app_manager_sleep_from_app(void)
 {
@@ -1024,8 +1020,7 @@ static app_input_result_t app_manager_process_input(input_press_type_t key)
         return APP_INPUT_PASS;   // n16r8 的非卡包 app：双击无动作，返回统一走 BACK
     }
 
-    /* 长按确认键 = 手动休眠，睡后画面由当前 app 的 sleep_face 决定
-       （图片/动图留当前画面，其余改画休眠卡）。
+    /* 长按确认键 = 手动休眠，睡后画面由当前 app 的 sleep_face 决定。
        请求返回后仍冻结 app，等待 monitor 进入 deep sleep。 */
     if(key == INPUT_PRESS_LONG)
     {

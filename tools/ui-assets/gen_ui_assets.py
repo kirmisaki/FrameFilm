@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
 """FrameFilm UI 资源生成器
 
-1-bit 图标 + 开机徽章 -> 产出两种形态：
+默认将 tools/ui-assets/png/ 中的 app 图标量化为 80×80 的 1bpp 位图，输出
+assets/app/<app>/icon.bin 与固件内置图标 ui_defaults.{h,c}。没有合法 SD 图标时
+固件回退到内置图标。
 
-  1) SD 卡可替换资源（自有 FFUI 容器，1bpp）
-       assets/app/<app>/icon.bin      80x80   ← 取自 tools/ui-assets/png/ui_icon_<app>.png
-       assets/app/pass/icon.bin       80x80   ← 取自 tools/ui-assets/png/pass.png（等比居中）
-       assets/app/_ui/badge.bin      304x272  ← 取自 tools/ui-assets/png/icon1.png
-  2) 固件内置默认图（C 数组，1bpp 原始位图）
-       components/film_ui/inc/ui_defaults.h
-       components/film_ui/src/ui_defaults.c
-
-固件加载顺序：SD 上有合法资源就用 SD 的，否则回退内置默认图。
-
-**全部用外部源图**：图标与徽章都放在 `tools/ui-assets/png/`，脚本按目标尺寸量化成
-1bit，两种形态一起更新 —— 换图标只要替换那张 PNG 再重跑本脚本，不必改代码。
+--badge 从指定源图单独生成 304×272 的自定义 SD 徽章，不生成固件内置数据。
+把输出作为 /sdcard/app/_ui/badge.bin 使用；文件缺失或无效时没有徽章。
 
 **为什么不用 LVGL 官方 .bin / LVGLImage.py**
   官方脚本的 I1 路径依赖外部工具 pngquant，且 I1 图像需要调色板；本工程零外部依赖优先。
@@ -32,8 +24,10 @@ FFUI 容器（小端）：
 
 用法（仓库根目录）：
     python tools/ui-assets/gen_ui_assets.py
+    python tools/ui-assets/gen_ui_assets.py --badge custom.png badge.bin
 """
 
+import argparse
 import struct
 from pathlib import Path
 
@@ -51,16 +45,12 @@ FMT_1BPP = 0x01
 
 ICON = 80
 
-# 徽章（开机页主视觉）：横向定 BADGE_W，纵向按源图宽高比拉伸。
-# 宽度必须是 8 的倍数 —— 1bpp 位图按整字节分行，容器里没有 stride 字段，
-# 固件按 w/8 推算行跨度，所以 300 这类非 8 倍宽取最近的 304。
+# 自定义 SD 徽章槽位，尺寸与固件 ui_assets.h 一致。
 BADGE_W = 304
 BADGE_H = 272
 
 # 二值化门限（0~255）：>= 该值算白，否则算黑。
-# 这里**不用抖动**：源图是细密线稿，缩小时抗锯齿造出的中间灰若交给
-# Floyd-Steinberg，细线会被打散成断续的点阵（实测徽章顶部三角的曲线纹理与
-# "INDUSTRIES" 小字都会碎掉）；硬阈值则保住连续的线宽，这才是线稿要的"细腻"。
+# 线稿不用抖动：Floyd-Steinberg 会把细线打散成点阵，硬阈值保留连续的线宽。
 # 偏小 → 笔画细、易断；偏大 → 大块区域糊成实心、丢内部结构。128 是中间值。
 # 若换成人像/风景这类有连续影调的源图，把 load_1bit 里的量化改成
 # `grey.convert("1", dither=Image.Dither.FLOYDSTEINBERG)` 再调这个门限。
@@ -69,10 +59,10 @@ SRC_THRESHOLD = 128
 
 
 # ---------------------------------------------------------------- 源图量化
-def load_1bit(src_name, w, h, fit):
+def load_1bit(src, w, h, fit):
     """源图 -> 1bit 位图（本工程约定：1=黑 0=白）
 
-    源图放 tools/ui-assets/png/，两种画法都支持：
+    两种画法都支持：
       - 图标：RGB 全黑 + 背景全透明，形状由 **alpha** 表达
       - 徽章：黑白线稿，形状由 **亮度** 表达
     统一做法是先按 alpha 合成到白底（本工程约定"未覆盖"为白），再硬阈值切在
@@ -89,7 +79,6 @@ def load_1bit(src_name, w, h, fit):
     比例"，切 0.5 即覆盖率二值化，细线连续；LANCZOS 的振铃会在细线两侧造出过冲，
     二值化后线条反而断续。
     """
-    src = OUT_PNG / src_name
     if not src.exists():
         raise SystemExit("缺少源图：%s" % src)
 
@@ -135,7 +124,6 @@ ASSETS = [
     ("ui_def_icon_animation", "icon",  "ui_def_icon_animation.png", (ICON, ICON),        "animation", "stretch"),
     ("ui_def_icon_settings",  "icon",  "ui_def_icon_settings.png",  (ICON, ICON),        "settings",  "stretch"),
     ("ui_def_icon_tamago",    "icon",  "ui_def_icon_tamago.png",    (ICON, ICON),        "tamago",    "stretch"),
-    ("ui_def_badge",          "badge", "ui_def_badge.png",          (BADGE_W, BADGE_H),  "_ui",       "stretch"),
 ]
 
 
@@ -189,6 +177,18 @@ def preview(payload, w, h, cols=40, rows=20):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="生成 FrameFilm FFUI 图标和自定义 SD 徽章")
+    parser.add_argument("--badge", nargs=2, type=Path, metavar=("IMAGE", "OUTPUT"),
+                        help="仅生成 304×272 的 SD 徽章（等比居中）")
+    args = parser.parse_args()
+    if args.badge:
+        source, output = args.badge
+        payload = pack_1bpp(load_1bit(source, BADGE_W, BADGE_H, "contain"))
+        write_container(output, BADGE_W, BADGE_H, payload)
+        assert read_container(output) == (BADGE_W, BADGE_H, payload), "回读不一致"
+        print(output)
+        return
+
     for p in (OUT_PNG, OUT_C_INC, OUT_C_SRC):
         p.mkdir(parents=True, exist_ok=True)
 
@@ -196,7 +196,7 @@ def main():
     decls = []
 
     for sym, fname, src_name, (w, h), sd_dir, fit in ASSETS:
-        img = load_1bit(src_name, w, h, fit)
+        img = load_1bit(OUT_PNG / src_name, w, h, fit)
         assert img.size == (w, h), "%s 尺寸 %s" % (sym, img.size)
 
         png = OUT_PNG / ("%s.png" % sym)
@@ -218,11 +218,7 @@ def main():
             sym, w, h, nbytes,
             str(sd_path.relative_to(ROOT)).replace("\\", "/")))
 
-        if (w, h) == (ICON, ICON):
-            print(preview(payload, w, h))
-        elif (w, h) == (BADGE_W, BADGE_H):
-            # 徽章是开机页主视觉，终端里也过一眼（改源图后尤其要看）
-            print(preview(payload, w, h, cols=64, rows=48))
+        print(preview(payload, w, h))
 
     # ---- ui_defaults.h ----
     hdr = [

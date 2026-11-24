@@ -114,9 +114,8 @@ static ui_asset_slot_t m_icons[UI_ICON_NUM] = {
     },
 };
 
-static ui_asset_slot_t m_badge = {
-    .code = "_ui", .w = UI_BADGE_W, .h = UI_BADGE_H, .def = ui_def_badge,
-};
+/* 自定义徽章的 SD 缓存；没有内置默认图。 */
+static ui_asset_slot_t m_badge;
 
 /*********************************************************************
  * LOCAL FUNCTIONS
@@ -250,19 +249,23 @@ static const void *ui_asset_resolve(ui_asset_slot_t *s, const char *fname)
         sys_logi(UI_ASSETS_TAG, "%s/%s loaded from SD (%ux%u)",
                  s->code, fname, (unsigned)s->w, (unsigned)s->h);
     }
-    else
+    else if(s == &m_badge)
     {
-        /* 缺失 / 非法 / 尺寸不符都走这里：用内置默认图，界面不空 */
+        /* 自定义徽章没有内置图；释放缓冲，不缓存失败结果。 */
+        heap_caps_free(s->l8);
+        s->l8 = NULL;
+        return NULL;
+    }
+    else if(s->def != NULL)
+    {
+        /* 菜单图标缺失 / 非法 / 尺寸不符时回退到内置默认图。 */
         sys_logw(UI_ASSETS_TAG, "%s/%s unusable (r=%d), fallback to builtin",
                  s->code, fname, r);
-        if(s->def != NULL)
-        {
-            ui_asset_expand(s->def, s->w, s->h, s->l8);
-        }
-        else
-        {
-            memset(s->l8, 0xFF, l8_size);   /* 该变体没有内置图（如 n4r2 的卡包/宠物） */
-        }
+        ui_asset_expand(s->def, s->w, s->h, s->l8);
+    }
+    else
+    {
+        memset(s->l8, 0xFF, l8_size);   /* 该变体没有内置图（如 n4r2 的卡包/宠物） */
     }
 
     s->dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
@@ -350,6 +353,12 @@ const void *ui_assets_icon_inverted(ui_icon_id_t id)
 
 const void *ui_assets_badge(void)
 {
+    if(m_badge.code == NULL)
+    {
+        m_badge.code = "_ui";
+        m_badge.w = UI_BADGE_W;
+        m_badge.h = UI_BADGE_H;
+    }
     return ui_asset_resolve(&m_badge, UI_ASSET_BADGE_NAME);
 }
 

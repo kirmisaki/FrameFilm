@@ -455,10 +455,16 @@ function fwMd5(bytes) {
 
 /* --------------------------------------------------------------- 串口连接 */
 
+const FW_ROM_BAUD = 115200;
+
 function fwBaudrate() {
     const el = document.getElementById('fw-baud');
     const v = el ? parseInt(el.value, 10) : 0;
     return v > 0 ? v : 460800;
+}
+
+function fwErrorText(error) {
+    return error?.message ? (error.name && error.name !== 'Error' ? error.name + ': ' : '') + error.message : String(error);
 }
 
 function fwChoosePort() {
@@ -468,13 +474,51 @@ function fwChoosePort() {
     return navigator.serial.requestPort();
 }
 
-/** 固件准备好后才打开串口并复位进入下载模式。 */
-async function fwConnectLoader(port) {
-    const transport = new window.ESPTOOL.Transport(port, true);
-    const loader = new window.ESPTOOL.ESPLoader({
-        transport: transport,
-        baudrate: fwBaudrate(),
-        romBaudrate: 115200,
+function fwMakeLoader(port, setStage) {
+    const { Transport, ESPLoader } = window.ESPTOOL;
+    const conn = { port, flashId: null };
+    conn.transport = new class extends Transport {
+        async connect(rate, options) {
+            if (rate === FW_ROM_BAUD) setStage('打开串口（115200）');
+            await super.connect(rate, options);
+            if (rate === FW_ROM_BAUD) setStage('进入下载模式 / ROM SYNC');
+        }
+    }(port, true);
+    conn.loader = new class extends ESPLoader {
+        identifyChip(...args) {
+            setStage('识别芯片');
+            return super.identifyChip(...args);
+        }
+        identifyChipByMagic(...args) {
+            setStage('识别芯片');
+            return super.identifyChipByMagic(...args);
+        }
+        runStub() {
+            setStage('上传并启动 stub');
+            return super.runStub();
+        }
+        async readFlashId() {
+            setStage('读取 Flash ID');
+            const id = await super.readFlashId();
+            conn.flashId = id;
+            return id;
+        }
+        eraseFlash() {
+            setStage('整片擦除 Flash');
+            return super.eraseFlash();
+        }
+        flashDeflBegin(...args) {
+            setStage('准备写入 Flash（可能已开始擦除）');
+            return super.flashDeflBegin(...args);
+        }
+        flashMd5sum(...args) {
+            setStage('校验 Flash MD5');
+            return super.flashMd5sum(...args);
+        }
+    }({
+        transport: conn.transport,
+        baudrate: FW_ROM_BAUD,
+        romBaudrate: FW_ROM_BAUD,
         terminal: {
             clean() {},
             writeLine(data) { fwLog(String(data)); },
@@ -482,22 +526,91 @@ async function fwConnectLoader(port) {
         },
         debugLogging: false
     });
+    return conn;
+}
 
-    fwSetStatus('连接设备中…');
-    fwLog('连接设备（会复位一次进入下载模式）…');
+function fwBaudProbeError(error) {
+    const { ESPError, TimeoutError } = window.ESPTOOL;
+    return error instanceof TimeoutError || (error instanceof ESPError &&
+        /^(No serial data received|Serial data stream stopped|invalid response)/i.test(error.message));
+}
+
+/** esptool-js 0.7.0 的切速步骤。由页面控制回退边界，不再让 main() 隐式重试。 */
+async function fwRaiseBaud(conn, rate, setStage) {
+    const { loader, transport, port } = conn;
+    if (loader.secureDownloadMode) {
+        fwLog('安全下载模式不支持切速，使用 115200。');
+        return true;
+    }
+    let phase = '发送切速命令';
     try {
-        const chip = await loader.main();
-        fwLog('检测到芯片：' + chip);
-        return { loader, transport, chip };
+        setStage(phase + '（' + rate + '）');
+        const args = new Uint8Array(8);
+        const view = new DataView(args.buffer);
+        view.setUint32(0, rate, true);
+        view.setUint32(4, loader.IS_STUB ? transport.baudrate : 0, true);
+        await loader.checkCommand('change baud rate', loader.ESP_CHANGE_BAUDRATE, args);
+        await new Promise(resolve => setTimeout(resolve, 50));
+        phase = '切换主机串口速率';
+        setStage(phase + '（' + rate + '）');
+        await transport.changeBaudrate(rate, loader.serialOptions);
+        phase = '切速后探活';
+        setStage(phase + '（' + rate + '）');
+        await transport.drainInput();
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await loader.readReg(loader.CHIP_DETECT_MAGIC_REG_ADDR, 500);
+                break;
+            } catch (error) {
+                if (attempt || !fwBaudProbeError(error)) throw error;
+                transport.flushInput();
+            }
+        }
+        loader.baudrate = transport.baudrate;
+        return true;
     } catch (error) {
-        await fwDisconnect({ transport });
+        // Chromium 的高速 open 失败可能是 NetworkError；确认同一个已授权端口仍在，
+        // 不把实际拔出、权限错误或关闭阶段失败当成可降速的速率错误。
+        const reopenFailed = phase === '切换主机串口速率' && error.name === 'NetworkError' && !port.readable && !port.writable;
+        if ((!reopenFailed && !fwBaudProbeError(error)) || port.connected === false ||
+            !(await navigator.serial.getPorts()).includes(port)) throw error;
+        fwLog(phase + '失败，无法使用 ' + rate + '：' + fwErrorText(error) + '；重新握手一次，改用 115200。');
+        return false;
+    }
+}
+
+/** 固件准备好后才打开串口。所有 ROM 握手均为 115200，只有烧录尝试提速。 */
+async function fwConnectLoader(port, rate, setStage) {
+    let conn = fwMakeLoader(port, setStage);
+    try {
+        conn.chip = await conn.loader.main();
+        fwLog('检测到芯片：' + conn.chip);
+        if (rate !== FW_ROM_BAUD && !(await fwRaiseBaud(conn, rate, setStage))) {
+            const { chip, flashId } = conn;
+            setStage('降速前关闭串口');
+            await fwClosePort(conn);
+            conn = fwMakeLoader(port, setStage);
+            conn.chip = await conn.loader.main();
+            setStage('降速后核对芯片与 Flash');
+            if (conn.chip !== chip || conn.flashId !== flashId) {
+                throw new Error('降速后识别的芯片或 Flash ID 与初次结果不一致，已停止烧录');
+            }
+        }
+        fwLog('串口已连通；当前速率 ' + conn.transport.baudrate + '。');
+        return conn;
+    } catch (error) {
+        await fwDisconnect(conn);
         throw error;
     }
 }
 
+async function fwClosePort(conn) {
+    // 端口未打开、已拔出或切速重开失败时，不调用浏览器的 close()。
+    if (conn && (conn.port.readable || conn.port.writable)) await conn.transport.disconnect();
+}
+
 async function fwDisconnect(conn) {
-    if (!conn) return;
-    try { await conn.transport.disconnect(); } catch (e) { /* 忽略断开异常 */ }
+    try { await fwClosePort(conn); } catch (error) { fwLog('关闭串口：' + fwErrorText(error)); }
 }
 
 /**
@@ -535,20 +648,33 @@ async function detectSerialDevice() {
     fwSetProgress(0);
 
     let conn = null;
+    let stage = '选择串口';
+    const setStage = text => { stage = text; fwSetStatus(text + '…'); };
     try {
-        conn = await fwConnectLoader(await fwChoosePort());
-        fwSetStatus('已连接：' + conn.chip);
-        fwLog('连接正常。波特率 ' + fwBaudrate() + '，可开始烧录。');
-        /* loader.main() 为了握手会把设备复位进下载模式；检测完必须再复位回应用，
-           否则断开后设备会停在下载模式不启动（等同“没成功复位”） */
-        await fwHardReset(conn.transport);
-        fwLog('已把设备复位回运行模式');
-        showMessage('串口正常：' + conn.chip, 'success');
+        conn = fwMakeLoader(await fwChoosePort(), setStage);
+        await conn.loader.detectChip();
+        const chip = conn.loader.chip?.CHIP_NAME;
+        if (!chip) throw new Error('未识别出芯片');
+        const detected = '串口正常（' + conn.transport.baudrate + '）：' + chip;
+        fwLog(detected);
+        setStage('检测后复位');
+        try {
+            await fwHardReset(conn.transport);
+            fwLog('检测后复位信号已发送。');
+        } catch (err) {
+            const msg = detected + '；检测后复位失败：' + fwErrorText(err);
+            fwLog(msg);
+            fwSetStatus(msg);
+            showMessage(msg, 'warning');
+            return;
+        }
+        fwSetStatus(detected);
+        showMessage(detected, 'success');
     } catch (err) {
-        const msg = (err && err.message) ? err.message : String(err);
-        fwLog('检测失败：' + msg);
-        fwSetStatus('检测失败：' + msg);
-        showMessage('串口检测失败：' + msg, 'error');
+        const msg = '串口检测失败（' + stage + '）：' + fwErrorText(err);
+        fwLog(msg);
+        fwSetStatus(msg);
+        showMessage(msg, 'error');
     } finally {
         await fwDisconnect(conn);
         fwBusy = false;
@@ -628,21 +754,31 @@ async function startSerialFlash() {
     fwSetProgress(0);
 
     let conn = null;
+    let stage = '选择串口';
+    let writeStarted = false;
+    let writeVerified = false;
+    const setStage = text => { stage = text; fwSetStatus(text + '…'); };
+    const rate = fwBaudrate();
     try {
         const port = await fwChoosePort();
+        if (online) setStage('准备在线固件');
         const files = online ? [await fwFetchOnline(hardware, classic, channel)] : fwFiles;
         if (online && !fwConfirmWrite(files, eraseAll)) {
             fwSetStatus('已取消烧录');
             return;
         }
-        conn = await fwConnectLoader(port);
+        fwLog('请求烧录速率：' + rate + '；ROM 握手固定 115200。');
+        conn = await fwConnectLoader(port, rate, setStage);
 
         const onlineFlash = files[0].onlineFlash;
+        setStage('核对芯片与固件规格');
         if (onlineFlash) {
             const flashSize = await conn.loader.detectFlashSize();
+            setStage('核对芯片与固件规格');
             const expectedSize = (onlineFlash.flashBytes / (1024 * 1024)) + 'MB';
             if (!/ESP32-S3\b/i.test(conn.chip || '') || flashSize !== expectedSize) {
-                await fwHardReset(conn.transport);
+                try { await fwHardReset(conn.transport); }
+                catch (err) { fwLog('硬件不匹配，检测后复位失败：' + fwErrorText(err)); }
                 throw new Error('串口检测到 ' + conn.chip + ' / ' + (flashSize || 'Flash 未知') +
                     '，与 ' + onlineFlash.label + ' 所需的 ESP32-S3 / ' + expectedSize + ' 不匹配');
             }
@@ -660,7 +796,8 @@ async function startSerialFlash() {
             fileArray.push({ data: data, address: fwAddressOf(item) });
         }
 
-        fwSetStatus('写入中…');
+        setStage('准备擦写 Flash');
+        writeStarted = true;
         await conn.loader.writeFlash({
             fileArray: fileArray,
             flashMode: 'keep',
@@ -672,25 +809,28 @@ async function startSerialFlash() {
                 const pct = total ? Math.round(written * 100 / total) : 0;
                 const name = files[fileIndex]?.name || ('区 ' + (fileIndex + 1));
                 fwSetProgress(pct);
+                stage = '写入 Flash（' + name + '）';
                 fwSetStatus('写入 ' + name + ' … ' + pct + '%');
             },
             calculateMD5Hash: fwMd5
         });
 
+        writeVerified = true;
         fwSetProgress(100);
-        fwSetStatus('写入完成，复位设备…');
         fwLog('写入完成（每个区均已按 MD5 回读校验）');
 
+        setStage('写入完成，正在复位设备');
         fwLog('发送复位时序（EN 拉低 → 释放）…');
         await fwHardReset(conn.transport);
         fwLog('复位已发出，设备应从新固件启动；若没有反应，按一下 RESET 键或重新上电即可');
         fwSetStatus('完成');
-        showMessage('固件烧录完成，设备已复位', 'success');
+        showMessage('固件烧录完成，复位信号已发送', 'success');
     } catch (err) {
-        const msg = (err && err.message) ? err.message : String(err);
-        fwLog('烧录失败：' + msg);
-        fwSetStatus('失败：' + msg);
-        showMessage('烧录失败：' + msg, 'error');
+        const msg = writeVerified ? '固件已写入并校验，但复位失败：' + fwErrorText(err) + '；可手动复位。' :
+            '烧录失败（' + stage + '）：' + fwErrorText(err) + (writeStarted ? '；未自动重试。' : '');
+        fwLog(msg);
+        fwSetStatus(msg);
+        showMessage(msg, writeVerified ? 'warning' : 'error');
     } finally {
         await fwDisconnect(conn);
         fwBusy = false;
@@ -711,7 +851,7 @@ async function startSerialFlash() {
         } else if (!ready) {
             hint.textContent = '烧录内核未加载：缺少 js/esptool-js.js，此功能不可用。';
         } else {
-            hint.textContent = '内核已就绪：esptool-js（' + fwBaudrate() + ' 波特率，约 40～60 秒写入 1.8 MB）。';
+            hint.textContent = '内核已就绪：串口检测固定 115200；烧录可在握手成功后提速。';
         }
     }
     fwSetControlsEnabled(true);

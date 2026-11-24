@@ -110,7 +110,7 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_BUILD_INFO_GET (0x56)
 #define BLE_FILM_TRANS_CH_DIRECT_OTA_START (0x57)
 #define BLE_FILM_TRANS_CH_DIRECT_OTA_APPLY (0x58)
-#define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open, bit4=SoftAP, bit5=ABC9 preview, bit6=hardware identity, bit7=NFC wallet
+#define BLE_FILM_TRANS_CH_CAPABILITIES_GET (0x59) // Ark version + flags: bit0=color pass, bit1=WiFi file, bit2=catalog, bit3=atomic IMAGE open, bit4=SoftAP, bit5=ABC9 preview, bit6=hardware identity, bit7=NFC wallet, bit8=file paths, bit9=screenshot, bit10=fullscreen pass (mono/color; color also needs bit0), bit11=I006 ABC9 app profile
 #define BLE_FILM_TRANS_CH_STORAGE_CATALOG (0x5B) // Ark read-only storage/catalog
 /* 按目录 + 文件名管理（Ark，目录号 1=film 2=animation 3=screenshot）：
    0x60 删除：dir(1) + 文件名 UTF-8 + NUL → status(1)
@@ -140,6 +140,12 @@ extern "C"{
 #define BLE_FILM_TRANS_CH_NFC_COVER_BEGIN                 (0x67)
 #define BLE_FILM_TRANS_CH_NFC_COVER_DATA                  (0x68)
 #define BLE_FILM_TRANS_CH_NFC_COVER_COMMIT                (0x69)
+
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_BEGIN              (0x6A)
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_DATA               (0x6B)
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_FINISH             (0x6C)
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_APPLY              (0x6D)
+#define BLE_FILM_TRANS_CH_VERIFIED_OTA_CANCEL             (0x6E)
 #define BLE_NFC_CHUNK_MAX                                 (180)
 
 /* 蓝牙设备名 = 编译期前缀 "FRAMEFILMARK-" (13B) + 可配置后缀 (1..16B)，完整名上限 29B

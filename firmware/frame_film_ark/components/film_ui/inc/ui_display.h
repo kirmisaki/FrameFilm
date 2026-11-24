@@ -77,6 +77,18 @@ int ui_display_snapshot_mono(uint8_t *dst, uint32_t len);
 int ui_display_set_color_card(const uint8_t *pixels, int x, int y, int w, int h);
 void ui_display_clear_color_card(void);
 
+/* ui_task only. Borrow one validated native ABC9 body (no framebuffer copy).
+ * First flush / successful reload / output resume replays it through the HAL;
+ * ordinary LVGL invalidation and status updates never overwrite or replay it.
+ * clear_color_card removes either card type before the page frees its pixels. */
+int ui_display_set_abc9_card(const uint8_t *pixels, uint32_t size);
+/* Validated physical ColorFast body, exclusive/fullscreen, borrowed as ABC9. */
+int ui_display_set_fast_card(const uint8_t *pixels, uint32_t size);
+/* FFUI v3 logical I1 + optional avatar. Keeps LVGL shell/layout; body borrowed.
+ * abc9 selects I006 (otherwise ColorFast). No full ABC9 scratch is allocated. */
+int ui_display_set_compact_card(const uint8_t *body, uint32_t size,
+                                int x, int y, int abc9, int avatar);
+
 #ifdef __cplusplus
 }
 #endif

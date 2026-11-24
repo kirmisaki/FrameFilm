@@ -5,5 +5,9 @@ Future<String?> loadPassportDraft() =>
     _channel.invokeMethod<String>('loadPassportDraft');
 Future<void> savePassportDraft(String json) =>
     _channel.invokeMethod<void>('savePassportDraft', {'json': json});
+Future<String?> loadStudentPassportDraft() =>
+    _channel.invokeMethod<String>('loadPassportDraft', {'kind': 'student'});
+Future<void> saveStudentPassportDraft(String json) => _channel
+    .invokeMethod<void>('savePassportDraft', {'kind': 'student', 'json': json});
 Future<Uint8List?> pickPassportAvatar() =>
     _channel.invokeMethod<Uint8List>('pickPassportAvatar');

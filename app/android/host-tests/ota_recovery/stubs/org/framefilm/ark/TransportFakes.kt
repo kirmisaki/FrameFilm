@@ -22,10 +22,16 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
 
     var isReady = false
         private set
-    val isBusy: Boolean get() = pending != null
+    val isBusy: Boolean get() = pending != null || writePending != null
     var isConnecting = false
     var autoReady = true
-    val negotiatedMtu = 200
+    var negotiatedMtu = 200
+    data class Sent(val channel: Int, val payload: ByteArray)
+    val sent = mutableListOf<Sent>()
+    val requests = mutableListOf<Sent>()
+    var autoCompleteWrites = true
+    var writePending: ((Result<Unit>) -> Unit)? = null
+        private set
     var pending: Pending? = null
         private set
     val channels = mutableListOf<Int>()
@@ -52,19 +58,37 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
         val interrupted = pending
         pending = null
         interrupted?.callback?.invoke(Result.failure(IllegalStateException("BLE disconnected")))
+        val write = writePending; writePending = null
+        write?.invoke(Result.failure(IllegalStateException("BLE disconnected")))
         listener.onError("BLE disconnected")
     }
     var closeCount = 0
         private set
-    fun close() { closeCount++; isReady = false; isConnecting = false }
-    fun sendNoReply(@Suppress("UNUSED_PARAMETER") channel: Int,
-                    @Suppress("UNUSED_PARAMETER") payload: ByteArray,
-                    callback: (Result<Unit>) -> Unit) = callback(Result.success(Unit))
-    fun command(channel: Int, @Suppress("UNUSED_PARAMETER") payload: ByteArray = byteArrayOf(),
+    fun close() {
+        closeCount++; isReady = false; isConnecting = false
+        val command = pending; pending = null
+        val write = writePending; writePending = null
+        command?.callback?.invoke(Result.failure(IllegalStateException("closed")))
+        write?.invoke(Result.failure(IllegalStateException("closed")))
+    }
+    fun sendNoReply(channel: Int, payload: ByteArray, callback: (Result<Unit>) -> Unit) {
+        check(isReady && !isBusy) { "Fake BLE write overlap or disconnected" }
+        check(payload.size <= minOf(192, negotiatedMtu - 7))
+        channels += channel
+        sent += Sent(channel, payload.copyOf())
+        if (autoCompleteWrites) callback(Result.success(Unit)) else writePending = callback
+    }
+    fun completeWrite(result: Result<Unit> = Result.success(Unit)) {
+        val write = requireNotNull(writePending); writePending = null; write(result)
+    }
+    fun notifyPacket(packet: ByteArray) = listener.onPacket(packet)
+    fun command(channel: Int, payload: ByteArray = byteArrayOf(),
                 @Suppress("UNUSED_PARAMETER") waitMs: Long = 5_000,
                 callback: (Result<ByteArray>) -> Unit) {
         check(isReady && pending == null) { "Fake BLE command overlap or disconnected" }
+        check(payload.size <= minOf(192, negotiatedMtu - 7))
         channels += channel
+        requests += Sent(channel, payload.copyOf())
         pending = Pending(channel, callback)
     }
     fun reply(channel: Int, bytes: ByteArray) {

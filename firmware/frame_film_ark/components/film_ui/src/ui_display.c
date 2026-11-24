@@ -32,6 +32,7 @@
 
 #include "sys_log.h"
 #include "hal_epd.h"
+#include "hal_pass_profile.h"
 
 #include "ui_conf.h"
 #include "ui_display.h"
@@ -52,6 +53,12 @@ int ui_display_snapshot_mono(uint8_t *dst, uint32_t len)
 int ui_display_set_color_card(const uint8_t *pixels, int x, int y, int w, int h)
 { (void)pixels; (void)x; (void)y; (void)w; (void)h; return -1; }
 void ui_display_clear_color_card(void)      { }
+int ui_display_set_abc9_card(const uint8_t *pixels, uint32_t size)
+{ (void)pixels; (void)size; return -1; }
+int ui_display_set_fast_card(const uint8_t *pixels, uint32_t size)
+{ (void)pixels; (void)size; return -1; }
+int ui_display_set_compact_card(const uint8_t *body, uint32_t size, int x, int y, int abc9, int avatar)
+{ (void)body; (void)size; (void)x; (void)y; (void)abc9; (void)avatar; return -1; }
 
 #else /* SYS_UI_ENABLE */
 
@@ -91,6 +98,12 @@ static uint8_t *m_mono_buf = NULL;    /* 送驱动的 mono 位图（物理横向
 static uint8_t *m_color_buf = NULL;   /* 通行证彩色页临时整屏 ColorFast 8bpp */
 static const uint8_t *m_card_pixels = NULL;
 static int m_card_x, m_card_y, m_card_w, m_card_h;
+static const uint8_t *m_abc9_pixels;
+static uint8_t m_abc9_dirty;
+static const uint8_t *m_fast_pixels;
+static uint8_t m_fast_dirty;
+static uint8_t m_compact_mode; /* 0 = old six-color; 1 = compact Fast; 2 = compact ABC9 */
+static uint8_t m_compact_avatar;
 
 /* 保护 m_mono_buf：ui_task 的 flush 写、app_task 的截图读 */
 static SemaphoreHandle_t m_fb_lock = NULL;
@@ -257,6 +270,12 @@ static void ui_i1_to_color(const uint8_t *i1, uint8_t *color)
             const int cx = sx - m_card_x, cy = sy - m_card_y;
             if(cx >= 0 && cy >= 0 && cx < m_card_w && cy < m_card_h)
             {
+                if(m_compact_mode)
+                {
+                    dst[dx] = (uint8_t)hal_pass_compact_code(m_card_pixels, 0,
+                                                            m_compact_avatar, cx, cy);
+                    continue;
+                }
                 const size_t index = (size_t)cy * (size_t)m_card_w + (size_t)cx;
                 const uint8_t packed = m_card_pixels[index >> 1];
                 code = (index & 1u) ? (packed & 0x0Fu) : (packed >> 4);
@@ -266,6 +285,25 @@ static void ui_i1_to_color(const uint8_t *i1, uint8_t *color)
         }
     }
 }
+
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+static void ui_compact_abc9_row(void *context, unsigned dy, uint16_t *codes)
+{
+    const uint8_t *i1 = context;
+    for(unsigned dx = 0; dx < UI_MONO_W; ++dx)
+    {
+#if UI_ROTATE_90_CW
+        const int sx = dy, sy = UI_LOGICAL_H - 1 - dx;
+#else
+        const int sx = UI_LOGICAL_W - 1 - dy, sy = dx;
+#endif
+        const int cx = sx - m_card_x, cy = sy - m_card_y;
+        if(cx >= 0 && cy >= 0 && cx < m_card_w && cy < m_card_h)
+            codes[dx] = hal_pass_compact_code(m_card_pixels, 1, m_compact_avatar, cx, cy);
+        else codes[dx] = ui_i1_get_bit(i1, sx, sy) == UI_I1_BIT_BLACK ? 387 : 75;
+    }
+}
+#endif
 
 /**
  * @brief LVGL flush 回调
@@ -279,6 +317,44 @@ static void ui_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_m
 
     if(m_output_enabled && lv_display_flush_is_last(disp))
     {
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+        if(m_abc9_pixels != NULL)
+        {
+            /* Native card owns the complete panel. Never send the ordinary I1
+               frame (including hidden shell/status changes) over this image. */
+            if(m_abc9_dirty)
+            {
+                hal_epd_lock();
+                hal_epd_mono_session_end();
+                int result = hal_epd_display_abc9(m_abc9_pixels, EPD_ABC9_BODY_BYTES);
+                hal_epd_unlock();
+                if(result == 0)
+                {
+                    m_abc9_dirty = 0;
+                    m_last_flush_us = esp_timer_get_time();
+                }
+                else sys_loge(UI_DISPLAY_TAG, "ABC9 card rejected before refresh");
+            }
+            lv_display_flush_ready(disp);
+            return;
+        }
+#endif
+        if(m_fast_pixels != NULL)
+        {
+            if(m_fast_dirty)
+            {
+                hal_epd_lock();
+                hal_epd_mono_session_end();
+                hal_epd_display_init();
+                hal_epd_display_8bpp_mode(m_fast_pixels, 0);
+                hal_epd_pwroff();
+                hal_epd_unlock();
+                m_fast_dirty = 0;
+                m_last_flush_us = esp_timer_get_time();
+            }
+            lv_display_flush_ready(disp);
+            return;
+        }
         int64_t t0 = esp_timer_get_time();
 
         /* px_map 指向缓冲区开头，前 UI_I1_PALETTE_BYTES 字节是调色板：
@@ -292,9 +368,11 @@ static void ui_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_m
 
         if(m_fb_lock != NULL) xSemaphoreTake(m_fb_lock, portMAX_DELAY);
         if(m_card_pixels != NULL)
-            ui_i1_to_color(px_map + UI_I1_PALETTE_BYTES, m_color_buf);
-        else
-            ui_i1_to_mono(px_map + UI_I1_PALETTE_BYTES, m_mono_buf);
+        {
+            if(m_compact_mode != 2)
+                ui_i1_to_color(px_map + UI_I1_PALETTE_BYTES, m_color_buf);
+        }
+        else ui_i1_to_mono(px_map + UI_I1_PALETTE_BYTES, m_mono_buf);
         if(m_fb_lock != NULL) xSemaphoreGive(m_fb_lock);
         int64_t t1 = esp_timer_get_time();
 
@@ -307,9 +385,19 @@ static void ui_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_m
         if(m_card_pixels != NULL)
         {
             hal_epd_mono_session_end();
-            hal_epd_display_init();
-            hal_epd_display_8bpp_mode(m_color_buf, 0); /* ColorFast, same as Film */
-            hal_epd_pwroff();
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+            if(m_compact_mode == 2)
+            {
+                if(hal_epd_display_abc9_rows(ui_compact_abc9_row, px_map + UI_I1_PALETTE_BYTES) != 0)
+                    sys_loge(UI_DISPLAY_TAG, "compact ABC9 rejected before refresh");
+            }
+            else
+#endif
+            {
+                hal_epd_display_init();
+                hal_epd_display_8bpp_mode(m_color_buf, 0); /* ColorFast, same as Film */
+                hal_epd_pwroff();
+            }
         }
         else
         {
@@ -420,13 +508,76 @@ int ui_display_set_color_card(const uint8_t *pixels, int x, int y, int w, int h)
         m_color_buf = ui_display_alloc((size_t)UI_MONO_W * UI_MONO_H, "ColorFast frame");
         if(m_color_buf == NULL) return -1;
     }
+    m_abc9_pixels = NULL;
+    m_abc9_dirty = 0;
+    m_fast_pixels = NULL;
+    m_fast_dirty = 0;
+    m_compact_mode = 0;
     m_card_x = x; m_card_y = y; m_card_w = w; m_card_h = h;
     m_card_pixels = pixels;
     return 0;
 }
 
+int ui_display_set_abc9_card(const uint8_t *pixels, uint32_t size)
+{
+#if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
+    if(m_disp == NULL || pixels == NULL || size != EPD_ABC9_BODY_BYTES) return -1;
+    ui_display_clear_color_card();
+    m_abc9_pixels = pixels;
+    m_abc9_dirty = 1;
+    ui_display_invalidate_all();
+    return 0;
+#else
+    (void)pixels; (void)size;
+    return -1;
+#endif
+}
+
+int ui_display_set_fast_card(const uint8_t *pixels, uint32_t size)
+{
+    if(m_disp == NULL || pixels == NULL || size != PASS_FAST_BODY_BYTES) return -1;
+    ui_display_clear_color_card();
+    m_fast_pixels = pixels;
+    m_fast_dirty = 1;
+    ui_display_invalidate_all();
+    return 0;
+}
+
+int ui_display_set_compact_card(const uint8_t *body, uint32_t size,
+                                int x, int y, int abc9, int avatar)
+{
+    if(m_disp == NULL || body == NULL || (avatar != 0 && avatar != 1) ||
+       size != PASS_COMPACT_I1_BYTES + avatar * PASS_AVATAR_PIXELS * (abc9 ? 2u : 1u)) return -1;
+#if !defined(CONFIG_ARK_EPD_ABC_PREVIEW) && !defined(CONFIG_ARK_EPD_ABC_DIAG)
+    if(abc9) return -1;
+#endif
+    /* Allocate before releasing the old borrowed source so failed reloads leave
+       the current card and scratch untouched. I006 needs no full-frame scratch. */
+    if(!abc9 && m_color_buf == NULL)
+    {
+        m_color_buf = ui_display_alloc(PASS_FAST_BODY_BYTES, "ColorFast frame");
+        if(m_color_buf == NULL) return -1;
+    }
+    if(abc9) ui_display_clear_color_card();
+    m_abc9_pixels = NULL; m_abc9_dirty = 0;
+    m_fast_pixels = NULL; m_fast_dirty = 0;
+    m_card_pixels = body;
+    m_compact_mode = abc9 ? 2 : 1;
+    m_compact_avatar = avatar;
+    m_card_x = x; m_card_y = y;
+    m_card_w = PASS_COMPACT_W; m_card_h = PASS_COMPACT_H;
+    ui_display_invalidate_all();
+    return 0;
+}
+
 void ui_display_clear_color_card(void)
 {
+    m_fast_pixels = NULL;
+    m_fast_dirty = 0;
+    m_compact_mode = 0;
+    m_compact_avatar = 0;
+    m_abc9_pixels = NULL;
+    m_abc9_dirty = 0;
     m_card_pixels = NULL;
     if(m_color_buf != NULL) { heap_caps_free(m_color_buf); m_color_buf = NULL; }
 }
@@ -437,6 +588,8 @@ void ui_display_set_output(int enable)
     {
         /* 新一页开始：清掉上一页的推屏时刻，避免 ui_task 拿着旧时间戳提前断电 */
         m_last_flush_us = 0;
+        if(m_abc9_pixels != NULL) m_abc9_dirty = 1;
+        if(m_fast_pixels != NULL) m_fast_dirty = 1;
     }
     m_output_enabled = enable ? 1 : 0;
 }
@@ -455,7 +608,7 @@ int ui_display_snapshot_mono(uint8_t *dst, uint32_t len)
 
     if(m_fb_lock != NULL) xSemaphoreTake(m_fb_lock, portMAX_DELAY);
     /* 彩色卡页面走的是 m_color_buf，m_mono_buf 里仍是上一张黑白画面 */
-    if(m_card_pixels != NULL)
+    if(m_card_pixels != NULL || m_abc9_pixels != NULL || m_fast_pixels != NULL)
     {
         if(m_fb_lock != NULL) xSemaphoreGive(m_fb_lock);
         return -2;

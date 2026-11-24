@@ -5,9 +5,22 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.max
+
+data class ImageOptions(
+    val rotation: Int = 0,
+    val scale: Float = 1f,
+    val offsetX: Float = 0f,
+    val offsetY: Float = 0f,
+    val brightness: Float = 0f,
+    val contrast: Float = 1f,
+    val saturation: Float = 1f,
+    val dither: Boolean = true,
+    val monochrome: Boolean = false,
+)
 
 /** Native 6-color v1 encoder. Header and Ark 180-degree packing match ForFilm. */
 object FilmConverter {
@@ -110,5 +123,11 @@ object FilmConverter {
         }
         require(body == frameSize.toLong() * frames && file.length() == body + 32) { "film 长度与文件头不一致" }
         return "720×480 · $frames 帧 · ${file.length()} 字节"
+    }
+
+    fun mediaDirectory(file: File): String = RandomAccessFile(file, "r").use {
+        it.seek(10)
+        val frames = it.readUnsignedByte() or (it.readUnsignedByte() shl 8)
+        if (frames > 1) "animation" else "film"
     }
 }

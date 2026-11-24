@@ -5,6 +5,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import 'frame_algorithms.dart' show filmPalette;
+import 'passport_color.dart';
+import 'frame_abc512.dart' show paintAbc512Codes;
+import 'frame_palettes.dart' show colorFastPalette;
 
 class PassportProfile {
   const PassportProfile({
@@ -15,8 +18,12 @@ class PassportProfile {
     this.affiliation = '',
     this.signature = '',
     this.avatar,
-    this.avatarMode = 'mono',
+    this.avatarMode = 'color',
+    this.version = 3,
+    this.output = 'i006',
   });
+  final int version;
+  final String output;
   final String codename, number, affiliation, signature;
   final bool codenameUnset, numberUnset;
   final String? avatar;
@@ -27,7 +34,12 @@ class PassportProfile {
       throw const FormatException('JSON 超过 350 KB');
     }
     final value = jsonDecode(raw);
-    if (value is! Map<String, dynamic> || value['version'] != 1) {
+    if (value is! Map<String, dynamic> ||
+        value['version'] is! int ||
+        !(value['version'] == 1 || value['version'] == 3) ||
+        (value['version'] == 3 &&
+            (value['kind'] != 'operator' ||
+                !passportOutputs.contains(value['output'])))) {
       throw const FormatException('不支持的通行证 JSON 版本');
     }
     for (final field in {
@@ -48,24 +60,15 @@ class PassportProfile {
       throw const FormatException('尚未设置标记或头像类型无效');
     }
     final avatar = value['avatar'] as String?;
-    final avatarMode = value['avatarMode'] ?? 'mono';
-    if (!['mono', 'grayscale', 'color'].contains(avatarMode)) {
+    final avatarMode =
+        value['avatarMode'] ?? (value['version'] == 3 ? 'color' : 'mono');
+    if ((value.containsKey('avatarMode') && value['avatarMode'] == null) ||
+        !['mono', 'grayscale', 'color'].contains(avatarMode)) {
       throw const FormatException('头像显示模式无效');
     }
-    if (avatar != null) {
-      if (!avatar.startsWith('data:image/png;base64,') ||
-          avatar.length > 300000) {
-        throw const FormatException('头像须为不超过 300 KB 的 PNG data URL');
-      }
-      final bytes = base64Decode(avatar.substring(22));
-      const magic = [137, 80, 78, 71, 13, 10, 26, 10];
-      if (bytes.length < 33 ||
-          !List.generate(8, (i) => bytes[i] == magic[i]).every((v) => v) ||
-          ascii.decode(bytes.sublist(12, 16)) != 'IHDR' ||
-          ByteData.sublistView(bytes).getUint32(16) != 128 ||
-          ByteData.sublistView(bytes).getUint32(20) != 160) {
-        throw const FormatException('头像必须为 128×160 PNG');
-      }
+    passportPngBytes(avatar, 128, 160);
+    if (value['version'] == 3 && avatarMode != 'color') {
+      throw const FormatException('新版头像必须保留彩色源');
     }
     return PassportProfile(
       codename: value['codename'],
@@ -76,10 +79,23 @@ class PassportProfile {
       signature: value['signature'],
       avatar: avatar,
       avatarMode: avatarMode as String,
+      version: value['version'] as int,
+      output: value['version'] == 3 ? value['output'] as String : 'i006',
     );
   }
-  String toJson() =>
-      '${const JsonEncoder.withIndent('  ').convert({'version': 1, 'codename': codename, 'codenameUnset': codenameUnset, 'number': number, 'numberUnset': numberUnset, 'affiliation': affiliation, 'signature': signature, 'avatar': avatar, 'avatarMode': avatarMode})}\n';
+  String toJson() => encodePassportJson({
+    'version': version,
+    if (version == 3) 'kind': 'operator',
+    if (version == 3) 'output': output,
+    'codename': codename,
+    'codenameUnset': codenameUnset,
+    'number': number,
+    'numberUnset': numberUnset,
+    'affiliation': affiliation,
+    'signature': signature,
+    'avatar': avatar,
+    'avatarMode': avatarMode,
+  });
   Uint8List? get avatarBytes =>
       avatar == null ? null : base64Decode(avatar!.substring(22));
 }
@@ -245,7 +261,82 @@ Uint8List encodePassportPixels(
   return bin;
 }
 
-Future<PassportRaster> renderPassport(PassportProfile p) async {
+/// FFUI v3: I1 shell followed by a logical row-major portrait index plane.
+Future<Uint8List> encodeColorPassportPixels(
+  Uint8List rgba,
+  String output, {
+  required bool hasAvatar,
+  void Function()? checkCancelled,
+}) async {
+  if (rgba.length != 440 * 608 * 4 || !passportOutputs.contains(output)) {
+    throw ArgumentError('通行证像素或输出模式无效');
+  }
+  final abc = output == 'i006';
+  final bin = Uint8List(16 + 33440 + (hasAvatar ? 20480 * (abc ? 2 : 1) : 0));
+  bin.setAll(0, [70, 70, 85, 73, 3, abc ? 0x7f : 3]);
+  final data = ByteData.sublistView(bin);
+  data.setUint16(6, 440, Endian.little);
+  data.setUint16(8, 608, Endian.little);
+  bin[10] = hasAvatar ? 1 : 0;
+  final portrait = Uint8List(128 * 160 * 4);
+  final shell = Uint8List(8);
+  if (abc) {
+    paintAbc512Codes(shell, Uint16List.fromList([387, 75]));
+  } else {
+    shell.setAll(0, [
+      ...colorFastPalette[0],
+      255,
+      ...colorFastPalette[21],
+      255,
+    ]);
+  }
+  for (var i = 0; i < 440 * 608; i++) {
+    final x = i % 440, y = i ~/ 440, k = i * 4;
+    if (hasAvatar && x >= 20 && x < 148 && y >= 143 && y < 303) {
+      portrait.setRange(
+        ((y - 143) * 128 + x - 20) * 4,
+        ((y - 143) * 128 + x - 20 + 1) * 4,
+        rgba,
+        k,
+      );
+      continue;
+    }
+    final black =
+        .299 * rgba[k] + .587 * rgba[k + 1] + .114 * rgba[k + 2] < 160;
+    if (black) bin[16 + (i >> 3)] |= 0x80 >> (i & 7);
+    rgba.setRange(k, k + 4, shell, black ? 0 : 4);
+  }
+  if (hasAvatar) {
+    final codes = await quantizePassportColor(
+      portrait,
+      128,
+      160,
+      output,
+      checkCancelled: checkCancelled,
+    );
+    for (var i = 0; i < codes.length; i++) {
+      if (abc) {
+        data.setUint16(33456 + i * 2, codes[i], Endian.little);
+      } else {
+        bin[33456 + i] = codes[i];
+      }
+      final target = ((143 + i ~/ 128) * 440 + 20 + i % 128) * 4;
+      rgba.setRange(target, target + 4, portrait, i * 4);
+    }
+  }
+  checkCancelled?.call();
+  return bin;
+}
+
+Future<PassportRaster> renderPassport(
+  PassportProfile p, {
+  bool Function()? isCancelled,
+}) async {
+  void checkCancelled() {
+    if (isCancelled?.call() == true) throw StateError('预览已取消');
+  }
+
+  checkCancelled();
   final avatar = await validatePassportAvatar(p);
   final recorder = ui.PictureRecorder();
   final c = Canvas(recorder);
@@ -349,11 +440,15 @@ Future<PassportRaster> renderPassport(PassportProfile p) async {
       .buffer
       .asUint8List();
   image.dispose();
-  final bin = encodePassportPixels(
-    rgba,
-    p.avatarMode,
-    hasAvatar: p.avatar != null,
-  );
+  checkCancelled();
+  final bin = p.version == 3
+      ? await encodeColorPassportPixels(
+          rgba,
+          p.output,
+          hasAvatar: p.avatar != null,
+          checkCancelled: checkCancelled,
+        )
+      : encodePassportPixels(rgba, p.avatarMode, hasAvatar: p.avatar != null);
   final buffer = await ui.ImmutableBuffer.fromUint8List(rgba);
   final descriptor = ui.ImageDescriptor.raw(
     buffer,

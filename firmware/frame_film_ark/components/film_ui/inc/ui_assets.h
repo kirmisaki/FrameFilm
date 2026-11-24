@@ -19,8 +19,7 @@ extern "C" {
 /* 资源槽位尺寸（资源规格）：SD 卡替换必须精确匹配这两组尺寸，固件不做缩放 */
 #define UI_ICON_W           (80)
 #define UI_ICON_H           (80)
-/* 徽章横向 304、纵向 272：由 tools/ui-assets/gen_ui_assets.py 按源图 icon1.png 的
- * 宽高比（641:573）从 300 取整到 8 的倍数而得。改这里必须同步改脚本的 BADGE_W/H。 */
+/* 保留自定义 SD 徽章的 FFUI 尺寸；改这里必须同步改生成器的 BADGE_W/H。 */
 #define UI_BADGE_W          (304)
 #define UI_BADGE_H          (272)
 
@@ -75,9 +74,10 @@ const void *ui_assets_icon(ui_icon_id_t id);
 const void *ui_assets_icon_inverted(ui_icon_id_t id);
 
 /**
- * @brief 取开机徽章的 LVGL 图像源（/sdcard/app/_ui/badge.bin）
+ * @brief 取自定义 SD 徽章的 LVGL 图像源（/sdcard/app/_ui/badge.bin）
  *
- * @return LVGL 图像源（lv_image_dsc_t*）；失败返回 NULL
+ * 合法资源会缓存，无内置回退；当前开机和休眠页使用独立的品牌标识。
+ * @return LVGL 图像源（lv_image_dsc_t*）；缺失或失败返回 NULL
  */
 const void *ui_assets_badge(void);
 

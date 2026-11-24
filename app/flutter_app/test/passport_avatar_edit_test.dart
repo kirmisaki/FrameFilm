@@ -181,7 +181,7 @@ void main() {
       await tester.pump();
       expect(controller.avatarEdit?.source, src);
       expect(controller.avatarEdit?.options['x'], 24);
-      for (final mode in ['grayscale', 'color']) {
+      for (final mode in ['colorfast', 'i006']) {
         await tester.runAsync(() async {
           tester
               .widget<DropdownButtonFormField<String>>(
@@ -191,15 +191,17 @@ void main() {
           await Future<void>.delayed(const Duration(milliseconds: 150));
         });
         await tester.pump();
-        expect(controller.profile?.avatarMode, mode);
+        expect(controller.profile?.output, mode);
+        expect(controller.profile?.avatarMode, 'color');
         expect(controller.avatarEdit?.source, src);
       }
       late String expectedColor;
       await tester.runAsync(() async {
         expectedColor = (await renderAvatarEdit(
           PassportAvatarEdit(src, {'x': 24.0}),
-          'color',
-        )).processed;
+          'i006',
+          quantize: false,
+        )).crop;
       });
       expect(controller.profile?.avatar, expectedColor);
       await tester.pumpWidget(const SizedBox());

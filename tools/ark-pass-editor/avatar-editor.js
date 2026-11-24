@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-// Uses the same Film six-color algorithms as ForFilm; never 46/55-color indices.
+// Keep a bounded, unquantized color source. Quantization belongs to the selected card output.
 window.PassportAvatarEditor = (() => {
   const defaults = {turns:0,zoom:1,x:0,y:0,brightness:0,rangeFit:0,warmChroma:0,contrast:1,saturation:1,dither:true,strength:1,algorithm:'adaptive'};
   function validateEdit(edit){
@@ -10,88 +10,75 @@ window.PassportAvatarEditor = (() => {
     return {source:edit.source,options};
   }
   async function image(source) { const img=new Image();img.src=source;await img.decode();return img; }
-  // Film MonoFast：与 App 一致，按 RGB 到黑/白的距离量化；开启抖动时使用 Floyd-Steinberg。
-  function monoFast(imageData,dither){
-    const width=imageData.width,height=imageData.height,data=imageData.data;
-    let current=new Float64Array((width+2)*3),next=new Float64Array((width+2)*3);
-    for(let y=0;y<height;y++){
-      for(let x=0;x<width;x++){
-        const pixel=(y*width+x)*4,offset=(x+1)*3,channels=[0,0,0];
-        for(let c=0;c<3;c++)channels[c]=Math.max(0,Math.min(255,data[pixel+c]+current[offset+c]));
-        const black=channels[0]*channels[0]+channels[1]*channels[1]+channels[2]*channels[2];
-        const white=(channels[0]-255)*(channels[0]-255)+(channels[1]-255)*(channels[1]-255)+(channels[2]-255)*(channels[2]-255);
-        const color=black<white?0:255;
-        for(let c=0;c<3;c++){
-          data[pixel+c]=color;
-          if(dither){
-            const error=channels[c]-color;
-            current[offset+3+c]+=error*7/16;
-            next[offset-3+c]+=error*3/16;
-            next[offset+c]+=error*5/16;
-            next[offset+3+c]+=error/16;
-          }
-        }
-        data[pixel+3]=255;
-      }
-      const old=current;current=next;next=old;next.fill(0);
+  function highQualityDraw(g, img, x, y, width, height) {
+    let source=img, sw=img.width, sh=img.height;
+    // Prefilter large reductions instead of letting a single bilinear sample
+    // lose hair/diagonal detail. Final crop is sampled at the actual slot size.
+    while(sw>Math.abs(width)*2 && sh>Math.abs(height)*2){
+      const stage=document.createElement('canvas');stage.width=Math.max(1,Math.floor(sw/2));stage.height=Math.max(1,Math.floor(sh/2));
+      const c=stage.getContext('2d',{alpha:false});c.fillStyle='#fff';c.fillRect(0,0,stage.width,stage.height);c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';c.drawImage(source,0,0,stage.width,stage.height);
+      source=stage;sw=stage.width;sh=stage.height;
     }
+    g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.drawImage(source,x,y,width,height);
   }
   async function sourceFromFile(file) {
     if (!file || !file.type.startsWith('image/') || file.size>8*1024*1024) throw new Error('请选择不超过8MiB的图片');
     const url=URL.createObjectURL(file);
     try {
-      const img=await image(url), ratio=Math.min(1,640/Math.max(img.width,img.height));
+      const img=await image(url), ratio=Math.min(1,2048/Math.max(img.width,img.height));
       const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*ratio));canvas.height=Math.max(1,Math.round(img.height*ratio));
-      const c=canvas.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,canvas.width,canvas.height);c.drawImage(img,0,0,canvas.width,canvas.height);
-      const source=canvas.toDataURL('image/png');if(source.length>6000000)throw new Error('头像源图过大');return source;
+      const c=canvas.getContext('2d',{alpha:false});c.fillStyle='#fff';c.fillRect(0,0,canvas.width,canvas.height);highQualityDraw(c,img,0,0,canvas.width,canvas.height);
+      let source=canvas.toDataURL('image/png');
+      while(source.length>6000000 && Math.max(canvas.width,canvas.height)>640){
+        canvas.width=Math.max(1,Math.floor(canvas.width*.8));canvas.height=Math.max(1,Math.floor(canvas.height*.8));
+        c.fillStyle='#fff';c.fillRect(0,0,canvas.width,canvas.height);highQualityDraw(c,img,0,0,canvas.width,canvas.height);source=canvas.toDataURL('image/png');
+      }
+      if(source.length>6000000)throw new Error('头像源图过大');return source;
     } finally {URL.revokeObjectURL(url);}
   }
-  function render(img,o,mode) {
-    const c=document.createElement('canvas');c.width=128;c.height=160;
-    const g=c.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,128,160);
-    const scale=Math.max(128/(o.turns%2?img.height:img.width),160/(o.turns%2?img.width:img.height))*o.zoom;
-    g.save();g.translate(64+o.x,80+o.y);g.rotate(o.turns*Math.PI/2);g.scale(scale,scale);g.drawImage(img,-img.width/2,-img.height/2);g.restore();
-    const crop=c.toDataURL('image/png'), p=g.getImageData(0,0,128,160);
+  function render(img,o,size={width:128,height:160}) {
+    const {width,height}=size;
+    const c=document.createElement('canvas');c.width=width;c.height=height;
+    const g=c.getContext('2d',{willReadFrequently:true,alpha:false});g.fillStyle='#fff';g.fillRect(0,0,width,height);
+    const scale=Math.max(width/(o.turns%2?img.height:img.width),height/(o.turns%2?img.width:img.height))*o.zoom;
+    g.save();g.translate(width/2+o.x,height/2+o.y);g.rotate(o.turns*Math.PI/2);
+    highQualityDraw(g,img,-img.width*scale/2,-img.height*scale/2,img.width*scale,img.height*scale);g.restore();
+    const p=g.getImageData(0,0,width,height);
     for(let i=0;i<p.data.length;i+=4)for(let k=0;k<3;k++)p.data[i+k]=Math.round(Math.max(0,Math.min(255,p.data[i+k]+o.brightness*255)));
-    adjustContrast(p,o.contrast);adjustSaturation(p,mode==='color'?o.saturation:0);
-    if(mode==='color')FrameFilmSourceFit.apply(p,o.rangeFit,o.warmChroma,FrameFilmSourceFit.profiles.fast);
-    if(mode==='mono') monoFast(p,o.dither);
-    else if(o.dither){
-      if(o.algorithm==='adaptive')adaptiveDither(p);
-      else applyDitherByType(p,o.algorithm,o.strength);
-    }
-    else if(mode==='color'){
-      for(let i=0;i<p.data.length;i+=4){
-        const rgb=findClosestColor(p.data[i],p.data[i+1],p.data[i+2]);
-        p.data[i]=rgb.r;p.data[i+1]=rgb.g;p.data[i+2]=rgb.b;
-      }
-    }
-    else monoFast(p,false);
-    g.putImageData(p,0,0);return {crop,processed:c.toDataURL('image/png')};
+    adjustContrast(p,o.contrast);adjustSaturation(p,o.saturation);
+    FrameFilmSourceFit.apply(p,o.rangeFit,o.warmChroma,FrameFilmSourceFit.profiles.fast);
+    g.putImageData(p,0,0);
+    const png=c.toDataURL('image/png');
+    return {crop:png,processed:png,pixels:p};
   }
-  async function processed(edit,mode){return render(await image(edit.source),{...defaults,...edit.options},mode).processed;}
-  async function open(edit,mode) {
+  async function processed(edit,size){return render(await image(edit.source),{...defaults,...edit.options},size).processed;}
+  async function open(edit,mode,config={width:128,height:160}) {
     const img=await image(edit.source);let options={...defaults,...edit.options}, result;
     const d=document.createElement('dialog');d.className='avatar-edit-dialog';d.setAttribute('aria-labelledby','avatar-edit-title');
-    d.innerHTML='<h2 id="avatar-edit-title">调整头像</h2><p class="hint">左侧原图构图可拖动；右侧为设备像素</p><div class="avatar-edit-previews"><canvas data-crop width="128" height="160" aria-label="原图构图"></canvas><img data-output width="128" height="160" alt="设备像素预览"></div><div class="actions"><button class="secondary" data-rotate>旋转90度</button><button class="secondary" data-reset>重置调整</button></div><div data-sliders></div><label class="unset"><input data-dither type="checkbox">抖动</label><select data-algorithm aria-label="抖动算法"><option value="adaptive">自适应（自动选择算法与强度）</option><option value="floydSteinberg">Floyd-Steinberg</option><option value="atkinson">Atkinson</option><option value="bayer">Bayer 4×4</option></select><p class="hint" data-adaptive-hint>自适应会根据头像自动选择抖动算法与强度。</p><p class="hint" data-mono-hint>黑白头像使用 Film MonoFast：开启抖动为 Floyd-Steinberg，关闭时直接黑白量化。</p><div class="actions"><button class="secondary" data-cancel>取消</button><button class="primary" data-apply>应用头像</button></div>';
+    d.innerHTML='<h2 id="avatar-edit-title">调整彩色头像</h2><p class="hint">左侧为未量化彩色构图，可拖动；右侧为所选输出的设备像素（模型色彩）。</p><div class="avatar-edit-previews"><canvas data-crop aria-label="彩色构图"></canvas><canvas data-output aria-label="设备像素预览"></canvas></div><div class="actions"><button class="secondary" data-rotate>旋转90度</button><button class="secondary" data-reset>重置调整</button></div><div data-sliders></div><p class="hint" data-status role="status"></p><div class="actions"><button class="secondary" data-cancel>取消</button><button class="primary" data-apply>应用头像</button></div>';
     const controls={};
-    for(const [key,title,min,max] of [['zoom','缩放',.1,8],['brightness','亮度',-1,1],['rangeFit','明暗范围拟合',0,1],['warmChroma','暖色收缩',0,1],['contrast','对比度',.5,2],['saturation','饱和度',0,3],['strength','抖动强度',0,3]]){
+    for(const [key,title,min,max] of [['zoom','缩放',.1,8],['brightness','亮度',-1,1],['rangeFit','明暗范围拟合',0,1],['warmChroma','暖色收缩',0,1],['contrast','对比度',.5,2],['saturation','饱和度',0,3]]){
       const label=document.createElement('label');label.innerHTML=`${title} <output></output><input type="range" min="${min}" max="${max}" step="0.05">`;
-      if(key==='rangeFit'||key==='warmChroma'){label.style.display=mode==='color'?'block':'none';label.querySelector('input').disabled=!FrameFilmSourceFit.profiles.fast;}
-      if(key==='strength')label.dataset.strength='';
       controls[key]=label.querySelector('input');controls[key].addEventListener('input',()=>{options[key]=Number(controls[key].value);refresh();});d.querySelector('[data-sliders]').append(label);
     }
-    const canvas=d.querySelector('[data-crop]'),g=canvas.getContext('2d');let renderGeneration=0;
+    const canvas=d.querySelector('[data-crop]'),g=canvas.getContext('2d'),output=d.querySelector('[data-output]');
+    for(const c of [canvas,output]){c.width=config.width;c.height=config.height;}
+    let renderGeneration=0,timer,closed=false;
     function refresh(){
-      result=render(img,options,mode);d.querySelector('[data-output]').src=result.processed;
-      const generation=++renderGeneration,preview=new Image();preview.onload=()=>{if(generation===renderGeneration)g.drawImage(preview,0,0);};preview.src=result.crop;
+      const generation=++renderGeneration;clearTimeout(timer);
+      result=render(img,options,config);g.putImageData(result.pixels,0,0);
+      output.getContext('2d').clearRect(0,0,output.width,output.height);
+      d.querySelector('[data-apply]').disabled=true;d.querySelector('[data-status]').textContent='正在生成设备像素…';
+      const pixels=result.pixels,cancelled=()=>closed||generation!==renderGeneration;
+      timer=setTimeout(async()=>{
+        try{
+          const preview=config.preview?await config.preview(pixels,cancelled):await PassportPixels.avatar(pixels,mode,{cancelled});
+          if(cancelled())return;
+          output.getContext('2d').putImageData(new ImageData(preview.rgba,config.width,config.height),0,0);
+          d.querySelector('[data-apply]').disabled=false;d.querySelector('[data-status]').textContent='';
+        }catch(error){if(!cancelled())d.querySelector('[data-status]').textContent=error.message;}
+      },120);
       for(const key of Object.keys(controls)){controls[key].value=options[key];controls[key].previousElementSibling.value=options[key].toFixed(2);}
-      d.querySelector('[data-dither]').checked=options.dither;d.querySelector('[data-algorithm]').value=options.algorithm;
-      const mono=mode==='mono';
-      d.querySelector('[data-algorithm]').style.display=mono?'none':'';
-      d.querySelector('[data-mono-hint]').hidden=!mono;
-      d.querySelector('[data-strength]').style.display=!mono&&options.dither&&options.algorithm!=='adaptive'?'block':'none';
-      d.querySelector('[data-adaptive-hint]').hidden=mono||!options.dither||options.algorithm!=='adaptive';
     }
     let previous=null;
     canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);previous={x:e.clientX,y:e.clientY};});
@@ -99,8 +86,6 @@ window.PassportAvatarEditor = (() => {
     for(const event of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(event,()=>previous=null);
     d.querySelector('[data-rotate]').onclick=()=>{options.turns=(options.turns+1)%4;options.x=options.y=0;refresh();};
     d.querySelector('[data-reset]').onclick=()=>{options={...defaults};refresh();};
-    d.querySelector('[data-dither]').onchange=e=>{options.dither=e.target.checked;refresh();};
-    d.querySelector('[data-algorithm]').onchange=e=>{options.algorithm=e.target.value;refresh();};
     document.body.append(d);refresh();d.showModal();
     // iframe 会被宿主拉成整页高度，fixed 弹窗需要贴住当前可见区域而不是整页居中。
     const host=window.parent;let scrollLock=null;
@@ -140,6 +125,7 @@ window.PassportAvatarEditor = (() => {
     host.addEventListener('scroll',place,true);host.addEventListener('resize',place);
     return new Promise(resolve=>{
       const close=value=>{
+        closed=true;++renderGeneration;clearTimeout(timer);
         host.removeEventListener('scroll',place,true);host.removeEventListener('resize',place);
         lock(false);d.close();d.remove();resolve(value);
       };

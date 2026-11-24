@@ -99,6 +99,8 @@ _Static_assert(BLE_NAME_PREFIX_LEN + SERVICE_BLE_NAME_SUFFIX_MAX == BLE_DEVICE_N
 #define BLE_OTA_TRANS_RECV_LEN    2
 #define BLE_OTA_TRANS_RECV_DATA   3
 #define BLE_OTA_TRANS_STOPPED     4
+#define BLE_VERIFIED_OTA_TIMEOUT_MS 120000u
+#define BLE_VERIFIED_OTA_DATA_MAX   (BLE_RESP_DATA_MAX - 4u)
 
 
 /*********************************************************************
@@ -113,6 +115,7 @@ static TaskHandle_t m_ble_task_hdl = NULL;
 static uint8_t m_ble_up = 0;   // 协议栈当前是否已拉起（运行期开关用）
 static QueueHandle_t m_ble_msg_hdl = NULL;
 static uint8_t m_film_trans_state = BLE_FILM_TRANS_IDLE;
+static bool m_film_ack;
 static uint8_t m_film_trans_filename[256];
 static uint32_t m_film_trans_file_size = 0;
 static uint32_t m_film_trans_received = 0;
@@ -129,6 +132,13 @@ static SemaphoreHandle_t m_wifi_ble_mutex;
 static uint8_t m_ota_trans_state = BLE_OTA_TRANS_IDLE;
 static uint32_t m_ota_trans_file_size = 0;
 static uint32_t m_ota_trans_received = 0;
+static struct
+{
+    uint32_t total;
+    uint32_t received;
+    TickType_t last_activity;
+    bool ready;
+} m_verified_ota;
 static service_ble_app_id_get_cb_t m_app_id_get_cb = NULL;
 static char m_ble_device_name[BLE_DEVICE_NAME_MAX_BYTES + 1];
 
@@ -145,6 +155,7 @@ static void ble_task_handle(void *pvParameters);
 static uint8_t ble_checksum(uint8_t arr[], int len);
 static void ble_cmd_process(ble_cmd_t *cmd);
 static int ble_file_reset(void);
+static void ble_verified_ota_abort(void);
 static bool ble_name_suffix_valid(const uint8_t *bytes, size_t len);
 static const char *ble_name_suffix_or_default(void);
 
@@ -178,6 +189,7 @@ static int ble_file_reset(void)
            service_file_save_abort(FILE_SAVE_BLE) != 0) return -1;
     }
     m_film_trans_state = BLE_FILM_TRANS_IDLE;
+    m_film_ack = false;
     m_film_trans_received = 0;
     m_film_trans_file_size = 0;
     m_film_trans_filename[0] = '\0';
@@ -540,14 +552,21 @@ static void ble_task_handle(void *pvParameters)
     for(;;)
     {
         ble_msg_t msg;
-        SYS_ERROR_CHECK( xQueueReceive( m_ble_msg_hdl, (void *const)&msg, portMAX_DELAY ) != pdPASS );
+        TickType_t wait = m_verified_ota.total ? pdMS_TO_TICKS(1000) : portMAX_DELAY;
+        bool received = xQueueReceive(m_ble_msg_hdl, &msg, wait) == pdPASS;
+
+        if(m_verified_ota.total &&
+           xTaskGetTickCount() - m_verified_ota.last_activity >= pdMS_TO_TICKS(BLE_VERIFIED_OTA_TIMEOUT_MS))
+            ble_verified_ota_abort();
 
         if(m_ble_abort_pending)
         {
             m_ble_abort_pending = 0;
+            ble_verified_ota_abort();
             ble_file_reset();
         }
 
+        if(!received) continue;
         switch(msg.ID)
         {
         case MSG_BLE_CH1_IN_CMD :
@@ -615,6 +634,7 @@ static void ble_task_handle(void *pvParameters)
         case MSG_BLE_FILE_ABORT:
             if(msg.subID == 1)
             {
+                ble_verified_ota_abort();
                 if(ble_file_reset() == 0) atomic_store(&m_ble_sleep_done, true);
                 else atomic_store(&m_ble_sleep_stop_sent, false);
             }
@@ -683,6 +703,168 @@ static bool ble_cmd_conflicts_with_direct(const ble_cmd_t *cmd)
         return true;
     default:
         return false;
+    }
+}
+
+static void ble_verified_ota_abort(void)
+{
+    if(!m_verified_ota.total) return;
+    service_ota_direct_abort();
+    memset(&m_verified_ota, 0, sizeof(m_verified_ota));
+}
+
+static uint32_t ble_read_u32_be(const uint8_t *bytes)
+{
+    return ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) |
+           ((uint32_t)bytes[2] << 8) | bytes[3];
+}
+
+static void ble_transfer_reply(uint8_t channel, uint8_t status, uint32_t received)
+{
+    uint8_t response[] = {
+        BLE_CMD_HEAD, channel, 5, status, (uint8_t)(received >> 24),
+        (uint8_t)(received >> 16), (uint8_t)(received >> 8), (uint8_t)received, 0,
+    };
+    response[8] = ble_checksum(response, 8);
+    service_ble_send_notify_data(BLE_NOTIFY_SEND_CH1, response, sizeof(response));
+}
+
+/* Same temporary-file transaction as the legacy path, with SD required. */
+static uint8_t ble_file_ack_command(const ble_cmd_t *cmd)
+{
+    if(cmd->ch == BLE_FILM_TRANS_CH_FILE_START)
+    {
+        if(cmd->len != 1 || (cmd->pdata[0] != 1 && cmd->pdata[0] != 2)) return 2;
+        if(cmd->pdata[0] == 2) return ble_file_reset() == 0 ? 0 : 3;
+        if(service_monitor_sleep_pending() || service_wifi_direct_busy() || m_verified_ota.total ||
+           m_ota_trans_state != BLE_OTA_TRANS_IDLE) return 1;
+        if(ble_file_reset() != 0 || hal_sd_get_status() != SD_MOUNT) return 3;
+        m_film_ack = true;
+        m_film_trans_state = BLE_FILM_TRANS_STARTED;
+        return 0;
+    }
+    if(service_monitor_sleep_pending() || service_wifi_direct_busy()) return 1;
+
+    const char *name = (const char *)m_film_trans_filename;
+    switch(cmd->ch)
+    {
+    case BLE_FILM_TRANS_CH_FILE_NAME:
+    {
+        if(m_film_trans_state != BLE_FILM_TRANS_STARTED) return 1;
+        const char *path = (const char *)cmd->pdata;
+        if(cmd->len < 2 || memchr(path, '\0', cmd->len) != path + cmd->len - 1) return 2;
+        if(strchr(path, '/') ? !service_file_save_path_valid(path) : !service_file_name_valid(path)) return 2;
+        memcpy(m_film_trans_filename, path, cmd->len);
+        m_film_trans_state = BLE_FILM_TRANS_RECV_NAME;
+        return 0;
+    }
+    case BLE_FILM_TRANS_CH_FILE_LEN:
+    {
+        if(m_film_trans_state != BLE_FILM_TRANS_RECV_NAME) return 1;
+        if(cmd->len != 4) return 2;
+        uint32_t bytes = ble_read_u32_be(cmd->pdata);
+        const bool explicit_path = strchr(name, '/') != NULL;
+        if(!bytes || (!explicit_path && bytes < 32u)) return 2;
+        int result = explicit_path ? service_file_save_start_to(FILE_SAVE_BLE, name, bytes)
+                                   : service_file_save_start(FILE_SAVE_BLE, name, bytes);
+        if(result != 0) return 3;
+        m_film_trans_file_size = bytes;
+        m_film_trans_state = BLE_FILM_TRANS_RECV_LEN;
+        return 0;
+    }
+    case BLE_FILM_TRANS_CH_FILE_DATA:
+    {
+        if(m_film_trans_state != BLE_FILM_TRANS_RECV_LEN && m_film_trans_state != BLE_FILM_TRANS_RECV_DATA)
+            return 1;
+        if(!cmd->len || cmd->len > BLE_RESP_DATA_MAX ||
+           cmd->len > m_film_trans_file_size - m_film_trans_received) return 2;
+        uint8_t *data = pvPortMalloc(cmd->len);
+        if(!data) return 3;
+        memcpy(data, cmd->pdata, cmd->len);
+        if(service_file_save_data(FILE_SAVE_BLE, data, cmd->len) != 0) return 3;
+        m_film_trans_received += cmd->len;
+        m_film_trans_state = BLE_FILM_TRANS_RECV_DATA;
+        return 0;
+    }
+    case BLE_FILM_TRANS_CH_FILE_STOP:
+        if(m_film_trans_state != BLE_FILM_TRANS_RECV_DATA) return 1;
+        if(cmd->len > 1 || (cmd->len == 1 && cmd->pdata[0] > 1) ||
+           m_film_trans_received != m_film_trans_file_size) return 2;
+        if(service_file_save_stop(FILE_SAVE_BLE, cmd->len == 0 || cmd->pdata[0] == 0) != 0) return 3;
+        m_film_trans_state = BLE_FILM_TRANS_STOPPED;
+        return 0;
+    default:
+        return 2;
+    }
+}
+
+static void ble_verified_ota_command(const ble_cmd_t *cmd)
+{
+    uint8_t status = 0;
+    if(cmd->ch == BLE_FILM_TRANS_CH_VERIFIED_OTA_CANCEL)
+    {
+        if(cmd->len) status = 2;
+        else ble_verified_ota_abort();
+    }
+    else if(service_monitor_sleep_pending() || service_wifi_direct_busy())
+    {
+        status = 1;
+    }
+    else if(cmd->ch == BLE_FILM_TRANS_CH_VERIFIED_OTA_BEGIN)
+    {
+        if(cmd->len != 36) status = 2;
+        else if(m_verified_ota.total || m_ota_trans_state != BLE_OTA_TRANS_IDLE ||
+                (m_film_trans_state > BLE_FILM_TRANS_IDLE && m_film_trans_state < BLE_FILM_TRANS_STOPPED))
+            status = 1;
+        else
+        {
+            const uint32_t size = ble_read_u32_be(cmd->pdata);
+            if(!size || size > service_ota_direct_max()) status = 2;
+            else if(service_ota_direct_begin(size, cmd->pdata + 4) != ESP_OK) status = 3;
+            else m_verified_ota.total = size;
+        }
+    }
+    else if(!m_verified_ota.total)
+    {
+        status = 1;
+    }
+    else if(cmd->ch == BLE_FILM_TRANS_CH_VERIFIED_OTA_DATA)
+    {
+        if(m_verified_ota.ready) status = 1;
+        else if(cmd->len <= 4 || cmd->len > 4 + BLE_VERIFIED_OTA_DATA_MAX ||
+                ble_read_u32_be(cmd->pdata) != m_verified_ota.received ||
+                (uint32_t)(cmd->len - 4) > m_verified_ota.total - m_verified_ota.received)
+            status = 2;
+        else if(service_ota_direct_write(cmd->pdata + 4, cmd->len - 4) != ESP_OK) status = 3;
+        else m_verified_ota.received += cmd->len - 4;
+    }
+    else if(cmd->len)
+    {
+        status = 2;
+    }
+    else if(cmd->ch == BLE_FILM_TRANS_CH_VERIFIED_OTA_FINISH)
+    {
+        if(m_verified_ota.ready) status = 1;
+        else if(service_ota_direct_finish() != ESP_OK) status = 3;
+        else m_verified_ota.ready = true;
+    }
+    else
+    {
+        if(!m_verified_ota.ready) status = 1;
+        else if(service_ota_direct_activate() != ESP_OK) status = 3;
+    }
+
+    const uint32_t received = m_verified_ota.received;
+    if(status == 3) ble_verified_ota_abort();
+    if(status == 0) m_verified_ota.last_activity = xTaskGetTickCount();
+
+    const bool apply = status == 0 && cmd->ch == BLE_FILM_TRANS_CH_VERIFIED_OTA_APPLY;
+    /* Send in the BLE task before the terminal restart delay. */
+    ble_transfer_reply(cmd->ch, status, received);
+    if(apply)
+    {
+        vTaskDelay(pdMS_TO_TICKS(1500));
+        sys_reboot();
     }
 }
 
@@ -944,6 +1126,24 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         return;
     }
 
+    if(cmd->ch >= BLE_FILM_TRANS_CH_VERIFIED_OTA_BEGIN &&
+       cmd->ch <= BLE_FILM_TRANS_CH_VERIFIED_OTA_CANCEL)
+    {
+        ble_verified_ota_command(cmd);
+        return;
+    }
+
+    if((cmd->ch == BLE_FILM_TRANS_CH_FILE_START && cmd->len != 0) ||
+       (m_film_ack && cmd->ch <= BLE_FILM_TRANS_CH_FILE_STOP &&
+        cmd->ch != BLE_FILM_TRANS_CH_FILE_START))
+    {
+        uint8_t status = ble_file_ack_command(cmd);
+        const uint32_t received = m_film_trans_received;
+        if(status == 3 && m_film_ack) (void)ble_file_reset();
+        ble_transfer_reply(cmd->ch, status, received);
+        return;
+    }
+
     /* 入睡期间阻止新的写入，但手机仍须能查询/取消正在恢复的直传。 */
     if(service_monitor_sleep_pending() &&
        cmd->ch != BLE_FILM_TRANS_CH_DIRECT_STATUS &&
@@ -956,7 +1156,13 @@ static void ble_cmd_process(ble_cmd_t *cmd)
                     (cmd->ch == BLE_FILM_TRANS_CH_DIRECT_START ||
                      cmd->ch == BLE_FILM_TRANS_CH_DIRECT_FILE_START ||
                      cmd->ch == BLE_FILM_TRANS_CH_DIRECT_OTA_START);
-    if(service_wifi_direct_busy() && !ap_start && ble_cmd_conflicts_with_direct(cmd))
+    /* Both OTA transports start in this task. Wi-Fi marks itself busy before
+       creating its worker; verified BLE owns the staging state until abort or reboot. */
+    if((service_wifi_direct_busy() && !ap_start && ble_cmd_conflicts_with_direct(cmd)) ||
+       (m_verified_ota.total && (ble_cmd_conflicts_with_direct(cmd) ||
+        cmd->ch == BLE_FILM_TRANS_CH_DIRECT_START ||
+        cmd->ch == BLE_FILM_TRANS_CH_DIRECT_OTA_START ||
+        cmd->ch == BLE_FILM_TRANS_CH_DIRECT_AP_PREPARE)))
     {
         const uint8_t busy = 1;
         service_ble_send_resp(cmd->ch, &busy, 1);
@@ -986,15 +1192,27 @@ static void ble_cmd_process(ble_cmd_t *cmd)
         case BLE_FILM_TRANS_CH_CAPABILITIES_GET:
         {
             if(cmd->len != 0) break;
-            uint8_t capabilities[5] = {1, 0, 0, 0x01, 0x5F};
+            uint8_t capabilities[5] = {1, 0, 0, 0x35, 0x5F};
             /* flags 高位字节（bit8..）：
                bit8 = 按目录/文件名的列表/删除/读取（0x5B dir3 + 0x60 + 0x61）
-               bit9 = 返回键双击截图（/sdcard/screenshot），仅 ARK_SCREENSHOT 开启 */
+               bit9 = 返回键双击截图（/sdcard/screenshot），仅 ARK_SCREENSHOT 开启
+               bit10 = 480x720 全屏 FFUI 通行证（v1 单色 / v2 六色，彩色另需 bit0）
+               bit12 = 校验式 BLE OTA（0x6A–0x6E）
+               bit13 = 需设备确认的 BLE SD 文件上传
+               bit14 = native student ColorFast profile.bin
+               bit15 = FFUI v3 compact operator I006 + ColorFast */
+#if SYS_UI_ENABLE
+            capabilities[3] |= 0x40; /* bit14: exact native Format 0x03 student pass. */
+#endif
 #if CONFIG_ARK_SCREENSHOT
             capabilities[3] |= 0x02;
 #endif
 #if defined(CONFIG_ARK_EPD_ABC_PREVIEW) || defined(CONFIG_ARK_EPD_ABC_DIAG)
-            capabilities[4] |= 0x20;  /* Experimental ABC9 playback. */
+            capabilities[4] |= 0x20;  /* General ABC9 .film playback, unchanged. */
+            capabilities[3] |= 0x08;  /* bit11: I006 ABC9 app/pass/profile.bin. */
+#if SYS_UI_ENABLE
+            capabilities[3] |= 0x80;  /* bit15: both compact operator decoders compiled. */
+#endif
 #endif
 #if (SYS_NFC_ENABLE == 1)
             capabilities[4] |= 0x80;

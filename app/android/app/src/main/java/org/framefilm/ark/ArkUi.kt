@@ -23,18 +23,6 @@ import android.widget.TextView
 import android.widget.Toast
 import java.util.TimeZone
 
-data class ImageOptions(
-    val rotation: Int = 0,
-    val scale: Float = 1f,
-    val offsetX: Float = 0f,
-    val offsetY: Float = 0f,
-    val brightness: Float = 0f,
-    val contrast: Float = 1f,
-    val saturation: Float = 1f,
-    val dither: Boolean = true,
-    val monochrome: Boolean = false,
-)
-
 /** Native Views for the five ForFilm sections, with Ark's black, white and yellow theme. */
 class ArkUi(private val activity: Activity, private val actions: Actions) {
     interface Actions {
