@@ -1,0 +1,18 @@
+<view class="ffslider {{disabled ? 'is-disabled' : ''}}">
+  <view class="ffslider__head" wx:if="{{label || showValue}}">
+    <text class="ffslider__label">{{label}}</text>
+    <text class="ffslider__value" wx:if="{{showValue}}">{{display}}{{unit}}</text>
+  </view>
+  <view
+    class="ffslider__hit"
+    bindtouchstart="onStart"
+    bindtouchend="onEnd"
+    bindtouchcancel="onEnd"
+    catchtouchmove="onMove"
+  >
+    <view class="ffslider__track">
+      <view class="ffslider__fill" style="width: {{percent}}%"></view>
+      <view class="ffslider__thumb" style="left: {{percent}}%"></view>
+    </view>
+  </view>
+</view>

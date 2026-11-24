@@ -1,51 +1,65 @@
-<view class="container">
-  <view class="create-grid">
-    <view class="m-card c-red" bindtap="goToUpload">
-      <view class="m-ic"><image src="/images/icons/white/album.svg" mode="aspectFit"></image></view>
-      <view class="m-name">相册</view>
-      <view class="m-sub">从手机相册挑选</view>
-      <view class="cc-emo">🌅</view>
+<view class="screen frame-screen" style="padding-top: {{statusBarHeight}}px">
+  <view class="topbar">
+    <view class="topbar__back" bindtap="onBack">‹</view>
+    <view class="topbar__main">
+      <view class="topbar__title">{{toolTitle}}</view>
+      <view class="topbar__sub">快速转换并发送</view>
     </view>
-    <view class="m-card c-teal" bindtap="goToCamera">
-      <view class="m-ic"><image src="/images/icons/white/camera.svg" mode="aspectFit"></image></view>
-      <view class="m-name">拍照</view>
-      <view class="m-sub">拍一张直接上屏</view>
-      <view class="cc-emo">📸</view>
+    <view class="spacer"></view>
+    <view class="chip {{connected ? 'chip--mint' : ''}}">{{connected ? '在线' : '离线'}}</view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--sun"><image src="/images/icons/film.png"></image></view>
+      <view class="card__title">预览</view>
     </view>
-    <view class="m-card c-purple" bindtap="goToQuote">
-      <view class="m-ic"><image src="/images/icons/white/quote.svg" mode="aspectFit"></image></view>
-      <view class="m-name">一言</view>
-      <view class="m-sub">名言金句每日换</view>
-      <view class="cc-emo">💬</view>
-    </view>
-    <view class="m-card c-blue" bindtap="goToDraw">
-      <view class="m-ic"><image src="/images/icons/white/draw.svg" mode="aspectFit"></image></view>
-      <view class="m-name">绘梦</view>
-      <view class="m-sub">手绘也能上墙</view>
-      <view class="cc-emo">🎨</view>
-    </view>
-    <view class="m-card c-yellow m-badge" bindtap="goToTemplate">
-      <view class="m-ic"><image src="/images/icons/white/template.svg" mode="aspectFit"></image></view>
-      <view class="m-name">模板</view>
-      <view class="m-sub">日历 · 一签 · 天气</view>
-      <view class="cc-emo">✨</view>
-    </view>
-    <view class="m-card c-pink" bindtap="goToBatch">
-      <view class="m-ic"><image src="/images/icons/white/batch.svg" mode="aspectFit"></image></view>
-      <view class="m-name">批量片单</view>
-      <view class="m-sub">一组照片自动轮播</view>
-      <view class="cc-emo">🎞</view>
+    <button class="btn btn--primary btn--block" bindtap="onPick" style="margin-bottom: 12px">选择照片</button>
+    <view class="polaroid">
+      <view class="canvas-wrap">
+        <canvas type="2d" id="frame-canvas" class="frame-canvas"
+          style="width: {{boxW}}px; height: {{boxH}}px"></canvas>
+        <view class="canvas-empty" wx:if="{{!hasImage}}">
+          <view class="small">选择一张照片开始</view>
+          <button class="btn btn--primary btn--sm" bindtap="onPick">选择照片</button>
+        </view>
+      </view>
     </view>
   </view>
 
-  <view class="adv-row" bindtap="goToFilm">
-    <view class="m-ic"><image src="/images/icons/advanced.svg" mode="aspectFit"></image></view>
-    <view>
-      <view class="m-name">高级转换</view>
-      <view class="m-sub">抖动 · 对比度 · 手动调参</view>
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--coral"><image src="/images/icons/photo-file.svg"></image></view>
+      <view class="card__title">输出</view>
     </view>
-    <view class="adv-a">›</view>
+
+    <view class="field">
+      <text class="field__label">文件名</text>
+      <input class="input" value="{{fileName}}" bindinput="onFileName" placeholder="frame.film" />
+    </view>
+
+    <view class="switch-row">
+      <view class="switch-row__main">
+        <view class="switch-row__label">抖动</view>
+        <view class="switch-row__hint">使用自适应算法转换为六色</view>
+      </view>
+      <view class="switch {{ditherEnabled ? 'switch--on' : ''}}" bindtap="onDitherToggle"></view>
+    </view>
+
+    <view class="btn-row">
+      <button class="btn" bindtap="onAdvanced">高级编辑</button>
+      <button class="btn btn--primary" bindtap="onUpload" disabled="{{transferring}}">
+        {{transferring ? '发送中…' : '发送到设备'}}
+      </button>
+    </view>
+
+    <view class="progress" style="margin-top: 10px" wx:if="{{transferring}}">
+      <view class="progress__fill" style="width: {{progress}}%"></view>
+    </view>
+    <view class="small" style="margin-top: 6px" wx:if="{{transferring}}">已发送 {{progress}}%</view>
   </view>
 
-  <view class="tab-bar-spacer"></view>
+  <ff-nav active="{{1}}" detail="{{true}}" />
+
+  <ff-toast />
 </view>

@@ -1,57 +1,31 @@
-/* 创作页样式 - 多巴胺彩色卡片 */
-page {
-  background: #FFF6EE;
+.frame-screen {
+  padding-bottom: 110px;
 }
 
-.m-ic image {
-  width: 52rpx;
-  height: 52rpx;
+.canvas-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* 彩色功能卡片 */
-.m-card.c-red {
-  background: linear-gradient(135deg, #FF6B6B, #FF9F6B);
-}
-.m-card.c-teal {
-  background: linear-gradient(135deg, #4ECDC4, #2EB6AC);
-}
-.m-card.c-purple {
-  background: linear-gradient(135deg, #845EC2, #6B45A6);
-}
-.m-card.c-blue {
-  background: linear-gradient(135deg, #4D96FF, #2F6FD8);
-}
-.m-card.c-yellow {
-  background: linear-gradient(135deg, #FFD93D, #FFB03D);
-}
-.m-card.c-pink {
-  background: linear-gradient(135deg, #FF8FC7, #FF6FA8);
+.frame-canvas {
+  display: block;
+  background: #FFFFFF;
+  border: 2px solid #12100E;
+  border-radius: 6px;
 }
 
-.m-card .m-ic {
-  background: rgba(255, 255, 255, 0.28);
-}
-.m-card .m-name {
-  color: #ffffff;
-}
-.m-card .m-sub {
-  color: rgba(255, 255, 255, 0.85);
-}
-.m-card.c-yellow .m-name {
-  color: #6B5B00;
-}
-.m-card.c-yellow .m-sub {
-  color: rgba(107, 91, 0, 0.7);
-}
-.m-card.c-yellow .m-ic {
-  background: rgba(255, 255, 255, 0.45);
-}
-
-/* 右下 emoji 点缀 */
-.cc-emo {
+.canvas-empty {
   position: absolute;
-  right: 20rpx;
-  bottom: 14rpx;
-  font-size: 44rpx;
-  opacity: 0.4;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(255, 248, 231, .85);
 }

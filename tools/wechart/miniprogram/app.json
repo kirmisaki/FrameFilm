@@ -1,62 +1,28 @@
 {
   "pages": [
-    "pages/home/index",
+    "pages/shell/index",
     "pages/frame/index",
-    "pages/filmlist/index",
-    "pages/template/index",
-    "pages/template/calendar/index",
-    "pages/template/sign/index",
-    "pages/template/weather/index",
-    "pages/template/countdown/index",
-    "pages/template/memo/index",
-    "pages/settings/index",
-    "pages/bluetooth/index"
+    "pages/calendar/index",
+    "pages/batch/index",
+    "pages/quote/index"
   ],
   "subPackages": [
     {
-      "root": "pkgCreate",
+      "root": "render",
       "pages": [
-        "film/index",
-        "frame/upload/index",
-        "frame/camera/index",
-        "frame/quote/index",
-        "frame/draw/index"
+        "pages/film/index"
       ]
     }
   ],
   "window": {
-    "backgroundColor": "#FFF6EE",
+    "navigationStyle": "custom",
+    "backgroundColor": "#FFF8E7",
     "backgroundTextStyle": "dark",
-    "navigationBarBackgroundColor": "#FFF6EE",
+    "navigationBarBackgroundColor": "#FFF8E7",
     "navigationBarTitleText": "FrameFilm",
     "navigationBarTextStyle": "black"
   },
-  "tabBar": {
-    "custom": true,
-    "color": "#9A9AA2",
-    "selectedColor": "#FF6B6B",
-    "backgroundColor": "#FFF6EE",
-    "borderStyle": "white",
-    "list": [
-      {
-        "pagePath": "pages/home/index",
-        "text": "首页"
-      },
-      {
-        "pagePath": "pages/frame/index",
-        "text": "创作"
-      },
-      {
-        "pagePath": "pages/filmlist/index",
-        "text": "片单"
-      },
-      {
-        "pagePath": "pages/settings/index",
-        "text": "设置"
-      }
-    ]
-  },
-  "sitemapLocation": "sitemap.json",
   "style": "v2",
+  "sitemapLocation": "sitemap.json",
   "lazyCodeLoading": "requiredComponents"
 }

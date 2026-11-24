@@ -1,0 +1,78 @@
+<view class="screen" style="padding-top: {{statusBarHeight}}px">
+  <view class="topbar">
+    <view class="topbar__back" bindtap="onBack">‹</view>
+    <view class="topbar__main">
+      <view class="topbar__title">一言</view>
+      <view class="topbar__sub">文字排版成画</view>
+    </view>
+    <view class="spacer"></view>
+    <view class="chip {{connected ? 'chip--mint' : ''}}">{{connected ? '在线' : '离线'}}</view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--mint"><image src="/images/icons/quote.svg"></image></view>
+      <view class="card__title">选一句</view>
+    </view>
+    <view class="btn-row">
+      <button class="btn btn--primary" bindtap="onFetchQuote">换一句</button>
+      <button class="btn" bindtap="onToggleCustom">{{customOpen ? '收起' : '自定义'}}</button>
+    </view>
+    <view wx:if="{{customOpen}}" style="margin-top: 12px">
+      <view class="field">
+        <text class="field__label">名言内容</text>
+        <textarea class="quote-textarea" value="{{text}}" bindinput="onTextInput" maxlength="100"
+          placeholder="输入名言" auto-height></textarea>
+      </view>
+      <view class="field">
+        <text class="field__label">作者（可选）</text>
+        <input class="input" value="{{author}}" bindinput="onAuthorInput" placeholder="输入作者" maxlength="30" />
+      </view>
+      <button class="btn btn--primary btn--block" bindtap="onApplyCustom">生成</button>
+    </view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--sun"><image src="/images/icons/film.png"></image></view>
+      <view class="card__title">预览</view>
+    </view>
+    <view class="polaroid">
+      <view class="canvas-wrap">
+        <canvas type="2d" id="quote-canvas" class="quote-canvas"
+          style="width: {{boxW}}px; height: {{boxH}}px"></canvas>
+      </view>
+    </view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--coral"><image src="/images/icons/photo-file.svg"></image></view>
+      <view class="card__title">输出</view>
+    </view>
+    <view class="field">
+      <text class="field__label">文件名</text>
+      <input class="input" value="{{fileName}}" bindinput="onFileName" placeholder="quote.film" />
+    </view>
+    <view class="switch-row">
+      <view class="switch-row__main">
+        <view class="switch-row__label">抖动</view>
+        <view class="switch-row__hint">使用自适应算法转换为六色</view>
+      </view>
+      <view class="switch {{ditherEnabled ? 'switch--on' : ''}}" bindtap="onDitherToggle"></view>
+    </view>
+    <view class="btn-row">
+      <button class="btn" bindtap="onExport">导出 .film</button>
+      <button class="btn btn--primary" bindtap="onUpload" disabled="{{transferring}}">
+        {{transferring ? '发送中…' : '发送到设备'}}
+      </button>
+    </view>
+    <view class="progress" style="margin-top: 10px" wx:if="{{transferring}}">
+      <view class="progress__fill" style="width: {{progress}}%"></view>
+    </view>
+  </view>
+
+  <ff-nav active="{{1}}" detail="{{true}}" />
+
+  <ff-toast />
+</view>

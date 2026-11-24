@@ -1,0 +1,12 @@
+.shell {
+  min-height: 100vh;
+  padding-bottom: 104px;
+}
+
+.app-head {
+  padding: 8px 18px 14px;
+}
+
+.tab-pane {
+  padding: 0 18px;
+}

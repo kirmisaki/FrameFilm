@@ -65,8 +65,8 @@
       "list": [
         {
           "id": -1,
-          "name": "db guide",
-          "pathName": "pages/databaseGuide/databaseGuide"
+          "name": "FrameFilm",
+          "pathName": "pages/shell/index"
         }
       ]
     }

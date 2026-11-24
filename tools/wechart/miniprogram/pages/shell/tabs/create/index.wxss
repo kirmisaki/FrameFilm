@@ -1,0 +1,115 @@
+.create-head {
+  padding: 4px 2px 14px;
+}
+
+.create-head__title {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -.5px;
+}
+
+.create-head__sub {
+  font-size: 13px;
+  color: #5B544A;
+  margin-top: 4px;
+}
+
+.create-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.mcard {
+  position: relative;
+  overflow: hidden;
+  width: calc((100% - 14px) / 2);
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 15px 14px 16px;
+  background: #D8F14A;
+  border: 3px solid #12100E;
+  border-radius: 20px;
+  box-shadow: 5px 5px 0 #12100E;
+  transition: transform .15s cubic-bezier(.2, 1.4, .4, 1), box-shadow .15s ease;
+}
+
+.mcard:nth-child(odd) { transform: rotate(-.8deg); }
+.mcard:nth-child(even) { transform: rotate(.7deg); }
+
+.mcard:active {
+  transform: translate(4px, 4px) rotate(0deg);
+  box-shadow: 0 0 0 #12100E;
+}
+
+.mcard .ic-wrap {
+  background: rgba(255, 255, 255, .55);
+}
+
+.mcard__name {
+  margin-top: 10px;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.mcard__sub {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #3A342E;
+  font-weight: 600;
+}
+
+.mcard__watermark {
+  position: absolute;
+  right: 4px;
+  bottom: -8px;
+  width: 52px;
+  height: 52px;
+  opacity: .16;
+  pointer-events: none;
+}
+
+.mcard__new {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  padding: 2px 10px 3px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #FFD84D;
+  border: 3px solid #12100E;
+  border-radius: 999px;
+  transform: rotate(6deg);
+  z-index: 2;
+}
+
+.mcard--coral { background: #FF6B5A; }
+.mcard--sky { background: #4FB3FF; }
+.mcard--mint { background: #3ED6A8; }
+.mcard--lemon { background: #D8F14A; }
+.mcard--sun { background: #FFD84D; }
+
+.mcard--wide {
+  width: 100%;
+  min-height: 86px;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  transform: none;
+}
+
+.mcard__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.mcard__arrow {
+  font-size: 26px;
+  font-weight: 800;
+  color: #12100E;
+}

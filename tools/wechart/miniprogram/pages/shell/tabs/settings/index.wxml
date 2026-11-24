@@ -1,0 +1,165 @@
+<view class="card rise">
+  <view class="card__head">
+    <view class="ic-wrap ic-wrap--lemon"><image src="/images/icons/film.png"></image></view>
+    <view class="card__title">FILM设置</view>
+    <view class="spacer"></view>
+    <button class="btn btn--sm" bindtap="onRefreshFiles">刷新</button>
+  </view>
+
+  <scroll-view class="file-list" scroll-y>
+    <view class="empty" wx:if="{{!fileList.length}}">暂无文件</view>
+    <view
+      wx:for="{{fileList}}"
+      wx:key="fileId"
+      class="file-item {{item.current ? 'file-item--on' : ''}}"
+      data-id="{{item.fileId}}"
+      bindtap="toggleSelect"
+    >
+      <view class="file-check {{item.selected ? 'file-check--on' : ''}}">{{item.selected ? '✓' : ''}}</view>
+      <view class="file-id">{{item.fileId}}</view>
+      <view class="file-name">{{item.name}}</view>
+      <view class="chip chip--coral" wx:if="{{item.current}}">显示中</view>
+    </view>
+  </scroll-view>
+
+  <view class="film-file-selection">
+    <button class="btn btn--sm" bindtap="toggleSelectAll">{{allSelected ? '取消全选' : '全选'}}</button>
+    <text class="small">已选 {{selectedCount}} 张</text>
+  </view>
+
+  <view class="btn-row">
+    <button class="btn" bindtap="deleteSelected" disabled="{{!selectedCount}}">删除所选</button>
+    <button class="btn" bindtap="displaySelected" disabled="{{selectedCount !== 1}}">选择显示</button>
+  </view>
+
+  <view class="field" style="margin-top: 16px">
+    <text class="field__label">照片切换模式</text>
+  </view>
+  <view class="modes">
+    <view class="mode-button {{photoMode === 1 ? 'mode-button--on' : ''}}" data-mode="auto" bindtap="setPhotoMode">
+      <image src="/images/icons/film.png"></image>
+      <text>本地轮播</text>
+    </view>
+    <view class="mode-button {{photoMode === 0 ? 'mode-button--on' : ''}}" data-mode="manual" bindtap="setPhotoMode">
+      <image src="/images/icons/close.png"></image>
+      <text>关闭</text>
+    </view>
+    <view class="mode-button {{photoMode === 2 ? 'mode-button--on' : ''}}" wx:if="{{wifiEnable}}" data-mode="wifi" bindtap="setPhotoMode">
+      <image src="/images/icons/network.svg"></image>
+      <text>WiFi 轮播</text>
+    </view>
+  </view>
+</view>
+
+<view class="card rise">
+  <view class="card__head">
+    <view class="ic-wrap ic-wrap--mint"><image src="/images/icons/sleep.svg"></image></view>
+    <view class="card__title">休眠设置</view>
+  </view>
+
+  <view class="switch-row" bindtap="onSleepToggle">
+    <view class="switch-row__main">
+      <view class="switch-row__label">休眠开关</view>
+      <view class="switch-row__hint">开启后按固件的空闲策略自动休眠；手动休眠独立于此开关</view>
+    </view>
+    <view class="switch {{sleepOnOff ? 'switch--on' : ''}}"></view>
+  </view>
+
+  <view class="switch-row" bindtap="onAutoWakeToggle">
+    <view class="switch-row__main">
+      <view class="switch-row__label">休眠自动唤醒</view>
+      <view class="switch-row__hint">开启后将在设置时间内自动唤醒</view>
+    </view>
+    <view class="switch {{autoWake ? 'switch--on' : ''}}"></view>
+  </view>
+
+  <view class="field" style="margin-top: 14px">
+    <view class="row row--between">
+      <text class="field__label" style="margin-bottom: 0">自动唤醒时长</text>
+      <text class="value-chip">{{wakeLabel}}</text>
+    </view>
+    <view class="wake-slider">
+      <text class="wake-min">10分钟</text>
+      <view class="wake-slider__control">
+        <ff-slider value="{{wakeMinutes}}" min="{{10}}" max="{{2880}}" step="{{10}}"
+          show-value="{{false}}" disabled="{{!autoWake}}" bindchange="onWakeChange" />
+      </view>
+      <text class="wake-max">48小时</text>
+    </view>
+  </view>
+</view>
+
+<view class="card rise">
+  <view class="card__head">
+    <view class="ic-wrap ic-wrap--sky"><image src="/images/icons/ota.svg"></image></view>
+    <view class="card__title">设备控制</view>
+  </view>
+
+  <view class="action-header">固件升级</view>
+  <view class="btn-row">
+    <button class="btn btn--sm" bindtap="onChooseFirmware">选择文件</button>
+    <button class="btn btn--sm btn--primary" bindtap="onOtaStart" disabled="{{otaRunning}}">开始升级</button>
+    <button class="btn btn--sm btn--danger" bindtap="onOtaCancel" wx:if="{{otaRunning}}">取消</button>
+  </view>
+  <view class="small" style="margin-top: 8px" wx:if="{{otaName}}">{{otaName}} · {{otaSize}} 字节</view>
+  <view class="small" style="margin-top: 4px" wx:if="{{otaStatus}}">{{otaStatus}}</view>
+  <view class="progress" style="margin-top: 8px" wx:if="{{otaRunning || otaProgress}}">
+    <view class="progress__fill" style="width: {{otaProgress}}%"></view>
+  </view>
+  <view class="field__hint">BLE 升级约需 2~4 分钟，请保持前台并让屏幕常亮，中断后需重新开始。</view>
+
+  <view class="divider"></view>
+
+  <view class="action-header">设备管理</view>
+  <view class="btn-row">
+    <button class="btn" bindtap="onReboot">重启</button>
+    <button class="btn" bindtap="onFactoryReset">重置</button>
+  </view>
+  <button class="btn btn--danger btn--block" style="margin-top: 10px" bindtap="onSdReset">SD 卡格式化</button>
+</view>
+
+<view class="card rise">
+  <view class="card__head">
+    <view class="ic-wrap ic-wrap--coral"><image src="/images/icons/debug.svg"></image></view>
+    <view class="card__title">调试日志</view>
+  </view>
+  <view class="btn-row">
+    <button class="btn btn--sm" bindtap="toggleDebug">{{debugOpen ? '收起' : '打开'}}</button>
+    <button class="btn btn--sm" bindtap="clearDebug">清空</button>
+    <button class="btn btn--sm" bindtap="copyDebug">复制</button>
+  </view>
+  <scroll-view class="debug-log" scroll-y wx:if="{{debugOpen}}">
+    <view wx:for="{{logs}}" wx:key="index" class="debug-line debug-line--{{item.type}}">{{item.text}}</view>
+    <view class="empty" wx:if="{{!logs.length}}">暂无日志</view>
+  </scroll-view>
+</view>
+
+<view class="card rise">
+  <view class="card__head">
+    <view class="ic-wrap ic-wrap--sun"><image src="/images/icons/advanced.svg"></image></view>
+    <view class="card__title">创作默认算法</view>
+  </view>
+  <ff-select label="默认转换算法" value="{{algoValue}}" options="{{algoOptions}}" bindchange="onAlgoChange" />
+  <view class="field__hint">用于批量、日历等一键出图入口；Film 编辑器里仍可单独选择。</view>
+</view>
+
+<view class="card rise">
+  <view class="card__head">
+    <view class="ic-wrap ic-wrap--paper"><image src="/images/icons/about.svg"></image></view>
+    <view class="card__title">关于</view>
+  </view>
+  <view class="list">
+    <view class="list-row">
+      <view class="list-row__main">
+        <view class="list-row__title">FrameFilm 小程序</view>
+        <view class="list-row__sub">版本 {{version}}</view>
+      </view>
+    </view>
+    <view class="list-row">
+      <view class="list-row__main">
+        <view class="list-row__title">开源协议</view>
+        <view class="list-row__sub">GPL-3.0</view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,54 @@
+<view class="screen calendar-screen" style="padding-top: {{statusBarHeight}}px">
+  <view class="topbar">
+    <view class="topbar__back" bindtap="onBack">‹</view>
+    <view class="topbar__main">
+      <view class="topbar__title">日历</view>
+      <view class="topbar__sub">农历 · 节气 · 节日</view>
+    </view>
+    <view class="spacer"></view>
+    <view class="chip {{connected ? 'chip--mint' : ''}}">{{connected ? '在线' : '离线'}}</view>
+  </view>
+
+  <view class="card rise">
+    <view class="row row--between" style="margin-bottom: 12px">
+      <button class="btn btn--sm" bindtap="onPrev">上月</button>
+      <view class="month-label">{{monthLabel}}</view>
+      <button class="btn btn--sm" bindtap="onNext">下月</button>
+    </view>
+
+    <view class="polaroid">
+      <view class="canvas-wrap">
+        <canvas type="2d" id="calendar-canvas" class="calendar-canvas"
+          style="width: {{boxW}}px; height: {{boxH}}px"></canvas>
+      </view>
+    </view>
+
+    <view class="row row--wrap" style="margin-top: 12px">
+      <view wx:for="{{schemes}}" wx:key="name"
+        class="chip {{schemeIndex === index ? 'chip--coral' : ''}}"
+        data-index="{{index}}" bindtap="onScheme">{{item.name}}</view>
+      <view class="spacer"></view>
+      <button class="btn btn--sm" bindtap="onToday">回到本月</button>
+    </view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--coral"><image src="/images/icons/photo-file.svg"></image></view>
+      <view class="card__title">输出</view>
+    </view>
+    <view class="btn-row">
+      <button class="btn" bindtap="onExport">导出 .film</button>
+      <button class="btn btn--primary" bindtap="onUpload" disabled="{{transferring}}">
+        {{transferring ? '上传中…' : '发送到设备'}}
+      </button>
+    </view>
+    <view class="progress" style="margin-top: 10px" wx:if="{{transferring}}">
+      <view class="progress__fill" style="width: {{progress}}%"></view>
+    </view>
+  </view>
+
+  <ff-nav active="{{1}}" detail="{{true}}" />
+
+  <ff-toast />
+</view>

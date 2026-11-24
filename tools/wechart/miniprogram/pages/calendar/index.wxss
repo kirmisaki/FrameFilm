@@ -1,0 +1,23 @@
+.calendar-screen {
+  padding-bottom: 110px;
+}
+
+.month-label {
+  flex: 1;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.canvas-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-canvas {
+  display: block;
+  background: #FFFFFF;
+  border: 2px solid #12100E;
+  border-radius: 6px;
+}
