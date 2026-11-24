@@ -1,6 +1,6 @@
 const filmUtils = require('../../../utils/film-utils');
 const filmPipeline = require('../../../utils/film-pipeline');
-const algorithms = require('../../../utils/algorithms');
+const algorithms = require('../../lib/algorithms');
 const sourcefit = require('../../../utils/sourcefit');
 const store = require('../../../platform/store');
 const ble = require('../../../platform/ble');
