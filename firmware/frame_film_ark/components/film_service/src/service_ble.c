@@ -68,7 +68,7 @@
 #define BLE_RESP_DATA_MAX          (192)  /* Includes read-only catalog filename responses. */
 #define BLE_PROFILE_PATH           "/sdcard/app/pass/profile.json"
 #define BLE_PROFILE_FILE_MAX       (350000L)
-#define BLE_PROFILE_CHUNK_MAX      (128u)
+#define BLE_PROFILE_CHUNK_MAX      (176u)  /* 4+9+176=189 = MTU 192 capacity; see 0x53 docs */
 
 /* 设备名固定前缀（机型识别用，用户只能改后缀） */
 #define BLE_NAME_PREFIX            SYS_DEVICE_NAME "-"

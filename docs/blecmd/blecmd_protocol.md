@@ -286,7 +286,7 @@
 
 | 通道 | 命令 | 请求 DATA | 同通道响应 DATA |
 |------|------|-----------|----------------|
-| 0x53 | PROFILE_READ | offset(u32 BE) + count(u8，1–128) | status(1) + offset(u32 BE) + total(u32 BE) + bytes(0–128) |
+| 0x53 | PROFILE_READ | offset(u32 BE) + count(u8，1–176) | status(1) + offset(u32 BE) + total(u32 BE) + bytes(0–176) |
 
 ### 3.13 Ark 设备名称（0x54 / 0x55，固件 3.2.5 起）
 
@@ -1522,9 +1522,9 @@ SUM  = (0x55 + 0x4E + 0x01 + 0x02) & 0xFF = 0xA6
 
 ### 4.12 Ark 通行证资料读取（0x53）
 
-请求 `DATA=[offset(4B，大端), count(1B)]`，`count` 必须为 1–128。设备每次只读取固定路径 `/sdcard/app/pass/profile.json`，请求结束即关闭文件；文件最大 350000 字节。资料可以通过现有 FILE_START/FILE_NAME/FILE_LEN/FILE_DATA/FILE_STOP 上传，FILE_NAME 固定用 `app/pass/profile.json`。显式路径上传不会自动刷新页面，回到通行证页或单击确认键刷新。
+请求 `DATA=[offset(4B，大端), count(1B)]`，`count` 必须为 1–176。设备每次只读取固定路径 `/sdcard/app/pass/profile.json`，请求结束即关闭文件；文件最大 350000 字节。资料可以通过现有 FILE_START/FILE_NAME/FILE_LEN/FILE_DATA/FILE_STOP 上传，FILE_NAME 固定用 `app/pass/profile.json`。显式路径上传不会自动刷新页面，回到通行证页或单击确认键刷新。
 
-响应 `DATA=[status(1B), offset(4B，大端), total(4B，大端), bytes(0–128B)]`，`LEN=9+实际读取字节数`。`offset` 回显请求位置，`total` 是已成功取得的文件长度；状态码：
+响应 `DATA=[status(1B), offset(4B，大端), total(4B，大端), bytes(0–176B)]`，`LEN=9+实际读取字节数`。`offset` 回显请求位置，`total` 是已成功取得的文件长度；状态码：
 
 | status | 含义 |
 |--------|------|
@@ -1534,7 +1534,7 @@ SUM  = (0x55 + 0x4E + 0x01 + 0x02) & 0xFF = 0xA6
 | 3 | 忙（BLE 文件/OTA 上传或临时 WiFi 直传进行中） |
 | 4 | 参数错误（请求长度、count 或 offset 不合法） |
 
-`offset` 可等于 `total`；大于 `total` 返回状态 4。错误响应没有 bytes；文件尚未打开时 `total=0`。读取整份资料时按响应中的实际 bytes 长度推进 offset，直至 `offset==total`。单帧最大 `137B DATA + 4B 帧头尾 = 141B`，客户端需协商 ATT MTU 至少 144；推荐沿用现有 200 MTU。设备入睡门闸期间同其他普通命令一样不应答。
+`offset` 可等于 `total`；大于 `total` 返回状态 4。错误响应没有 bytes；文件尚未打开时 `total=0`。读取整份资料时按响应中的实际 bytes 长度推进 offset，直至 `offset==total`。单帧最大 `185B DATA + 4B 帧头尾 = 189B`，客户端需协商 ATT MTU 至少 192；推荐沿用 200 MTU。响应超过 MTU−3 会被协议栈截断，客户端必须按协商 MTU 决定 count，不能一律请求 176。旧固件只接受 1–128，对更大的 count 返回状态 4，客户端应改用 128 重试同一 offset 并记住该上限。设备入睡门闸期间同其他普通命令一样不应答。
 
 ### 4.13 Ark 设备名称（0x54 / 0x55）
 

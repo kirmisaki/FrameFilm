@@ -55,7 +55,7 @@ class BleTransferCoordinator(
         active = true
         clean = false
         emit("validating", "蓝牙兼容：核对屏幕、当前页面与 SD 目录；请保持 App 前台")
-        val timeoutMs = 180_000L + ((total + payloadSize() - 1) / payloadSize()) * 150L
+        val timeoutMs = TransferPolicy.transferDeadlineMs(total, payloadSize())
         budget = Runnable { fail("BLE 照片发送超过本次字节预算，请保持前台后重试") }
             .also { main.postDelayed(it, timeoutMs) }
         barrier {

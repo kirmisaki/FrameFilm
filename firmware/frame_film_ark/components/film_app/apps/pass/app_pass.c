@@ -116,6 +116,22 @@ static pass_load_result_t pass_load_card(pass_card_t **out)
             /* Retain the selected compact mode independently of native ABC9. */
             card->fast = info.format == PASS_FMT_COMPACT_FAST;
         }
+        else
+        {
+            /* Turn the full-screen student card to match the physical frame.
+               Rotate only the loaded copy; preserve the stored byte order and LE16 codes. */
+            const size_t stride = card->abc9 ? 2u : 1u;
+            for(size_t left = 0, right = info.body_size - stride; left < right;
+                left += stride, right -= stride)
+            {
+                for(size_t i = 0; i < stride; ++i)
+                {
+                    const uint8_t value = body[left + i];
+                    body[left + i] = body[right + i];
+                    body[right + i] = value;
+                }
+            }
+        }
         goto loaded;
     }
     width = info.width; height = info.height;

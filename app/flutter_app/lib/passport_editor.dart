@@ -344,8 +344,15 @@ class _PassportEditorState extends State<PassportEditor> {
   Widget build(BuildContext context) {
     final errors = passportLayoutErrors(_profile);
     final op = widget.operation;
-    final total = op['total'] as num? ?? 0,
-        completed = op['completed'] as num? ?? 0;
+    final readTotal = (op['readTotal'] as num?)?.toInt() ?? 0;
+    final readCompleted = (op['readCompleted'] as num?)?.toInt() ?? 0;
+    final reading = op['phase'] == 'reading' || op['phase'] == 'verifying';
+    final total = reading && readTotal > 0
+        ? readTotal
+        : (op['total'] as num? ?? 0);
+    final completed = reading && readTotal > 0
+        ? readCompleted
+        : (op['completed'] as num? ?? 0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

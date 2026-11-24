@@ -129,6 +129,9 @@ class PreviewDeviceGateway implements DeviceGateway {
           'transferTransportReason',
           'settingsMessage',
           'syncedAt',
+          'studentPassportCapabilitiesKnown',
+          'studentPassportSupported',
+          'studentColorFastSupported',
         },
         passport: {
           ..._passport,
@@ -150,6 +153,7 @@ class PreviewDeviceGateway implements DeviceGateway {
         syncedAt: _connected ? _syncedAt : null,
         settingsMessage: _connected ? _settingsMessage : null,
         abc9PreviewSupported: _connected,
+        studentPassportCapabilitiesKnown: _connected,
         studentPassportSupported: _connected,
         studentColorFastSupported: _connected && scenario != PreviewScenario.legacyFirmware,
         colorPassportSupported: _connected && scenario != PreviewScenario.legacyFirmware,

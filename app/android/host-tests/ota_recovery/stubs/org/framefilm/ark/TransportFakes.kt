@@ -22,6 +22,8 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
 
     var isReady = false
         private set
+    private var generation = 0
+    val readyLinkId get() = generation.takeIf { isReady }
     val isBusy: Boolean get() = pending != null || writePending != null
     var isConnecting = false
     var autoReady = true
@@ -43,6 +45,8 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
     fun scannedName(address: String): String? = devices.find { it.address == address }?.address
     fun connect(@Suppress("UNUSED_PARAMETER") device: BluetoothDevice) {
         connectCount++
+        generation++
+        isReady = false
         isConnecting = true
         if (autoReady) forceReady()
     }
@@ -52,7 +56,9 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
         listener.onState("ready")
         listener.onReady()
     }
+    fun reportState(message: String) = listener.onState(message)
     fun disconnectNow() {
+        generation++
         isReady = false
         isConnecting = false
         val interrupted = pending
@@ -65,11 +71,12 @@ class ArkBleController(@Suppress("UNUSED_PARAMETER") context: Context, private v
     var closeCount = 0
         private set
     fun close() {
-        closeCount++; isReady = false; isConnecting = false
+        closeCount++; generation++; isReady = false; isConnecting = false
         val command = pending; pending = null
         val write = writePending; writePending = null
         command?.callback?.invoke(Result.failure(IllegalStateException("closed")))
         write?.invoke(Result.failure(IllegalStateException("closed")))
+        listener.onState("closed")
     }
     fun sendNoReply(channel: Int, payload: ByteArray, callback: (Result<Unit>) -> Unit) {
         check(isReady && !isBusy) { "Fake BLE write overlap or disconnected" }

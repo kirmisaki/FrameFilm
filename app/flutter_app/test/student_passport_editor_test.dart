@@ -8,6 +8,137 @@ import 'package:framefilm_ark/student_passport_editor.dart';
 import 'package:framefilm_ark/student_passport_profile.dart';
 
 void main() {
+  testWidgets('verify readback shows its own progress, not 100 percent', (
+    tester,
+  ) async {
+    const channel = MethodChannel('org.framefilm.ark/methods');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    await tester.binding.setSurfaceSize(const Size(820, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StudentPassportEditor(
+              controller: StudentPassportEditorController(),
+              canOperate: true,
+              connected: true,
+              supported: true,
+              busy: true,
+              operation: const {
+                'phase': 'verifying',
+                'completed': 100,
+                'total': 100,
+                'readCompleted': 40,
+                'readTotal': 80,
+              },
+              onRead: () async {},
+              onSave: (_, _) async {},
+              onCancel: () {},
+              onOpen: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final values = tester
+        .widgetList<LinearProgressIndicator>(
+          find.byType(LinearProgressIndicator),
+        )
+        .map((bar) => bar.value);
+    expect(values, contains(0.5));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student warning distinguishes support from connection and transport', (
+    tester,
+  ) async {
+    const channel = MethodChannel('org.framefilm.ark/methods');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    await tester.binding.setSurfaceSize(const Size(820, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = StudentPassportEditorController();
+    var sent = 0;
+    Future<void> show({
+      bool connected = true,
+      bool reading = false,
+      bool? i006,
+      bool? colorFast,
+      String? transportHint,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StudentPassportEditor(
+                controller: controller,
+                canOperate: connected && !reading,
+                connected: connected,
+                supported: i006,
+                colorFastSupported: colorFast,
+                readingCapabilities: reading,
+                canSend: transportHint == null,
+                transportHint: transportHint,
+                busy: false,
+                operation: const {},
+                onRead: () async {},
+                onSave: (_, _) async { sent++; },
+                onCancel: () {},
+                onOpen: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    final unsupported = find.textContaining('当前设备不支持所选学生证模式');
+    final overwrite = find.text('发送后会替换设备上的通行证。');
+    await show(connected: false);
+    expect(find.textContaining('连接 Ark 后可确认'), findsOneWidget);
+    expect(unsupported, findsNothing);
+    expect(overwrite, findsNothing);
+    await show(reading: true);
+    expect(find.textContaining('正在读取学生证模式'), findsOneWidget);
+    expect(unsupported, findsNothing);
+    await show();
+    expect(find.textContaining('尚未确认学生证模式'), findsOneWidget);
+    expect(unsupported, findsNothing);
+
+    await show(i006: true, colorFast: false);
+    expect(unsupported, findsNothing);
+    tester.widget<DropdownButtonFormField<String>>(
+      find.byKey(const ValueKey('student-i006')),
+    ).onChanged!('colorfast');
+    await tester.pump();
+    expect(controller.profile!.output, 'colorfast');
+    expect(unsupported, findsOneWidget);
+    expect(overwrite, findsNothing);
+
+    const blocked = '当前连接无法通过蓝牙发送学生证。';
+    await show(i006: true, colorFast: true, transportHint: blocked);
+    expect(unsupported, findsNothing);
+    expect(find.text(blocked), findsOneWidget);
+    expect(tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '发送学生证'),
+    ).onPressed, isNull);
+    await show(i006: true, colorFast: true);
+    expect(unsupported, findsNothing);
+    expect(find.text(blocked), findsNothing);
+    expect(controller.profile!.output, 'colorfast');
+    expect(sent, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student draft and readback stay isolated from operator data', (
     tester,
   ) async {
@@ -31,6 +162,7 @@ void main() {
           child: StudentPassportEditor(
             controller: controller,
             canOperate: true,
+            connected: true,
             supported: true,
             busy: false,
             operation: operation,

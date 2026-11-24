@@ -65,6 +65,35 @@ object TransferPolicy {
     fun supportsVerifiedBleFile(capabilities: ByteArray?): Boolean =
         capabilities != null && capabilities.size == 5 && capabilities[0] == 1.toByte() &&
             (capabilities[3].toInt() and 0x20) != 0
+
+    /** Byte budget shared by BLE upload/readback loops: 180 s plus 150 ms per chunk. */
+    fun transferDeadlineMs(total: Long, chunkSize: Int): Long =
+        180_000L + ((total + chunkSize - 1) / chunkSize) * 150L
+
+    /** Emit progress at most ~100 times per transfer, never more than every 4 KiB. */
+    fun progressStep(total: Long): Long = maxOf(4096L, total / 100)
+
+    /**
+     * 0x53 readback sizing. Frame = 4-byte envelope + 9-byte response header + payload,
+     * and an ATT notification holds at most MTU-3 bytes, so payload <= MTU-16. 176 is
+     * also the firmware maximum: at MTU 192 the frame is exactly 189 bytes.
+     */
+    object PassportRead {
+        const val FIRMWARE_MAX_CHUNK = 176
+        const val LEGACY_MAX_CHUNK = 128
+        const val MIN_USABLE_CHUNK = 64
+        private const val CHUNK_MARGIN = 16
+
+        fun chunkSize(mtu: Int): Int =
+            (mtu - CHUNK_MARGIN).coerceIn(1, FIRMWARE_MAX_CHUNK)
+
+        fun needsReconnect(mtu: Int): Boolean =
+            chunkSize(mtu) < MIN_USABLE_CHUNK
+
+        /** Old firmware rejects counts above 128 with status 4. */
+        fun shouldFallbackToLegacy(requested: Int, status: Int): Boolean =
+            status == 4 && requested > LEGACY_MAX_CHUNK
+    }
 }
 
 /** The exact subset accepted by the ordinary-photo BLE path, not the broader Film importer. */
