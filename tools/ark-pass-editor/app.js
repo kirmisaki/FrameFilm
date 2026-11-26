@@ -7,8 +7,6 @@
   const STUDENT_TEMPLATE = 'rhodes-academy-student';
   const STUDENT_DRAFT_KEY = 'framefilm-ark-pass-rhodes-academy-student-v2';
   const STUDENT_W = 720, STUDENT_H = 480;
-  // PSD 1011×638 scaled by 480/638 and center-cropped horizontally to 720.
-  const STUDENT_TOP_STRIPE = { left: 218, sourceHeight: 48, visibleHeight: 10 };
   const STUDENT_AVATAR = { x: 41, y: 111, width: 239, height: 299 };
   const STUDENT_CODE = { x: 305, y: 293, size: 35, width: 395 };
   const STUDENT_NUMBER = { x: 308, y: 355, size: 20, width: 235 };
@@ -20,7 +18,7 @@
     ['guard', '近卫'], ['defender', '重装'], ['caster', '术士'], ['supporter', '辅助'], ['specialist', '特种']
   ]);
   const studentBases = new Map();
-  const studentBaseUrl = (palette) => `student-palettes/fullscreen/${palette}.png`;
+  const studentBaseUrl = (palette) => `assets/student-passport/${palette}.png?v=3`;
   const usesStudentI006 = () => isStudent() && profile.output === DEFAULT_STUDENT_OUTPUT;
   const avatarSize = (owner = profile) => templateOf(owner) === STUDENT_TEMPLATE ? STUDENT_AVATAR : { width: AV_W, height: AV_H };
   const SERVICE_UUID = '00002000-0000-1000-8000-00805f9b34fb';
@@ -276,16 +274,7 @@
 
   function drawStudent(base) {
     g.fillStyle = '#fff'; g.fillRect(0, 0, STUDENT_W, STUDENT_H);
-    const { left, sourceHeight, visibleHeight } = STUDENT_TOP_STRIPE;
-    // Keep just the top edge of the PSD stripe and expose the white card stock below it.
-    g.save();
-    g.beginPath();
-    g.rect(0, 0, STUDENT_W, visibleHeight);
-    g.rect(0, visibleHeight, left, sourceHeight - visibleHeight);
-    g.rect(0, sourceHeight, STUDENT_W, STUDENT_H - sourceHeight);
-    g.clip();
     g.drawImage(base.image, 0, 0);
-    g.restore();
     if (usesStudentI006() && !base.pixels) base.pixels = g.getImageData(0, 0, STUDENT_W, STUDENT_H);
     const { x, y, width, height } = STUDENT_AVATAR;
     if (avatarImage) g.drawImage(avatarImage, x, y, width, height);
