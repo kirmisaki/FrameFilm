@@ -1,0 +1,27 @@
+.screen {
+  padding-bottom: 110px;
+}
+
+.canvas-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quote-canvas {
+  display: block;
+  background: #FFFFFF;
+  border: 2px solid #12100E;
+  border-radius: 6px;
+}
+
+.quote-textarea {
+  width: 100%;
+  min-height: 88px;
+  padding: 11px 13px;
+  border: 3px solid #12100E;
+  border-radius: 12px;
+  background: #FFFFFF;
+  font-size: 16px;
+  line-height: 1.5;
+}

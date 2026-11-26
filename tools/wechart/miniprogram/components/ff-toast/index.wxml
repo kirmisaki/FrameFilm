@@ -1,0 +1,3 @@
+<view class="fftoast fftoast--{{type}}" wx:if="{{visible}}">
+  <text>{{message}}</text>
+</view>

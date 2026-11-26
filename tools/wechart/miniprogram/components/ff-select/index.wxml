@@ -1,0 +1,27 @@
+<view class="ffselect {{disabled ? 'is-disabled' : ''}}">
+  <text class="ffselect__label" wx:if="{{label}}">{{label}}</text>
+  <view class="ffselect__control" bindtap="open">
+    <text class="ffselect__text">{{current}}</text>
+    <text class="ffselect__arrow">▾</text>
+  </view>
+</view>
+
+<view class="ffselect__mask" wx:if="{{open}}" catchtap="close"></view>
+<view class="ffselect__sheet" wx:if="{{open}}" catchtap="noop">
+  <view class="ffselect__head">
+    <text class="ffselect__title">{{label || '请选择'}}</text>
+    <view class="ffselect__close" bindtap="close">×</view>
+  </view>
+  <scroll-view class="ffselect__list" scroll-y>
+    <view
+      wx:for="{{items}}"
+      wx:key="value"
+      class="ffselect__item {{item.disabled ? 'is-disabled' : ''}} {{item.selected ? 'is-on' : ''}}"
+      data-index="{{index}}"
+      bindtap="choose"
+    >
+      <text class="ffselect__item-text">{{item.label}}</text>
+      <text class="ffselect__check" wx:if="{{item.selected}}">✓</text>
+    </view>
+  </scroll-view>
+</view>

@@ -1,0 +1,12 @@
+<view class="bottom-nav">
+  <view
+    wx:for="{{items}}"
+    wx:key="index"
+    class="nav-item {{active === item.index ? 'nav-item--on' : ''}}"
+    data-index="{{item.index}}"
+    bindtap="onTap"
+  >
+    <image class="nav-icon" src="{{active === item.index ? item.activeIcon : item.icon}}"></image>
+    <text>{{item.label}}</text>
+  </view>
+</view>

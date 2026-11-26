@@ -1,4 +1,7 @@
 {
-  "navigationBarTitleText": "创作",
-  "usingComponents": {}
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "ff-toast": "/components/ff-toast/index",
+    "ff-nav": "/components/ff-nav/index"
+  }
 }

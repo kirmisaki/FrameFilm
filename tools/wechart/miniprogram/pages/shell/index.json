@@ -1,0 +1,10 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "connect-tab": "/pages/shell/tabs/connect/index",
+    "create-tab": "/pages/shell/tabs/create/index",
+    "settings-tab": "/pages/shell/tabs/settings/index",
+    "ff-nav": "/components/ff-nav/index",
+    "ff-toast": "/components/ff-toast/index"
+  }
+}

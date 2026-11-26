@@ -1,0 +1,7 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "ff-toast": "/components/ff-toast/index",
+    "ff-nav": "/components/ff-nav/index"
+  }
+}

@@ -1,0 +1,26 @@
+<view class="shell" style="padding-top: {{statusBarHeight}}px">
+  <view class="app-head">
+    <view class="app-title">{{titles[tab]}}</view>
+    <view class="batt-chip" wx:if="{{connected}}">
+      <view class="dot {{battery > 0 ? 'dot--on' : ''}}"></view>
+      <text>{{battery}}%</text>
+    </view>
+    <view class="batt-chip batt-chip--off" wx:else>
+      <text>未连接</text>
+    </view>
+  </view>
+
+  <view class="tab-pane {{tab === 0 ? '' : 'hide'}}">
+    <connect-tab />
+  </view>
+  <view class="tab-pane {{tab === 1 ? '' : 'hide'}}">
+    <create-tab />
+  </view>
+  <view class="tab-pane {{tab === 3 ? '' : 'hide'}}">
+    <settings-tab />
+  </view>
+
+  <ff-nav active="{{tab}}" />
+
+  <ff-toast />
+</view>

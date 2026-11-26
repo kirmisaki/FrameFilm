@@ -1,0 +1,8 @@
+{
+  "component": true,
+  "styleIsolation": "apply-shared",
+  "usingComponents": {
+    "ff-slider": "/components/ff-slider/index",
+    "ff-select": "/components/ff-select/index"
+  }
+}

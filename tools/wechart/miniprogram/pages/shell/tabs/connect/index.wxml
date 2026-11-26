@@ -1,0 +1,114 @@
+<view class="card rise">
+  <view class="card__head">
+    <view class="ic-wrap ic-wrap--sky"><image src="/images/icons/bluetooth.svg"></image></view>
+    <view class="card__title">连接状态</view>
+  </view>
+
+  <view class="status {{connected ? 'connected' : ''}}">{{statusText}}</view>
+
+  <view class="device-type-info" wx:if="{{connected}}">
+    <view class="device-type-badge">{{modelLabel}}</view>
+    <view class="device-resolution">{{screenName}} · {{width}}×{{height}}</view>
+    <view class="value-chip">{{battery}}%</view>
+  </view>
+
+  <view class="btn-row">
+    <button class="btn btn--primary" wx:if="{{!connected}}" bindtap="onScanTap">{{scanning ? '停止扫描' : '蓝牙扫描'}}</button>
+    <button class="btn" wx:if="{{!connected && reconnectAvailable}}" bindtap="onReconnect">重连上次</button>
+    <button class="btn" wx:if="{{connected}}" bindtap="onDisconnect">断开连接</button>
+  </view>
+
+  <view class="field__hint">支持 FrameFilm、Pro、Max、Dock；连接后自动读取屏幕、电量与网络状态。</view>
+</view>
+
+<view class="card rise">
+  <view class="card__head">
+    <view class="ic-wrap ic-wrap--mint"><image src="/images/icons/scan.svg"></image></view>
+    <view class="card__title">附近设备</view>
+  </view>
+
+  <view class="device-list" wx:if="{{devices.length}}">
+    <view class="device-row" wx:for="{{devices}}" wx:key="deviceId" data-index="{{index}}" bindtap="onConnect">
+      <view class="ic-wrap ic-wrap--paper"><image src="/images/icons/bluetooth.svg"></image></view>
+      <view class="list-row__main">
+        <view class="list-row__title">{{item.name}}</view>
+        <view class="list-row__sub">信号 {{item.RSSI}} dBm</view>
+      </view>
+      <view class="chip chip--lemon">连接</view>
+    </view>
+  </view>
+  <view class="empty" wx:else>点击“蓝牙扫描”开始搜索 FrameFilm 设备</view>
+</view>
+
+<view class="card rise" wx:if="{{connected}}">
+  <view class="panel">
+    <view class="panel__head" bindtap="toggleNetwork">
+      <view class="ic-wrap ic-wrap--sky"><image src="/images/icons/network.svg"></image></view>
+      <view class="card__title">网络配置</view>
+      <view class="spacer"></view>
+      <view class="panel__arrow {{networkOpen ? 'panel__arrow--open' : ''}}">⌄</view>
+    </view>
+
+    <view class="panel__body" wx:if="{{networkOpen}}">
+      <view class="switch-row" bindtap="onWifiToggle">
+        <view class="switch-row__main">
+          <view class="switch-row__label">WiFi</view>
+          <view class="switch-row__hint">开启后设备可主动拉取图片</view>
+        </view>
+        <view class="switch {{wifiEnable ? 'switch--on' : ''}}"></view>
+      </view>
+
+      <view class="field">
+        <text class="field__label">SSID</text>
+        <input class="input" value="{{ssid}}" data-field="ssid" data-cmd="50" data-max="64"
+          bindinput="onInput" bindblur="onBlur" placeholder="输入 WiFi 名称" />
+      </view>
+
+      <view class="field">
+        <text class="field__label">密码</text>
+        <input class="input" password value="{{password}}" data-field="password" data-cmd="52" data-max="64"
+          bindinput="onInput" bindblur="onBlur" placeholder="输入 WiFi 密码" />
+      </view>
+
+      <view class="btn-row">
+        <button class="btn" bindtap="onWifiConnect">连接</button>
+        <button class="btn" bindtap="onWifiDisconnect">断开</button>
+      </view>
+
+      <view class="wifi-status-row">
+        <view class="wifi-status-dot {{wifiConnected ? 'wifi-status-dot--on' : ''}}"></view>
+        <text>{{wifiStatusText}}</text>
+      </view>
+
+      <view class="divider"></view>
+
+      <view class="field">
+        <text class="field__label">API 地址</text>
+        <view class="input-row">
+          <input class="input" value="{{apiUrl}}" data-field="apiUrl" bindinput="onInput"
+            placeholder="http://服务器IP:8000" />
+          <button class="btn btn--sm" bindtap="onApplyApi">设置</button>
+        </view>
+        <view class="field__hint">心跳地址自动拼接 /api/v1/device/heartbeat</view>
+      </view>
+
+      <view class="field">
+        <text class="field__label">心跳间隔（秒）</text>
+        <view class="input-row">
+          <input class="input" type="number" value="{{heartbeatInterval}}" data-field="heartbeatInterval"
+            bindinput="onInput" placeholder="5-180" />
+          <button class="btn btn--sm" bindtap="onApplyHeartbeat">设置</button>
+        </view>
+        <view class="field__hint">设备主动上报频率，范围 5~180 秒</view>
+      </view>
+
+      <view class="btn-row">
+        <button class="btn btn--sm" bindtap="onDownloadTest">下载测试</button>
+        <button class="btn btn--sm btn--danger" bindtap="onWifiClear">清除网络配置</button>
+      </view>
+      <view class="wifi-status-row">
+        <text class="field__hint">{{downloadStatusText}}</text>
+      </view>
+    </view>
+  </view>
+</view>

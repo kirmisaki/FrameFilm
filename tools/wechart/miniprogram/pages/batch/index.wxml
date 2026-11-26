@@ -1,0 +1,74 @@
+<view class="screen" style="padding-top: {{statusBarHeight}}px">
+  <view class="topbar">
+    <view class="topbar__back" bindtap="onBack">‹</view>
+    <view class="topbar__main">
+      <view class="topbar__title">批量上传</view>
+      <view class="topbar__sub">逐张转换并写入设备</view>
+    </view>
+    <view class="spacer"></view>
+    <view class="chip {{connected ? 'chip--mint' : ''}}">{{connected ? '在线' : '离线'}}</view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--lemon"><image src="/images/icons/batch.svg"></image></view>
+      <view class="card__title">选择照片</view>
+    </view>
+    <button class="btn btn--primary btn--block" bindtap="onSelect" disabled="{{running}}">一次选多张</button>
+    <view class="field__hint">可多选，按顺序逐张转换并写入设备</view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--sky"><image src="/images/icons/film.png"></image></view>
+      <view class="card__title">待传片单</view>
+      <view class="spacer"></view>
+      <text class="small">{{list.length}} 张</text>
+    </view>
+
+    <scroll-view class="file-list" scroll-y>
+      <view class="empty" wx:if="{{!list.length}}">还没有选择照片</view>
+      <view class="file-item" wx:for="{{list}}" wx:key="index">
+        <view class="file-id">{{item.index}}</view>
+        <view class="file-name">{{item.name}}</view>
+        <text class="small">{{item.status}}</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--coral"><image src="/images/icons/photo-file.svg"></image></view>
+      <view class="card__title">输出</view>
+    </view>
+
+    <view class="field">
+      <text class="field__label">文件名前缀</text>
+      <input class="input" value="{{prefix}}" bindinput="onPrefixInput" placeholder="batch_" />
+    </view>
+
+    <view class="btn-row">
+      <button class="btn btn--primary" bindtap="onStart" disabled="{{running}}">{{finished ? '重新上传' : '开始批量上传'}}</button>
+      <button class="btn btn--danger" bindtap="onCancel" wx:if="{{running}}">取消</button>
+    </view>
+
+    <view class="row row--between" style="margin-top: 12px">
+      <text class="small">{{running ? ('正在处理第 ' + index + ' / ' + list.length + ' 张') : (finished ? '已完成' : '等待开始')}}</text>
+      <text class="small">{{done}} 成功 · {{failed}} 失败</text>
+    </view>
+    <view class="small" style="margin-top: 6px" wx:if="{{currentName}}">{{currentName}}</view>
+
+    <view class="small" style="margin-top: 12px">总进度 {{overall}}%</view>
+    <view class="progress" style="margin-top: 6px">
+      <view class="progress__fill" style="width: {{overall}}%"></view>
+    </view>
+    <view class="small" style="margin-top: 8px" wx:if="{{running}}">当前文件 {{progress}}%</view>
+    <view class="progress" style="margin-top: 6px" wx:if="{{running}}">
+      <view class="progress__fill" style="width: {{progress}}%"></view>
+    </view>
+  </view>
+
+  <ff-nav active="{{1}}" detail="{{true}}" />
+
+  <ff-toast />
+</view>

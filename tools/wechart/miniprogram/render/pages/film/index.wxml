@@ -1,0 +1,121 @@
+<view class="screen film-screen" style="padding-top: {{statusBarHeight}}px">
+  <view class="topbar">
+    <view class="topbar__back" bindtap="onBack">‹</view>
+    <view class="topbar__main">
+      <view class="topbar__title">Film</view>
+      <view class="topbar__sub">{{deviceLabel || '未连接设备'}}</view>
+    </view>
+    <view class="spacer"></view>
+    <view class="chip {{connected ? 'chip--mint' : ''}}">{{connected ? '在线' : '离线'}}</view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--lemon"><image src="/images/icons/advanced.svg"></image></view>
+      <view class="card__title">上传与算法</view>
+    </view>
+
+    <button class="btn btn--primary btn--block" bindtap="onPickAnother">选择图片</button>
+
+    <ff-select label="抖动算法" value="{{algoValue}}" options="{{algoOptions}}" bindchange="onAlgoChange" />
+
+    <view class="list-row">
+      <view class="list-row__main">
+        <view class="list-row__title">启用抖动</view>
+        <view class="list-row__sub">关闭后按最近色量化</view>
+      </view>
+      <view class="switch {{ditherEnabled ? 'switch--on' : ''}}" bindtap="onDitherToggle"></view>
+    </view>
+
+    <ff-slider
+      wx:if="{{showStrength}}"
+      label="抖动强度"
+      value="{{strength}}"
+      min="{{0}}"
+      max="{{5}}"
+      step="{{0.1}}"
+      decimals="{{1}}"
+      bindchanging="onStrengthChanging"
+      bindchange="onStrengthChange"
+    />
+
+    <block wx:if="{{showColor}}">
+      <ff-slider label="对比度" value="{{contrast}}" min="{{0.5}}" max="{{2}}" step="{{0.1}}" decimals="{{1}}"
+        bindchanging="onContrastChanging" bindchange="onContrastChange" />
+      <ff-slider label="饱和度" value="{{saturation}}" min="{{0}}" max="{{3}}" step="{{0.1}}" decimals="{{1}}"
+        bindchanging="onSaturationChanging" bindchange="onSaturationChange" />
+    </block>
+
+    <block wx:if="{{showSourceFit}}">
+      <ff-slider label="明暗范围拟合" value="{{rangeFit}}" min="{{0}}" max="{{1}}" step="{{0.05}}" decimals="{{2}}"
+        bindchanging="onRangeFitChanging" bindchange="onRangeFitChange" />
+      <ff-slider label="暖色收缩" value="{{warmChroma}}" min="{{0}}" max="{{1}}" step="{{0.05}}" decimals="{{2}}"
+        bindchanging="onWarmChanging" bindchange="onWarmChange" />
+    </block>
+
+    <view class="adaptive-text" wx:if="{{adaptiveText}}">{{adaptiveText}}</view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--sun"><image src="/images/icons/film.png"></image></view>
+      <view class="card__title">预览</view>
+    </view>
+    <view class="polaroid">
+      <view class="canvas-wrap">
+        <canvas
+          type="2d"
+          id="film-canvas"
+          class="film-canvas"
+          style="width: {{boxW}}px; height: {{boxH}}px"
+          bindtouchstart="onTouchStart"
+          bindtouchmove="onTouchMove"
+          bindtouchend="onTouchEnd"
+          bindtouchcancel="onTouchEnd"
+          catchtouchmove="onTouchMove"
+        ></canvas>
+        <view class="canvas-empty" wx:if="{{!hasImage}}">
+          <view class="canvas-empty__title">选择一张图片开始</view>
+          <button class="btn btn--primary btn--sm" bindtap="onPickAnother">选择图片</button>
+        </view>
+      </view>
+    </view>
+    <view class="small" style="margin-top: 8px">双指缩放 · 拖动调整位置</view>
+    <view class="preview-actions">
+      <button class="btn btn--sm" bindtap="onRotate">旋转 90°</button>
+      <button class="btn btn--sm" bindtap="onResetZoom">复位</button>
+      <button class="btn btn--sm" bindtap="onReset">重置</button>
+    </view>
+  </view>
+
+  <view class="card rise">
+    <view class="card__head">
+      <view class="ic-wrap ic-wrap--coral"><image src="/images/icons/photo-file.svg"></image></view>
+      <view class="card__title">输出</view>
+    </view>
+
+    <view class="field">
+      <text class="field__label">文件名</text>
+      <input class="input" value="{{fileName}}" bindinput="onFileNameInput" placeholder="output.film" />
+    </view>
+
+    <view class="btn-row">
+      <button class="btn" bindtap="onExport">下载</button>
+      <button class="btn btn--primary" bindtap="onUpload" disabled="{{transferring}}">
+        {{transferring ? '上传中…' : '发送到设备'}}
+      </button>
+    </view>
+
+    <view class="row row--between" style="margin-top: 10px" wx:if="{{transferring}}">
+      <text class="small">正在上传</text>
+      <text class="small">{{progress}}%</text>
+    </view>
+    <view class="progress" style="margin-top: 6px" wx:if="{{transferring}}">
+      <view class="progress__fill" style="width: {{progress}}%"></view>
+    </view>
+  </view>
+
+  <ff-nav active="{{2}}" />
+
+  <ff-toast />
+</view>

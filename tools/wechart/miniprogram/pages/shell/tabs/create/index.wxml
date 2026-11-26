@@ -1,0 +1,47 @@
+<view class="create-grid rise">
+  <view class="mcard mcard--coral" bindtap="onAlbum">
+    <view class="ic-wrap"><image src="/images/icons/album.svg"></image></view>
+    <view class="mcard__name">拾光</view>
+    <view class="mcard__sub">从手机相册挑选</view>
+    <image class="mcard__watermark" src="/images/icons/album.svg"></image>
+  </view>
+
+  <view class="mcard mcard--sky" bindtap="onCamera">
+    <view class="ic-wrap"><image src="/images/icons/camera.svg"></image></view>
+    <view class="mcard__name">定影</view>
+    <view class="mcard__sub">拍一张直接上屏</view>
+    <image class="mcard__watermark" src="/images/icons/camera.svg"></image>
+  </view>
+
+  <view class="mcard mcard--mint" bindtap="onQuote">
+    <view class="ic-wrap"><image src="/images/icons/quote.svg"></image></view>
+    <view class="mcard__name">一言</view>
+    <view class="mcard__sub">名言金句每日换</view>
+    <image class="mcard__watermark" src="/images/icons/quote.svg"></image>
+  </view>
+
+  <view class="mcard mcard--lemon" bindtap="onBatch">
+    <view class="mcard__new">新</view>
+    <view class="ic-wrap"><image src="/images/icons/batch.svg"></image></view>
+    <view class="mcard__name">批量上传</view>
+    <view class="mcard__sub">一组照片一次传完</view>
+    <image class="mcard__watermark" src="/images/icons/batch.svg"></image>
+  </view>
+</view>
+
+<view class="mcard mcard--sun mcard--wide rise" bindtap="onCalendar">
+  <view class="ic-wrap"><image src="/images/icons/template.svg"></image></view>
+  <view class="mcard__main">
+    <view class="mcard__name">日历</view>
+    <view class="mcard__sub">月历 · 农历 · 节气 · 节日</view>
+  </view>
+  <view class="mcard__arrow">›</view>
+  <image class="mcard__watermark" src="/images/icons/template.svg"></image>
+</view>
+
+<view class="card card--flat rise">
+  <view class="row">
+    <view class="dot {{connected ? 'dot--on' : ''}}"></view>
+    <text class="small">{{connected ? '已连接设备，制作完成后可直接上传' : '未连接设备：可以先制作并导出，连接后再上传'}}</text>
+  </view>
+</view>

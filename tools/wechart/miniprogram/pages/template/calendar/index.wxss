@@ -1,5 +1,0 @@
-@import "../../../styles/template-preview.wxss";
-
-page {
-  background: #FFF6EE;
-}

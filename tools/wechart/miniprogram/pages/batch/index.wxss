@@ -1,0 +1,8 @@
+button.btn {
+  margin: 0;
+  padding: 0 10px;
+}
+
+.screen {
+  padding-bottom: 110px;
+}
