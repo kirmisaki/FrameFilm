@@ -523,6 +523,7 @@ SD 不作为 SSR 的必需路径，但以下场景值得保留：
 
 ## 15. 附录
 
+- 视觉设计稿（800×480，8 种页面）：`tools/info-ui-mockup/index.html`
 - 硬件说明：`hardware/model/FrameFilmCommon/README.md`
 - 引脚表：`hardware/model/FrameFilmCommon/pinmap.csv`
 - 固件工程：`firmware/frame_film_info/`
