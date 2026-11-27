@@ -468,7 +468,7 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             uint32_t current_id = service_film_get_current_id();
             sys_logi(BEL_SERVICE_TAG, "Current display file id: %d", current_id);
 
-            uint8_t cmd_buf[6];
+            uint8_t cmd_buf[5];
             cmd_buf[0] = BLE_CMD_HEAD;
             cmd_buf[1] = BLE_FILM_TRANS_CH_FILE_DISPLAY_GET;
             cmd_buf[2] = 1;

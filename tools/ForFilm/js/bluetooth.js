@@ -1797,7 +1797,7 @@ async function setupBluetoothListener() {
                 filmListCapture.rows.set(fileId, { id: fileId, filename });
             }
         }
-        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_DISPLAY_GET && cmdLen === 1 && validFilmReply(data)) {
+        else if (data[0] === BLE_CMD_HEAD && cmdType === BLE_FILM_TRANS_CH_FILE_DISPLAY_GET && cmdLen === 1 && validFilmDisplayReply(data)) {
             const currentId = data[3];
             updateCurrentDisplayId(currentId);
             finishFilmDisplayWaiter(null, currentId);
@@ -2042,6 +2042,14 @@ function queueFilmFileTask(task) {
 
 function validFilmReply(data) {
     return data.length === data[2] + 4 && calculateChecksum(data, data.length - 1) === data[data.length - 1];
+}
+
+// 0x08 是列表读取的结束标记（0x06 没有结束帧）。部分经典固件把回包缓冲区多声明 1 字节，
+// 整块下发时会带一个无效尾字节；校验和仍在 LEN+3 处，所以按帧头声明长度校验以兼容这类固件。
+function validFilmDisplayReply(data) {
+    const frameLength = data[2] + 4;
+    return data.length >= frameLength &&
+        calculateChecksum(data, frameLength - 1) === data[frameLength - 1];
 }
 
 function finishFilmDisplayWaiter(error, id) {
