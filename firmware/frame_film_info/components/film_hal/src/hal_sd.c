@@ -104,8 +104,10 @@ static void sd_mount(void)
     esp_err_t ret;
     esp_vfs_fat_sdmmc_mount_config_t mount_config =
     {
-        .format_if_mount_failed = true,
-        .max_files = 5,
+        /* 信息屏把 SD 当缓存/素材，挂载失败只降级为无缓存；
+         * 不要自动格式化，格式化只能由用户显式触发（BLE 0x2B / App）。 */
+        .format_if_mount_failed = false,
+        .max_files = 8,
         .allocation_unit_size = 16 * 1024
     };
     const char mount_point[] = MOUNT_POINT;
