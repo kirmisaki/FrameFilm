@@ -10,6 +10,7 @@
 | [`frame_film_ark/`](frame_film_ark/) | 通行证版固件（**单机型**，app 框架主线） | `FRAMEFILMARK-<后缀>`（旧版无后缀） |
 | [`frame_film_dock/`](frame_film_dock/) | 充电底座固件（单机型） | `FRAMEFILMDOCK` |
 | [`frame_film_c3/`](frame_film_c3/) | 独立 C3 + JD79665AA 四色机型（实验性、未实屏验收） | `FRAMEFILMC3` |
+| [`frame_film_info/`](frame_film_info/) | 信息屏基础工程（**单机型**，FrameFilmCommon 通用主板 + GDEM075T41WT 800×480 黑白屏） | `FRAMEFILMINFO` |
 
 上述工程均基于 ESP-IDF 构建，采用相同的三层分层架构。C3 的存储与板级能力边界见其独立 README。
 
@@ -59,7 +60,7 @@
 
 ## 目录结构
 
-三个工程的三层结构一致；`frame_film_ark` 另有 `film_ui`（LVGL UI 层）与 `film_app`（app 层）两个组件：
+各工程的三层结构一致；`frame_film_ark` 另有 `film_ui`（LVGL UI 层）与 `film_app`（app 层）两个组件：
 
 ```
 frame_film/
@@ -176,6 +177,11 @@ idf.py build flash monitor               # 默认 n4r2：4MB Flash / Quad PSRAM
 # frame_film_dock（底座，单机型：无配置步骤）
 cd firmware/frame_film_dock
 idf.py build flash monitor
+
+# frame_film_info（信息屏基础工程，单机型：16MB Flash / Octal PSRAM）
+cd firmware/frame_film_info
+.\build.ps1                    # 编译（sdkconfig + partitions_16mb.csv）
+.\build.ps1 flash COM15        # 编译并烧录
 ```
 
 ## 文档索引

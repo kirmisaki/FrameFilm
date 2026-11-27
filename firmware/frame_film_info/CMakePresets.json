@@ -1,0 +1,21 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "n16r8",
+      "displayName": "FrameFilmInfo n16r8 (16MB Flash / Octal PSRAM)",
+      "description": "FrameFilmCommon 主板：ESP32-S3-WROOM-1-N16R8，使用 sdkconfig 与 partitions_16mb.csv",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "IDF_TARGET": "esp32s3",
+        "SDKCONFIG": "${sourceDir}/sdkconfig"
+      }
+    }
+  ]
+}

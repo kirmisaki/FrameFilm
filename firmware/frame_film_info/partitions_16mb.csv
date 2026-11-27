@@ -1,0 +1,8 @@
+# ESP-IDF Partition Table
+# 16MB Flash 变体（N16R8）专用：与 partitions.csv 保持相同的起始布局，只放大双 OTA 槽
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x9000,128K,,
+otadata,data,ota,,0x2000,,
+phy_init,data,phy,,0x1000,,
+ota_0,app,ota_0,,4096K,
+ota_1,app,ota_1,,4096K,

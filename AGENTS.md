@@ -10,7 +10,7 @@ FrameFilm 项目 AI 开发指南。
 
 - ESP-IDF v5.5.4 (C) · 微信小程序 (ES5) · Web 工具 (ES6)
 - GPL-3.0 · Git 中文 commit: `type(scope): 描述`
-- 三套固件：`firmware/frame_film/`（冰箱贴**三机型**，旧机型维护线）、`firmware/frame_film_ark/`（通行证版，**单机型**，见下方「FrameFilm Ark」）、`firmware/frame_film_dock/`（底座，见下方「Dock 底座」）
+- 四套固件：`firmware/frame_film/`（冰箱贴**三机型**，旧机型维护线）、`firmware/frame_film_ark/`（通行证版，**单机型**，见下方「FrameFilm Ark」）、`firmware/frame_film_dock/`（底座，见下方「Dock 底座」）、`firmware/frame_film_info/`（信息屏基础工程，**单机型**，见下方「FrameFilmInfo」）
 - **app 框架 / UI 层（`film_app` + `film_ui`）只存在于 `frame_film_ark`**：`frame_film` 是经典固件，没有这两个组件，也不实现 app 通道 BLE 命令（`0x45~0x4E`）
 
 ## 三机型（仅 `frame_film`）
@@ -95,6 +95,25 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py --list
 - 依赖 `pyserial` + `Pillow`；图片转换复用 `server/filmhub/backend/app/services/film_convert.py`，保证与 `tools/ForFilm` / 服务端出图一致
 - **只适用 dock**：冰箱贴没有 USB 串口，仍走 `tools/ForFilm` 网页蓝牙
 
+## FrameFilmInfo（信息屏基础工程，单机型）
+
+`firmware/frame_film_info/` 是从 `frame_film` 移植的**信息屏基础工程**，面向 FrameFilmCommon 通用主板（硬件说明与引脚表：`hardware/model/FrameFilmCommon/README.md` + `pinmap.csv`）。没有 app 框架 / UI 层，也没有机型与屏幕选择宏，硬件规格按编译期常量写死。
+
+| 项 | 固定值 |
+|---|---|
+| 主控 | ESP32-S3-WROOM-1-N16R8（16MB Flash / 8MB Octal PSRAM） |
+| 屏幕 | GDEM075T41WT 7.5" **800×480 黑白 1bpp**，面板 ID `0x09`，驱动 `hal_epd_750.c` |
+| 屏幕接口 | U8 单面板 4 线 SPI：SCK48 / MOSI47 / CS14 / DC13 / RST12 / BUSY11（**低=忙**） |
+| 输入 | 单按键 GPIO4（低有效）：单击=下一张、双击=上一张、长按=清屏；EXT0 低电平唤醒 |
+| LED / 电池 / SD | WS2812 GPIO5（1 颗）/ ADC GPIO6 + 采样使能 GPIO7 / 4-bit SDMMC 无检测脚 |
+| 外设电源 | GPIO9（3V3CTRL，高=给 EPD/TF/音频上电） |
+| 音频 / 原生 USB | U6 7 路 GPIO（`AUDIO1~7`）/ GPIO19、GPIO20（U3）；固件暂未使用 |
+| sdkconfig | `sdkconfig`（16MB/Octal + `partitions_16mb.csv`） |
+
+- 屏幕驱动移植自厂商 Arduino 工程 `E:\GDEM075T41WT_Arduino`（`Display_EPD_W21.cpp`），改为 ESP-IDF `spi_master` 半双工 + GPIO 手动 CS/DC
+- 支持 `.film` v1（4bpp，按亮度阈值二值化）与 v2 MonoFast（`Format 0x01`，1bpp，1=黑）；全刷用 OTP 整屏波形，局部刷新用 UC8179 差分波形（`hal_epd_display_film_partial` / `hal_epd_partial_update`，需先有整屏基准帧）
+- 与旧机型的关键差异：BUSY 低有效、外设电源 GPIO9、单按键、电池 ADC GPIO6/7、SD 无检测脚
+
 ## 架构约束
 
 ### 分层依赖（单向，不可逆）
@@ -164,6 +183,9 @@ film_service → film_hal → film_sys → ESP-IDF
 | Dock 命令解析（BLE/USB 共用） | `firmware/frame_film_dock/components/film_service/src/service_cmd.c` |
 | Dock USB 描述符/CDC | `firmware/frame_film_dock/components/film_hal/src/hal_usb.c` |
 | Dock USB 传图工具 | `tools/framefilm-dock-upload/scripts/dock_upload.py` |
+| Info 硬件说明 / 引脚表 | `hardware/model/FrameFilmCommon/README.md` + `pinmap.csv` |
+| Info 屏幕驱动（GDEM075T41WT 800×480 1bpp） | `firmware/frame_film_info/components/film_hal/src/hal_epd_750.c` |
+| Info 工程配置（单机型固定） | `firmware/frame_film_info/components/film_sys/inc/sys_cfg.h` |
 | UI 层框架（LVGL 宿主/页面生命周期） | `firmware/frame_film_ark/components/film_ui/src/ui_core.c` |
 | UI 层开关与显示链路 | `firmware/frame_film_ark/components/film_ui/inc/{ui_conf.h,ui_ops.h}` + `src/ui_display.c` |
 | 开机画面 / 主菜单 / 系统设置（框架页面） | `firmware/frame_film_ark/components/film_app/pages/app_{boot,menu,settings}.c` |
@@ -190,7 +212,7 @@ film_service → film_hal → film_sys → ESP-IDF
 6. **不要在 service 层直接操作 GPIO** — 所有硬件操作走 film_hal
 7. **不要机型宏与 sdkconfig 不匹配** — 编译前确认 `sys_cfg.h` 机型宏与 `sdkconfig_{std,pro,max}` 对应一致（**仅 `frame_film`**；`frame_film_ark` 无机型宏，只有 n4r2 / n16r8 两个硬件变体配置，见 `build.ps1`）
 8. **不要给 dock 随便加 USB IN 端点** — ESP32-S3 的 IN 端点上限是 5（含 EP0），dock 已用满：HID + 音频 mic + 音频反馈 + CDC 数据。新增 USB 功能前必须先释放等量 IN 端点（CDC 的「通知端点」就是因此省掉的）
-9. **不要按"机型"猜 `0x42` 回包长度** — 三套固件现在**统一**返回 `面板ID(1)+宽(2)+高(2)`（LEN=5，见各自 `SCREEN_RESOLUTION_GET` 实现），协议文档 §4.6.1 也是这个格式，客户端按 LEN=5 解析即可。（历史上冰箱贴曾只回 `宽(2)+高(2)`（LEN=4），遇到老固件才需要按 LEN 兜底）
+9. **不要按"机型"猜 `0x42` 回包长度** — 各固件现在**统一**返回 `面板ID(1)+宽(2)+高(2)`（LEN=5，见各自 `SCREEN_RESOLUTION_GET` 实现），协议文档 §4.6.1 也是这个格式，客户端按 LEN=5 解析即可。（历史上冰箱贴曾只回 `宽(2)+高(2)`（LEN=4），遇到老固件才需要按 LEN 兜底）
 10. **不要在 app_task 里碰 `lv_*`** — LVGL 非线程安全，只在 `ui_task` 上下文调用；要向页面推数据走 `ui_core_post()`（下行）、要回写服务层走 `app_manager_post_ui_msg()`（上行），两者都在 `film_app`/`film_ui` 里
 11. **不要在 ui_task 里读写 `g_service_param` / 电池 / WiFi / SD** — 那些没有跨任务保证。设置页只上报 `[行号, 候选下标]`，由 `settings_on_event()` 在 app 任务侧校验、写参数、落盘，再把整页快照回投给页面
 12. **不要在唤醒条件还成立的时候进 deep sleep** — ext0 是**电平**触发（`hal_pwr.c`，STD/PRO = GPIO5 低有效、MAX = GPIO13 高有效）。长按是**按住期间**上报的，那一刻唤醒脚必然还满足条件 → 按着断电会当场醒回来（表现为"长按后闪一下就恢复"）。`app_sleep_run()` 入睡前要同时满足两件事，**缺一不可**：① `hal_pwr_wake_condition_met()` 为 false（等手指抬起）——它只会让入睡更晚、不会更早，是叠加项；② 距切页已过 **4s**（`SP_DRAW_WAIT_MS`）——`ui_core_page_enter()` 是异步的，**没有回调能告诉你"第一帧已上屏"**，只能按时间兜。这个值**不要**按"单帧 940ms"去推：上机实测 2s 不够（卡还没刷出来就断电，屏幕停在旧画面/半张卡），换页后第一次上屏的耗时明显大于稳态单帧。**EPD 挂在外设供电轨上，断电即停在半途**。别用按键库自己的状态顶替 ①：PRO/MAX 现在根本没发 press/release 事件，STD 的库虽有 `RE_ET_BTN_RELEASED` 但 HAL 的映射表把它丢了，而 HAL 里那份 `button_pressed` 在长按上报时就被置 false（手指还在键上）
@@ -257,6 +279,11 @@ cd firmware/frame_film
 cd firmware/frame_film_ark
 idf.py build flash monitor                 # 默认 n4r2：4MB Flash / Quad PSRAM
 .\build.ps1 n16r8 flash COM15             # n16r8：16MB Flash / Octal PSRAM
+
+# ── frame_film_info（信息屏基础工程，单机型）──
+cd firmware/frame_film_info
+.\build.ps1                                # 16MB/Octal，sdkconfig + partitions_16mb.csv
+.\build.ps1 flash COM15
 ```
 
 > `frame_film_dock` 只有一份 `sdkconfig`；`frame_film_ark` 有默认 `sdkconfig`（n4r2）与 `sdkconfig_n16r8` 两份，用 `build.ps1` → `idf.py -B build_<variant> -D SDKCONFIG=<配置文件>` 切换；VS Code ESP-IDF 插件用命令面板 → `ESP-IDF: 选择项目配置`（`CMakePresets.json` 的 `n4r2` / `n16r8`）。两者都不需要改机型/屏幕宏。CI（`ark-builds.yml`）会矩阵构建这两个变体，Release 仍只发布 n4r2 的 OTA 镜像。
