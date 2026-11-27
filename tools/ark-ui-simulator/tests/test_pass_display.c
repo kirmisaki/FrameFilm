@@ -147,7 +147,8 @@ static void check_abc9(void)
 {
     assert(frame_color == 2);
     for(size_t i = 0; i < 720u * 480u; ++i) {
-        unsigned code = (i * 37u + i / 720u) & 511u;
+        size_t source = 720u * 480u - 1u - i;
+        unsigned code = (source * 37u + source / 720u) & 511u;
         assert(frame[2 * i] == (code & 255u) && frame[2 * i + 1] == (code >> 8));
     }
     assert(ui_display_snapshot_mono(snapshot, sizeof(snapshot)) == -2);
@@ -159,7 +160,7 @@ static void check_native_profile(const char *path)
     int calls = frame_calls;
     reload(path);
     assert(frame_calls == calls + 1);
-    check_abc9(); /* Every A/B/C code reaches HAL verbatim, no second rotation. */
+    check_abc9(); /* Rotate positions without changing any A/B/C code. */
     calls = frame_calls;
     render();
     const app_status_t status = {.bat_pct = 17, .bt_on = 1, .bt_conn = 1};
@@ -235,7 +236,7 @@ static void check_native_profile(const char *path)
     fixture(path, 480, 720, 0);
     reload(path);
     check_pixels(480, 720, 0);
-    fputs("native ABC9 profile exact bytes/refresh/arbitration/rollback PASS\n", stderr);
+    fputs("native ABC9 profile rotation/refresh/arbitration/rollback PASS\n", stderr);
 }
 
 static void fast_fixture(const char *path, int frame_count)
@@ -252,8 +253,10 @@ static void fast_fixture(const char *path, int frame_count)
 static void check_fast(void)
 {
     assert(frame_color == 1);
-    for(unsigned i = 0; i < PASS_FAST_BODY_BYTES; ++i)
-        assert(frame[i] == ((i * 17u + i / 720u) & 63u));
+    for(unsigned i = 0; i < PASS_FAST_BODY_BYTES; ++i) {
+        unsigned source = PASS_FAST_BODY_BYTES - 1u - i;
+        assert(frame[i] == ((source * 17u + source / 720u) & 63u));
+    }
     assert(ui_display_snapshot_mono(snapshot, sizeof(snapshot)) == -2);
 }
 
@@ -299,7 +302,7 @@ static void check_fast_profile(const char *path)
     ui_display_set_output(1); render();
     assert(frame_calls == calls + 1);
     check_fast();
-    fputs("native ColorFast exact physical bytes/validation/exclusive/resume PASS\n", stderr);
+    fputs("native ColorFast rotation/validation/exclusive/resume PASS\n", stderr);
 }
 
 static unsigned compact_avatar_code(unsigned x, unsigned y, int abc9)
@@ -479,7 +482,9 @@ int main(int argc, char **argv)
         if(info.format == PASS_FMT_ABC9 || info.format == PASS_FMT_FAST)
         {
             assert(frame_color == (info.format == PASS_FMT_ABC9 ? 2 : 1));
-            assert(memcmp(frame, body, info.body_size) == 0);
+            const size_t stride = info.format == PASS_FMT_ABC9 ? 2u : 1u;
+            for(size_t offset = 0; offset < info.body_size; offset += stride)
+                assert(memcmp(frame + offset, body + info.body_size - stride - offset, stride) == 0);
             render();
             assert(frame_calls == calls + 1);
         }

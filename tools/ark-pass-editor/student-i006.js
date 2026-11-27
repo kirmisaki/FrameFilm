@@ -5,6 +5,40 @@
   const WHITE = 75, NEUTRAL_GRAY = 407;
   const DEFAULT_AVATAR = { x: 41, y: 111, width: 239, height: 299 };
 
+  const RED_FADE_X = 414, RED_FADE_WIDTH = 76;
+  // RGB samples identify the aligned Amiya stripe in the bundled PSD export.
+  const RED_FADE_SAMPLES = [[414, 0xf6bfb7], [453, 0xdf7163], [489, 0xd19595]];
+  // I6RFW101.film, reader-order crop (415, 0, 78, 10). A–S index the ABC9 codes.
+  const W_CODES = [22, 32, 33, 34, 46, 47, 87, 97, 110, 111, 173, 174, 238, 295, 303, 366, 430, 487, 495];
+  const W_ROWS = [
+    'JOEONORORERROOERORERRRRSOROERRORPOEOSORORERSOOSSOSSSSESOOSOOOOOQQOKIKOKMKKQKLM',
+    'GOHNNREROOOOEROEROREOORSERSSORSOESRREROSOOOOSROESOSSOOSOOEOOOSKIKOQQKQIKMIMMIA',
+    'GNOOFOOERRERSROROEOBESORRORORESRSROSOSOERSSESROSOSOCSSOSOOSOSOOQOQIOIOMIQKIKIA',
+    'JFHORORSOEOROEORERROORESOSEROSROEOSORESSOEOROSOCSSEOOCOOOOOEOOQIQIKOQOKIMIMQMM',
+    'GRHRNNORROREOREORORERORORPSREOEOSREREROSPORSOESOEOSSSOSOEQOOOOKOOQQQKQMKQMKIIM',
+    'GOOOFQROOROSROSREOEOREOESOOERERROESOOSROOSOSROSDSOOOESOOOOOOSOQQIOOIIOKMIKMIKM',
+    'JOHNOOESRERRORRORERREORRREROROSESORESOESSOSEOSSOSSCSSOKOSOSOSOOOKOQQOOIIKIKKMM',
+    'JNONNRRORSOOSRORORORORSOESSRSERORRESRPSOREOOSPOSOSOSOEOOOOOKOOQIQQOKQQKMQIMLIA',
+    'GSONFORSORRREROEREOSDREROROESROROEOEOOSSOSSSSSOSSESSSSOSOSOSOSOQOOOKLOKLMIKKIM',
+    'JRHDORREROROOERCORREOOSERESOROSESRRRSEDSESDSOESRSSSESOOSEOEOEOKKOQQQOKQLKLQLMM',
+  ];
+
+  function applyRedFade(native, base) {
+    const matches = RED_FADE_SAMPLES.every(([x, expected]) => {
+      const i = x * 4;
+      return ((base[i] << 16) | (base[i + 1] << 8) | base[i + 2]) === expected;
+    });
+    if (!matches) return;
+    // Match the narrower PSD layer with nearest-neighbor ABC9 sampling.
+    for (let y = 0; y < W_ROWS.length; y++) {
+      const row = W_ROWS[y];
+      for (let x = 0; x < RED_FADE_WIDTH; x++) {
+        const sourceX = Math.floor((x + 0.5) * row.length / RED_FADE_WIDTH);
+        native[COUNT - 1 - (y * WIDTH + RED_FADE_X + x)] = W_CODES[row.charCodeAt(sourceX) - 65];
+      }
+    }
+  }
+
   function validate(image) {
     if (!image || image.width !== WIDTH || image.height !== HEIGHT || !image.data || image.data.length !== COUNT * 4) {
       throw new Error('I006 学生证需要 720×480 RGBA 像素。');
@@ -97,6 +131,7 @@
       if (y % 16 === 15) await pause();
     }
     check();
+    applyRedFade(native, base.data);
     const bin = ark.pack(native, WIDTH, HEIGHT), physicalPreview = ark.preview(native, WIDTH, HEIGHT);
     const rgba = new Uint8ClampedArray(COUNT * 4);
     for (let y = 0; y < HEIGHT; y++) {

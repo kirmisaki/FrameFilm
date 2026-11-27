@@ -215,6 +215,7 @@ class DeviceSnapshot {
     this.files = const {},
     this.connected = false,
     this.abc9PreviewSupported = false,
+    this.studentPassportCapabilitiesKnown = false,
     this.studentPassportSupported = false,
     this.studentColorFastSupported = false,
     this.colorPassportSupported = false,
@@ -261,6 +262,8 @@ class DeviceSnapshot {
           : const {},
       connected: data['connected'] == true,
       abc9PreviewSupported: data['abc9PreviewSupported'] == true,
+      studentPassportCapabilitiesKnown:
+          data['studentPassportCapabilitiesKnown'] == true,
       studentPassportSupported: data['studentPassportSupported'] == true,
       studentColorFastSupported: data['studentColorFastSupported'] == true,
       colorPassportSupported: data['colorPassportSupported'] == true,
@@ -326,6 +329,7 @@ class DeviceSnapshot {
   final Map<String, Object?> files;
   final bool connected;
   final bool abc9PreviewSupported;
+  final bool studentPassportCapabilitiesKnown;
   final bool studentPassportSupported, studentColorFastSupported, colorPassportSupported;
   final HardwareIdentity? hardware;
   final String? deviceId;
@@ -366,6 +370,11 @@ class DeviceSnapshot {
   DeviceSnapshot retainingTransfer(DeviceSnapshot previous) {
     final keepConnected = hasConnectionState ? connected : previous.connected;
     final sameDevice = deviceId == null || deviceId == previous.deviceId;
+    final studentCapabilitiesKnown = keepConnected &&
+        (presentKeys.contains('studentPassportCapabilitiesKnown') || !sameDevice
+            ? studentPassportCapabilitiesKnown
+            : studentPassportCapabilitiesKnown ||
+                  previous.studentPassportCapabilitiesKnown);
     return DeviceSnapshot(
       firmwareDownload: hasDownloadState || firmwareDownload.phase != 'idle'
           ? firmwareDownload
@@ -395,13 +404,14 @@ class DeviceSnapshot {
           (presentKeys.contains('abc9PreviewSupported')
               ? abc9PreviewSupported
               : abc9PreviewSupported || previous.abc9PreviewSupported),
+      studentPassportCapabilitiesKnown: studentCapabilitiesKnown,
       studentPassportSupported:
-          keepConnected &&
+          studentCapabilitiesKnown &&
           (presentKeys.contains('studentPassportSupported') || !sameDevice
               ? studentPassportSupported
               : studentPassportSupported || previous.studentPassportSupported),
       studentColorFastSupported:
-          keepConnected &&
+          studentCapabilitiesKnown &&
           (presentKeys.contains('studentColorFastSupported') || !sameDevice
               ? studentColorFastSupported
               : studentColorFastSupported || previous.studentColorFastSupported),

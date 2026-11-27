@@ -22,6 +22,7 @@ class StudentPassportEditor extends StatefulWidget {
     super.key,
     required this.controller,
     required this.canOperate,
+    required this.connected,
     required this.supported,
     required this.busy,
     required this.operation,
@@ -31,14 +32,16 @@ class StudentPassportEditor extends StatefulWidget {
     required this.onOpen,
     this.onRetry,
     this.canSend = true,
-    this.colorFastSupported = false,
+    this.colorFastSupported,
+    this.readingCapabilities = false,
+    this.transportHint,
   });
 
   final StudentPassportEditorController controller;
-  final bool canOperate, supported, busy;
-  final bool canSend;
-  final bool
-  colorFastSupported; // Capability 0x59 bit14; supported remains bit11.
+  final bool canOperate, connected, busy, canSend, readingCapabilities;
+  // 0x59 bit11 / bit14. Null means the current device's capability is unknown.
+  final bool? supported, colorFastSupported;
+  final String? transportHint;
   final Map<String, Object?> operation;
   final Future<void> Function() onRead;
   final Future<void> Function(String, Uint8List) onSave;
@@ -69,8 +72,25 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
   bool _legacyAvatar = false, _legacySize = false;
   bool _legacyOutput = false;
   int _rasterGeneration = -1;
-  bool get _modeSupported =>
+  bool? get _modeSupport =>
       _output == 'colorfast' ? widget.colorFastSupported : widget.supported;
+
+  String? get _availabilityHint {
+    if (!widget.connected) {
+      return '连接 Ark 后可确认学生证模式；仍可编辑并保存草稿。';
+    }
+    final supported = _modeSupport;
+    if (supported == null) {
+      return widget.readingCapabilities
+          ? '正在读取学生证模式支持情况…'
+          : '尚未确认学生证模式，请在连接页点「刷新信息」；仍可编辑并保存草稿。';
+    }
+    if (!supported) {
+      return '当前设备不支持所选学生证模式，可切换模式或升级固件；仍可编辑并保存草稿。';
+    }
+    return widget.transportHint;
+  }
+
   PassportRaster? _raster;
   String? _rasterPalette;
   String _status = '';
@@ -187,6 +207,11 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
       final profile = StudentPassportProfile.fromJson(raw);
       (await validateStudentPassportAvatar(profile))?.dispose();
       if (!mounted || generation != _renderGeneration) return;
+      if (!_legacyAvatar && !_legacyOutput && profile.toJson() == _profile.toJson()) {
+        _cache.avatarEdit = null;
+        setState(() => _status = '设备资料与当前草稿一致，无需重新生成预览。');
+        return;
+      }
       _cache.avatarEdit = null;
       _setProfile(profile);
       _changed(
@@ -210,13 +235,12 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
     final profile = _profile;
     _cache.profile = profile;
     _cache.legacyOutput = _legacyOutput;
-    final json = jsonEncode({
-      'draftVersion': 2,
-      'profile': jsonDecode(profile.toJson()),
-      if (_cache.avatarEdit != null)
-        'avatarEditor': _cache.avatarEdit!.toJson(),
-      if (_legacyOutput) 'legacyOutput': 'ffui',
-    });
+    // profile.toJson() is already an object literal; splice it instead of
+    // decoding and re-encoding the (possibly large) avatar payload.
+    final json =
+        '{"draftVersion":2,"profile":${profile.toJson()}'
+        '${_cache.avatarEdit != null ? ',"avatarEditor":${jsonEncode(_cache.avatarEdit!.toJson())}' : ''}'
+        '${_legacyOutput ? ',"legacyOutput":"ffui"' : ''}}';
     _cache.saving = _cache.saving
         .then((_) => storage.saveStudentPassportDraft(json))
         .catchError((Object e) {
@@ -383,8 +407,33 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
     final errors = studentPassportLayoutErrors(_profile);
     final currentRaster = _rasterPalette == _palette ? _raster : null;
     final op = widget.operation;
-    final total = op['total'] as num? ?? 0;
-    final completed = op['completed'] as num? ?? 0;
+    final readTotal = (op['readTotal'] as num?)?.toInt() ?? 0;
+    final readCompleted = (op['readCompleted'] as num?)?.toInt() ?? 0;
+    final reading = op['phase'] == 'reading' || op['phase'] == 'verifying';
+    final total = reading && readTotal > 0
+        ? readTotal
+        : (op['total'] as num? ?? 0);
+    final completed = reading && readTotal > 0
+        ? readCompleted
+        : (op['completed'] as num? ?? 0);
+    final availabilityHint = _availabilityHint;
+    final send =
+        widget.canOperate &&
+            widget.canSend &&
+            _modeSupport == true &&
+            !_legacyAvatar &&
+            !_legacyOutput &&
+            !_legacySize &&
+            _rasterGeneration == _renderGeneration &&
+            !_locked &&
+            !_rendering &&
+            errors.isEmpty &&
+            currentRaster != null
+        ? () => _run(() {
+            _cache.pendingRead = null;
+            return widget.onSave(_profile.toJson(), currentRaster.bin);
+          })
+        : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -510,8 +559,8 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
         ),
         if (_legacyAvatar) const Text('旧头像已黑白化，请重选原图或移除；不会自动恢复颜色。'),
         if (_legacyOutput) const Text('旧 FFUI 不是 ColorFast，请重新选择输出模式。'),
-        if (!_modeSupported) const Text('当前设备不支持所选学生证模式，请升级固件；仍可编辑并保存草稿。'),
-        const Text('发送后会替换设备上的通行证。'),
+        if (availabilityHint != null) Text(availabilityHint),
+        if (send != null) const Text('发送后会替换设备上的通行证。'),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -520,32 +569,11 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
               onPressed: widget.canOperate && !_locked ? _read : null,
               child: const Text('读取设备资料'),
             ),
-            FilledButton(
-              onPressed:
-                  widget.canOperate &&
-                      widget.canSend &&
-                      _modeSupported &&
-                      !_legacyAvatar &&
-                      !_legacyOutput &&
-                      !_legacySize &&
-                      _rasterGeneration == _renderGeneration &&
-                      !_locked &&
-                      !_rendering &&
-                      errors.isEmpty &&
-                      currentRaster != null
-                  ? () => _run(() {
-                      _cache.pendingRead = null;
-                      return widget.onSave(
-                        _profile.toJson(),
-                        currentRaster.bin,
-                      );
-                    })
-                  : null,
-              child: const Text('发送学生证'),
-            ),
+            FilledButton(onPressed: send, child: const Text('发送学生证')),
             if (op['canRetry'] == true && op['kind'] == 'student')
               OutlinedButton(
-                onPressed: !_locked && _modeSupported && widget.onRetry != null
+                onPressed:
+                    !_locked && _modeSupport == true && widget.onRetry != null
                     ? () => _run(widget.onRetry!)
                     : null,
                 child: const Text('重试上次上传'),
@@ -564,6 +592,8 @@ class _StudentPassportEditorState extends State<StudentPassportEditor> {
           LinearProgressIndicator(
             value: total > 0 ? (completed / total).clamp(0, 1) : null,
           ),
+        if (widget.busy && op['canCancel'] == true)
+          const Text('取消会结束当前操作；回读中取消会断开并重新连接设备。'),
         if (op['message'] is String) Text(op['message'] as String),
         if (_status.isNotEmpty) Text(_status),
       ],

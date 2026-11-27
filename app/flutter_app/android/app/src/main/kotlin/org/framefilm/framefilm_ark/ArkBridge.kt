@@ -63,7 +63,8 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         TransferPolicy.supportsVerifiedBleFile(runningCapabilities)
     private val transferPreferences get() = activity.getSharedPreferences("ark-transfer", Activity.MODE_PRIVATE)
     private var runningBuild: ArkBuildInfo? = null
-    private var runningCapabilities: ByteArray? = null
+    private val capabilityCache = ArkCapabilityCache()
+    private val runningCapabilities get() = capabilityCache[session.readyLinkId]
     private val wifiEvidence get() = TransferPolicy.fromRunningFirmware(runningBuild, hardware, runningCapabilities)
     private val photoTransferDecision get() = TransferPolicy.decide(
         transferPreferences.getString("preference", "auto"), wifiEvidence.photo)
@@ -95,8 +96,8 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private var battery: Int? = null
     private var width: Int? = null
     private var height: Int? = null
-    private var abc9PreviewSupported = false
-    private var hardwareSupported = false
+    private val abc9PreviewSupported get() = Abc9Preview.supported(runningCapabilities)
+    private val hardwareSupported get() = passportCapability(runningCapabilities, 0x40L)
     private var hardware: ArkHardware? = null
     private var autoSleep: Boolean? = null
     private var timedWake: Boolean? = null
@@ -106,10 +107,11 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private var permissionAction: (() -> Unit)? = null
     private var permissionResult: MethodChannel.Result? = null
     private var refreshResult: MethodChannel.Result? = null
+    private var deferredSettingsLink: Int? = null
     private var refreshing = false
     private var readIndex = 0
     private val channels = intArrayOf(0x42, 0x23, 0x54, 0x26, 0x28, 0x2A, 0x59, 0x5D, 0x56)
-    private class Read(val channel: Int, val done: ((ByteArray) -> Unit)? = null) {
+    private class Read(val channel: Int, val done: ((ByteArray) -> Unit)? = null, val linkId: Int? = null) {
         var writeDone = false
         var response: ByteArray? = null
         var timeout: Runnable? = null
@@ -117,7 +119,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private var fileListing = false
     private val deviceFiles = linkedMapOf<Int, String>()
     private var fileDirectory = "film"
-    private var catalogSupported: Boolean? = null
+    private val catalogSupported get() = runningCapabilities?.let { (u32(it, 1) and 4L) != 0L }
     private var storage: Map<String, Any?> = mapOf("phase" to "idle")
     private var canDeleteFiles = false
     private var filesLoaded = false
@@ -138,7 +140,11 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         var binDone = false
         var filesStarted = false
         var jsonDone = false
-        var retries = 0
+        var chunkLimit = TransferPolicy.PassportRead.FIRMWARE_MAX_CHUNK
+        var reported = 0
+        var readRetries = 0
+        var busyRetries = 0
+        var startWatchdog: Runnable? = null
         var awaitingFile = false
         var fileIndex = 0
         var previousAttempt: Int? = null
@@ -152,6 +158,8 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private var passportRevision = 0
     private var passportPhase = "idle"
     private var passportCompleted = 0
+    private var passportReadCompleted = 0
+    private var passportReadTotal = 0
     private var passportTotal = 0
     private var passportMessage = ""
     private var passportTransport: String? = null
@@ -164,6 +172,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private val drafts get() = activity.getSharedPreferences("ark-passport", Activity.MODE_PRIVATE)
     private fun passportState(): Map<String, Any?> = mapOf(
         "phase" to passportPhase, "completed" to passportCompleted, "total" to passportTotal,
+        "readCompleted" to passportReadCompleted, "readTotal" to passportReadTotal,
         "message" to passportMessage, "canCancel" to (passportJob != null),
         "transport" to passportTransport,
         "bleAvailable" to (connected && passportBleAvailable(runningCapabilities)),
@@ -172,7 +181,10 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             passportFiles?.let {
                 it.bin.isFile && it.json.isFile && (!connected || session.connectedAddress == it.deviceAddress)
             } == true),
-        "json" to passportJson, "revision" to passportRevision,
+        // The large JSON is only shipped with the terminal snapshot; progress
+        // snapshots must stay small.
+        "json" to if (passportJob == null) passportJson else null,
+        "revision" to passportRevision,
         "kind" to passportFiles?.let { if (it.student) "student" else "operator" })
 
     private val session: ArkSession = ArkSession(activity, object : ArkSession.Listener {
@@ -198,7 +210,6 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         }
         override fun onConnection(ready: Boolean, state: String) {
             if (closed) return
-            val becameReady = ready && !connected
             connected = ready
             message = state
             if (!ready) {
@@ -207,7 +218,12 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 clearDetails()
             }
             emit()
-            if (becameReady && !session.transferActive) beginRefresh(null)
+        }
+        override fun onReadyForSettings() {
+            if (closed) return
+            // A Wi-Fi passport job may still be chaining files or reading them back.
+            deferredSettingsLink = if (passportJob != null) session.readyLinkId else null
+            if (deferredSettingsLink == null) beginRefresh(null)
         }
         override fun onPacket(packet: ByteArray) {
             if (fileListing && packet.size >= 6 && (packet[1].toInt() and 255) == 0x06) {
@@ -283,8 +299,9 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         "hardware" to if(connected) hardware?.snapshot() else null,
         "hardwareIdentitySupported" to (connected && hardwareSupported),
         "abc9PreviewSupported" to (connected && abc9PreviewSupported),
-        "studentPassportSupported" to passportFormatAvailable(PassportRasterFormat.STUDENT_I006),
-        "studentColorFastSupported" to passportFormatAvailable(PassportRasterFormat.STUDENT_COLOR_FAST),
+        "studentPassportCapabilitiesKnown" to (connected && runningCapabilities != null),
+        "studentPassportSupported" to passportFormatSupported(PassportRasterFormat.STUDENT_I006),
+        "studentColorFastSupported" to passportFormatSupported(PassportRasterFormat.STUDENT_COLOR_FAST),
         "colorPassportSupported" to passportFormatAvailable(PassportRasterFormat.OPERATOR_I006),
         "autoSleep" to autoSleep, "timedWake" to timedWake, "wakeMinutes" to wakeMinutes,
         "syncedAt" to syncedAt, "settingsMessage" to settingsMessage, "settingsBusy" to refreshing,
@@ -357,7 +374,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 "installAppUpdate" -> { appUpdates.install(result); return }
             }
             if (call.method in setOf("scan", "connect", "refresh") && session.transferActive) {
-                result.error("busy", "直传期间请等待传输结束", null)
+                result.error("busy", "设备读写正在进行，请稍后重试", null)
                 return
             }
             if (refreshing && call.method !in setOf("snapshot", "refresh", "saveGeneratedFilm", "disconnect", "cancelTransfer", "cancelFirmwareDownload", "cancelPassport", "loadPassportDraft", "savePassportDraft")) {
@@ -384,19 +401,34 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 "savePassportDraft" -> {
                     val json = requireNotNull(call.argument<String>("json"))
                     require(json.toByteArray(Charsets.UTF_8).size <= 8000000) { "本地草稿超过8MB" }
-                    val draft = org.json.JSONObject(json)
                     val student = call.argument<String>("kind") == "student"
-                    val wrapped = draft.optInt("draftVersion") == 2
-                    val profile = validatePassport(if (wrapped) draft.getJSONObject("profile").toString() else json)
-                    require(isStudentPassport(profile) == student) { "通行证草稿类型不匹配" }
-                    if (wrapped && !draft.isNull("avatarEditor")) {
-                        val editor = draft.getJSONObject("avatarEditor")
-                        val source = editor.getString("source")
-                        require(source.startsWith("data:image/png;base64,") && source.length <= 6000000) { "头像源图无效" }
-                        editor.getJSONObject("options")
-                    }
-                    check(drafts.edit().putString(if (student) "student-json" else "json", json).commit()) { "草稿保存失败" }
-                    result.success(null)
+                    val prefs = drafts
+                    // The student draft embeds the avatar source (up to 6 MB); keep the
+                    // JSON parse and SharedPreferences commit off the main thread.
+                    Thread({
+                        val outcome = runCatching {
+                            val draft = org.json.JSONObject(json)
+                            val wrapped = draft.optInt("draftVersion") == 2
+                            val profile = validatePassport(
+                                if (wrapped) draft.getJSONObject("profile").toString() else json)
+                            require(isStudentPassport(profile) == student) { "通行证草稿类型不匹配" }
+                            if (wrapped && !draft.isNull("avatarEditor")) {
+                                val editor = draft.getJSONObject("avatarEditor")
+                                val source = editor.getString("source")
+                                require(source.startsWith("data:image/png;base64,") &&
+                                    source.length <= 6000000) { "头像源图无效" }
+                                editor.getJSONObject("options")
+                            }
+                            check(prefs.edit()
+                                .putString(if (student) "student-json" else "json", json)
+                                .commit()) { "草稿保存失败" }
+                        }
+                        main.post {
+                            if (closed) return@post
+                            outcome.fold({ result.success(null) },
+                                { result.error("draft_failed", it.message ?: "草稿保存失败", null) })
+                        }
+                    }, "ark-passport-draft").start()
                 }
                 "pickPassportAvatar" -> {
                     checkReplace(); check(avatarResult == null && frameResult == null) { "正在选择图片" }
@@ -445,8 +477,11 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                     passportJob?.let { job ->
                         job.cancelRequested = true
                         passportMessage = "正在取消通行证操作并清理传输"; emit()
-                        if (job.awaitingFile) session.cancelTransfer()
-                        else {
+                        if (job.awaitingFile) {
+                            job.startWatchdog?.let(main::removeCallbacks)
+                            session.cancelTransfer()
+                            if (job.fileAttempt == null) finishPassport("cancelled", "操作已取消")
+                        } else {
                             val hadPendingRead = pending != null
                             pending?.timeout?.let(main::removeCallbacks); pending = null
                             finishPassport("cancelled", "操作已取消")
@@ -486,7 +521,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                     val deviceId = session.connectedAddress
                     withPermissions(result, direct = link == "wifi") {
                         check(deviceId != null && session.connectedAddress == deviceId && firmwareFile == file) {
-                            "设备或固件已变化，请重新确认发送"
+                            "设备已变化，请重新确认重试"
                         }
                         transferPermission = false
                         session.startFirmwareTransfer(file, image, legacyTarget, preference, support)
@@ -521,7 +556,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                     val deviceId = session.connectedAddress
                     withPermissions(result, direct = session.retryTransport == "wifi") {
                         check(deviceId != null && session.connectedAddress == deviceId) {
-                            "设备已变化，请重新确认重试"
+                            "设备或照片已变化，请重新确认发送"
                         }
                         transferPermission = false
                         session.retryTransfer(legacyTarget)
@@ -572,7 +607,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                     require(selectedName != null) { "请先扫描并选择 Ark" }
                     withPermissions(result) {
                         advertisedName = selectedName
-                        clearRead("cancelled", "已切换设备")
+                    clearRead("cancelled", "已断开连接")
                         clearDetails()
                         connected = false
                         session.connect(address)
@@ -668,9 +703,8 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             return
         }
         refreshing = true
-        abc9PreviewSupported = false
-        hardwareSupported = false; hardware = null
-        runningBuild = null; runningCapabilities = null
+        hardware = null
+        runningBuild = null
         refreshResult = result
         readIndex = 0
         readNext()
@@ -679,7 +713,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private fun readNext() {
         if (readIndex == channels.size) {
             refreshing = false
-            message = "设备信息已更新"
+        message = "正在读取设备信息"
             emit()
             val result = refreshResult
             refreshResult = null
@@ -692,14 +726,19 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         request(channels[readIndex])
     }
 
-    private fun request(channel: Int, payload: ByteArray = byteArrayOf(), done: ((ByteArray) -> Unit)? = null) {
-        val read = Read(channel, done)
+    private fun request(channel: Int, payload: ByteArray = byteArrayOf(),
+                        quiet: Boolean = false, timeoutMs: Long = 7_000,
+                        onTimeout: (() -> Unit)? = null, done: ((ByteArray) -> Unit)? = null) {
+        val read = Read(channel, done, session.readyLinkId)
         pending = read
-        message = "正在读取设备信息"
-        emit()
+        if (!quiet) { message = "正在读取设备信息"; emit() }
         read.timeout = Runnable {
-            if (pending === read && !skipOptionalCapabilities(read)) failRead("timeout", "设备响应超时，请重新连接 Ark")
-        }.also { main.postDelayed(it, if (channel == 0x56 && done == null) 2_000 else 7_000) }
+            if (pending !== read) return@Runnable
+            if (onTimeout != null) {
+                pending = null
+                onTimeout()
+            } else if (!skipOptionalCapabilities(read)) failRead("timeout", "设备响应超时，请重新连接 Ark")
+        }.also { main.postDelayed(it, if (channel == 0x56 && done == null) 2_000 else timeoutMs) }
         val bytes = byteArrayOf(0x55, read.channel.toByte(), payload.size.toByte()) + payload
         session.writePacket(bytes + byteArrayOf((bytes.sumOf { it.toInt() and 255 } and 255).toByte())) { outcome ->
             if (closed || pending !== read) return@writePacket
@@ -716,7 +755,6 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private fun skipOptionalCapabilities(read: Read): Boolean {
         if (pending !== read || read.channel !in setOf(0x59, 0x5D, 0x56) || read.done != null) return false
         when (read.channel) {
-            0x59 -> { abc9PreviewSupported = false; hardwareSupported = false; runningCapabilities = null; hardware = null }
             0x5D -> hardware = null
             0x56 -> runningBuild = null
         }
@@ -729,7 +767,10 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
 
     private fun completeRead(read: Read) {
         if (pending !== read || !read.writeDone) return
+        val linkId = session.readyLinkId ?: return
+        if (read.linkId != linkId) return
         val data = read.response ?: return
+        if (read.channel == 0x59) capabilityCache.update(linkId, data)
         if (read.done != null) {
             read.timeout?.let(main::removeCallbacks)
             pending = null
@@ -743,8 +784,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             0x54 -> data.size in 3..31 && data[0] == 0.toByte() && data.last() == 0.toByte()
             0x26, 0x28 -> data.size == 1 && data[0].toInt() in 0..1
             0x2A -> data.size == 2 && u16(data, 0) in 10..2880
-            0x5D, 0x56 -> true // Optional identity must not break ordinary settings.
-            0x59 -> true // Unsupported or unknown capability versions mean unavailable.
+            0x59, 0x5D, 0x56 -> true // Unknown capabilities/identity must not break ordinary settings.
             else -> false
         }
         if (!valid) { failRead("invalid_response", "设备返回的信息格式无效"); return }
@@ -755,11 +795,6 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             0x26 -> autoSleep = data[0].toInt() == 1
             0x28 -> timedWake = data[0].toInt() == 1
             0x2A -> wakeMinutes = u16(data, 0)
-            0x59 -> {
-                runningCapabilities = data.takeIf { it.size == 5 && it[0] == 1.toByte() }
-                abc9PreviewSupported = Abc9Preview.supported(data)
-                hardwareSupported = runningCapabilities != null && data[4].toInt() and 0x40 != 0
-            }
             0x5D -> hardware = runCatching { ArkHardware.parse(data) }.getOrNull()
             0x56 -> runningBuild = runCatching { ArkBuildInfo.parse(data) }.getOrNull()
         }
@@ -795,11 +830,11 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
 
     private fun clearDetails() {
         fileListing = false; deviceFiles.clear(); filesLoaded = false; currentFileId = null; fileDirectory = "film"
-        catalogSupported = null; storage = mapOf("phase" to "idle"); canDeleteFiles = false
+        storage = mapOf("phase" to "idle"); canDeleteFiles = false
         name = null; battery = null; width = null; height = null
-        abc9PreviewSupported = false
-        hardwareSupported = false; hardware = null
-        runningBuild = null; runningCapabilities = null
+        hardware = null; runningBuild = null
+        capabilityCache.clear()
+        deferredSettingsLink = null
         autoSleep = null; timedWake = null; wakeMinutes = null; syncedAt = null; settingsMessage = null
     }
 
@@ -892,7 +927,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                         name = data.copyOfRange(1, data.lastIndex).toString(Charsets.UTF_8)
                         val expected = "FRAMEFILMARK-" + payload.copyOfRange(0, payload.lastIndex).toString(Charsets.UTF_8)
                         val matches = name == expected
-                        finishSettings(if (matches) "已保存，设备重启后广播名生效" else "设备返回的名称与请求不一致", !matches)
+                    finishSettings(if (matches) "时间同步完成" else "时间同步回显与请求不一致", !matches)
                     }
                 } else {
                     val matches = data.contentEquals(payload)
@@ -921,7 +956,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             require(value.optString("template") == "rhodes-academy-student") { "学生证模板类型不支持" }
             require(!value.has("palette") || value.opt("palette") in setOf(
                 "amiya", "sniper", "medic", "vanguard", "guard", "defender", "caster", "supporter", "specialist")) {
-                "学生证配色无效"
+                "学生证输出声明不一致"
             }
             require(version != 3.0 || !value.has("studentOutput") || value.opt("studentOutput") == value.opt("output")) {
                 "学生证输出声明不一致"
@@ -963,6 +998,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         val job = PassportJob(result, checkNotNull(session.connectedAddress))
         passportJob = job; refreshing = true
         passportPhase = "reading"; passportCompleted = 0; passportTotal = 0
+        passportReadCompleted = 0; passportReadTotal = 0
         passportTransport = "ble"
         passportMessage = "正在读取设备通行证资料"; emit()
         readPassportChunk(job)
@@ -970,6 +1006,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
 
     private fun finishPassport(phase: String, detail: String) {
         val job = passportJob ?: return
+        job.startWatchdog?.let(main::removeCallbacks); job.startWatchdog = null
         passportJob = null; refreshing = false; passportPhase = phase
         passportMessage = if (phase != "done" && job.expected != null) {
             if (!job.filesStarted) {
@@ -985,6 +1022,12 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         } else if (phase != "done") "$detail；之前读取的资料保留。" else detail
         if (closed || (phase == "done" && job.expected != null)) deletePassportFiles()
         emit(); job.result.success(snapshot())
+        deferredSettingsLink?.let { link ->
+            deferredSettingsLink = null
+            main.post {
+                if (!closed && session.readyLinkId == link) beginRefresh(null)
+            }
+        }
     }
 
     private fun deletePassportFiles() {
@@ -1007,52 +1050,109 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             finishPassport("error", "连接的 Ark 已变化，请重连原设备")
             return
         }
+        val mtu = session.negotiatedMtu
+        if (TransferPolicy.PassportRead.needsReconnect(mtu)) {
+            finishPassport("error", "蓝牙 MTU 协商过小（$mtu），请重新连接 Ark 后再读取")
+            return
+        }
         val offset = job.bytes.size()
-        // ATT payload minus the four-byte Ark frame and nine-byte 0x53 response header.
-        val chunk = (session.negotiatedMtu - 16).coerceIn(1, 128)
-        request(0x53, be32(offset) + byteArrayOf(chunk.toByte())) { data ->
+        if (job.total > 0 && offset == job.total) { completePassportRead(job); return }
+        val chunk = minOf(TransferPolicy.PassportRead.chunkSize(mtu), job.chunkLimit)
+        request(0x53, be32(offset) + byteArrayOf(chunk.toByte()), quiet = true, timeoutMs = 4_000,
+            onTimeout = { retryPassportChunk(job, offset, "设备回读超时") }) { data ->
             if (passportJob !== job) return@request
-            require(data.size in 9..(9 + chunk) && u32(data, 1) == offset.toLong()) { "资料响应位置或长度无效" }
+            require(data.isNotEmpty()) { "资料响应为空" }
             val status = data[0].toInt() and 255
-            if (status == 3 && job.expected != null && job.retries++ < 12) {
+            if (TransferPolicy.PassportRead.shouldFallbackToLegacy(chunk, status)) {
+                // Older firmware caps the chunk at 128 and rejects the rest.
+                job.chunkLimit = TransferPolicy.PassportRead.LEGACY_MAX_CHUNK
+                job.readRetries = 0
+                main.postDelayed({ if (passportJob === job) readPassportChunk(job) }, 0)
+                return@request
+            }
+            if (status == 3 && job.busyRetries++ < 12) {
                 main.postDelayed({ if (passportJob === job) readPassportChunk(job) }, 500)
                 return@request
             }
             if (status != 0) {
-                finishPassport("error", when (status) { 1 -> "设备尚未配置资料"; 3 -> "设备忙，请稍后重试"; else -> "设备读取失败（状态 $status）" })
+                finishPassport("error", when (status) {
+                    1 -> "设备尚未配置资料"; 3 -> "设备忙，请稍后重试"
+                    else -> "设备读取失败（状态 $status）"
+                })
                 return@request
             }
-            job.retries = 0
+            job.busyRetries = 0
+            job.readRetries = 0
+            require(data.size in 9..(9 + chunk) && u32(data, 1) == offset.toLong()) { "资料响应位置或长度无效" }
             val total = u32(data, 5)
             require(total in 1..350000 && (job.total == -1 || job.total.toLong() == total)) { "资料长度变化或超出范围" }
-            job.total = total.toInt()
+            if (job.total < 0) {
+                job.total = total.toInt()
+                passportReadTotal = job.total
+            }
             val count = data.size - 9
             require(offset + count <= job.total && (count > 0 || offset == job.total)) { "资料分块不完整" }
             job.bytes.write(data, 9, count)
-            if (job.expected == null) { passportCompleted = job.bytes.size(); passportTotal = job.total }
-            emit()
-            if (job.bytes.size() == job.total) {
-                val raw = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(job.bytes.toByteArray())).toString()
-                validatePassport(raw)
-                if (job.expected != null && raw != job.expected) {
-                    finishPassport("error", "资料回读与发送内容不一致")
-                } else {
-                    passportJson = raw; passportRevision++
-                    finishPassport("done", when {
-                        job.expected == null -> "设备资料读取完成"
-                        passportTransport == "ble" -> "两个文件已通过完整性校验，资料回读一致。请回到通行证页确认屏幕刷新。"
-                        else -> "资料回读一致。请回到通行证页确认屏幕刷新。"
-                    })
-                }
-            } else main.postDelayed({ if (passportJob === job) readPassportChunk(job) }, 50)
+            passportReadCompleted = job.bytes.size()
+            if (job.bytes.size() == job.total || job.bytes.size() - job.reported >=
+                TransferPolicy.progressStep(job.total.toLong())) {
+                job.reported = job.bytes.size()
+                emit()
+            }
+            if (job.bytes.size() == job.total) completePassportRead(job)
+            else main.postDelayed({ if (passportJob === job) readPassportChunk(job) }, 0)
         }
     }
 
-    private fun passportCapability(caps: ByteArray?, bit: Long) =
-        caps != null && caps.size == 5 && caps[0] == 1.toByte() && (u32(caps, 1) and bit) != 0L
+    /** A lost notification must not cost a full reconnect; retry the same offset once. */
+    private fun retryPassportChunk(job: PassportJob, offset: Int, reason: String) {
+        if (passportJob !== job) return
+        if (job.bytes.size() != offset) return
+        if (job.readRetries < 1) {
+            job.readRetries++
+            main.postDelayed({ if (passportJob === job) readPassportChunk(job) }, 200)
+            return
+        }
+        // A late 0x53 reply must not satisfy a later read; drop the link like cancel does.
+        finishPassport("error", "$reason，请重新连接 Ark 后重试")
+        session.disconnect()
+    }
 
-    private fun passportFormatAvailable(format: PassportRasterFormat) = connected &&
-        passportCapability(runningCapabilities, format.capability) &&
+    /** Decode and validate off the main thread; the terminal snapshot is emitted once. */
+    private fun completePassportRead(job: PassportJob) {
+        val bytes = job.bytes.toByteArray()
+        val expected = job.expected
+        Thread({
+            val parsed = runCatching {
+                val raw = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+                validatePassport(raw)
+                raw
+            }
+            main.post {
+                if (passportJob !== job || closed) return@post
+                parsed.fold(onSuccess = { raw ->
+                    if (expected != null && raw != expected) {
+                finishPassport("error", "设备未确认所选的通行证传输方式，请重连后重试")
+                    } else {
+                        passportJson = raw; passportRevision++
+                        finishPassport("done", when {
+                            expected == null -> "设备资料读取完成"
+                            passportTransport == "ble" ->
+                "文件列表已变化，请刷新后重试"
+                        else -> "资料回读一致。请回到通行证页确认屏幕刷新。"
+                        })
+                    }
+                }, onFailure = { finishPassport("error", it.message ?: "资料读取失败") })
+            }
+        }, "ark-passport-read").start()
+    }
+
+    private fun passportCapability(caps: ByteArray?, bit: Long) = ArkCapabilityCache.hasBit(caps, bit)
+
+    private fun passportFormatSupported(format: PassportRasterFormat) = connected &&
+        passportCapability(runningCapabilities, format.capability)
+
+    private fun passportFormatAvailable(format: PassportRasterFormat) = passportFormatSupported(format) &&
         (passportWifiAvailable(runningCapabilities) || passportBleAvailable(runningCapabilities))
 
     private fun passportWifiAvailable(caps: ByteArray?) = passportCapability(caps, CAP_PASSPORT_WIFI)
@@ -1156,6 +1256,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         passportJob = job; refreshing = true; passportPhase = "sending"
         passportTransport = files.transport
         passportCompleted = 0; passportTotal = (files.bin.length() + files.json.length()).toInt()
+        passportReadCompleted = 0; passportReadTotal = 0
         passportMessage = "正在查询通行证${if (files.transport == "ble") "蓝牙" else " Wi-Fi"}传输能力"; emit()
         request(0x59) { capabilities ->
             if (passportJob !== job || job.cancelRequested) return@request
@@ -1191,6 +1292,13 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         passportMessage = "正在发送 $filename"; emit()
         session.startFileTransfer(if (index == 0) files.bin else files.json, "app/pass/$filename",
             transportPreference = files.transport)
+        // startInput can decline without publishing an attempt; never leave the job waiting.
+        job.startWatchdog?.let(main::removeCallbacks)
+        job.startWatchdog = Runnable {
+            if (passportJob === job && job.awaitingFile && job.fileAttempt == null) {
+                finishPassport("error", "设备未开始接收 $filename，请重连后重试")
+            }
+        }.also { main.postDelayed(it, 5_000) }
     }
 
     private fun onPassportTransfer(snapshot: TransferSnapshot) {
@@ -1199,6 +1307,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
         val attempt = snapshot.attemptId ?: return
         if (attempt == job.previousAttempt || (job.fileAttempt != null && job.fileAttempt != attempt)) return
         job.fileAttempt = attempt
+        job.startWatchdog?.let(main::removeCallbacks); job.startWatchdog = null
         val files = passportFiles ?: return
         val base = if (job.fileIndex == 0) 0 else files.bin.length().toInt()
         val size = if (job.fileIndex == 0) files.bin.length() else files.json.length()
@@ -1221,6 +1330,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             main.post { if (passportJob === job && !job.cancelRequested) startPassportFile(job, files, 1) }
         } else {
             job.jsonDone = true; passportCompleted = passportTotal
+            passportReadCompleted = 0; passportReadTotal = 0
             passportPhase = "verifying"
             passportMessage = "两个文件已确认保存，正在通过 BLE 回读资料"; emit()
             main.postDelayed({ if (passportJob === job && !job.cancelRequested) readPassportChunk(job) }, 750)
@@ -1328,7 +1438,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
                 require(page.size == 1 && (page[0].toInt() and 255) == targetApp) { "设备未进入目标 app，请等待设备就绪后重试" }
                 listActiveDeviceFiles {
                     val activeId = deviceFiles.entries.firstOrNull { it.value == expectedName }?.key
-                    if (activeId == null || activeId !in 0..255) { finishSettings("文件列表已变化，请刷新重选", true); return@listActiveDeviceFiles }
+                if (activeId == null || activeId !in 0..255) { finishSettings("文件列表已变化，请刷新重选", true); return@listActiveDeviceFiles }
                     val channel = 0x49
                     val tag = 4
                     writeFilesCommand(channel, byteArrayOf(tag.toByte(), 4, 0, 0, 0, activeId.toByte())) {
@@ -1359,7 +1469,7 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
             return
         }
         request(0x59) { capabilities ->
-            require(capabilities.size == 5 && capabilities[0].toInt() == 1) { "设备能力响应无效，请升级 Ark 固件后重试" }
+            require(ArkCapabilityCache.isV1(capabilities)) { "设备能力响应无效，请升级 Ark 固件后重试" }
             if ((u32(capabilities, 1) and 8L) == 0L) {
                 finishSettings("此固件不支持按文件名直接打开图片，请升级 Ark 固件后重试", true)
                 return@request
@@ -1415,14 +1525,13 @@ class ArkBridge(private val activity: Activity, messenger: BinaryMessenger) :
     private fun ensureCatalog(done: () -> Unit) {
         if (catalogSupported == true) { done(); return }
         if (catalogSupported == false) { unsupportedCatalog(); return }
-        request(0x59) { data ->
-            catalogSupported = data.size == 5 && data[0].toInt() == 1 && (u32(data, 1) and 4L) != 0L
+        request(0x59) {
             if (catalogSupported == true) done() else unsupportedCatalog()
         }
         pending?.let { read ->
             read.timeout?.let(main::removeCallbacks)
             read.timeout = Runnable { if (pending === read) {
-                pending = null; catalogSupported = false; unsupportedCatalog()
+                pending = null; unsupportedCatalog()
             } }.also { main.postDelayed(it, 7000) }
         }
     }

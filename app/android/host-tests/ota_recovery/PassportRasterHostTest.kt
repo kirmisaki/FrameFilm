@@ -3,7 +3,38 @@ package org.framefilm.framefilm_ark
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+private fun capabilitiesAreValidAndLinkScoped() {
+    val cache = ArkCapabilityCache()
+    val i006 = PassportRasterFormat.STUDENT_I006.capability
+    val colorFast = PassportRasterFormat.STUDENT_COLOR_FAST.capability
+    val invalid = listOf(byteArrayOf(), byteArrayOf(1, 0, 0, 0x48),
+        byteArrayOf(1, 0, 0, 0x48, 0, 0), byteArrayOf(2, 0, 0, 0x48, 0))
+    check(cache[1] == null && !ArkCapabilityCache.hasBit(cache[1], i006))
+    for (reply in invalid) {
+        cache.update(1, reply)
+        check(cache[1] == null && !ArkCapabilityCache.hasBit(reply, colorFast))
+    }
+    // A later read of the same channel recovers the missing evidence, even with no transfer bits.
+    cache.update(1, byteArrayOf(1, 0, 0, 0x08, 0))
+    check(cache[1] != null && ArkCapabilityCache.hasBit(cache[1], i006))
+    check(!ArkCapabilityCache.hasBit(cache[1], colorFast))
+    for (reply in invalid) {
+        cache.update(1, reply)
+        check(ArkCapabilityCache.hasBit(cache[1], i006) && !ArkCapabilityCache.hasBit(cache[1], colorFast))
+    }
+    check(cache[null] == null && cache[2] == null)
+    cache.update(2, invalid.last())
+    check(cache[2] == null)
+    cache.update(2, byteArrayOf(1, 0, 0, 0x48, 0))
+    check(ArkCapabilityCache.hasBit(cache[2], i006) && ArkCapabilityCache.hasBit(cache[2], colorFast))
+    cache.update(2, byteArrayOf(1, 0, 0, 0, 0))
+    check(cache[2] != null && !ArkCapabilityCache.hasBit(cache[2], i006) && !ArkCapabilityCache.hasBit(cache[2], colorFast))
+    cache.clear()
+    check(cache[2] == null)
+}
+
 fun main() {
+    capabilitiesAreValidAndLinkScoped()
     fun rejects(format: PassportRasterFormat, bin: ByteArray, hasAvatar: Boolean) {
         check(runCatching { format.validate(bin, hasAvatar) }.exceptionOrNull() is IllegalArgumentException)
     }

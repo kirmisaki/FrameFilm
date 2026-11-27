@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -92,5 +93,51 @@ void main() {
     expect((image.width, image.height), (720, 480));
     image.dispose();
     codec.dispose();
+  });
+
+  test('bundled Amiya I006 uses the aligned W red fade', () async {
+    final template = await File(studentPassportTemplateAsset('amiya')).readAsBytes();
+    final rendered = await renderStudentPassport(
+      const StudentPassportProfile(
+        codenameUnset: true,
+        studentNumberUnset: true,
+      ),
+      template,
+    );
+    final unpatched = await renderStudentPassport(
+      const StudentPassportProfile(
+        codenameUnset: true,
+        studentNumberUnset: true,
+        palette: 'guard',
+      ),
+      template,
+    );
+    validateAbc9Film(rendered.bin);
+    final payload = ByteData.sublistView(rendered.bin);
+    final unpatchedPayload = ByteData.sublistView(unpatched.bin);
+    int offset(int x, int y) => 32 + 2 * (720 * 480 - 1 - (720 * y + x));
+    // Sample the left edge, middle and right edge of the resized I6RFW101 stripe.
+    for (final (x, y, expected) in [
+      (414, 0, 111),
+      (453, 0, 487),
+      (489, 0, 238),
+      (418, 4, 295),
+      (470, 6, 303),
+      (453, 9, 46),
+      (489, 9, 238),
+    ]) {
+      expect(
+        payload.getUint16(offset(x, y), Endian.little),
+        expected,
+        reason: 'reader pixel ($x, $y)',
+      );
+    }
+    for (final (x, y) in [(413, 0), (490, 9), (453, 10)]) {
+      expect(
+        payload.getUint16(offset(x, y), Endian.little),
+        unpatchedPayload.getUint16(offset(x, y), Endian.little),
+        reason: 'outside W at reader pixel ($x, $y)',
+      );
+    }
   });
 }

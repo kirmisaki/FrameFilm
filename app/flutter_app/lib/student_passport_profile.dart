@@ -18,7 +18,7 @@ const studentPassportPalettes = {
   'vanguard': '先锋',
   'guard': '近卫',
   'defender': '重装',
-  'caster': '术师',
+  'caster': '术士',
   'supporter': '辅助',
   'specialist': '特种',
 };
@@ -301,6 +301,7 @@ Future<PassportRaster> renderStudentPassport(
       checkCancelled: checkCancelled,
     );
     _applyWatermark(abcCodes, base, composed);
+    if (profile.palette == 'amiya') _applyRedFade(abcCodes, base);
     codes = abcCodes;
   } else {
     codes = await quantizeFramePixels(
@@ -337,6 +338,45 @@ Future<PassportRaster> renderStudentPassport(
   return PassportRaster(bin, png);
 }
 
+// The aligned Amiya stripe occupies reader coordinates x=[414,490), y=[0,10).
+const _redFadeX = 414, _redFadeWidth = 76;
+const _redFadeSamples = [(414, 0xf6bfb7), (453, 0xdf7163), (489, 0xd19595)];
+
+// I6RFW101.film, reader-order crop (415, 0, 78, 10). A–S index the ABC9 codes.
+const _wCodes = [
+  22, 32, 33, 34, 46, 47, 87, 97, 110, 111,
+  173, 174, 238, 295, 303, 366, 430, 487, 495,
+];
+const _wRows = [
+  'JOEONORORERROOERORERRRRSOROERRORPOEOSORORERSOOSSOSSSSESOOSOOOOOQQOKIKOKMKKQKLM',
+  'GOHNNREROOOOEROEROREOORSERSSORSOESRREROSOOOOSROESOSSOOSOOEOOOSKIKOQQKQIKMIMMIA',
+  'GNOOFOOERRERSROROEOBESORRORORESRSROSOSOERSSESROSOSOCSSOSOOSOSOOQOQIOIOMIQKIKIA',
+  'JFHORORSOEOROEORERROORESOSEROSROEOSORESSOEOROSOCSSEOOCOOOOOEOOQIQIKOQOKIMIMQMM',
+  'GRHRNNORROREOREORORERORORPSREOEOSREREROSPORSOESOEOSSSOSOEQOOOOKOOQQQKQMKQMKIIM',
+  'GOOOFQROOROSROSREOEOREOESOOERERROESOOSROOSOSROSDSOOOESOOOOOOSOQQIOOIIOKMIKMIKM',
+  'JOHNOOESRERRORRORERREORRREROROSESORESOESSOSEOSSOSSCSSOKOSOSOSOOOKOQQOOIIKIKKMM',
+  'JNONNRRORSOOSRORORORORSOESSRSERORRESRPSOREOOSPOSOSOSOEOOOOOKOOQIQQOKQQKMQIMLIA',
+  'GSONFORSORRREROEREOSDREROROESROROEOEOOSSOSSSSSOSSESSSSOSOSOSOSOQOOOKLOKLMIKKIM',
+  'JRHDORREROROOERCORREOOSERESOROSESRRRSEDSESDSOESRSSSESOOSEOEOEOKKOQQQOKQLKLQLMM',
+];
+
+void _applyRedFade(Uint16List codes, Uint8List base) {
+  for (final (x, expected) in _redFadeSamples) {
+    final i = x * 4;
+    final rgb = (base[i] << 16) | (base[i + 1] << 8) | base[i + 2];
+    if (rgb != expected) return;
+  }
+  // Match the narrower PSD layer with nearest-neighbor ABC9 sampling.
+  for (var y = 0; y < _wRows.length; y++) {
+    final row = _wRows[y];
+    for (var x = 0; x < _redFadeWidth; x++) {
+      final sourceX = (2 * x + 1) * row.length ~/ (2 * _redFadeWidth);
+      codes[(_redFadeX + x) * _height + _height - 1 - y] =
+          _wCodes[row.codeUnitAt(sourceX) - 65];
+    }
+  }
+}
+
 Future<Uint8List> _drawStudent(
   ui.Image template, {
   StudentPassportProfile? profile,
@@ -345,16 +385,7 @@ Future<Uint8List> _drawStudent(
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   canvas.drawColor(const Color(0xffffffff), BlendMode.src);
-  canvas.save();
-  canvas.clipPath(
-    Path()
-      ..addRect(const Rect.fromLTWH(0, 0, 720, 10))
-      ..addRect(const Rect.fromLTWH(0, 10, 218, 38))
-      ..addRect(const Rect.fromLTWH(0, 48, 720, 432)),
-    doAntiAlias: false,
-  );
   canvas.drawImage(template, Offset.zero, Paint());
-  canvas.restore();
   if (avatar != null) {
     canvas.drawImageRect(
       avatar,

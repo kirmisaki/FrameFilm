@@ -13,6 +13,8 @@ class ArkSession(context: Context, private val listener: Listener,
     interface Listener {
         fun onDevices(devices: List<BluetoothDevice>) { }
         fun onConnection(connected: Boolean, message: String) { }
+        /** Once per actual GATT link, when ordinary settings reads may begin. */
+        fun onReadyForSettings() { }
         fun onPacket(packet: ByteArray) { }
         fun onTransfer(snapshot: TransferSnapshot) { }
     }
@@ -47,6 +49,7 @@ class ArkSession(context: Context, private val listener: Listener,
     private var lastTransferSnapshot: TransferSnapshot? = null
     private var uncertainPhotoFile: File? = null
     private var readyAfterCleanup = false
+    private var pendingSettingsLink: Int? = null
     private val ble: ArkBleController = ArkBleController(context, object : ArkBleController.Listener {
         override fun onDevices(found: List<BluetoothDevice>) {
             devices.clear()
@@ -55,13 +58,13 @@ class ArkSession(context: Context, private val listener: Listener,
         }
         override fun onReady() {
             if (closed) return
+            pendingSettingsLink = ble.readyLinkId
             readyAfterCleanup = true
             resumeReadyAfterCleanup()
         }
         override fun onPanel(panelId: Int, width: Int, height: Int) { }
         override fun onState(state: String) {
-            // ArkBleController emits this before onReady. Defer ordinary refresh
-            // until an interrupted transfer has settled.
+            // Ready status can precede onReady; keep it hidden during transfer recovery.
             if (!closed && coordinator?.expectsBleResume != true && !(ble.isReady && (readyAfterCleanup || needsTransferRecovery())))
                 listener.onConnection(ble.isReady, state)
         }
@@ -81,6 +84,7 @@ class ArkSession(context: Context, private val listener: Listener,
     })
 
     val isReady: Boolean get() = ble.isReady
+    val readyLinkId: Int? get() = ble.readyLinkId
     val negotiatedMtu: Int get() = ble.negotiatedMtu
     val connectedAddress: String? get() = if (isReady) connectedDevice?.address else null
     fun scannedName(address: String): String? = ble.scannedName(address)
@@ -154,7 +158,16 @@ class ArkSession(context: Context, private val listener: Listener,
         readyAfterCleanup = false
         listener.onConnection(true, "Ark GATT 已就绪，MTU ${ble.negotiatedMtu}")
         coordinator?.onBleReady()
+        notifyReadyForSettings()
         pump()
+    }
+
+    private fun notifyReadyForSettings() {
+        val link = pendingSettingsLink ?: return
+        if (link != readyLinkId || readyAfterCleanup || closed || closing || disconnectAfterTransfer ||
+            transferActive || coordinator?.cleanupConfirmed == false || coordinator?.needsConfirmation == true) return
+        pendingSettingsLink = null
+        listener.onReadyForSettings()
     }
 
     private fun onMain(block: () -> Unit) {
@@ -261,7 +274,7 @@ class ArkSession(context: Context, private val listener: Listener,
                         else if (disconnectAfterTransfer) {
                             disconnectAfterTransfer = false
                             ble.close()
-                        }
+                        } else notifyReadyForSettings()
                     }
                 }
                 val reconnect: () -> Unit = {
@@ -326,7 +339,13 @@ class ArkSession(context: Context, private val listener: Listener,
         if (closed || coordinator != null || transferActive) return@onMain
         transferOwnerAddress = recovery.deviceAddress
         val attempt = BleFirmwareCoordinator(ble, null, recovery.firmware, recovery.deviceAddress,
-            { connectedAddress }, { publishTransfer(it, null) }, {
+            { connectedAddress }, {
+                publishTransfer(it, null)
+                if (coordinator?.isActive == false) {
+                    resumeReadyAfterCleanup()
+                    notifyReadyForSettings()
+                }
+            }, {
                 val device = connectedDevice
                 if (!closed && !reconnectSuppressed && device?.address == recovery.deviceAddress &&
                     !ble.isReady && !ble.isConnecting) ble.connect(device)

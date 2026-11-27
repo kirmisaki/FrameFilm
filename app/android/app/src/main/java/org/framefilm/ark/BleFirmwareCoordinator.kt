@@ -99,7 +99,7 @@ class BleFirmwareCoordinator(
         }.exceptionOrNull()
         if (error != null) { emit("error", error.message ?: "固件目标无效"); return@onMain }
         active = true
-        val timeoutMs = 180_000L + ((firmware.size + payloadSize() - 1) / payloadSize()) * 150L
+        val timeoutMs = TransferPolicy.transferDeadlineMs(firmware.size, payloadSize())
         setDeadline(timeoutMs, "BLE 固件发送超时")
         emit("validating", "核对原 Ark 硬件身份、运行项目与 OTA 分区；请保持 App 前台")
         if (!active) return@onMain
@@ -209,7 +209,8 @@ class BleFirmwareCoordinator(
         }
         stageCommand(0x6B, be32(received) + buffer, received + buffer.size) {
             received += buffer.size
-            if (received == firmware.size || reported == 0L || received - reported >= maxOf(4096, firmware.size / 100)) {
+            if (received == firmware.size || reported == 0L ||
+                received - reported >= TransferPolicy.progressStep(firmware.size)) {
                 reported = received
                 emit("sending", "设备已确认接收 $received / ${firmware.size} 字节")
             }

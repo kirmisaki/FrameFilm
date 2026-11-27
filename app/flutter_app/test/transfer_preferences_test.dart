@@ -69,12 +69,14 @@ void main() {
     final device = DeviceSnapshot.fromMap({
       'connected': true,
       'deviceId': 'A',
+      'studentPassportCapabilitiesKnown': true,
       'studentPassportSupported': true,
       'studentColorFastSupported': true,
       'colorPassportSupported': true,
     });
     final partial = DeviceSnapshot.fromMap({'connected': true, 'deviceId': 'A'})
         .retainingTransfer(device);
+    expect(partial.studentPassportCapabilitiesKnown, isTrue);
     expect(partial.studentColorFastSupported, isTrue);
     expect(partial.colorPassportSupported, isTrue);
     for (final next in [
@@ -82,10 +84,31 @@ void main() {
       {'connected': true, 'deviceId': 'B'},
     ]) {
       final snapshot = DeviceSnapshot.fromMap(next).retainingTransfer(device);
+      expect(snapshot.studentPassportCapabilitiesKnown, isFalse);
       expect(snapshot.studentPassportSupported, isFalse);
       expect(snapshot.studentColorFastSupported, isFalse);
       expect(snapshot.colorPassportSupported, isFalse);
     }
+
+    // After a same-address reconnect, native emits an explicit unknown state.
+    final unknown = DeviceSnapshot.fromMap({
+      'connected': true,
+      'deviceId': 'A',
+      'studentPassportCapabilitiesKnown': false,
+    }).retainingTransfer(device);
+    expect(unknown.studentPassportCapabilitiesKnown, isFalse);
+    expect(unknown.studentPassportSupported, isFalse);
+    expect(unknown.studentColorFastSupported, isFalse);
+    final i006Only = DeviceSnapshot.fromMap({
+      'connected': true,
+      'deviceId': 'A',
+      'studentPassportCapabilitiesKnown': true,
+      'studentPassportSupported': true,
+      'studentColorFastSupported': false,
+    }).retainingTransfer(unknown);
+    expect(i006Only.studentPassportCapabilitiesKnown, isTrue);
+    expect(i006Only.studentPassportSupported, isTrue);
+    expect(i006Only.studentColorFastSupported, isFalse);
   });
 
   testWidgets('manual mode persists and selects BLE for an ordinary Film', (

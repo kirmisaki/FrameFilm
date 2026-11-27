@@ -141,7 +141,8 @@ internal class VerifiedBleFileCoordinator(
         }
         acknowledged(0x02, chunk, received + chunk.size) {
             received += chunk.size
-            if (reported == 0L || received == total || received - reported >= maxOf(4096, total / 100)) {
+            if (reported == 0L || received == total ||
+                received - reported >= TransferPolicy.progressStep(total)) {
                 reported = received
                 emit("sending", "设备已确认接收 $received / $total 字节")
             }

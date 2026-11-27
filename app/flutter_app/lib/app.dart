@@ -46,6 +46,29 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
   bool checkingReleases = false;
   String? releaseMessage;
   int releaseQuery = 0;
+  int? _readbackRevision;
+  bool _studentReadback = false;
+  bool _studentReadbackFor(int? revision, Object? raw) {
+    // Native always sends a revision; a preview gateway without one recomputes.
+    if (revision == null) return _decodeStudent(raw);
+    if (_readbackRevision == revision) return _studentReadback;
+    _readbackRevision = revision;
+    _studentReadback = _decodeStudent(raw);
+    return _studentReadback;
+  }
+
+  bool _decodeStudent(Object? raw) {
+    if (raw is! String) return false;
+    try {
+      final data = jsonDecode(raw);
+      return data is Map &&
+          (data['version'] == 2 ||
+              (data['version'] == 3 && data['kind'] == 'student'));
+    } on FormatException {
+      // The editor reports its own profile validation errors.
+      return false;
+    }
+  }
   Future<void> checkReleases() async {
     final hardware = device.firmwareTarget;
     if (hardware == null) return;
@@ -1441,24 +1464,30 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     final snapshot = device.snapshot;
     final busy = snapshot.passportBusy || device.busy;
     final operation = snapshot.passport;
+    final preferBle = transferPreference == TransferPreference.ble;
+    final bleAvailable = operation['bleAvailable'] == true;
+    final wifiAvailable = operation['wifiAvailable'] == true;
     final passportSendReady =
         transferPreferenceReady &&
-        (transferPreference == TransferPreference.ble
+        (preferBle
             ? operation['bleAvailable'] != false
-            : operation['wifiAvailable'] != false ||
-                  operation['bleAvailable'] == true);
+            : operation['wifiAvailable'] != false || bleAvailable);
+    final studentSendReady =
+        transferPreferenceReady &&
+        (preferBle ? bleAvailable : wifiAvailable || bleAvailable);
+    final studentRetryReady = operation['transport'] == 'ble'
+        ? bleAvailable
+        : wifiAvailable;
+    final studentTransportHint = !transferPreferenceReady
+        ? '正在读取传输偏好…'
+        : studentSendReady
+        ? null
+        : preferBle && wifiAvailable
+        ? '当前连接无法通过蓝牙发送学生证。可在设置中关闭蓝牙兼容模式。'
+        : '当前没有可用的学生证传输方式，请刷新设备设置或重新连接。';
     final raw = operation['json'];
-    bool studentReadback = false;
-    if (raw is String) {
-      try {
-        final data = jsonDecode(raw);
-        studentReadback = data is Map &&
-            (data['version'] == 2 ||
-                (data['version'] == 3 && data['kind'] == 'student'));
-      } on FormatException {
-        // The editor reports its own profile validation errors.
-      }
-    }
+    final studentReadback = _studentReadbackFor(
+        operation['revision'] is int ? operation['revision'] as int : null, raw);
     Future<void> read() => device.command('readPassport');
     Future<void> save(String json, Uint8List bin) =>
         device.command('savePassport', {
@@ -1470,6 +1499,7 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
     void open() => device.command('openDevicePage', {'appId': 6});
     final retry =
         snapshot.connected &&
+            (!editStudentPassport || studentRetryReady) &&
             !device.busy &&
             !snapshot.settingsBusy &&
             !snapshot.transfer.active &&
@@ -1503,9 +1533,16 @@ class _FrameFilmAppState extends State<FrameFilmApp> {
             ? StudentPassportEditor(
                 controller: studentPassportEditor,
                 canOperate: device.canEditSettings,
-                supported: snapshot.studentPassportSupported,
-                colorFastSupported: snapshot.studentColorFastSupported,
-                canSend: passportSendReady,
+                connected: snapshot.connected,
+                supported: snapshot.studentPassportCapabilitiesKnown
+                    ? snapshot.studentPassportSupported
+                    : null,
+                colorFastSupported: snapshot.studentPassportCapabilitiesKnown
+                    ? snapshot.studentColorFastSupported
+                    : null,
+                readingCapabilities: snapshot.settingsBusy,
+                canSend: studentSendReady,
+                transportHint: studentTransportHint,
                 busy: busy,
                 operation: operation,
                 onRead: read,

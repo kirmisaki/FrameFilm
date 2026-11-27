@@ -7,18 +7,25 @@ import java.util.concurrent.TimeoutException
 
 private val elf = "11".repeat(32)
 private val otherElf = "00".repeat(32)
+private val bleOriginalElf = "33".repeat(32)
 
 private class Recorder : ArkSession.Listener {
     val connections = mutableListOf<Boolean>()
     val transfers = mutableListOf<TransferSnapshot>()
+    var settingsReadyCount = 0
+    var onSettingsReady: () -> Unit = {}
     override fun onConnection(connected: Boolean, message: String) { connections += connected }
+    override fun onReadyForSettings() { settingsReadyCount++; onSettingsReady() }
     override fun onTransfer(snapshot: TransferSnapshot) { transfers += snapshot }
     fun latest() = transfers.last()
 }
 
-private class Fixture {
+private class Fixture(refreshOnReady: Boolean = false,
+                      restoredStage: BleFirmwareCoordinator.Stage? = null) {
     val recorder = Recorder()
-    val session = ArkSession(Context(), recorder)
+    var recovery: BleFirmwareCoordinator.Recovery? = null
+    val session = ArkSession(Context(), recorder, persistBleFirmware = { recovery = it; true })
+    val settingsLinks = mutableListOf<Int>()
     val ble get() = ArkBleController.current
     val p2p get() = ArkP2pController.current
     val file: File = File.createTempFile("ota-host-", ".bin").apply {
@@ -30,9 +37,28 @@ private class Fixture {
     init {
         Handler.clear()
         ArkApNetworkController.supported = false
+        if (refreshOnReady) recorder.onSettingsReady = {
+            check(!session.transferActive && recovery == null)
+            settingsLinks += checkNotNull(session.readyLinkId)
+            session.writePacket(byteArrayOf(0x55, 0x59, 0, 0xae.toByte())) { check(it.isSuccess) }
+        }
+        if (restoredStage != null) {
+            val saved = BleFirmwareCoordinator.Recovery("AA:00", image, restoredStage, bleOriginalElf)
+            recovery = saved
+            session.restoreBleFirmware(saved)
+        }
         session.scan()
         session.connect("AA:00")
     }
+
+    fun startBleOta(runningElf: String) {
+        session.startFirmwareTransfer(file, image, transportPreference = "ble")
+        ble.reply(0x59, byteArrayOf(1, 0, 0, 0x10, 0x40))
+        ble.reply(0x5D, hardwareInfo())
+        ble.reply(0x56, buildInfo(runningElf))
+    }
+
+    fun ackBleOta(channel: Int, offset: Int) = ble.reply(channel, byteArrayOf(0) + ArkCatalog.be32(offset))
 
     fun startOta() {
         session.startFirmwareTransfer(file, image)
@@ -88,6 +114,60 @@ private fun buildInfo(hash: String, max: Int = 4 * 1024 * 1024): ByteArray {
         "3.2.5\u0000frame_film_ark\u0000".toByteArray()
 }
 
+private fun settingsReadyOncePerGattLink() {
+    val f = Fixture(refreshOnReady = true)
+    check(f.recorder.settingsReadyCount == 1 && f.ble.channels == listOf(0x59))
+    check(f.settingsLinks.single() == f.session.readyLinkId)
+    f.ble.reportState("connected status only")
+    check(f.recorder.connections.last() && f.recorder.settingsReadyCount == 1)
+
+    // Same address, different GATT. Disconnecting itself must not issue another read.
+    f.ble.disconnectNow()
+    check(f.session.readyLinkId == null && f.ble.channels == listOf(0x59))
+    f.session.connect("AA:00")
+    check(f.recorder.settingsReadyCount == 2 && f.settingsLinks.distinct().size == 2)
+    check(f.ble.channels == listOf(0x59, 0x59))
+}
+
+private fun settingsRefreshAfterBleOtaVerification() {
+    val f = Fixture(refreshOnReady = true)
+    f.recorder.connections.clear()
+    f.startBleOta(bleOriginalElf)
+    val size = f.image.size.toInt()
+    f.ackBleOta(0x6A, 0)
+    f.ackBleOta(0x6B, size)
+    check(Handler.runWithDelay(0))
+    f.ackBleOta(0x6C, size)
+    f.ackBleOta(0x6D, size)
+    check(f.session.readyLinkId == null && f.recorder.connections.isEmpty()) // OTA hides ordinary disconnect status.
+    check(Handler.runWithDelay(3000))
+    check(f.session.connectedAddress == "AA:00" && f.session.readyLinkId != f.settingsLinks.single())
+    check(f.ble.pending?.channel == 0x56 && f.session.transferActive)
+    check(f.recorder.connections.isEmpty() && f.ble.sent.count { it.channel == 0x59 } == 1)
+    f.ble.reply(0x56, buildInfo(elf))
+    check(f.recovery == null && f.recorder.latest().success && f.recorder.latest().cleanupCompleted)
+    check(f.recorder.settingsReadyCount == 2 && f.ble.sent.count { it.channel == 0x59 } == 2)
+}
+
+private fun sameImageBleOtaDoesNotRefreshSettings() {
+    val f = Fixture(refreshOnReady = true)
+    f.startBleOta(elf)
+    check(f.recorder.latest().success && f.recorder.latest().message.contains("相同"))
+    check(f.recorder.settingsReadyCount == 1 && f.settingsLinks.single() == f.session.readyLinkId)
+    check(f.ble.sent.count { it.channel == 0x59 } == 1 && 0x6A !in f.ble.channels)
+}
+
+private fun restoredApplyWaitsForConfirmationBeforeSettings() {
+    val f = Fixture(refreshOnReady = true, restoredStage = BleFirmwareCoordinator.Stage.APPLY_PENDING)
+    check(f.recorder.connections.last() && f.recorder.latest().canConfirm)
+    check(f.recorder.settingsReadyCount == 0 && f.ble.channels.isEmpty())
+    f.session.confirmFirmwareTransfer()
+    check(f.ble.channels == listOf(0x56) && f.recorder.settingsReadyCount == 0)
+    f.ble.reply(0x56, buildInfo(elf))
+    check(f.recorder.latest().success && f.recovery == null)
+    check(f.recorder.settingsReadyCount == 1 && f.ble.channels == listOf(0x56, 0x59))
+}
+
 private fun directTerminalAfterEarlyReady() {
     val f = Fixture()
     f.startOta()
@@ -99,9 +179,10 @@ private fun directTerminalAfterEarlyReady() {
     f.p2p.finishClose(true)
     check(f.recorder.latest().phase == "cleanup" && !f.recorder.latest().cleanupCompleted)
     check(f.session.transferActive && !f.recorder.latest().canRetry)
-    check(f.recorder.connections.none { it })
+    check(f.recorder.connections.none { it } && f.recorder.settingsReadyCount == 1)
     check(f.ble.pending?.channel == 0x51)
     f.ble.reply(0x51, f.terminal(4))
+    check(f.recorder.settingsReadyCount == 2)
     val after = f.recorder.latest()
     check(after.phase == "error" && after.cleanupCompleted && after.canRetry)
     check(after.kind == "firmware" && after.total == before.total && after.received == before.received)
@@ -135,6 +216,7 @@ private fun failedStatusDoesNotUnlock() {
     check(f.recorder.latest().phase == "error")
     check(!f.recorder.latest().cleanupCompleted)
     check(f.recorder.latest().canRetry)
+    check(f.recorder.settingsReadyCount == 1)
     check(0x52 !in f.ble.channels)
 }
 
@@ -552,6 +634,10 @@ private fun upstreamNfcFirmwareKeepsLegacyTransfer() {
 }
 
 fun main() {
+    settingsReadyOncePerGattLink()
+    settingsRefreshAfterBleOtaVerification()
+    sameImageBleOtaDoesNotRefreshSettings()
+    restoredApplyWaitsForConfirmationBeforeSettings()
     upstreamNfcFirmwareKeepsLegacyTransfer()
     hardwareTargetsAndRetriesCannotGuess()
     legacyHardwareConfirmationIsAttemptScoped()

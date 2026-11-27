@@ -4,6 +4,12 @@
 // supplies a BLE mock; the production standalone/embedded pages stay unmodified.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const palettes = ['amiya', 'sniper', 'medic', 'vanguard', 'guard', 'defender', 'caster', 'supporter', 'specialist'];
+const stripeRuns = [[271, 274], [294, 299], [315, 324], [335, 352], [369, 407], [414, 490], [497, 572], [576, 720]];
 async function mockBluetooth() {
   const mock = window.mockArk = { files: [], starts: 0, profileJson: null, currentFile: null, flags: (1 << 11) | (1 << 14) | (1 << 15), app: 5 };
   const encode = value => new TextEncoder().encode(value);
@@ -61,10 +67,6 @@ async function mockBluetooth() {
       page.setDefaultTimeout(120000);
       const errors = []; page.on('pageerror', error => errors.push(error.message));
       await page.route(/fonts\.(googleapis|gstatic)\.com/, route => route.abort());
-      await page.route('**/student-palettes/fullscreen/*.png', route => route.fulfill({ contentType: 'image/svg+xml', body:
-        '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="480"><rect width="720" height="480" fill="white"/>' +
-        '<rect width="32" height="32" fill="#153c87"/><rect x="385" y="130" width="320" height="330" fill="#f4f4f4"/>' +
-        '<rect x="290" y="258" width="415" height="48"/></svg>' }));
       await page.addInitScript(mockBluetooth);
       await page.goto(`http://127.0.0.1:8768/${embedded ? 'ForFilm' : 'ark-pass-editor'}/`, { waitUntil: 'networkidle' });
       let frame = page;
@@ -76,6 +78,14 @@ async function mockBluetooth() {
       } else await page.locator('#connect').click();
       const at = id => frame.locator('#' + id);
       const ready = () => frame.waitForFunction(() => !document.getElementById('download-bin').disabled);
+      if (!embedded) {
+        for (const palette of palettes) {
+          const response = await page.request.get(`http://127.0.0.1:8768/ark-pass-editor/assets/student-passport/${palette}.png`);
+          assert.equal(response.status(), 200, palette);
+          const appAsset = path.join(__dirname, '../../../app/flutter_app/assets/student_passport', `${palette}.png`);
+          assert.deepEqual(await response.body(), fs.readFileSync(appAsset), `${palette} differs from Flutter`);
+        }
+      }
       const sampleAvatar = await frame.evaluate(() => {
         const make = (width, height) => {
           const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
@@ -93,8 +103,22 @@ async function mockBluetooth() {
         await at('file-status').filter({ hasText: '已导入' }).waitFor(); await ready();
         const storedAvatar = await frame.evaluate(kind => JSON.parse(localStorage.getItem(kind === 'student'
           ? 'framefilm-ark-pass-rhodes-academy-student-v2' : 'framefilm-ark-pass-profile-v1')).profile.avatar, kind);
-        if (kind === 'student') assert.deepEqual(await at('student-palette').locator('option').evaluateAll(nodes => nodes.map(node => node.value)),
-          ['amiya', 'sniper', 'medic', 'vanguard', 'guard', 'defender', 'caster', 'supporter', 'specialist']);
+        if (kind === 'student') {
+          assert.deepEqual(await at('student-palette').locator('option').evaluateAll(nodes => nodes.map(node => node.value)), palettes);
+          const runs = await at('preview').evaluate(canvas => {
+            const pixels = canvas.getContext('2d').getImageData(185, 3, 535, 1).data;
+            const colored = x => x < 720 && pixels.slice((x - 185) * 4, (x - 185) * 4 + 3).some(v => v < 240);
+            const spans = [];
+            for (let x = 185; x < 720;) {
+              if (!colored(x)) { x++; continue; }
+              const start = x;
+              while (colored(x)) x++;
+              spans.push([start, x]);
+            }
+            return spans;
+          });
+          assert.deepEqual(runs, stripeRuns, 'eight segments must render with the measured gaps');
+        }
         const output = at(kind === 'student' ? 'student-output' : 'avatar-mode');
         assert.deepEqual(await output.locator('option').evaluateAll(nodes => nodes.map(node => node.value)), ['i006', 'colorfast']);
         for (const mode of ['i006', 'colorfast']) {
@@ -113,6 +137,15 @@ async function mockBluetooth() {
           if (kind === 'student') {
             assert.equal(bytes.length, mode === 'i006' ? 691232 : 345632); assert.equal(bytes[9], mode === 'i006' ? 127 : 3);
             assert.deepEqual(bytes.slice(4, 8), [208, 2, 224, 1]); assert.equal(bytes[10], 1); assert.equal(bytes[11], 0);
+            if (mode === 'i006') {
+              const redFade = createHash('sha256');
+              for (let y = 0; y < 10; y++) for (let x = 414; x < 490; x++) {
+                const offset = 32 + 2 * (720 * 480 - 1 - y * 720 - x);
+                redFade.update(Buffer.from(bytes.slice(offset, offset + 2)));
+              }
+              // I6RFW101 in reader order, with the red segment resized from 78 to 76 px.
+              assert.equal(redFade.digest('hex'), 'f51bc6163123703001e4d3cf9ec24746f076adc69d20165e9368f3efc4d4dcd1');
+            }
           } else {
             assert.equal(bytes.length, mode === 'i006' ? 74416 : 53936);
             assert.deepEqual(bytes.slice(0, 16), [70, 70, 85, 73, 3, mode === 'i006' ? 127 : 3, 184, 1, 96, 2, 1, 0, 0, 0, 0, 0]);

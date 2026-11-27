@@ -31,6 +31,7 @@ function harness() {
   });
   c.window = c; c.parent = c;
   const source = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8').replace('  init();', `  window.api = { imageFromDataUrl, parseProfile, restoreDraft, changeOutput, draw, jsonBytes, choosePassportBin, removeAvatar, syncForm,
+    studentBaseUrl, STUDENT_AVATAR, STUDENT_CODE, STUDENT_NUMBER, STUDENT_RACE,
     set(value) { profile=value; avatarImage=null; avatarEdit=null; },
     get() { return {profile,renderedBin,drafts}; } };`);
   vm.runInContext(source, c);
@@ -93,4 +94,13 @@ test('cap rejection does not create fallback BIN and migrated mono draft stays b
   assert.equal(api.get().profile.avatar, null);
   assert.equal(api.get().profile._legacyAvatar, false); assert.equal(api.get().profile._legacySize, false);
   assert.equal(elements.get('download-bin').disabled, false);
+});
+
+test('the revised assets are loaded without moving the avatar or fields', () => {
+  const { api } = harness();
+  assert.equal(api.studentBaseUrl('amiya'), 'assets/student-passport/amiya.png?v=3');
+  assert.deepEqual({ ...api.STUDENT_AVATAR }, { x: 41, y: 111, width: 239, height: 299 });
+  assert.equal(api.STUDENT_CODE.x, 305);
+  assert.equal(api.STUDENT_NUMBER.x, 308);
+  assert.equal(api.STUDENT_RACE.x, 304);
 });
