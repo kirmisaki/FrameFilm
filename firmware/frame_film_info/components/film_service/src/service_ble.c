@@ -42,8 +42,7 @@
 
 #include "service_ble_gatts.h"
 #include "service_ble.h"
-#include "service_file.h"
-#include "service_film.h"
+#include "service_screen.h"
 #include "service_ota.h"
 #include "service_param.h"
 #include "service_wifi.h"
@@ -63,13 +62,6 @@
 #define BLE_MSG_QUEUE_LENGTH       50
 #define BLE_MSG_QUEUE_ITEM_SIZE    sizeof( ble_msg_t )
 
-#define BLE_FILM_TRANS_IDLE       0
-#define BLE_FILM_TRANS_STARTED    1
-#define BLE_FILM_TRANS_RECV_NAME  2
-#define BLE_FILM_TRANS_RECV_LEN   3
-#define BLE_FILM_TRANS_RECV_DATA  4
-#define BLE_FILM_TRANS_STOPPED    5
-
 #define BLE_OTA_TRANS_IDLE        0
 #define BLE_OTA_TRANS_STARTED     1
 #define BLE_OTA_TRANS_RECV_LEN    2
@@ -87,10 +79,6 @@
  */
 static TaskHandle_t m_ble_task_hdl = NULL;
 static QueueHandle_t m_ble_msg_hdl = NULL;
-static uint8_t m_film_trans_state = BLE_FILM_TRANS_IDLE;
-static uint8_t m_film_trans_filename[256];
-static uint32_t m_film_trans_file_size = 0;
-static uint32_t m_film_trans_received = 0;
 static uint8_t m_ota_trans_state = BLE_OTA_TRANS_IDLE;
 static uint32_t m_ota_trans_file_size = 0;
 static uint32_t m_ota_trans_received = 0;
@@ -318,165 +306,18 @@ static void ble_cmd_process(ble_cmd_t *cmd)
 
     switch(cmd->ch)
     {
+        /* 信息屏走 WiFi + FFSP，不再支持 0x00~0x08 BLE 文件传输 */
         case BLE_FILM_TRANS_CH_FILE_START :
-        {
-            if(m_film_trans_state == BLE_FILM_TRANS_IDLE || m_film_trans_state == BLE_FILM_TRANS_STOPPED)
-            {
-                m_film_trans_state = BLE_FILM_TRANS_STARTED;
-                m_film_trans_received = 0;
-                memset(m_film_trans_filename, 0, sizeof(m_film_trans_filename));
-                m_film_trans_file_size = 0;
-                sys_logi(BEL_SERVICE_TAG, "Film transfer started");
-            }
-            else
-            {
-                sys_logw(BEL_SERVICE_TAG, "Invalid state for FILE_START: %d", m_film_trans_state);
-            }
-            break;
-        }
         case BLE_FILM_TRANS_CH_FILE_NAME :
-        {
-            if(m_film_trans_state == BLE_FILM_TRANS_STARTED && cmd->len > 0)
-            {
-                memcpy(m_film_trans_filename, cmd->pdata, cmd->len);
-                m_film_trans_filename[cmd->len] = '\0';
-                m_film_trans_state = BLE_FILM_TRANS_RECV_NAME;
-                sys_logi(BEL_SERVICE_TAG, "Received filename: %s", m_film_trans_filename);
-            }
-            else
-            {
-                sys_logw(BEL_SERVICE_TAG, "Invalid state or length for FILE_NAME: state=%d, len=%d", m_film_trans_state, cmd->len);
-            }
-            break;
-        }
         case BLE_FILM_TRANS_CH_FILE_LEN :
-        {
-            if(m_film_trans_state == BLE_FILM_TRANS_RECV_NAME && cmd->len == 4)
-            {
-                m_film_trans_file_size = (cmd->pdata[0] << 24) | (cmd->pdata[1] << 16) | (cmd->pdata[2] << 8) | cmd->pdata[3];
-                m_film_trans_state = BLE_FILM_TRANS_RECV_LEN;
-                sys_logi(BEL_SERVICE_TAG, "Received file size: %d", m_film_trans_file_size);
-
-                service_file_save_start((const char*)m_film_trans_filename, m_film_trans_file_size);
-            }
-            else
-            {
-                sys_logw(BEL_SERVICE_TAG, "Invalid state or length for FILE_LEN: state=%d, len=%d", m_film_trans_state, cmd->len);
-            }
-            break;
-        }
         case BLE_FILM_TRANS_CH_FILE_DATA :
-        {
-            if((m_film_trans_state == BLE_FILM_TRANS_RECV_LEN || m_film_trans_state == BLE_FILM_TRANS_RECV_DATA) && cmd->len > 0)
-            {
-                uint8_t *pdata_copy = (uint8_t*)pvPortMalloc(cmd->len);
-                if(pdata_copy)
-                {
-                    memcpy(pdata_copy, cmd->pdata, cmd->len);
-                    service_file_save_data((const char*)m_film_trans_filename, m_film_trans_file_size, pdata_copy, cmd->len);
-                    m_film_trans_received += cmd->len;
-                    m_film_trans_state = BLE_FILM_TRANS_RECV_DATA;
-                }
-            }
-            else
-            {
-                sys_logw(BEL_SERVICE_TAG, "Invalid state or length for FILE_DATA: state=%d, len=%d", m_film_trans_state, cmd->len);
-            }
-            break;
-        }
         case BLE_FILM_TRANS_CH_FILE_STOP :
-        {
-            if(m_film_trans_state == BLE_FILM_TRANS_RECV_DATA)
-            {
-                // 静默保存 flag：0x04 LEN=1 DATA=[0x01] 时保存后不自动加载（批量上传用）
-                uint8_t auto_load = 1;
-                if(cmd->len == 1 && cmd->pdata[0] == 0x01)
-                {
-                    auto_load = 0;
-                }
-                service_file_save_stop(auto_load);
-                sys_logi(BEL_SERVICE_TAG, "Film transfer stopped, received: %d/%d bytes", m_film_trans_received, m_film_trans_file_size);
-                m_film_trans_state = BLE_FILM_TRANS_STOPPED;
-            }
-            else
-            {
-                sys_logw(BEL_SERVICE_TAG, "Invalid state for FILE_STOP: %d", m_film_trans_state);
-            }
+        case BLE_FILM_TRANS_CH_FILE_DELETE :
+        case BLE_FILM_TRANS_CH_FILE_LIST :
+        case BLE_FILM_TRANS_CH_FILE_DISPLAY :
+        case BLE_FILM_TRANS_CH_FILE_DISPLAY_GET :
+            sys_logw(BEL_SERVICE_TAG, "file transfer disabled on info screen (ch=0x%02X)", cmd->ch);
             break;
-        }
-        case BLE_FILM_TRANS_CH_FILE_DELETE : // 删除文件
-        {
-            if(cmd->len == 1)
-            {
-                uint8_t file_id = cmd->pdata[0];
-                sys_logi(BEL_SERVICE_TAG, "Delete file id: %d", file_id);
-                service_file_delete(file_id);
-            }
-            break;
-        }
-        case BLE_FILM_TRANS_CH_FILE_LIST : // 查询文件列表
-        {
-            uint32_t file_count = service_file_get_count();
-            sys_logi(BEL_SERVICE_TAG, "File list count: %d", file_count);
-
-            uint8_t *cmd_buf = pvPortMalloc(150);
-            if(cmd_buf == NULL) break;
-
-            for(uint32_t i = 0; i < file_count; i++)
-            {
-                memset(cmd_buf, 0, 150);
-
-                char filename[256];
-                if(service_file_get_filename_safe(i, filename, sizeof(filename)) != 0)
-                {
-                    sys_logw(BEL_SERVICE_TAG, "File list changed during query, abort at index: %d", i);
-                    break;
-                }
-                uint8_t name_len = strlen(filename) + 1;
-
-                cmd_buf[0] = BLE_CMD_HEAD;
-                cmd_buf[1] = BLE_FILM_TRANS_CH_FILE_LIST;
-                cmd_buf[2] = 2 + name_len;
-                cmd_buf[3] = i & 0xff;
-                cmd_buf[4] = name_len;
-
-                memcpy(&cmd_buf[5], filename, name_len);
-
-                uint8_t checksum = ble_checksum(cmd_buf, 5 + name_len);
-                cmd_buf[5 + name_len] = checksum;
-
-                service_ble_send_notify_data(BLE_NOTIFY_SEND_CH1, cmd_buf, 6 + name_len);
-
-                vTaskDelay(50 / portTICK_PERIOD_MS);
-            }
-
-            vPortFree(cmd_buf);
-            break;
-        }
-        case BLE_FILM_TRANS_CH_FILE_DISPLAY : // 显示id对应的文件
-        {
-            if(cmd->len == 1)
-            {
-                uint8_t file_id = cmd->pdata[0];
-                sys_logi(BEL_SERVICE_TAG, "Display file id: %d", file_id);
-                service_film_display(file_id);
-            }
-            break;
-        }
-        case BLE_FILM_TRANS_CH_FILE_DISPLAY_GET : // 查询当前显示的文件id
-        {
-            uint32_t current_id = service_film_get_current_id();
-            sys_logi(BEL_SERVICE_TAG, "Current display file id: %d", current_id);
-
-            uint8_t cmd_buf[6];
-            cmd_buf[0] = BLE_CMD_HEAD;
-            cmd_buf[1] = BLE_FILM_TRANS_CH_FILE_DISPLAY_GET;
-            cmd_buf[2] = 1;
-            cmd_buf[3] = current_id & 0xFF;
-            cmd_buf[4] = ble_checksum(cmd_buf, 4);
-            service_ble_msg_gatts_data_send(cmd_buf, sizeof(cmd_buf), MSG_BLE_CH1_OUT_DATA);
-            break;
-        }
         case BLE_FILM_TRANS_CH_OTA_LEN :
         {
             if(m_ota_trans_state == BLE_OTA_TRANS_IDLE && cmd->len == 4)
@@ -843,22 +684,22 @@ static void ble_cmd_process(ble_cmd_t *cmd)
             service_wifi_clear_config();
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD : // 开始下载film文件
+        case BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD : // 触发屏幕同步
         {
-            sys_logi(BEL_SERVICE_TAG, "Film download requested");
-            service_wifi_download_start();
+            sys_logi(BEL_SERVICE_TAG, "Screen sync requested");
+            service_screen_request_sync(true);
             break;
         }
-        case BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE : // 查询下载状态
+        case BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE : // 查询同步状态
         {
-            wifi_download_state_t state = service_wifi_download_get_state();
-            uint8_t progress = service_wifi_download_get_progress();
-            sys_logi(BEL_SERVICE_TAG, "Download state: %d, progress: %d%%", state, progress);
+            uint8_t state = service_screen_is_busy() ? 1 : 0;
+            uint8_t progress = state ? 50 : 100;
+            sys_logi(BEL_SERVICE_TAG, "Screen sync state: %d", state);
             uint8_t resp_buf[7];
             resp_buf[0] = BLE_CMD_HEAD;
             resp_buf[1] = BLE_FILM_TRANS_CH_CTRL_FILM_DOWNLOAD_STATE;
             resp_buf[2] = 2;
-            resp_buf[3] = (uint8_t)state;
+            resp_buf[3] = state;
             resp_buf[4] = progress;
             resp_buf[5] = ble_checksum(resp_buf, 5);
             service_ble_msg_gatts_data_send(resp_buf, sizeof(resp_buf), MSG_BLE_CH1_OUT_DATA);

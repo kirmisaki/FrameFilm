@@ -32,8 +32,7 @@
 #include "service_ble.h"
 #include "service_param.h"
 #include "service_monitor.h"
-#include "service_file.h"
-#include "service_film.h"
+#include "service_screen.h"
 #include "service_wifi.h"
 
 
@@ -83,9 +82,7 @@ void film_service_init(void)
     service_ble_init();
     // 初始化监控服务
     service_monitor_init();
-    // 初始化文件服务
-    service_file_init();
-    // 初始化照片服务
-    service_film_init();
+    // 初始化屏幕薄客户端
+    service_screen_init();
 }
 

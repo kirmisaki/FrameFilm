@@ -185,6 +185,40 @@ void hal_epd_display_film(const unsigned char* filmData);
 void hal_epd_display_film_partial(const unsigned char* filmData);
 
 /**
+ * @brief 显示整帧 1bpp mono 位图（整屏刷新）
+ *
+ * @param monoData 800×480 1bpp 位图（每行 100 字节，MSB 在前，1=黑）
+ */
+void hal_epd_display_mono(const unsigned char* monoData);
+
+/**
+ * @brief 显示整帧 1bpp mono 位图（整屏差分刷新）
+ *
+ * 使用 UC8179 差分波形，只驱动变化像素；需要已有基准帧。
+ *
+ * @param monoData 800×480 1bpp 位图
+ */
+void hal_epd_display_mono_partial(const unsigned char* monoData);
+
+/**
+ * @brief 恢复差分基准
+ *
+ * 把一帧完整 1bpp 位图写入旧帧与新帧 RAM，不触发刷新。
+ * 用于深睡/重启后恢复“屏上当前画面”的基准，再叠加增量区域。
+ *
+ * @param monoData 800×480 1bpp 位图
+ */
+void hal_epd_restore_baseline(const unsigned char* monoData);
+
+/**
+ * @brief 触发一次差分刷新（不写数据）
+ *
+ * 通常配合 hal_epd_partial_update(..., display_enable=0) 多次写窗口后，
+ * 最后统一刷新一次。
+ */
+void hal_epd_refresh_partial(void);
+
+/**
  * @brief 局部窗口刷新
  *
  * 在指定矩形窗口内更新 1bpp 位图，其余区域保持不变。

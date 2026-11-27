@@ -41,6 +41,8 @@
 #include "service_ble_gatts.h"
 #include "service_monitor.h"
 #include "service_param.h"
+#include "service_screen.h"
+#include "service_wifi.h"
 
 /*********************************************************************
  * MACROS
@@ -184,6 +186,19 @@ static void monitor_task_handle(void *pvParameters)
         case MSG_AUTO_SLEEP_MANAGER :
             monitor_auto_sleep_manage_event();
             break;
+        case MSG_SLEEP_REQUEST :
+            if(!g_service_param.sleep.sleep_mode ||
+               service_ble_gatts_get_connect() ||
+               service_screen_is_busy())
+            {
+                break;
+            }
+            if(g_service_param.sleep.sleep_auto && g_service_param.sleep.sleep_time > 0)
+            {
+                hal_pwr_set_timer_wakeup(g_service_param.sleep.sleep_time);
+            }
+            monitor_enter_low_power();
+            break;
         default :
             break;
         }
@@ -286,6 +301,12 @@ static void monitor_auto_sleep_manage_event(void)
         return;
     }
 
+    if(service_screen_is_busy())
+    {
+        m_monitor_state.sleep_counter = 0;
+        return;
+    }
+
     m_monitor_state.sleep_counter++;
 
     m_monitor_state.ble_connected = service_ble_gatts_get_connect();
@@ -321,6 +342,26 @@ static void monitor_enter_low_power(void)
 
     // 关闭外设供电并进入休眠
     hal_pwr_enter_sleep();
+}
+
+void service_monitor_request_sleep(void)
+{
+    if(!g_service_param.sleep.sleep_mode)
+    {
+        return;
+    }
+    if(service_ble_gatts_get_connect())
+    {
+        return;
+    }
+    if(service_screen_is_busy())
+    {
+        return;
+    }
+
+    monitor_msg_t msg;
+    msg.ID = MSG_SLEEP_REQUEST;
+    monitor_msg_send(&msg, 0);
 }
 
 static void monitor_input_activity_cb(void)

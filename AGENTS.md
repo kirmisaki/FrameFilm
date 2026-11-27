@@ -104,15 +104,17 @@ python tools/framefilm-dock-upload/scripts/dock_upload.py --list
 | 主控 | ESP32-S3-WROOM-1-N16R8（16MB Flash / 8MB Octal PSRAM） |
 | 屏幕 | GDEM075T41WT 7.5" **800×480 黑白 1bpp**，面板 ID `0x09`，驱动 `hal_epd_750.c` |
 | 屏幕接口 | U8 单面板 4 线 SPI：SCK48 / MOSI47 / CS14 / DC13 / RST12 / BUSY11（**低=忙**） |
-| 输入 | 单按键 GPIO4（低有效）：单击=下一张、双击=上一张、长按=清屏；EXT0 低电平唤醒 |
-| LED / 电池 / SD | WS2812 GPIO5（1 颗）/ ADC GPIO6 + 采样使能 GPIO7 / 4-bit SDMMC 无检测脚 |
+| 输入 | 单按键 GPIO4（低有效）：单击=下一页、双击=上一页、长按=强制同步；EXT0 低电平唤醒 |
+| LED / 电池 / SD | WS2812 GPIO5（1 颗）/ ADC GPIO6 + 采样使能 GPIO7 / 4-bit SDMMC 无检测脚（SD 仅作缓存/素材/日志） |
 | 外设电源 | GPIO9（3V3CTRL，高=给 EPD/TF/音频上电） |
 | 音频 / 原生 USB | U6 7 路 GPIO（`AUDIO1~7`）/ GPIO19、GPIO20（U3）；固件暂未使用 |
 | sdkconfig | `sdkconfig`（16MB/Octal + `partitions_16mb.csv`） |
 
 - 屏幕驱动移植自厂商 Arduino 工程 `E:\GDEM075T41WT_Arduino`（`Display_EPD_W21.cpp`），改为 ESP-IDF `spi_master` 半双工 + GPIO 手动 CS/DC
-- 支持 `.film` v1（4bpp，按亮度阈值二值化）与 v2 MonoFast（`Format 0x01`，1bpp，1=黑）；全刷用 OTP 整屏波形，局部刷新用 UC8179 差分波形（`hal_epd_display_film_partial` / `hal_epd_partial_update`，需先有整屏基准帧）
-- 与旧机型的关键差异：BUSY 低有效、外设电源 GPIO9、单按键、电池 ADC GPIO6/7、SD 无检测脚
+- 业务为**纯 SSR 薄客户端**：`service_screen` 拉取 FFSP 屏幕包 → CRC 校验 → 上屏；**不再使用 `.film` / `service_file` / `service_film`**
+- 驱动保留 raw mono 全刷、差分、窗口局部刷新和基线恢复（`hal_epd_display_mono*` / `hal_epd_partial_update` / `hal_epd_restore_baseline`）
+- SD 保留初始化，但只做离线页/最后一帧/动画帧/日志的可选缓存；挂载失败不阻塞 SSR，且**禁止自动格式化**
+- BLE `0x00~0x08` 文件传图在本固件禁用；保留配网（0x30~0x38）、屏幕参数（0x42）、OTA（0x10~0x13）与控制命令
 
 ## 架构约束
 
@@ -186,6 +188,9 @@ film_service → film_hal → film_sys → ESP-IDF
 | Info 硬件说明 / 引脚表 | `hardware/model/FrameFilmCommon/README.md` + `pinmap.csv` |
 | Info 屏幕驱动（GDEM075T41WT 800×480 1bpp） | `firmware/frame_film_info/components/film_hal/src/hal_epd_750.c` |
 | Info 工程配置（单机型固定） | `firmware/frame_film_info/components/film_sys/inc/sys_cfg.h` |
+| Info 屏幕薄客户端（拉取/校验/上屏） | `firmware/frame_film_info/components/film_service/src/service_screen.c` |
+| Info FFSP 屏幕包解析 | `firmware/frame_film_info/components/film_service/src/screen_pkg.c` |
+| Info SD 缓存（最后一帧/离线页） | `firmware/frame_film_info/components/film_service/src/storage_cache.c` |
 | UI 层框架（LVGL 宿主/页面生命周期） | `firmware/frame_film_ark/components/film_ui/src/ui_core.c` |
 | UI 层开关与显示链路 | `firmware/frame_film_ark/components/film_ui/inc/{ui_conf.h,ui_ops.h}` + `src/ui_display.c` |
 | 开机画面 / 主菜单 / 系统设置（框架页面） | `firmware/frame_film_ark/components/film_app/pages/app_{boot,menu,settings}.c` |

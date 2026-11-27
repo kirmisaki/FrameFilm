@@ -154,6 +154,7 @@ static void reset(void);
 static esp_err_t film_parse_header(const unsigned char *filmData, FilmHeader *header);
 static void epd_write_old_white(void);
 static void epd_write_new_film(const FilmHeader *header, const unsigned char *pixelData);
+static void epd_write_new_mono(const unsigned char *monoData);
 static void epd_update_seq(void);
 static void epd_write_solid(uint8_t fill);
 static void epd_set_cdi(uint8_t param0);
@@ -345,6 +346,18 @@ static void epd_write_new_film(const FilmHeader *header, const unsigned char *pi
         {
             EPD_W21_WriteDATA_Bulk(&pixelData[row * EPD_LINE_BYTES], EPD_LINE_BYTES);
         }
+    }
+}
+
+/* 只写新帧数据（800×480 1bpp 原始位图），不写旧帧 */
+static void epd_write_new_mono(const unsigned char *monoData)
+{
+    int row;
+
+    EPD_W21_WriteCMD(EPD_CMD_DTM_NEW);
+    for (row = 0; row < EPD_HEIGHT; row++)
+    {
+        EPD_W21_WriteDATA_Bulk(&monoData[row * EPD_LINE_BYTES], EPD_LINE_BYTES);
     }
 }
 
@@ -710,6 +723,88 @@ void hal_epd_display_film_partial(const unsigned char *filmData)
     epd_refresh_partial();
 
     sys_logi(EPD_TAG, "Film display completed (differential/partial refresh)");
+}
+
+void hal_epd_display_mono(const unsigned char *monoData)
+{
+    if (monoData == NULL)
+    {
+        sys_loge(EPD_TAG, "monoData is NULL");
+        return;
+    }
+
+    epd_write_old_white();
+    epd_write_new_mono(monoData);
+    epd_update_seq();
+    m_baseline_valid = true;
+
+    sys_logi(EPD_TAG, "Mono display completed (full refresh)");
+}
+
+void hal_epd_display_mono_partial(const unsigned char *monoData)
+{
+    if (monoData == NULL)
+    {
+        sys_loge(EPD_TAG, "monoData is NULL");
+        return;
+    }
+
+    if (!m_baseline_valid)
+    {
+        sys_logw(EPD_TAG, "no baseline on glass, fallback to full refresh");
+        hal_epd_display_init();
+        hal_epd_display_mono(monoData);
+        return;
+    }
+
+    epd_ensure_partial();
+    epd_set_cdi(EPD_CDI_PARTIAL);
+
+    if (!epd_window_begin(0, 0, EPD_WIDTH, EPD_HEIGHT))
+    {
+        sys_loge(EPD_TAG, "failed to set full-panel partial window");
+        return;
+    }
+
+    epd_write_new_mono(monoData);
+    EPD_W21_WriteCMD(EPD_CMD_PTOUT);
+    epd_refresh_partial();
+
+    sys_logi(EPD_TAG, "Mono display completed (differential refresh)");
+}
+
+void hal_epd_restore_baseline(const unsigned char *monoData)
+{
+    int row;
+
+    if (monoData == NULL)
+    {
+        sys_loge(EPD_TAG, "monoData is NULL");
+        return;
+    }
+
+    epd_ensure_partial();
+
+    EPD_W21_WriteCMD(EPD_CMD_DTM_OLD);
+    for (row = 0; row < EPD_HEIGHT; row++)
+    {
+        EPD_W21_WriteDATA_Bulk(&monoData[row * EPD_LINE_BYTES], EPD_LINE_BYTES);
+    }
+
+    EPD_W21_WriteCMD(EPD_CMD_DTM_NEW);
+    for (row = 0; row < EPD_HEIGHT; row++)
+    {
+        EPD_W21_WriteDATA_Bulk(&monoData[row * EPD_LINE_BYTES], EPD_LINE_BYTES);
+    }
+
+    m_baseline_valid = true;
+
+    sys_logi(EPD_TAG, "Baseline restored (old+new planes)");
+}
+
+void hal_epd_refresh_partial(void)
+{
+    epd_refresh_partial();
 }
 
 int32_t hal_epd_partial_update(uint8_t panel, uint16_t x_start, uint16_t y_start,
